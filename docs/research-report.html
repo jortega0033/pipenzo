@@ -235,6 +235,7 @@
     padding: 18px 20px; display: flex; flex-direction: column; gap: 10px;
     box-shadow: var(--shadow);
   }
+  .cards { display: flex; flex-direction: column; gap: 14px; }
   .card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
   .card h3 { font-size: 15.5px; }
   .card .fact-list { display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: var(--ink-soft); }
@@ -580,7 +581,7 @@
 
   <section id="architecture">
     <div class="section-head">
-      <span class="section-num mono">06</span>
+      <span class="section-num mono">07</span>
       <h2>Autonomy &amp; the publish gate</h2>
     </div>
     <p class="measure section-sub">AgentDock is deliberately built so nothing classified as an <code>external_side_effect</code> — a <code>git push</code>, a PR — can ever get a persistent auto-allow. That's a safety property, not a gap to route around. The design below keeps it intact.</p>
@@ -623,10 +624,10 @@
 
   <section id="features">
     <div class="section-head">
-      <span class="section-num mono">07</span>
+      <span class="section-num mono">08</span>
       <h2>Feature plan</h2>
     </div>
-    <p class="measure section-sub">Every row below traces to a real, cited implementation choice in a shipped competitor — not a guess. Two rows are new: the diff-size gate above, and a dual-audience mode, since neither Alfred nor Sortie ever surfaces a non-developer view.</p>
+    <p class="measure section-sub">Every row below traces to a real, cited implementation choice in a shipped competitor — not a guess. Two rows are new: the diff-size gate above, and a dual-audience mode, since neither Alfred nor Sortie ever surfaces a non-developer view. Revised September 2026 against the competitive pass in §11 — the tiers below are the final plan, with nothing left at 50/50 and an explicit out-of-scope list rather than an open-ended "later".</p>
 
     <h3 style="font-size:15px;color:var(--ink-soft);margin-top:8px;">MVP</h3>
     <div class="table-wrap">
@@ -637,29 +638,48 @@
           <tr><td>Implement dialog, not a bare button</td><td>Scope correction up front is the cheapest quality lever available</td><td class="note">Copilot assign flow</td></tr>
           <tr><td>Kanban: Queued / Working / Ready for review</td><td>Minimum honest model of an autonomous loop</td><td class="note">Alfred PipelineView</td></tr>
           <tr><td>Agent-state enum → OS notification exactly on "awaiting input"</td><td>This is the entire "notify me when it's ready" promise</td><td class="note">OpenHands use-agent-notification</td></tr>
-          <tr><td>Approvals as inline cards, with a reject-reason field</td><td>Sortie has nothing here — it runs with permissions bypassed</td><td class="note">OpenHands confirmation mode</td></tr>
+          <tr><td>Risk-graded approval — LOW auto-proceeds, MEDIUM blocks on an inline card, HIGH gets the full card plus a notification; reject-reason on every blocking card</td><td>Sortie has nothing here — it runs with permissions bypassed; a single binary card is below the current bar. See §11 decision 05</td><td class="note">OpenHands confirmation mode + action security risk</td></tr>
+          <tr><td>Cumulative-risk strip, per ticket</td><td>Unreviewed low-risk actions and prediction mismatches compound; crossing the threshold promotes the next MEDIUM action to a full card and says why</td><td class="note">OpenHands cumulative-risk reasoning</td></tr>
+          <tr><td>Pre-commitment records on every MEDIUM/HIGH action</td><td>Reduces fabrication at the source instead of labelling it afterwards; the mismatch count becomes a signal the reviewer can read. See §11 decision 02</td><td class="note">Cognition — Verifying Agentic Development at Scale</td></tr>
           <tr><td>Separate "Push branch" / "Push &amp; open PR" buttons</td><td>Users revolted when a competitor folded save and publish together</td><td class="note">OpenHands #5179</td></tr>
-          <tr><td>Verification block in the PR body, self-reported flagged as such</td><td>Never fabricate evidence a human will trust at a glance</td><td class="note">Alfred VERIFICATION.md</td></tr>
+          <tr><td>Verification block, split into a machine-verified zone and an agent-captured self-reported zone — never one merged list</td><td>Never fabricate evidence a human will trust at a glance, and never let self-reported evidence borrow the credibility of a real gate result</td><td class="note">Alfred VERIFICATION.md</td></tr>
+          <tr><td>Screenshot verification, capability-detected via the repo's own Playwright</td><td>For the non-developer audience a before/after screenshot is the evidence; it sits in the self-reported zone, carries a provenance line, and can never satisfy a gate. See §11 decision 03</td><td class="note">Devin, Codegen attach these</td></tr>
           <tr><td>Subscription-headroom rail, not a fake dollar figure</td><td>Per-token $ is meaningless on a Max/Pro plan — a competitor removed it for this reason</td><td class="note">Alfred UsagePanel</td></tr>
           <tr><td>Classified retry — never auto-retries a denied approval</td><td>Auto-retrying a rejection silently defeats the human gate</td><td class="note">Alfred RECOVERY.md</td></tr>
           <tr><td>Park after 3 consecutive failures</td><td>Unbounded retry is how an unattended loop burns a night's budget</td><td class="note">Sortie max_consecutive_absences</td></tr>
-          <tr><td>Diff-size gate at refine, with a proposed split</td><td>Unclaimed ground — no OSS competitor checked has this at all; Devin has no published threshold</td><td class="note">Graphite / Google / arXiv 2601.00753</td></tr>
+          <tr><td>Diff-size gate at refine — refusal and stack-approval as real ticket states in the Needs-human lane</td><td>Unclaimed ground — no OSS competitor checked has this at all; Devin decomposes but never asks a human to approve the decomposition. See §11 decision 01</td><td class="note">Graphite / Google / arXiv 2601.00753</td></tr>
           <tr><td>Simple mode by default, expert mode persisted per user</td><td>A PM should see a plain-English summary with the real diff one click away, never hidden behind a mode they can't find</td><td class="note">NN/g progressive disclosure, n8n's approach</td></tr>
         </tbody>
       </table>
     </div>
 
-    <h3 style="font-size:15px;color:var(--ink-soft);margin-top:20px;">Later</h3>
+    <h3 style="font-size:15px;color:var(--ink-soft);margin-top:20px;">Near-term post-MVP — committed, each with the trigger that unblocks it</h3>
     <div class="table-wrap">
       <table>
-        <thead><tr><th style="width:26%">Feature</th><th>Why</th><th>Source</th></tr></thead>
+        <thead><tr><th style="width:26%">Feature</th><th>Why, and what unblocks it</th><th>Source</th></tr></thead>
         <tbody>
+          <tr><td>Bounded concurrency — default 2, cap 4, overlapping-file tickets serialised</td><td>The kanban implies parallel work and should not be lying. <b>Trigger:</b> build step 5, the queue. Explicitly not Devin's sandbox fleet — see §11 decision 06</td><td class="note">Devin, Kiro, Codegen parallel execution</td></tr>
+          <tr><td><span class="mono">gh stack</span> publishing for approved stacks</td><td>Upgrades sequential PRs to GitHub-native stacked PRs without Pipenzo owning a restacker. <b>Trigger:</b> the publish service, build step 4</td><td class="note">GitHub stacked PRs, Jul 30 2026</td></tr>
+          <tr><td>CI-failure auto-fix, one attempt, back through the push gate</td><td>The loop isn't finished at PR-open. <b>Trigger:</b> the publish gate and one real PR-open flow working end to end — see §11 decision 07</td><td class="note">Jules CI-failure detection; Sortie reactions.*</td></tr>
           <tr><td>Reviewer-grade diff layout</td><td>Layout is the real differentiator on the review side — not more comments</td><td class="note">Devin Review</td></tr>
           <tr><td>Findings sidebar, by severity</td><td>Turns self-review output into an actual triage surface</td><td class="note">Devin Review</td></tr>
           <tr><td>Plan-review gate before implementation starts</td><td>Alfred's own stated single biggest quality lever</td><td class="note">Alfred ARCHITECTURE.md</td></tr>
           <tr><td>Steer mid-run; Stop preserves commits</td><td>Course-correction beats a full restart</td><td class="note">Copilot sessions, Devin "Take over"</td></tr>
-          <tr><td>PR-event reactions — CI failure, merge conflict</td><td>The loop isn't finished at PR-open; this is Sortie's deepest area</td><td class="note">Sortie reactions.*</td></tr>
-          <tr><td>Local lesson memory, human-gated</td><td>Alfred's "shared team memory" is concretely just this — nothing more</td><td class="note">Alfred FleetBrain</td></tr>
+          <tr><td>Remaining PR-event reactions — merge conflict, review comments</td><td>The rest of Sortie's deepest area, after CI failure lands</td><td class="note">Sortie reactions.*</td></tr>
+          <tr><td>Local lesson memory, human-gated</td><td>Alfred's "shared team memory" is concretely just this — and it is the deliberate substitute for a persistent knowledge base</td><td class="note">Alfred FleetBrain</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 style="font-size:15px;color:var(--ink-soft);margin-top:20px;">Out of scope — decided, not deferred</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th style="width:26%">Not building</th><th>Reason</th><th>Ships in</th></tr></thead>
+        <tbody>
+          <tr><td>Persistent, queryable repo knowledge base</td><td>Trades a staleness bug for a caching win the fresh per-session symbol graph already delivers; needs index, invalidation, and embedding infrastructure this project deliberately doesn't have. §11 decision 08</td><td class="note">DeepWiki, Amp Librarian</td></tr>
+          <tr><td>Pipenzo-shipped or curated MCP servers</td><td>MCP is a runtime capability inherited from AgentDock's trusted stdio catalog; GitHub over MCP would put the token in the agent process and break the publish gate. §11 decision 09</td><td class="note">Jules (Linear, Neon, Stitch)</td></tr>
+          <tr><td>10+ parallel cloud sandboxes</td><td>Bounded local concurrency is the honest ceiling for one machine sharing one subscription's rate limit</td><td class="note">Devin</td></tr>
+          <tr><td>A home-grown PR-stack maintenance UI</td><td>Deferring to <span class="mono">gh stack</span> is the decision, not a placeholder for building one later</td><td class="note">Devin, Graphite</td></tr>
         </tbody>
       </table>
     </div>
@@ -667,7 +687,7 @@
 
   <section id="order">
     <div class="section-head">
-      <span class="section-num mono">08</span>
+      <span class="section-num mono">09</span>
       <h2>Build order</h2>
     </div>
     <div class="order-list">
@@ -689,11 +709,15 @@
       </div>
       <div class="order-item">
         <div class="n mono"></div>
-        <div><h3>Queue + dual-audience mode</h3><p>dnd-kit kanban, simple/expert toggle with a persisted default, built on the established design system. Multiple tickets queued, one worktree each, respecting the existing workspace-execution lease.</p></div>
+        <div><h3>Queue + dual-audience mode + bounded concurrency</h3><p>dnd-kit kanban, simple/expert toggle with a persisted default, built on the established design system. Multiple tickets queued, one worktree each, respecting the existing workspace-execution lease — and a concurrency semaphore in the ticket orchestrator (default 2, hard cap 4) that serialises any two tickets whose Refine-phase "files likely touched" lists overlap.</p></div>
       </div>
       <div class="order-item">
         <div class="n mono"></div>
-        <div><h3>Polish</h3><p>Native notification on "awaiting approval," a rejection loop that forks implementation again, a dirty-worktree discard path, an audit entry for every publish and every review-gate result.</p></div>
+        <div><h3>Polish</h3><p>Native notification on HIGH-risk approvals only, a rejection loop that forks implementation again, a dirty-worktree discard path, an audit entry for every publish and every review-gate result.</p></div>
+      </div>
+      <div class="order-item">
+        <div class="n mono"></div>
+        <div><h3>First post-MVP milestone</h3><p><span class="mono">gh stack</span> publishing for approved decompositions, then CI-failure auto-fix — one forked attempt, classifiable failures only, re-entering the same human push gate. Both are committed with triggers, not "later" (§11 decisions 06–07).</p></div>
       </div>
     </div>
 
@@ -719,11 +743,17 @@
       <span class="section-num mono">11</span>
       <h2>Competitive positioning — addendum, September 2026</h2>
     </div>
-    <p style="color:var(--ink-soft);max-width:760px;">Added after the plan was first drafted and after the design canvas was built, to check the plan against what shipped competitors actually do today rather than at the time of the original ten research passes. Primary sources only — vendor docs, changelogs, one peer-reviewed dataset — cited per claim below.</p>
+    <p style="color:var(--ink-soft);max-width:760px;">Added after the plan was first drafted and after the design canvas was built, to check the plan against what shipped competitors actually do today rather than at the time of the original ten research passes. Primary sources only — vendor docs, changelogs, one peer-reviewed dataset — cited per claim below. Revised at the close of the pass: the nine items it raised are now decisions, specified below, and the plan in the README reflects them.</p>
 
     <div class="risk-strip">
       <span class="mark">headline</span>
       <span>Two of the plan's three claimed differentiators shipped elsewhere in the first half of 2026. The diff-size-thesis is intuitive but not established by the best available evidence — acceptance rate tracks task type, not diff size.</span>
+    </div>
+    <div class="correction">
+      <div class="mark">now final</div>
+      <div>
+        <p>This section originally ended with five committed items and four left at <b>50/50</b>. It no longer does. Every one of the nine is decided below — four into MVP, one closed outright as a docs correction, two into the first post-MVP milestone with a named trigger, two out of scope with the reason stated. The two exclusions are the honest ones: a persistent repo knowledge base and Pipenzo-curated MCP servers are both real capabilities in funded competitors that this project should not build, for reasons that are about infrastructure and failure modes rather than ambition.</p>
+      </div>
     </div>
 
     <h3 style="margin-top:28px;">Where the plan is genuinely ahead</h3>
@@ -750,27 +780,73 @@
     <table>
       <thead><tr><th>Area</th><th>Status</th><th>Evidence</th></tr></thead>
       <tbody>
-        <tr><td>Approval gating before publish</td><td><span class="chip chip-wait">table stakes now</span></td><td>Copilot, Cursor, and OpenHands all gate on human approval; OpenHands grades each action LOW/MEDIUM/HIGH and reasons about cumulative risk — a binary approve card is less sophisticated than the current bar.</td></tr>
+        <tr><td>Approval gating before publish</td><td><span class="chip chip-wait">table stakes now</span></td><td>Copilot, Cursor, and OpenHands all gate on human approval; OpenHands grades each action LOW/MEDIUM/HIGH and reasons about cumulative risk — a binary approve card is less sophisticated than the current bar. <span class="note">→ closed by decision 05.</span></td></tr>
         <tr><td>Deterministic gates before LLM review</td><td><span class="chip chip-wait">parity</span></td><td>Kiro runs property-based testing against the spec; Cognition extracted repetitive verification into deterministic scripts specifically to cut flakiness.</td></tr>
-        <tr><td>Self-reported evidence</td><td><span class="chip chip-wait">weaker fix than the alternative</span></td><td>Pipenzo flags evidence as self-reported after the fact. Cognition's pre-commitment (annotate expected behavior right before acting) reduces the underlying lying instead of just labeling it.</td></tr>
-        <tr><td>EARS spec-driven refine</td><td><span class="chip chip-danger">behind</span></td><td>Kiro (GA, AWS, May 2026) already does EARS requirements.md + design.md + tasks.md, property-based spec verification, and an autonomous agent that opens PRs unattended. The read-only subagent and diff-size estimate are the only additive pieces left.</td></tr>
+        <tr><td>Self-reported evidence</td><td><span class="chip chip-wait">weaker fix than the alternative</span></td><td>Pipenzo flags evidence as self-reported after the fact. Cognition's pre-commitment (annotate expected behavior right before acting) reduces the underlying lying instead of just labeling it. <span class="note">→ closed by decisions 02 and 03.</span></td></tr>
+        <tr><td>EARS spec-driven refine</td><td><span class="chip chip-danger">behind</span></td><td>Kiro (GA, AWS, May 2026) already does EARS requirements.md + design.md + tasks.md, property-based spec verification, and an autonomous agent that opens PRs unattended. The read-only subagent and diff-size estimate are the only additive pieces left. <span class="note">→ closed by decision 04 — the claim is dropped, not defended.</span></td></tr>
         <tr><td>Cost transparency</td><td><span class="chip chip-danger">market moved the other way</span></td><td>Devin dropped ACUs for a dollar quota (Apr 2026); Copilot replaced Premium Request Units with AI Credits, 1 credit = $0.01 (Jun 1, 2026). "Headroom, not a dollar figure" now reads contrarian, defensible only on a flat subscription.</td></tr>
-        <tr><td>PR-stack maintenance</td><td><span class="chip chip-danger">no story yet</span></td><td>GitHub shipped native stacked PRs in public preview (Jul 30, 2026) with a <span class="mono">gh-stack</span> CLI and Copilot skill support; Devin handles rebasing/conflicts/CI across a stack. Pipenzo proposes the split, nothing for maintaining it after.</td></tr>
+        <tr><td>PR-stack maintenance</td><td><span class="chip chip-danger">no story yet</span></td><td>GitHub shipped native stacked PRs in public preview (Jul 30, 2026) with a <span class="mono">gh-stack</span> CLI and Copilot skill support; Devin handles rebasing/conflicts/CI across a stack. Pipenzo proposes the split, nothing for maintaining it after. <span class="note">→ closed by decision 01 — maintenance is delegated to <span class="mono">gh stack</span>, not built.</span></td></tr>
       </tbody>
     </table>
 
-    <h3 style="margin-top:28px;">Gaps to close</h3>
-    <p style="color:var(--ink-soft);max-width:760px;">Five confirmed and committed to the plan (see README §"Competitive gaps to close"): reposition the diff gate around refusal + GitHub's native stack primitive; add pre-commitment alongside evidence flagging; add screenshot/browser verification before MVP; reconcile the Refine step against Kiro explicitly rather than claiming it as a differentiator; risk-graded approval instead of binary.</p>
-    <p style="color:var(--ink-soft);max-width:760px;">Four more identified, deliberately left <strong>50/50</strong> — real gaps, not yet architected in, revisit once the walking skeleton exists rather than scope-creeping the MVP:</p>
-    <table>
-      <thead><tr><th>Gap</th><th>Who already ships it</th><th>Why it's 50/50, not committed</th></tr></thead>
-      <tbody>
-        <tr><td>Concurrency — parallel tickets</td><td>Devin (10+ parallel sandboxes), Kiro, Codegen (parallel cloud subagents, GA Mar 14, 2026)</td><td>The kanban visually implies parallel work; nothing in the plan architects for running more than one worktree's agent loop at once. Real gap, but adds real orchestration complexity before the single-ticket loop is even proven.</td></tr>
-        <tr><td>CI-failure auto-fix</td><td>Jules (automatic CI-failure detection + resubmission)</td><td>Currently a "Later" PR-event-reaction bullet with no design behind it. Worth doing, but depends on the publish/approval loop already working reliably first.</td></tr>
-        <tr><td>Persistent, queryable repo knowledge base</td><td>DeepWiki, Amp's Librarian</td><td>Durable beyond a single symbol graph, but unclear whether the added infra is justified at Pipenzo's target scale (single repos, JSON file store, no DB) versus a fresh symbol-graph pass per session.</td></tr>
-        <tr><td>MCP integration</td><td>Jules (Linear, Neon, Stitch servers)</td><td>Not on the plan at any tier. Unclear which MCP servers would actually matter for an issue-to-PR loop versus adding surface area for its own sake — needs a concrete use case before it's worth building.</td></tr>
-      </tbody>
-    </table>
+    <h3 style="margin-top:28px;">Decisions — nine items, nothing left hedged</h3>
+    <p style="color:var(--ink-soft);max-width:760px;">The first draft of this addendum committed to five items and left four at 50/50. All nine are now resolved. The four that were open are decided below on one test: does it earn its complexity for a single-maintainer open-source tool running local worktrees on one machine, or is it surface area copied from a funded product with different infrastructure?</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th style="width:24%">Item</th><th style="width:16%">Decision</th><th>Reasoning</th></tr></thead>
+        <tbody>
+          <tr><td><b>01</b> Diff-gate repositioning</td><td><span class="chip chip-ok">MVP</span></td><td>Refusal and stack-approval become real ticket states; stack <em>maintenance</em> is delegated to <span class="mono">gh stack</span>. Spec below.</td></tr>
+          <tr><td><b>02</b> Pre-commitment</td><td><span class="chip chip-ok">MVP</span></td><td>An event type and a prompt contract, not a subsystem. Cheap, and it produces a signal a human can read. Spec below.</td></tr>
+          <tr><td><b>03</b> Screenshot verification</td><td><span class="chip chip-ok">MVP</span></td><td>Capability-detected, using the repo's own Playwright. Pipenzo ships no browser. Spec below.</td></tr>
+          <tr><td><b>04</b> Kiro reconciliation</td><td><span class="chip chip-ok">done, docs-only</span></td><td>The differentiator claim is dropped from the README and from this report. No UI impact. Note below.</td></tr>
+          <tr><td><b>05</b> Risk-graded approval</td><td><span class="chip chip-ok">MVP</span></td><td>LOW/MEDIUM/HIGH with a cumulative-risk counter that promotes the next action when unreviewed work piles up. Spec below.</td></tr>
+          <tr><td><b>06</b> Concurrency</td><td><span class="chip chip-wait">post-MVP, build step 5</span></td><td><b>In, bounded — not Devin's model.</b> Default 2, hard cap 4, one worktree per ticket. The plan already provisions per-ticket worktrees and AgentDock already holds a workspace-execution lease, so the marginal cost is a semaphore in the ticket orchestrator, not an orchestration rewrite. What Pipenzo does <em>not</em> take on is the expensive half: cloud sandbox fleets, cross-ticket resource scheduling, merge-conflict arbitration between concurrent agents. The real ceiling here isn't architecture, it's one machine sharing one subscription's rate limit. One addition falls out for free: Refine already emits a "files likely touched" list, so two tickets whose lists overlap are serialised rather than run in parallel — a conflict-avoidance property the sandbox-fleet approach doesn't have.</td></tr>
+          <tr><td><b>07</b> CI-failure auto-fix</td><td><span class="chip chip-wait">post-MVP, first milestone</span></td><td><b>In, scoped and gated.</b> Trigger: the publish gate and one real PR-open flow working end to end. A failing check moves the ticket to <span class="mono">ci-failed</span>; the fix runs as a <span class="mono">session.fork</span> of the original implement session to keep spec context and audit lineage; one attempt, only for failures the existing deterministic gate set can classify (build, typecheck, test, lint) — flaky and infrastructure failures park to Needs-human rather than burning attempts on them. The deliberate divergence from Jules: the fix commit re-enters the same human push gate. Nothing is resubmitted automatically, because auto-resubmission is exactly the hole the publish gate exists to close.</td></tr>
+          <tr><td><b>08</b> Persistent repo knowledge base</td><td><span class="chip chip-danger">out of scope</span></td><td><b>Out — and this is a judgment, not a deferral.</b> The measured benefit cited in §04 (+12.2% localisation accuracy, −53.9% completion time) comes from a symbol graph built fresh per session, which cannot be stale. A durable knowledge base adds an index, an invalidation strategy, an embedding store, and a staleness problem whose failure mode is an implementer confidently misled by an out-of-date wiki — worse than having none. DeepWiki and Librarian are indexing products with staff and infrastructure behind them; Pipenzo deliberately has a JSON file store, no DB, and no native addons (§03 rejected <span class="mono">better-sqlite3</span> for precisely this class of reason). The human-gated lesson memory already on the roadmap is the intentional small substitute: append-only, human-approved, no index.</td></tr>
+          <tr><td><b>09</b> MCP integration</td><td><span class="chip chip-danger">out of scope as a Pipenzo feature</span></td><td><b>Out — because it already exists one layer down.</b> AgentDock ships a trusted local-stdio MCP catalog with a route-level approval gate, workspace-trust revalidation, and fail-closed destructive-tool classification (<a href="https://github.com/jortega0033/agentdock/pull/85">agentdock#85</a>). Any server a user wants is configured at the runtime and inherited; Pipenzo adds no MCP UI and curates no servers. Jules' comparables (Linear, Neon, Stitch) are hosted/HTTP — a transport AgentDock explicitly does not support, so matching them means new runtime transport work, not a Pipenzo feature. And the one integration that matters for this loop, GitHub, is actively contraindicated as an MCP server: it would put the token inside the agent process and break the property §07 rests on — publishing is a daemon-side service the agent process cannot call. One consequence worth noting rather than a gap: because AgentDock's classification is fail-closed, any MCP tool a user does attach lands at HIGH in the risk grading below unless the server declares otherwise, so it inherits the approval UI for free.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 style="margin-top:28px;">The five committed items, specified</h3>
+    <p style="color:var(--ink-soft);max-width:760px;">Previously these were named as gaps but never designed. Each is now a buildable spec, written against the six screens on the design canvas.</p>
+
+    <div class="cards">
+      <div class="card">
+        <div class="card-top"><h3>01 · Diff-size gate — refusal as a state, stacks handed to GitHub</h3><span class="chip chip-ok">MVP</span></div>
+        <p style="margin:0;color:var(--ink-soft);font-size:14px;">The gate produces <b>two ticket states, not an error</b>, both backed by GitHub labels and both landing in the existing Needs-human lane. <span class="mono">pipenzo:needs-pre-scoping</span> — the agent declined; the card shows the estimate, which threshold tripped, and the proposed split, presented as a finished outcome. Nothing retries it automatically. <span class="mono">pipenzo:awaiting-stack-approval</span> — a 2–4 PR decomposition is waiting for a human to accept, reorder, or reject; approving materialises one dependency-ordered child ticket per entry, each with its own worktree and branch, and the parent becomes a container card showing 1/3, 2/3 progress. Devin decomposes but never asks; the approval step is the part that stays unclaimed.</p>
+        <p style="margin:0;color:var(--ink-soft);font-size:14px;"><b>Maintenance is delegated, not built.</b> Pipenzo owns the split decision, the ordering, and the human approval of it. GitHub owns base-branch rewriting, restacking after a merge, and the PR-to-PR view, via native stacked PRs and the <span class="mono">gh stack</span> CLI — invoked from the daemon-side publish service under the same <span class="mono">execFile</span> trust model as <span class="mono">git</span>, never as an agent tool. This is a deliberate exception to §03's "not the <span class="mono">gh</span> binary" rule and the only one: the API client stays <span class="mono">@octokit/core</span>, and <span class="mono">gh</span> is runtime-detected and optional. Without it an approved stack still ships, as sequential PRs with an explicit base-branch note. Pipenzo renders the stack as a read-only list linking out to GitHub's own stack view, and never writes a restacker.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-top"><h3>02 · Pre-commitment — predict, then be graded on it</h3><span class="chip chip-ok">MVP</span></div>
+        <p style="margin:0;color:var(--ink-soft);font-size:14px;"><b>When:</b> before every action graded MEDIUM or HIGH by the classifier in item 05. LOW actions do not pre-commit — the point is a readable signal, not a transcript of every file read. One classifier serves both features.</p>
+        <p style="margin:0;color:var(--ink-soft);font-size:14px;"><b>What the implementer posts</b>, as a structured <span class="mono">precommit</span> event, <em>before</em> the action runs: the action verbatim; <span class="mono">expect</span> — one sentence predicting the outcome ("the three new cases in <span class="mono">provider-caps.test.ts</span> pass, nothing else changes"); <span class="mono">if_wrong</span> — what it will do if the prediction fails. The real result is appended afterwards as a paired <span class="mono">outcome</span> event and diffed against the prediction into a <span class="mono">match</span> / <span class="mono">partial</span> / <span class="mono">mismatch</span> verdict.</p>
+        <p style="margin:0;color:var(--ink-soft);font-size:14px;"><b>In the event stream</b> (TicketDetail → Activity): the prediction lands first as its own row, marked <span class="chip chip-wait">predicted</span>. When the outcome arrives the pair collapses to a single row carrying <span class="chip chip-ok">matched</span> or <span class="chip chip-danger">mismatched</span>. Mismatched pairs never auto-collapse. This is the part worth having: pre-commitment is usually an internal anti-fabrication trick, and exposing the mismatch count turns it into something a reviewer can act on — the PR body's confidence line degrades when it is non-zero ("the agent's own predictions were wrong twice during this run"), Simple mode says the same in plain language, and each mismatch feeds the cumulative-risk counter. An agent whose predictions are going wrong gets checked on sooner, automatically.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-top"><h3>03 · Screenshot verification — legible, and still not proof</h3><span class="chip chip-ok">MVP</span></div>
+        <p style="margin:0;color:var(--ink-soft);font-size:14px;"><b>How it is captured:</b> Playwright, driven by the daemon, using <em>the target repo's own</em> installation. Pipenzo ships no browser and detects the capability rather than providing it — if the worktree has <span class="mono">@playwright/test</span> and a dev or preview script, the verification phase runs a short capture script generated from the spec's EARS clauses (start the dev server on an ephemeral localhost port, navigate, capture, tear down). Repos without Playwright can set a <span class="mono">pipenzo.verify.screenshot</span> command that emits PNGs to a directory. Neither available means the evidence block says so — there is no fallback and nothing is faked. Two rejected alternatives, for the record: the agent driving a browser itself (arbitrary network egress inside the agent process), and Electron's own webview (running the target app inside the renderer that holds the token vault and the hardened CSP — a real security regression, not a shortcut). A baseline capture on the base commit before implementation gives a genuine before/after pair, which is what makes the screenshot mean something rather than decorate.</p>
+        <p style="margin:0;color:var(--ink-soft);font-size:14px;"><b>Where it renders:</b> DiffReview's existing Verification block gets a thumbnail strip, each shot captioned with the EARS clause it was captured for plus URL, viewport, and commit SHA. Simple mode makes it the hero — the before/after pair above the plain-language summary, because for the non-developer audience this <em>is</em> the evidence. The PR body carries the same images with the same captions.</p>
+        <p style="margin:0;color:var(--ink-soft);font-size:14px;"><b>How it stays honest:</b> a screenshot feels like proof and isn't — the agent chose the URL, the state, and the moment. So the verification block splits into two visually distinct zones that are never merged into one list: <b>machine-verified</b> (build, typecheck, spec-generated tests, gitleaks, Semgrep — results the app produced) and <b>agent-captured, self-reported</b> (text evidence and every screenshot). Each shot carries a fixed provenance line rather than a subtle badge — "captured by the agent, showing what it chose to show" — with the capture script expandable beside it, and the script itself appears in the diff so a human can see what was actually photographed. Hard rule: <b>a screenshot is never an input to a pass/fail decision.</b> It buys legibility, not trust.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-top"><h3>04 · Kiro reconciliation — a docs fix, and it is finished</h3><span class="chip chip-accent">no UI impact</span></div>
+        <p style="margin:0;color:var(--ink-soft);font-size:14px;">Confirmed against the canvas: no artboard claims EARS or spec-driven development as a Pipenzo invention, so there is nothing to remove from the UI. The change is prose only, in the README and in this report — the Refine step is no longer presented as a differentiator, because Kiro has shipped requirements/design/tasks specs with property-based verification as a GA AWS product since May 2026 and Pipenzo's Refine is a subset of that. What is genuinely additive is narrower and gets stated instead: the refine subagent is <b>read-only by construction</b> (<span class="mono">Read</span>/<span class="mono">Grep</span>/<span class="mono">Glob</span> — no write tool exists in its definition, so it cannot start implementing while it is still deciding whether the ticket is sane), and it emits a <b>numeric diff-size estimate that a refusal policy is enforced against</b>. One forward guardrail: onboarding and empty-state copy, when it gets written, must not re-introduce the claim.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-top"><h3>05 · Risk-graded approval, with cumulative risk</h3><span class="chip chip-ok">MVP</span></div>
+        <p style="margin:0;color:var(--ink-soft);font-size:14px;">Three levels, classified per action, replacing the single approve/reject card:</p>
+        <p style="margin:0;color:var(--ink-soft);font-size:14px;"><span class="chip chip-ok">LOW</span> Reversible, inside the owned worktree, no network, no secrets — reads, greps, edits to source under the worktree, running the repo's own build and test commands. <b>Auto-proceeds.</b> No card, no notification, one passive line in the Activity stream. This should be roughly 95% of actions; if it isn't, the classifier is wrong.</p>
+        <p style="margin:0;color:var(--ink-soft);font-size:14px;"><span class="chip chip-wait">MEDIUM</span> Reversible but consequential, or outside the obvious blast radius — adding a dependency, running a script not declared in the repo's manifest, writing outside the source tree (lockfiles, CI config, <span class="mono">.github/</span>), deleting files, rewriting local history, network egress for a package fetch. <b>Blocks on a compact inline card</b> in the Activity stream: approve, or reject with a reason. Requires a pre-commitment record. No OS notification unless it has been waiting more than 60 seconds. The Undo affordance already on the approval screen applies here.</p>
+        <p style="margin:0;color:var(--ink-soft);font-size:14px;"><span class="chip chip-danger">HIGH</span> Irreversible or off-machine — anything AgentDock classifies <span class="mono">external_side_effect</span> (push, open PR, comment on the issue), paths matching the security/auth/migration globs already used for tier override in §05, force-push, deleting outside the worktree, writing a credential-shaped string, and any MCP tool not explicitly declared safe. <b>The full approval card</b>, OS notification, mandatory reason on reject. The existing rule is unchanged and unchangeable: no persistent auto-allow exists for <span class="mono">external_side_effect</span> at any risk level, and Undo does not apply — once approved it has left the machine.</p>
+        <p style="margin:0;color:var(--ink-soft);font-size:14px;"><b>Cumulative risk — yes, and it is the interesting half.</b> OpenHands' actual insight is that risk compounds across a session even when every individual step is fine, so the counter tracks <em>unreviewed</em> accumulation rather than total severity: each auto-approved LOW action adds 0.1, each MEDIUM approval adds 1, each pre-commitment mismatch adds 2, and a HIGH action adds nothing (a human already looked hard at it). Any approval a human gives resets it to zero. When the score crosses the threshold (default 10), the next MEDIUM action is <b>promoted to HIGH</b> — full card, notification — and the card states why: "14 low-risk actions since your last look." It renders in TicketDetail's right rail beneath Budget and Subscription headroom, in the same visual language: a segmented bar reading <span class="chip chip-ok">ok</span> → <span class="chip chip-wait">building</span> → <span class="chip chip-danger">check in</span>. It is a "since you last looked" meter, not a threat gauge.</p>
+      </div>
+    </div>
 
     <h3 style="margin-top:28px;">Updated adoption data</h3>
     <p style="color:var(--ink-soft);max-width:760px;">The 55% vs. 82.6% figure from the original research is retired. Current best source: a task-stratified analysis of 7,156 agent PRs (MSR 2026 mining challenge) — Codex 77.9%, Cursor 74.5%, Claude Code 71.9%, Copilot 68.0%, Devin 61.6% merge rate. By task type: chore 84.0%, docs 82.1%, feature 66.1%, fix 66.0%, perf 55.4%. The paper does not analyze acceptance against PR size — the variance is driven by task type, not diff size, so Pipenzo's foundational small-PRs thesis remains a design bet, not a proven one. If the size thesis is meant to hold, the diff-size gate should be paired with task-type-aware routing, since task type is what the data actually shows moving the number.</p>

@@ -8,7 +8,7 @@ Status: pre-implementation. This repo currently holds the product research, arch
 
 ## Why this exists, and why it's honest about its limits
 
-Autonomous issue-to-PR agents are a crowded category, and the market moved fast in 2026. Updated PR-acceptance data (7,156 agent PRs, MSR 2026 mining challenge, [arXiv 2602.08915](https://arxiv.org/html/2602.08915v2)) puts per-agent merge rates at Codex 77.9%, Cursor 74.5%, Claude Code 71.9%, Copilot 68.0%, Devin 61.6% — the earlier 55%/82.6% figure is retired. Acceptance varies by *task type* (chore 84.0%, docs 82.1%, feature 66.1%, perf 55.4%), not by diff size — Pipenzo's small-PRs-by-construction thesis is intuitive but not yet established by evidence; several direct competitors (Sweep, Terragon, Roo Code) shut down anyway, and Bloop's Vibe Kanban is now community-maintained. Pipenzo doesn't pretend otherwise — it exists to explore the problem properly (small PRs by construction, honest review gates, no fabricated evidence) rather than to out-market that category. See [`docs/research-report.html`](docs/research-report.html) for the original research (landscape, stack choices, model routing, PR-size strategy, feature plan, build order) and its **Competitive positioning addendum** for a September 2026 gap analysis against shipped competitors (Devin, Copilot, Cursor, OpenHands, Kiro, Jules, Codegen, Graphite).
+Autonomous issue-to-PR agents are a crowded category, and the market moved fast in 2026. Updated PR-acceptance data (7,156 agent PRs, MSR 2026 mining challenge, [arXiv 2602.08915](https://arxiv.org/html/2602.08915v2)) puts per-agent merge rates at Codex 77.9%, Cursor 74.5%, Claude Code 71.9%, Copilot 68.0%, Devin 61.6% — the earlier 55%/82.6% figure is retired. Acceptance varies by *task type* (chore 84.0%, docs 82.1%, feature 66.1%, perf 55.4%), not by diff size — Pipenzo's small-PRs-by-construction thesis is intuitive but not yet established by evidence; several direct competitors (Sweep, Terragon, Roo Code) shut down anyway, and Bloop's Vibe Kanban is now community-maintained. Pipenzo doesn't pretend otherwise — it exists to explore the problem properly (small PRs by construction, honest review gates, no fabricated evidence) rather than to out-market that category. See [`docs/research-report.html`](docs/research-report.html) for the original research (landscape, stack choices, model routing, PR-size strategy, feature plan, build order) and its **Competitive positioning addendum** for the September 2026 competitive pass against shipped competitors (Devin, Copilot, Cursor, OpenHands, Kiro, Jules, Codegen, Graphite) and the nine decisions taken from it.
 
 ## How it works
 
@@ -19,7 +19,7 @@ Autonomous issue-to-PR agents are a crowded category, and the market moved fast 
 3. **Implement** — a fresh session seeded only with the spec plus symbol-graph context (not raw file search). Retries use `session.fork` to keep spec context and audit lineage intact, never a brand-new run.
 4. **Review** — deterministic gates first (build/typecheck, spec-generated tests the implementer never wrote itself, gitleaks, Semgrep, a diff-scope check against the Phase-1 estimate). Only then an LLM review pass in a fresh session seeing just the spec and the diff, followed by a separate adversarial verifier — always at the same model tier or higher than the implementer, never a weaker model reviewing a stronger one.
 
-Nothing is pushed or opened as a PR without an explicit human approval step — see **Autonomy & the publish gate** in the research report.
+Nothing is pushed or opened as a PR without an explicit human approval step — see **Autonomy & the publish gate** in the research report. Approvals are risk-graded rather than uniform: routine edits inside the owned worktree proceed on their own and are only logged, while anything irreversible or off-machine always stops for a person. Publishing is permanently in the second category — no auto-allow exists for it at any risk level.
 
 ## Model routing
 
@@ -29,50 +29,66 @@ Task tiers (`refine` / `implement-small` / `implement-standard` / `implement-har
 
 - ≤ 100 lines / ≤ 10 files → implement as one PR.
 - 100–400 lines, layered → refuse to start until the agent has written down a dependency-ordered stack of 2–4 independently-buildable PRs.
-- \> 500 additions, > 20 files, or no clean layering → don't implement; flag `needs-pre-scoping`, post the estimate and proposed split as a comment, hand it to a human.
+- \> 500 additions, > 20 files, or no clean layering → don't implement; flag `pipenzo:needs-pre-scoping`, post the estimate and proposed split as a comment, hand it to a human.
 
 This gate runs at Refine, before any code is written.
+
+**Refusal is a ticket state, not an error.** The gate produces two real states, both backed by GitHub labels and both landing in the existing *Needs human* lane:
+
+- `pipenzo:needs-pre-scoping` — the agent declined the ticket. The card shows the estimate, which threshold tripped, and the proposed split, presented as a finished outcome rather than a failure. Nothing retries it automatically.
+- `pipenzo:awaiting-stack-approval` — the agent produced a 2–4 PR decomposition and is waiting for a human to accept, reorder, or reject it. Approving materialises one dependency-ordered child ticket per entry, each with its own worktree and branch; the parent becomes a container card showing 1/3, 2/3 progress.
+
+**Stack maintenance is GitHub's job, not Pipenzo's.** Pipenzo owns the split decision, the ordering, and the human approval of it. GitHub owns base-branch rewriting, restacking after a merge, and the PR-to-PR relationship view — via native stacked PRs (public preview, Jul 2026) and the `gh stack` CLI, invoked from the daemon-side publish service under the same `execFile` trust model as `git`, never as an agent tool. `gh` stays an optional, runtime-detected capability, not a dependency of the core loop (the GitHub API client remains `@octokit/core`). Without it, an approved stack still ships — as dependency-ordered sequential PRs with an explicit base-branch note. Pipenzo never builds its own restacker.
 
 ## Feature plan (from the research report)
 
 **MVP**
-- Kanban home: Queued / Working / Ready-for-review lanes, backed by GitHub labels as the state model (survives app restart, no separate source of truth)
+- Kanban home: Queued / Working / Ready-for-review / Needs-human lanes, backed by GitHub labels as the state model (survives app restart, no separate source of truth)
 - Implement dialog with optional prompt + branch override — never a bare button
 - Plan phase / "New from idea" conversational issue creation
-- Agent-state enum with an OS notification exactly on "awaiting input"
-- Inline approval cards with a reject-reason field
+- Agent-state enum with an OS notification exactly on "awaiting input" — which now means a HIGH-risk approval, a refusal, or a stack awaiting sign-off, never a routine MEDIUM card that resolves in a few seconds
+- **Risk-graded approval (LOW / MEDIUM / HIGH)** — LOW auto-proceeds with a passive line in the activity stream; MEDIUM blocks on a compact inline card; HIGH gets the full approval card plus an OS notification. Reject-reason field on every card that blocks. Replaces the earlier flat "one approve/reject card for everything" model.
+- **Cumulative-risk strip, per ticket** — unreviewed LOW actions and mispredictions accumulate; crossing the threshold promotes the *next* MEDIUM action to a full HIGH card and says why ("14 low-risk actions since your last look")
 - Separate "Push branch" / "Push & open PR" buttons
-- Verification-evidence block in the PR body, self-reported evidence flagged as such
+- Verification-evidence block in the PR body and in the diff view, split into two visually distinct zones — machine-verified deterministic gates vs. agent-captured self-reported evidence, never merged into one list
+  - **Pre-commitment records** — before every MEDIUM/HIGH action the implementer posts what it is about to run, what it expects to happen, and what it will do if wrong; the real outcome is appended and diffed against the prediction. Mismatches are counted, never auto-collapsed, and feed both the cumulative-risk strip and the confidence line on the PR body
+  - **Screenshot verification, capability-detected** — uses the repo's own Playwright (or a configured capture command), captured by the daemon and never by the agent's own browser access; before/after pair against the base commit; the hero evidence in Simple mode; carries a fixed provenance line and can never satisfy a gate
 - Subscription-headroom rail — not a fake dollar figure
 - Per-ticket token/run budget (0 = unlimited)
 - Classified retry — never auto-retries a denied approval
-- Park after 3 consecutive failures → a "needs human" lane
-- Diff-size gate at refine, with a proposed PR-stack split
+- Park after 3 consecutive failures → the Needs-human lane
+- Diff-size gate at refine, with refusal and stack approval as real ticket states (see above)
 - Simple mode by default, expert mode persisted per user
 
-**Later**
+**Near-term post-MVP** — committed, with the trigger that unblocks each
+- **Bounded concurrency** *(trigger: build step 5, the queue)* — a configurable execution limit, default 2, hard cap 4, one worktree per ticket. Two tickets whose Refine-phase "files likely touched" lists overlap are serialised rather than run together, which is a decomposition Pipenzo already has for free and Devin's sandbox model doesn't.
+- **`gh stack` publishing** *(trigger: after the publish service ships, build step 4)* — upgrades approved stacks from sequential PRs to real GitHub-native stacked PRs
+- **CI-failure auto-fix** *(trigger: after the publish gate and one real PR-open flow work end to end)* — a failing check moves the ticket to a `ci-failed` state; the fix runs as a `session.fork` of the original implement session to keep spec lineage; one attempt only, only for failures the deterministic gate set can classify (build/typecheck/test/lint), everything else parks to Needs-human. The fix commit goes back through the same human push gate — unlike Jules, it is never resubmitted automatically
 - Reviewer-grade diff layout with a findings sidebar by severity
 - Plan-review gate before implementation starts
 - Steer mid-run; Stop preserves commits
-- PR-event reactions (CI failure, merge conflict)
+- Remaining PR-event reactions (merge conflict, review comments)
 - Local, human-gated lesson memory
 
-## Competitive gaps to close (Sept 2026 research)
+**Out of scope — decided, not deferred**
+- **A persistent, queryable repo knowledge base** (DeepWiki / Amp's Librarian). The measured win — symbol-graph localisation, +12.2% accuracy and −53.9% completion time — comes from a *fresh* per-session graph, which cannot go stale. A durable index needs invalidation, an embedding store, and a staleness story, and its failure mode is an implementer confidently misled by an out-of-date wiki. That is a worse outcome than no wiki, for infrastructure this project deliberately doesn't have (JSON file store, no DB, no native addons). The human-gated lesson memory above is the deliberate small substitute.
+- **Pipenzo-shipped MCP servers.** MCP already exists one layer down: agentdock ships a trusted local-stdio MCP catalog with a route-level approval gate and fail-closed destructive-tool classification, so any server a user wants is configured at the runtime and inherited — Pipenzo adds no MCP UI of its own. Jules' servers (Linear, Neon, Stitch) are hosted/HTTP, a transport agentdock explicitly doesn't support. And the one integration that matters here, GitHub, must *not* go through MCP: that would put the token inside the agent process and break the property the whole design rests on — publishing is a daemon-side service the agent cannot call.
+- **Matching Devin's 10+ parallel sandboxes.** Bounded local concurrency above is the honest ceiling for a single machine sharing one subscription's rate limit. Cloud sandbox fleets are a funded-product feature, not a missing one.
+- **A home-grown PR-stack maintenance UI.** Deferring to `gh stack` is the decision, not a placeholder for building one later.
+
+## What the September 2026 competitive pass changed
 
 A deep-research pass against shipped competitors (Devin, GitHub Copilot, Cursor, OpenHands, Kiro, Jules, Codegen, Graphite) found the plan ahead on a few points (refusal-as-outcome at the diff gate, the same-or-higher-tier adversarial verifier rule, per-ticket budget, dual-audience mode) and at parity or behind on others (approval gating is now table stakes; Kiro already ships EARS spec-driven dev + property-based verification, so the Refine step is a subset of Kiro's, not ahead of it; the market moved toward dollar-quota cost display, away from abstract headroom). Full writeup: **Competitive positioning addendum** in [`docs/research-report.html`](docs/research-report.html).
 
-Five gaps confirmed and committed to the plan:
-1. **Reposition the diff-size gate** around refusal + numeric thresholds + human-approved decomposition, and build any PR-stack handling on GitHub's native stacked-PRs primitive (public preview, Jul 2026) rather than inventing one.
-2. **Pre-commitment on verification evidence** — have the implementer annotate its expected outcome right before an action, not just flag self-reported evidence after the fact (Cognition's fix for the same lying problem, cheaper and more effective than flagging alone).
-3. **Screenshot/browser verification** before MVP — for the non-developer audience especially, "here's a screenshot of it working" is more legible than a text evidence block; Devin and Codegen already attach these.
-4. **Reconcile the Refine step against Kiro explicitly** in docs — stop presenting EARS-notation spec-driven refine as a differentiator; it isn't one against a GA AWS product. The read-only subagent and diff-size estimate are the actual additive pieces.
-5. **Risk-graded approval, not binary** — OpenHands assigns LOW/MEDIUM/HIGH per action and reasons about cumulative risk; a single approve/reject card is less sophisticated than the current bar.
+Nine items came out of it. All nine are now decided and folded into the feature plan above — none are left open.
 
-Four more gaps identified but not yet committed either way (50-50 — worth prototyping, not yet architected in, revisit once the walking skeleton exists):
-- **Concurrency** — Devin/Kiro/Codegen run 10+ parallel sandboxed tickets; Pipenzo's kanban visually implies parallel work but nothing in the plan architects for running more than one worktree's agent loop at a time.
-- **CI-failure auto-fix** — Jules ships automatic CI-failure detection and resubmission; currently only a "Later" PR-event-reaction item here, unscoped.
-- **Persistent, queryable repo knowledge base** — DeepWiki and Amp's Librarian give agents durable, queryable repo understanding beyond a single symbol graph; unclear yet whether this is worth the added infra for Pipenzo's scale.
-- **MCP integration** — Jules ships MCP servers (Linear, Neon, Stitch); not on the plan at any tier, and it's unclear which MCP servers would actually matter for an issue-to-PR loop vs. adding surface area for its own sake.
+**In for MVP.** Diff-gate repositioning (refusal and stack approval as real ticket states), pre-commitment records, screenshot verification, and risk-graded approval with a cumulative-risk strip.
+
+**In, near-term post-MVP, with a trigger.** Bounded concurrency (build step 5), `gh stack` publishing (after the publish service), CI-failure auto-fix (after the publish gate and one real PR flow).
+
+**Out of scope, with a reason.** A persistent repo knowledge base and Pipenzo-shipped MCP servers — see the reasoning under *Out of scope* above. The short version: the knowledge base trades a staleness bug for a caching win the fresh symbol graph already delivers, and MCP is a runtime-layer capability Pipenzo inherits rather than a product surface it should own.
+
+**The Kiro reconciliation is a docs fix, and this is it.** Pipenzo does not claim EARS-notation spec-driven refinement as a differentiator — Kiro has shipped requirements/design/tasks specs with property-based verification as a GA AWS product since May 2026, and the Refine step is a subset of that, not an advance on it. What is actually additive here is narrower and worth stating plainly: the refine subagent is **read-only by construction** (`Read`/`Grep`/`Glob`, no write tool exists in its definition, so it cannot start implementing while it is still deciding whether the ticket is even sane), and it emits a **numeric diff-size estimate that a refusal policy is enforced against**. Those two things, not the notation.
 
 ## Stack
 
@@ -82,6 +98,8 @@ Four more gaps identified but not yet committed either way (50-50 — worth prot
 | Kanban board | dnd-kit | Standard pairing with shadcn; shadcn has no kanban primitive |
 | Diff review | react-diff-view | Parses real unified diffs into collapsible hunks — tens of kB, not Monaco's multi-MB editor |
 | GitHub API client | `@octokit/core` + `paginate-rest` | Not the octokit metapackage, not the `gh` binary — pure JS, tree-shaken into the daemon bundle |
+| Stacked PRs | `gh stack` (optional, runtime-detected) | The one place the `gh` binary is used, and only for stack maintenance GitHub now does natively; absent, approved stacks ship as sequential PRs |
+| Screenshot verification | the repo's own Playwright, or a configured capture command | Pipenzo ships no browser and never renders the target app in its own webview — that would put an untrusted page next to the token vault |
 | GitHub OAuth | `@octokit/auth-oauth-device` | Device flow — no client secret to embed in a shipped OSS binary, no loopback listener |
 | Git operations | `execFile('git', …)` | Same trust model as agentdock's worktree manager — argv array, `shell:false`, sanitized env |
 | Notifications | Electron `Notification` API | Native, cross-platform, already solves this |
@@ -92,6 +110,8 @@ Full rationale for each choice is in the research report.
 ## Design
 
 A clickable Claude Design canvas covers the product's key screens: kanban home (sidebar + main-content admin layout), live ticket progress with phase stepper and model-routing/budget rail, inline approval, a reviewer-grade diff view, and a plain-language "Simple mode" view for non-developer users. Dark-mode only for now — light mode is a stated roadmap item, not built yet.
+
+The canvas was seeded before the decisions above and does not yet show risk grading, pre-commitment pairs, the two-zone evidence block, the refusal/stack-approval states, or screenshot evidence. Updating it is the next pass; the feature plan above is the brief for it.
 
 - [`design/pipenzo-prototype.html`](design/pipenzo-prototype.html) — the full seeded canvas, open directly in a browser
 - [`design/artboards/`](design/artboards/) — the individual screens as editable `.dc.html` source (`Foundations` = design-system/primitives reference; `Main`, `TicketDetail`, `ApprovalPrompt`, `DiffReview`, `SimpleMode` = product screens)
@@ -105,8 +125,9 @@ A clickable Claude Design canvas covers the product's key screens: kanban home (
 2. Walking skeleton — hardcoded repo, PAT from env, no queue. One ticket through refine → implement → review → diff screen → open PR, end to end.
 3. Ticket store + phase machine — JSON-file persistence, crash recovery, phase-change SSE, a real ticket detail view.
 4. GitHub & the size gate, properly — device-flow OAuth in Electron main, token vault, real issue list, the diff-size/split gate enforced at refine, a test asserting the token never reaches a provider subprocess.
-5. Queue + dual-audience mode — dnd-kit kanban, simple/expert toggle with a persisted default, one worktree per ticket.
-6. Polish — native "awaiting approval" notification, rejection loop that forks implementation again, dirty-worktree discard path, an audit entry for every publish and review-gate result.
+5. Queue + dual-audience mode — dnd-kit kanban, simple/expert toggle with a persisted default, one worktree per ticket, and bounded concurrency (default 2, cap 4) with overlapping-file tickets serialised.
+6. Polish — native "awaiting approval" notification on HIGH-risk cards only, rejection loop that forks implementation again, dirty-worktree discard path, an audit entry for every publish and review-gate result.
+7. First post-MVP milestone — `gh stack` publishing for approved stacks, then CI-failure auto-fix routed back through the same human push gate.
 
 **Biggest risk called out in the research:** the temptation in step 2 to let the agent shell out to `gh` directly. Publishing stays outside the agent loop from the first commit — retrofitting that boundary later breaks the safety property the whole design depends on.
 
