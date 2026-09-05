@@ -1,0 +1,14 @@
+{
+  "artboards": [
+    { "file": "Foundations.dc.html", "x": 0, "y": 0, "w": 1040, "h": 4800 },
+    { "file": "Main.dc.html", "x": 1160, "y": 0, "w": 1360, "h": 900, "is_interactive": true },
+    { "file": "TicketDetail.dc.html", "x": 2600, "y": 0, "w": 1320, "h": 900, "is_interactive": true },
+    { "file": "ApprovalPrompt.dc.html", "x": 4000, "y": 0, "w": 480, "h": 520, "is_interactive": true },
+    { "file": "DiffReview.dc.html", "x": 1160, "y": 1020, "w": 1360, "h": 900 },
+    { "file": "SimpleMode.dc.html", "x": 2600, "y": 1020, "w": 900, "h": 780 }
+  ],
+  "annotations": [
+    { "id": "flow-note", "x": 1160, "y": -120, "w": 320, "text": "Flow: Board (kanban + New from idea) -> live progress -> approve the publish -> diff review -> Push & open PR.\nSimpleMode is the same ticket, non-developer view — deliberately no sidebar." }
+  ],
+  "launch": { "view": "canvas" }
+}

@@ -1,0 +1,417 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;700&family=IBM+Plex+Mono:wght@400;700&display=swap">
+<style>
+  /* ===== pipenzo base (identical in every artboard) ===== */
+  :root{
+    --bg:#121212; --surface:#181818; --surface-2:#1f1f1f; --surface-3:#282828; --surface-4:#333333;
+    --text:#ffffff; --text-soft:#b3b3b3; --text-faint:#7a7a7a;
+    --accent:#3fb950; --accent-fg:#0a1a0d;
+    --ok:#3fb950; --ok-fg:#0a1a0d; --warn:#d29922; --warn-fg:#1f1400; --danger:#f85149; --danger-fg:#2a0705;
+    --r:8px; --r-sm:6px; --pill:9999px;
+    --shadow:0 8px 24px rgba(0,0,0,0.5); --shadow-sm:0 4px 12px rgba(0,0,0,0.4);
+    --ease:120ms ease;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:'IBM Plex Sans',system-ui,sans-serif;font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased;}
+  a{color:var(--accent);} a:hover{color:var(--accent);text-decoration-thickness:2px;}
+  .mono{font-family:'IBM Plex Mono',monospace;}
+  .brand{display:flex;align-items:center;gap:8px;}
+  .logo-mark{width:28px;height:28px;border-radius:50%;background:var(--accent);color:var(--accent-fg);display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:15px;line-height:1;flex-shrink:0;}
+  .wordmark{font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:16px;letter-spacing:-0.01em;line-height:1;}
+  .icon{width:16px;height:16px;flex-shrink:0;}
+  .icon-sm{width:14px;height:14px;flex-shrink:0;}
+  .icon-lg{width:20px;height:20px;flex-shrink:0;}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:32px;padding:0 16px;font-family:'IBM Plex Sans',sans-serif;font-size:13px;font-weight:700;line-height:1;white-space:nowrap;border-radius:var(--pill);border:none;background:var(--surface-3);color:var(--text);cursor:pointer;transition:filter var(--ease),transform var(--ease),background-color var(--ease),color var(--ease);}
+  .btn:hover{filter:brightness(1.2);}
+  .btn:active{filter:brightness(0.92);transform:scale(0.98);}
+  .btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+  .btn.primary{background:var(--accent);color:var(--accent-fg);}
+  .btn.primary:hover{filter:brightness(1.08);transform:scale(1.03);}
+  .btn.primary:active{filter:brightness(0.94);transform:scale(0.98);}
+  .btn.ghost{background:transparent;color:var(--text-soft);}
+  .btn.ghost:hover{filter:none;color:var(--text);background:var(--surface-3);}
+  .btn.danger{color:var(--danger);}
+  .btn.danger:hover{filter:none;background:var(--danger);color:var(--danger-fg);}
+  .btn.lg{height:40px;padding:0 24px;font-size:14px;}
+  .btn.sm{height:28px;padding:0 12px;font-size:12px;}
+  .icon-btn{width:32px;height:32px;border-radius:50%;border:none;background:var(--surface-3);color:var(--text);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:filter var(--ease),transform var(--ease);}
+  .icon-btn:hover{filter:brightness(1.2);} .icon-btn:active{transform:scale(0.94);}
+  .icon-btn.ghost{background:transparent;color:var(--text-soft);} .icon-btn.ghost:hover{filter:none;background:var(--surface-3);color:var(--text);}
+  .chip{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 8px;font-size:11px;font-weight:700;letter-spacing:0.04em;line-height:1;text-transform:uppercase;border-radius:var(--pill);white-space:nowrap;}
+  .chip-ok{background:var(--ok);color:var(--ok-fg);}
+  .chip-warn{background:var(--warn);color:var(--warn-fg);}
+  .chip-danger{background:var(--danger);color:var(--danger-fg);}
+  .chip-neutral{background:var(--surface-3);color:var(--text-soft);}
+  .field{display:block;width:100%;font-family:'IBM Plex Sans',sans-serif;font-size:13px;line-height:20px;padding:8px 12px;border-radius:var(--r-sm);border:none;background:var(--surface-3);color:var(--text);resize:none;transition:background-color var(--ease);}
+  .field::placeholder{color:var(--text-faint);}
+  .field:hover{background:var(--surface-4);}
+  .field:focus{outline:2px solid var(--accent);outline-offset:0;background:var(--surface-4);}
+  .field.invalid,.field.invalid:focus{outline:2px solid var(--danger);}
+  .f-lbl{display:block;font-size:12px;font-weight:700;color:var(--text-soft);margin-bottom:6px;line-height:1;}
+  .f-help{display:block;font-size:12px;color:var(--text-faint);margin-top:6px;line-height:1.4;}
+  .f-err{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--danger);margin-top:6px;line-height:1.4;}
+  .f-row{display:flex;align-items:center;justify-content:space-between;gap:16px;}
+  .select-wrap{position:relative;display:block;}
+  .select-wrap .field{appearance:none;-webkit-appearance:none;padding-right:36px;cursor:pointer;}
+  .select-wrap .icon{position:absolute;right:12px;top:50%;transform:translateY(-50%);color:var(--text-faint);pointer-events:none;}
+  .check,.radio{display:inline-flex;align-items:center;gap:10px;font-size:13px;color:var(--text);cursor:pointer;line-height:1.3;}
+  .check .box,.radio .box{width:18px;height:18px;border-radius:4px;background:var(--surface-4);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--accent-fg);transition:background-color var(--ease);}
+  .check .box.on,.radio .box.on{background:var(--accent);}
+  .radio .box{border-radius:50%;}
+  .radio .box.on::after{content:'';width:8px;height:8px;border-radius:50%;background:var(--accent-fg);}
+  .check .sub,.radio .sub{display:block;font-size:12px;color:var(--text-faint);font-weight:400;}
+  .toggle{width:36px;height:20px;border-radius:var(--pill);background:var(--surface-4);position:relative;cursor:pointer;flex-shrink:0;border:none;padding:0;transition:background-color var(--ease);}
+  .toggle::after{content:'';position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--text-soft);transition:transform var(--ease),background-color var(--ease);}
+  .toggle.on{background:var(--accent);} .toggle.on::after{transform:translateX(16px);background:var(--accent-fg);}
+  .label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-faint);line-height:1;}
+  .kbd{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:4px;background:var(--surface-4);color:var(--text-soft);font-family:'IBM Plex Mono',monospace;font-size:11px;line-height:1;}
+  .avatar{width:32px;height:32px;border-radius:50%;background:var(--surface-3);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--text);flex-shrink:0;}
+  .seg{display:flex;gap:2px;background:var(--surface-2);border-radius:var(--pill);padding:4px;}
+  .seg button{height:24px;padding:0 12px;border:none;border-radius:var(--pill);background:transparent;font-family:'IBM Plex Sans',sans-serif;font-size:12px;font-weight:700;line-height:1;cursor:pointer;color:var(--text-faint);transition:color var(--ease),background-color var(--ease);}
+  .seg button:hover{color:var(--text);}
+  .seg button.active{color:var(--text);background:var(--surface-4);}
+  .topbar{display:flex;align-items:center;justify-content:space-between;height:64px;padding:0 24px;background:var(--bg);flex-shrink:0;}
+  .dialog{background:var(--surface-3);border-radius:var(--r);padding:24px;display:flex;flex-direction:column;gap:16px;box-shadow:var(--shadow);}
+  .dialog .field{background:var(--surface-4);} .dialog .field:hover,.dialog .field:focus{background:#3e3e3e;}
+  .dialog .btn:not(.primary){background:var(--surface-4);}
+  /* --- notices: banner (page-level, persistent) · notice (inline, contextual) · toast (transient, corner) --- */
+  .banner{display:flex;align-items:center;gap:12px;min-height:44px;padding:8px 16px 8px 20px;background:var(--surface-2);font-size:13px;color:var(--text-soft);line-height:1.4;}
+  .banner b{color:var(--text);font-weight:700;}
+  .banner .b-ic{width:24px;height:24px;border-radius:50%;background:var(--surface-4);color:var(--text);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .banner.ok .b-ic{background:var(--ok);color:var(--ok-fg);} .banner.warn .b-ic{background:var(--warn);color:var(--warn-fg);} .banner.danger .b-ic{background:var(--danger);color:var(--danger-fg);}
+  .banner .b-text{flex:1;min-width:0;}
+  .banner .b-act{display:flex;align-items:center;gap:8px;flex-shrink:0;}
+  .notice{display:flex;align-items:flex-start;gap:12px;padding:12px 12px 12px 16px;border-radius:var(--r);background:var(--surface-3);font-size:13px;color:var(--text-soft);line-height:1.45;}
+  .notice .n-ic{width:20px;height:20px;border-radius:50%;background:var(--surface-4);color:var(--text);display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;}
+  .notice.ok .n-ic{background:var(--ok);color:var(--ok-fg);} .notice.warn .n-ic{background:var(--warn);color:var(--warn-fg);} .notice.danger .n-ic{background:var(--danger);color:var(--danger-fg);}
+  .notice .n-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;}
+  .notice .n-title{font-weight:700;color:var(--text);line-height:1.3;}
+  .notice .n-act{display:flex;gap:12px;margin-top:6px;}
+  .notice .n-act span{font-weight:700;color:var(--text);cursor:pointer;}
+  .notice .n-x{width:24px;height:24px;border-radius:50%;border:none;background:transparent;color:var(--text-faint);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;margin:-2px -2px 0 0;transition:background-color var(--ease),color var(--ease);}
+  .notice .n-x:hover{background:var(--surface-4);color:var(--text);}
+  .toast{display:flex;align-items:center;gap:12px;width:360px;padding:12px 12px 12px 16px;border-radius:var(--r);background:var(--surface-3);box-shadow:var(--shadow);font-size:13px;color:var(--text);line-height:1.35;}
+  .toast .t-ic{width:24px;height:24px;border-radius:50%;background:var(--surface-4);color:var(--text);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .toast.ok .t-ic{background:var(--ok);color:var(--ok-fg);} .toast.warn .t-ic{background:var(--warn);color:var(--warn-fg);} .toast.danger .t-ic{background:var(--danger);color:var(--danger-fg);}
+  .toast .t-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;}
+  .toast .t-title{font-weight:700;}
+  .toast .t-sub{font-size:12px;color:var(--text-soft);}
+  .toast .btn{flex-shrink:0;}
+  /* --- admin shell: collapsible sidebar + main --- */
+  .shell{display:flex;overflow:hidden;position:relative;background:var(--bg);}
+  .sidebar{width:240px;flex-shrink:0;display:flex;flex-direction:column;gap:4px;padding:16px 12px 12px;background:var(--surface);overflow:hidden;transition:width var(--ease);}
+  .sidebar .brand{height:32px;padding:0 6px;}
+  .sidebar.collapsed{width:64px;}
+  .sidebar.collapsed .wordmark,.sidebar.collapsed .ws-text,.sidebar.collapsed .ws-caret,.sidebar.collapsed .nav-title,.sidebar.collapsed .nav-lbl,.sidebar.collapsed .nav-count,.sidebar.collapsed .sb-user-text{display:none;}
+  .ws{display:flex;align-items:center;gap:10px;height:48px;padding:0 6px;margin-top:12px;border-radius:var(--r);background:var(--surface-2);cursor:pointer;transition:background-color var(--ease);}
+  .ws:hover{background:var(--surface-3);}
+  .ws-ic{width:28px;height:28px;border-radius:var(--r-sm);background:var(--surface-4);color:var(--text);display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:700;flex-shrink:0;}
+  .ws-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;}
+  .ws-name{font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:700;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .ws-sub{font-size:11px;color:var(--text-faint);line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .ws-caret{color:var(--text-faint);}
+  .nav-group{display:flex;flex-direction:column;gap:2px;margin-top:12px;}
+  .nav-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-faint);line-height:1;padding:6px 10px 8px;}
+  .nav-item{display:flex;align-items:center;gap:10px;height:36px;padding:0 10px;border-radius:var(--r-sm);font-size:13px;font-weight:700;color:var(--text-soft);cursor:pointer;white-space:nowrap;transition:background-color var(--ease),color var(--ease);}
+  .nav-item:hover{background:var(--surface-2);color:var(--text);}
+  .nav-item.active{background:var(--surface-3);color:var(--text);}
+  .nav-item .icon{color:inherit;}
+  .nav-count{margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:400;color:var(--text-faint);line-height:1;}
+  .nav-count.hot{color:var(--danger);font-weight:700;}
+  .sidebar.collapsed .nav-item{justify-content:center;padding:0;}
+  .sb-foot{margin-top:auto;display:flex;flex-direction:column;gap:2px;}
+  .sb-user{display:flex;align-items:center;gap:10px;height:44px;padding:0 6px;border-radius:var(--r-sm);cursor:pointer;}
+  .sb-user:hover{background:var(--surface-2);}
+  .sb-user-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;}
+  .sb-user-name{font-size:13px;font-weight:700;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .sb-user-sub{font-size:11px;color:var(--text-faint);line-height:1;}
+  .main{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;background:var(--bg);}
+  .main-head{display:flex;align-items:center;justify-content:space-between;gap:16px;height:56px;padding:0 24px;flex-shrink:0;}
+  .main-head-r{display:flex;align-items:center;gap:12px;}
+  .crumbs{display:flex;align-items:center;gap:6px;min-width:0;font-size:13px;color:var(--text-faint);line-height:1;}
+  .crumbs .icon-sm{color:var(--text-faint);}
+  .crumbs .cur{color:var(--text);font-weight:700;}
+  .crumbs .mono{font-size:12px;}
+  .cmdk{display:inline-flex;align-items:center;gap:8px;width:260px;height:32px;padding:0 8px 0 12px;border-radius:var(--pill);background:var(--surface-2);color:var(--text-faint);font-size:13px;cursor:text;transition:background-color var(--ease);}
+  .cmdk:hover{background:var(--surface-3);}
+  .cmdk span:not(.kbd){flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  /* ===== screen ===== */
+  .shell{height:900px;}
+  .header{padding:0 24px 16px;display:flex;flex-direction:column;gap:12px;flex-shrink:0;background:var(--bg);}
+  .h-id{font-family:'IBM Plex Mono',monospace;color:var(--text-faint);font-size:12px;line-height:1;}
+  .h-title{font-size:20px;font-weight:700;letter-spacing:-0.01em;line-height:1.25;}
+  .stepper{display:flex;gap:4px;margin-top:4px;align-items:center;}
+  .step{display:inline-flex;align-items:center;gap:8px;height:32px;padding:0 14px 0 6px;font-family:'IBM Plex Sans',sans-serif;font-size:12px;font-weight:700;line-height:1;border:none;border-radius:var(--pill);cursor:pointer;background:transparent;color:var(--text-faint);transition:background-color var(--ease),color var(--ease);}
+  .step:hover{background:var(--surface-2);color:var(--text);}
+  .step-n{width:20px;height:20px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:11px;background:var(--surface-3);color:var(--text-soft);}
+  .step.done{color:var(--text-soft);}
+  .step.done .step-n{background:var(--surface-4);color:var(--text);}
+  .step.active{background:var(--accent);color:var(--accent-fg);}
+  .step.active:hover{background:var(--accent);color:var(--accent-fg);filter:brightness(1.08);}
+  .step.active .step-n{background:var(--accent-fg);color:var(--accent);}
+  /* awaiting input: the one state that pings the human — amber, pulsing, bell instead of a number */
+  .step.await{background:var(--warn);color:var(--warn-fg);animation:pulse-warn 1.6s ease-out infinite;}
+  .step.await:hover{background:var(--warn);color:var(--warn-fg);filter:brightness(1.06);}
+  .step.await .step-n{background:var(--warn-fg);color:var(--warn);}
+  .step-hint{display:inline-flex;align-items:center;gap:6px;margin-left:8px;font-size:12px;color:var(--warn);font-weight:700;line-height:1;}
+  @keyframes pulse-warn{0%{box-shadow:0 0 0 0 rgba(210,153,34,0.45);}100%{box-shadow:0 0 0 10px rgba(210,153,34,0);}}
+  .body{flex:1;display:grid;grid-template-columns:minmax(0, 1fr) 300px;gap:16px;overflow:hidden;background:var(--bg);padding:0 16px 16px 24px;}
+  .stream{overflow-y:auto;display:flex;flex-direction:column;gap:0;padding-top:8px;}
+  .evt{display:grid;grid-template-columns:28px minmax(0, 1fr);gap:12px;}
+  .evt-col{display:flex;flex-direction:column;align-items:center;}
+  .evt-ic{width:28px;height:28px;border-radius:50%;background:var(--surface-3);color:var(--text-soft);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .evt-ic.live{background:var(--accent);color:var(--accent-fg);animation:pulse 1.6s ease-out infinite;}
+  .evt-line{flex:1;width:2px;background:var(--surface-3);margin:4px 0;min-height:16px;}
+  .evt-line.end{background:transparent;}
+  .evt-body{display:flex;flex-direction:column;gap:4px;padding:4px 0 20px;}
+  .evt-head{display:flex;align-items:center;gap:8px;}
+  .evt-tool{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-faint);line-height:1;}
+  .evt-title{font-size:14px;line-height:1.4;text-wrap:pretty;}
+  .evt-meta{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-faint);line-height:1;}
+  .evt-meta.live{color:var(--accent);}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(63,185,80,0.45);}100%{box-shadow:0 0 0 10px rgba(63,185,80,0);}}
+  /* subagent output: collapsed by default, one row; expands to a mono transcript */
+  .sub-row{display:inline-flex;align-items:center;gap:8px;margin-top:6px;height:28px;padding:0 12px 0 8px;border-radius:var(--pill);background:var(--surface-2);font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-soft);cursor:pointer;align-self:flex-start;transition:background-color var(--ease),color var(--ease);}
+  .sub-row:hover{background:var(--surface-3);color:var(--text);}
+  .sub-row .icon-sm{color:var(--text-faint);transition:transform var(--ease);}
+  .sub-row.open .icon-sm{transform:rotate(90deg);}
+  .sub-lines{display:flex;flex-direction:column;gap:2px;margin-top:6px;padding:10px 12px;border-radius:var(--r-sm);background:var(--surface-2);font-family:'IBM Plex Mono',monospace;font-size:12px;line-height:1.5;color:var(--text-soft);white-space:pre-wrap;}
+  .sub-lines .ok{color:var(--ok);}
+  .rail{background:var(--surface);padding:8px;display:flex;flex-direction:column;gap:4px;overflow-y:auto;border-radius:var(--r);}
+  .rail-block{display:flex;flex-direction:column;gap:12px;padding:16px;background:var(--surface-2);border-radius:var(--r);}
+  .kv{display:flex;justify-content:space-between;align-items:center;font-size:13px;line-height:1;gap:12px;}
+  .kv .k{color:var(--text-soft);white-space:nowrap;}
+  .kv .v{font-family:'IBM Plex Mono',monospace;font-size:12px;text-align:right;}
+  .kv .v.warn{color:var(--warn);}
+  .kv .select-wrap{width:150px;}
+  .kv .select-wrap .field{height:28px;padding:4px 32px 4px 10px;font-size:12px;line-height:20px;background:var(--surface-3);}
+  .headroom-bar{height:4px;border-radius:var(--pill);background:var(--surface-3);overflow:hidden;}
+  .headroom-fill{height:100%;background:var(--accent);border-radius:var(--pill);}
+  .approval-card{background:var(--surface-2);border-radius:var(--r);padding:20px;display:flex;flex-direction:column;gap:12px;margin-left:40px;box-shadow:var(--shadow-sm);}
+  .approval-head{display:flex;align-items:center;gap:12px;}
+  .approval-ic{width:28px;height:28px;border-radius:50%;background:var(--warn);color:var(--warn-fg);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .approval-title{font-size:14px;font-weight:700;line-height:1.3;}
+  .approval-cmd{font-family:'IBM Plex Mono',monospace;font-size:12px;line-height:20px;background:var(--surface-3);padding:8px 12px;border-radius:var(--r-sm);color:var(--text-soft);}
+  .approval-actions{display:flex;gap:8px;}
+  .approval-actions .btn{flex:1;}
+</style>
+</helmet>
+<div class="shell">
+  <div class="sidebar {{sidebarCls}}">
+    <div class="brand"><div class="logo-mark">p</div><span class="wordmark">pipenzo</span></div>
+    <div class="ws">
+      <span class="ws-ic">JO</span>
+      <span class="ws-text"><span class="ws-name">jortega0033/agentdock</span><span class="ws-sub">main · 3 repos connected</span></span>
+      <svg class="icon ws-caret" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M181.66,170.34a8,8,0,0,1,0,11.32l-48,48a8,8,0,0,1-11.32,0l-48-48a8,8,0,0,1,11.32-11.32L128,212.69l42.34-42.35A8,8,0,0,1,181.66,170.34Zm-96-84.68L128,43.31l42.34,42.35a8,8,0,0,0,11.32-11.32l-48-48a8,8,0,0,0-11.32,0l-48,48A8,8,0,0,0,85.66,85.66Z"/></svg>
+    </div>
+    <div class="nav-group">
+      <span class="nav-title">Work</span>
+      <div class="nav-item active"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M216,48H40a8,8,0,0,0-8,8V208a16,16,0,0,0,16,16H88a16,16,0,0,0,16-16V160h48v16a16,16,0,0,0,16,16h40a16,16,0,0,0,16-16V56A8,8,0,0,0,216,48ZM88,208H48V128H88Zm0-96H48V64H88Zm64,32H104V64h48Zm56,32H168V128h40Zm0-64H168V64h40Z"/></svg><span class="nav-lbl">Board</span><span class="nav-count">7</span></div>
+      <div class="nav-item"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M188,88a27.75,27.75,0,0,0-12,2.71V60a28,28,0,0,0-41.36-24.6A28,28,0,0,0,80,44v6.71A27.75,27.75,0,0,0,68,48,28,28,0,0,0,40,76v76a88,88,0,0,0,176,0V116A28,28,0,0,0,188,88Zm12,64a72,72,0,0,1-144,0V76a12,12,0,0,1,24,0v44a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v68a8,8,0,0,0,16,0V60a12,12,0,0,1,24,0v68.67A48.08,48.08,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V116a12,12,0,0,1,24,0Z"/></svg><span class="nav-lbl">Needs me</span><span class="nav-count hot">2</span></div>
+      <div class="nav-item"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M136,80v43.47l36.12,21.67a8,8,0,0,1-8.24,13.72l-40-24A8,8,0,0,1,120,128V80a8,8,0,0,1,16,0Zm-8-48A95.44,95.44,0,0,0,60.08,60.15C52.81,67.51,46.35,74.59,40,82V64a8,8,0,0,0-16,0v40a8,8,0,0,0,8,8H72a8,8,0,0,0,0-16H49c7.15-8.42,14.27-16.35,22.39-24.57a80,80,0,1,1,1.66,114.75,8,8,0,1,0-11,11.64A96,96,0,1,0,128,32Z"/></svg><span class="nav-lbl">Activity</span></div>
+    </div>
+    <div class="nav-group">
+      <span class="nav-title">Repo</span>
+      <div class="nav-item"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M104,64A32,32,0,1,0,64,95v66a32,32,0,1,0,16,0V95A32.06,32.06,0,0,0,104,64ZM56,64A16,16,0,1,1,72,80,16,16,0,0,1,56,64ZM88,192a16,16,0,1,1-16-16A16,16,0,0,1,88,192Zm120-31V110.63a23.85,23.85,0,0,0-7-17L163.31,56H192a8,8,0,0,0,0-16H144a8,8,0,0,0-8,8V96a8,8,0,0,0,16,0V67.31L189.66,105a8,8,0,0,1,2.34,5.66V161a32,32,0,1,0,16,0Zm-8,47a16,16,0,1,1,16-16A16,16,0,0,1,200,208Z"/></svg><span class="nav-lbl">Open PRs</span><span class="nav-count">4</span></div>
+      <div class="nav-item"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M152,96H104a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8h48a8,8,0,0,0,8-8V104A8,8,0,0,0,152,96Zm-8,48H112V112h32Zm88,0H216V112h16a8,8,0,0,0,0-16H216V56a16,16,0,0,0-16-16H160V24a8,8,0,0,0-16,0V40H112V24a8,8,0,0,0-16,0V40H56A16,16,0,0,0,40,56V96H24a8,8,0,0,0,0,16H40v32H24a8,8,0,0,0,0,16H40v40a16,16,0,0,0,16,16H96v16a8,8,0,0,0,16,0V216h32v16a8,8,0,0,0,16,0V216h40a16,16,0,0,0,16-16V160h16a8,8,0,0,0,0-16Zm-32,56H56V56H200v95.87s0,.09,0,.13,0,.09,0,.13V200Z"/></svg><span class="nav-lbl">Models &amp; gates</span></div>
+      <div class="nav-item"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm88-29.84q.06-2.16,0-4.32l14.92-18.64a8,8,0,0,0,1.48-7.06,107.21,107.21,0,0,0-10.88-26.25,8,8,0,0,0-6-3.93l-23.72-2.64q-1.48-1.56-3-3L186,40.54a8,8,0,0,0-3.94-6,107.71,107.71,0,0,0-26.25-10.87,8,8,0,0,0-7.06,1.49L130.16,40Q128,40,125.84,40L107.2,25.11a8,8,0,0,0-7.06-1.48A107.6,107.6,0,0,0,73.89,34.51a8,8,0,0,0-3.93,6L67.32,64.27q-1.56,1.49-3,3L40.54,70a8,8,0,0,0-6,3.94,107.71,107.71,0,0,0-10.87,26.25,8,8,0,0,0,1.49,7.06L40,125.84Q40,128,40,130.16L25.11,148.8a8,8,0,0,0-1.48,7.06,107.21,107.21,0,0,0,10.88,26.25,8,8,0,0,0,6,3.93l23.72,2.64q1.49,1.56,3,3L70,215.46a8,8,0,0,0,3.94,6,107.71,107.71,0,0,0,26.25,10.87,8,8,0,0,0,7.06-1.49L125.84,216q2.16.06,4.32,0l18.64,14.92a8,8,0,0,0,7.06,1.48,107.21,107.21,0,0,0,26.25-10.88,8,8,0,0,0,3.93-6l2.64-23.72q1.56-1.48,3-3L215.46,186a8,8,0,0,0,6-3.94,107.71,107.71,0,0,0,10.87-26.25,8,8,0,0,0-1.49-7.06Zm-16.1-6.5a73.93,73.93,0,0,1,0,8.68,8,8,0,0,0,1.74,5.48l14.19,17.73a91.57,91.57,0,0,1-6.23,15L187,173.11a8,8,0,0,0-5.1,2.64,74.11,74.11,0,0,1-6.14,6.14,8,8,0,0,0-2.64,5.1l-2.51,22.58a91.32,91.32,0,0,1-15,6.23l-17.74-14.19a8,8,0,0,0-5-1.75h-.48a73.93,73.93,0,0,1-8.68,0,8,8,0,0,0-5.48,1.74L100.45,215.8a91.57,91.57,0,0,1-15-6.23L82.89,187a8,8,0,0,0-2.64-5.1,74.11,74.11,0,0,1-6.14-6.14,8,8,0,0,0-5.1-2.64L46.43,170.6a91.32,91.32,0,0,1-6.23-15l14.19-17.74a8,8,0,0,0,1.74-5.48,73.93,73.93,0,0,1,0-8.68,8,8,0,0,0-1.74-5.48L40.2,100.45a91.57,91.57,0,0,1,6.23-15L69,82.89a8,8,0,0,0,5.1-2.64,74.11,74.11,0,0,1,6.14-6.14A8,8,0,0,0,82.89,69L85.4,46.43a91.32,91.32,0,0,1,15-6.23l17.74,14.19a8,8,0,0,0,5.48,1.74,73.93,73.93,0,0,1,8.68,0,8,8,0,0,0,5.48-1.74L155.55,40.2a91.57,91.57,0,0,1,15,6.23L173.11,69a8,8,0,0,0,2.64,5.1,74.11,74.11,0,0,1,6.14,6.14,8,8,0,0,0,5.1,2.64l22.58,2.51a91.32,91.32,0,0,1,6.23,15l-14.19,17.74A8,8,0,0,0,199.87,123.66Z"/></svg><span class="nav-lbl">Settings</span></div>
+    </div>
+    <div class="sb-foot">
+      <div class="nav-item" onClick="{{toggleSidebar}}"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40ZM40,56H80V200H40ZM216,200H96V56H216V200Z"/></svg><span class="nav-lbl">Collapse</span><span class="nav-count kbd">[</span></div>
+      <div class="sb-user"><div class="avatar">JO</div><span class="sb-user-text"><span class="sb-user-name">Jake Ortega</span><span class="sb-user-sub">Expert mode</span></span></div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="main-head">
+      <div class="crumbs"><span class="mono">jortega0033/agentdock</span><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"/></svg><span>Board</span><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"/></svg><span class="cur mono">#94</span></div>
+      <div class="main-head-r">
+        <div class="cmdk"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,218.34l-50.07-50.06a88.11,88.11,0,1,0-11.31,11.31l50.06,50.07a8,8,0,0,0,11.32-11.32ZM40,112a72,72,0,1,1,72,72A72.08,72.08,0,0,1,40,112Z"/></svg><span>Jump to ticket, repo, action…</span><span class="kbd">⌘K</span></div>
+        <button class="btn"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,128a96,96,0,0,1-94.71,96H128A95.38,95.38,0,0,1,62.1,197.8a8,8,0,0,1,11-11.63A80,80,0,1,0,71.43,71.39a3.07,3.07,0,0,1-.26.25L44.59,96H72a8,8,0,0,1,0,16H24a8,8,0,0,1-8-8V56a8,8,0,0,1,16,0V85.8L60.25,60A96,96,0,0,1,224,128Z"/></svg>Retry phase</button>
+        <div class="avatar">JO</div>
+      </div>
+    </div>
+
+    <div class="header">
+      <span class="h-id">#94 · issue-94 · .worktrees/issue-94</span>
+      <span class="h-title">Sanitize environment for MCP stdio server subprocesses</span>
+      <div class="stepper">
+        <sc-for list="{{phases}}" as="p" hint-placeholder-count="4">
+          <button class="step {{p.cls}}" onClick="{{p.select}}">
+            <span class="step-n">
+              <sc-if value="{{p.isDone}}" hint-placeholder-val="{{false}}"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></sc-if>
+              <sc-if value="{{p.isAwait}}" hint-placeholder-val="{{false}}"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,71.1a8,8,0,0,1-10.78-3.42,94.13,94.13,0,0,0-33.46-36.91,8,8,0,1,1,8.54-13.54,111.46,111.46,0,0,1,39.12,43.09A8,8,0,0,1,224,71.1ZM35.71,72a8,8,0,0,0,7.1-4.32A94.13,94.13,0,0,1,76.27,30.77a8,8,0,1,0-8.54-13.54A111.46,111.46,0,0,0,28.61,60.32,8,8,0,0,0,35.71,72Zm186.1,103.94A16,16,0,0,1,208,200H167.2a40,40,0,0,1-78.4,0H48a16,16,0,0,1-13.79-24.06C43.22,160.39,48,138.28,48,112a80,80,0,0,1,160,0C208,138.27,212.78,160.38,221.81,175.94ZM150.62,200H105.38a24,24,0,0,0,45.24,0ZM208,184c-10.64-18.27-16-42.49-16-72a64,64,0,0,0-128,0c0,29.52-5.38,53.74-16,72Z"/></svg></sc-if>
+              <sc-if value="{{p.showNum}}" hint-placeholder-val="{{true}}">{{p.n}}</sc-if>
+            </span>
+            {{p.label}}
+          </button>
+        </sc-for>
+        <sc-if value="{{showApproval}}" hint-placeholder-val="{{false}}">
+          <span class="step-hint"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,71.1a8,8,0,0,1-10.78-3.42,94.13,94.13,0,0,0-33.46-36.91,8,8,0,1,1,8.54-13.54,111.46,111.46,0,0,1,39.12,43.09A8,8,0,0,1,224,71.1ZM35.71,72a8,8,0,0,0,7.1-4.32A94.13,94.13,0,0,1,76.27,30.77a8,8,0,1,0-8.54-13.54A111.46,111.46,0,0,0,28.61,60.32,8,8,0,0,0,35.71,72Zm186.1,103.94A16,16,0,0,1,208,200H167.2a40,40,0,0,1-78.4,0H48a16,16,0,0,1-13.79-24.06C43.22,160.39,48,138.28,48,112a80,80,0,0,1,160,0C208,138.27,212.78,160.38,221.81,175.94ZM150.62,200H105.38a24,24,0,0,0,45.24,0ZM208,184c-10.64-18.27-16-42.49-16-72a64,64,0,0,0-128,0c0,29.52-5.38,53.74-16,72Z"/></svg>Waiting on you · notified 14:02</span>
+        </sc-if>
+      </div>
+    </div>
+
+    <div class="body">
+      <div class="stream">
+        <sc-for list="{{events}}" as="e" hint-placeholder-count="4">
+          <div class="evt">
+            <div class="evt-col">
+              <div class="evt-ic {{e.icCls}}">
+                <sc-if value="{{e.isAck}}" hint-placeholder-val="{{false}}"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M200,48H136V16a8,8,0,0,0-16,0V48H56A32,32,0,0,0,24,80V192a32,32,0,0,0,32,32H200a32,32,0,0,0,32-32V80A32,32,0,0,0,200,48Zm16,144a16,16,0,0,1-16,16H56a16,16,0,0,1-16-16V80A16,16,0,0,1,56,64H200a16,16,0,0,1,16,16Zm-52-56H92a28,28,0,0,0,0,56h72a28,28,0,0,0,0-56Zm-24,16v24H116V152ZM80,164a12,12,0,0,1,12-12h8v24H92A12,12,0,0,1,80,164Zm84,12h-8V152h8a12,12,0,0,1,0,24ZM72,108a12,12,0,1,1,12,12A12,12,0,0,1,72,108Zm88,0a12,12,0,1,1,12,12A12,12,0,0,1,160,108Z"/></svg></sc-if>
+                <sc-if value="{{e.isRefine}}" hint-placeholder-val="{{false}}"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,218.34l-50.07-50.06a88.11,88.11,0,1,0-11.31,11.31l50.06,50.07a8,8,0,0,0,11.32-11.32ZM40,112a72,72,0,1,1,72,72A72.08,72.08,0,0,1,40,112Z"/></svg></sc-if>
+                <sc-if value="{{e.isImplement}}" hint-placeholder-val="{{false}}"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z"/></svg></sc-if>
+                <sc-if value="{{e.isGates}}" hint-placeholder-val="{{false}}"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M208,40H48A16,16,0,0,0,32,56v56c0,52.72,25.52,84.67,46.93,102.19,23.06,18.86,46,25.26,47,25.53a8,8,0,0,0,4.2,0c1-.27,23.91-6.67,47-25.53C198.48,196.67,224,164.72,224,112V56A16,16,0,0,0,208,40Zm0,72c0,37.07-13.66,67.16-40.6,89.42A129.3,129.3,0,0,1,128,223.62a128.25,128.25,0,0,1-38.92-21.81C61.82,179.51,48,149.3,48,112l0-56,160,0ZM82.34,141.66a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35a8,8,0,0,1,11.32,11.32l-56,56a8,8,0,0,1-11.32,0Z"/></svg></sc-if>
+                <sc-if value="{{e.isReview}}" hint-placeholder-val="{{false}}"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M247.31,124.76c-.35-.79-8.82-19.58-27.65-38.41C194.57,61.26,162.88,48,128,48S61.43,61.26,36.34,86.35C17.51,105.18,9,124,8.69,124.76a8,8,0,0,0,0,6.5c.35.79,8.82,19.57,27.65,38.4C61.43,194.74,93.12,208,128,208s66.57-13.26,91.66-38.34c18.83-18.83,27.3-37.61,27.65-38.4A8,8,0,0,0,247.31,124.76ZM128,192c-30.78,0-57.67-11.19-79.93-33.25A133.47,133.47,0,0,1,25,128,133.33,133.33,0,0,1,48.07,97.25C70.33,75.19,97.22,64,128,64s57.67,11.19,79.93,33.25A133.46,133.46,0,0,1,231.05,128C223.84,141.46,192.43,192,128,192Zm0-112a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Z"/></svg></sc-if>
+              </div>
+              <div class="evt-line {{e.lineCls}}"></div>
+            </div>
+            <div class="evt-body">
+              <div class="evt-head"><span class="evt-tool">{{e.tool}}</span><span class="evt-meta {{e.metaCls}}">{{e.meta}}</span></div>
+              <span class="evt-title">{{e.title}}</span>
+              <sc-if value="{{e.hasSub}}" hint-placeholder-val="{{false}}">
+                <span class="sub-row {{e.subCls}}" onClick="{{e.toggleSub}}"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"/></svg><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,128a8,8,0,0,1-3,6.25l-40,32a8,8,0,1,1-10-12.5L107.19,128,75,102.25a8,8,0,1,1,10-12.5l40,32A8,8,0,0,1,128,128Zm48,24H136a8,8,0,0,0,0,16h40a8,8,0,0,0,0-16Zm56-96V200a16,16,0,0,1-16,16H40a16,16,0,0,1-16-16V56A16,16,0,0,1,40,40H216A16,16,0,0,1,232,56ZM216,200V56H40V200H216Z"/></svg>{{e.subLabel}}</span>
+              </sc-if>
+              <sc-if value="{{e.subOpen}}" hint-placeholder-val="{{false}}">
+                <div class="sub-lines">{{e.subText}}</div>
+              </sc-if>
+            </div>
+          </div>
+        </sc-for>
+
+        <sc-if value="{{showApproval}}" hint-placeholder-val="{{false}}">
+          <div class="approval-card">
+            <div class="approval-head">
+              <div class="approval-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg></div>
+              <span class="approval-title">Approval needed — publish gate</span>
+            </div>
+            <p style="margin:0;font-size:13px;color:var(--text-soft);line-height:1.45;">The change is committed to a local branch. pipenzo cannot push or open a pull request without you.</p>
+            <div class="approval-cmd">git push origin issue-94 &amp;&amp; gh pr create --fill --base main</div>
+            <textarea class="field" rows="2" placeholder="Reason, if rejecting (optional — fed back to the next attempt)"></textarea>
+            <div class="approval-actions"><button class="btn danger"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg>Reject</button><button class="btn primary"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg>Approve &amp; open diff</button></div>
+          </div>
+        </sc-if>
+      </div>
+
+      <div class="rail">
+        <div class="rail-block">
+          <span class="label">Status</span>
+          <span class="chip {{statusBadgeCls}}" style="align-self:flex-start;">{{statusLabel}}</span>
+          <div class="kv"><span class="k">Elapsed</span><span class="v">6m 42s</span></div>
+          <div class="kv"><span class="k">Est. diff</span><span class="v">≤ 50 lines · 1 PR</span></div>
+          <div class="kv"><span class="k">Attempt</span><span class="v">1 of unlimited</span></div>
+          <div class="kv"><span class="k">Budget</span><span class="select-wrap"><select class="field mono"><option>Unlimited</option><option>1 run</option><option>3 runs</option><option>Cap at 200k tokens</option></select><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z"/></svg></span></div>
+        </div>
+        <div class="rail-block">
+          <span class="label">Model routing</span>
+          <div class="kv"><span class="k">Refine</span><span class="v">sonnet</span></div>
+          <div class="kv"><span class="k">Implement</span><span class="v">sonnet</span></div>
+          <div class="kv"><span class="k">Reviewer</span><span class="v">sonnet</span></div>
+          <div class="kv"><span class="k">Verifier</span><span class="v">opus · codex</span></div>
+        </div>
+        <div class="rail-block">
+          <span class="label">Subscription headroom</span>
+          <div class="headroom-bar"><div class="headroom-fill" style="width:38%;"></div></div>
+          <div class="kv"><span class="k">5h window</span><span class="v">38% used</span></div>
+          <div class="kv"><span class="k">Resets in</span><span class="v">2h 14m</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    const phase = this.state.phase ?? 'awaiting_approval';
+    const openSubs = this.state.openSubs ?? {};
+    const PHASES = [
+      { id: 'refining', label: 'Refine' },
+      { id: 'implementing', label: 'Implement' },
+      { id: 'reviewing', label: 'Review' },
+      { id: 'awaiting_approval', label: 'Approve', awaits: true },
+    ];
+    const activeIdx = PHASES.findIndex((p) => p.id === phase);
+    const phases = PHASES.map((p, i) => {
+      const isDone = i < activeIdx;
+      const isActive = i === activeIdx;
+      const isAwait = isActive && !!p.awaits;
+      const cls = isAwait ? 'await' : isActive ? 'active' : isDone ? 'done' : '';
+      return { ...p, n: i + 1, cls, isDone, isAwait, showNum: !isDone && !isAwait, select: () => this.setState({ phase: p.id }) };
+    });
+    const ack = { kind: 'ack', tool: 'pipenzo', title: 'Picked up #94 — created worktree .worktrees/issue-94 from main and read the issue. Working on it.', meta: '14:02 · 2s', live: false };
+    const testSub = {
+      id: 'test-writer',
+      label: 'subagent · test-writer · 14 tool calls · 38s',
+      text: '$ ls packages/agent-runtime/test/fixtures\n  env-probe-server.js  stdio-echo-server.js\n$ read mcp-stdio-client.test.ts:120-140\n+ it(\'does not leak the host process env to a spawned MCP server\')\n$ pnpm vitest run mcp-stdio-client\n  ✓ 21 passed (1 new)',
+    };
+    const byPhase = {
+      refining: [
+        ack,
+        { kind: 'refine', tool: 'refine · read-only', title: 'Read the existing env-isolation path in provider-cli-runner.ts and buildBaseProcessEnvironment()', meta: 'sonnet · 8s', live: false },
+        { kind: 'refine', tool: 'refine · read-only', title: 'Drafting EARS acceptance criteria and an out-of-scope list for the spec', meta: 'sonnet · running', live: true },
+      ],
+      implementing: [
+        ack,
+        { kind: 'refine', tool: 'refine', title: 'Spec approved — 3 acceptance criteria, ≤ 50 line estimate, 2 files in scope', meta: 'sonnet · 41s', live: false },
+        { kind: 'implement', tool: 'implement', title: 'Replaced the process.env spread with buildBaseProcessEnvironment() in stdio-mcp-connection.ts:74', meta: 'sonnet · 1m 02s', live: false },
+        { kind: 'implement', tool: 'implement', title: 'Adding a regression test: a secret set on the host env must not reach the spawned server', meta: 'sonnet · running', live: true, sub: testSub },
+      ],
+      reviewing: [
+        ack,
+        { kind: 'gates', tool: 'gates', title: 'pnpm build, typecheck, vitest — 21 passed, 0 failed', meta: 'deterministic · 9s', live: false },
+        { kind: 'gates', tool: 'gates', title: 'gitleaks and semgrep p/ci — no findings', meta: 'deterministic · 4s', live: false },
+        { kind: 'review', tool: 'review', title: 'Reviewer found no issues; adversarial verifier (opus · codex) still reading the test', meta: 'running', live: true },
+      ],
+      awaiting_approval: [
+        ack,
+        { kind: 'implement', tool: 'implement', title: 'Regression test added: a secret set on the host env must not reach the spawned server', meta: 'sonnet · 1m 40s', live: false, sub: testSub },
+        { kind: 'gates', tool: 'gates', title: 'Build, typecheck, tests, gitleaks, semgrep — 5/5 passed', meta: 'deterministic · 13s', live: false },
+        { kind: 'review', tool: 'review', title: 'Adversarial verifier sustained 0 findings after one round', meta: 'opus · codex · 2m 05s', live: false },
+        { kind: 'implement', tool: 'implement', title: 'Committed to issue-94 — 2 files, +52 −6. Local branch only, nothing pushed', meta: 'sonnet', live: false },
+      ],
+    };
+    const raw = byPhase[phase] ?? [];
+    const events = raw.map((e, i) => {
+      const subOpen = !!(e.sub && openSubs[e.sub.id]);
+      return {
+        ...e,
+        isAck: e.kind === 'ack', isRefine: e.kind === 'refine', isImplement: e.kind === 'implement', isGates: e.kind === 'gates', isReview: e.kind === 'review',
+        icCls: e.live ? 'live' : '',
+        metaCls: e.live ? 'live' : '',
+        lineCls: i === raw.length - 1 && phase !== 'awaiting_approval' ? 'end' : '',
+        hasSub: !!e.sub,
+        subOpen,
+        subCls: subOpen ? 'open' : '',
+        subLabel: e.sub ? e.sub.label : '',
+        subText: e.sub ? e.sub.text : '',
+        toggleSub: e.sub ? () => this.setState({ openSubs: { ...openSubs, [e.sub.id]: !openSubs[e.sub.id] } }) : null,
+      };
+    });
+    const STATUS = {
+      refining: { label: 'Refining', cls: 'chip-warn' },
+      implementing: { label: 'Implementing', cls: 'chip-warn' },
+      reviewing: { label: 'Reviewing', cls: 'chip-warn' },
+      awaiting_approval: { label: 'Awaiting input', cls: 'chip-danger' },
+    };
+    const s = STATUS[phase];
+    return {
+      phases, events,
+      statusLabel: s.label, statusBadgeCls: s.cls,
+      showApproval: phase === 'awaiting_approval',
+      sidebarCls: this.state.collapsed ? 'collapsed' : '',
+      toggleSidebar: () => this.setState({ collapsed: !this.state.collapsed }),
+    };
+  }
+}
+</script>
+</body>
+</html>

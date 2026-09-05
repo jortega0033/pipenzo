@@ -1,0 +1,738 @@
+<title>The Implement Button</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+  :root {
+    --paper: #f4f5f7;
+    --paper-raised: #ffffff;
+    --ink: #14171d;
+    --ink-soft: #4a5160;
+    --ink-faint: #7d8494;
+    --line: #dbdee4;
+    --line-strong: #c3c8d1;
+    --accent: #e8542a;
+    --accent-ink: #ffffff;
+    --accent-wash: #fdece6;
+    --ok: #2e8b57;
+    --ok-wash: #e7f4ec;
+    --wait: #b4790f;
+    --wait-wash: #fbf1de;
+    --danger: #c13b3b;
+    --danger-wash: #fbeaea;
+    --queued: #5b6472;
+    --queued-wash: #e9ebee;
+    --code-bg: #eceef2;
+    --shadow: 0 1px 2px rgba(20, 23, 29, 0.06), 0 6px 20px rgba(20, 23, 29, 0.05);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #14171b;
+      --paper-raised: #1b1f24;
+      --ink: #e9ebef;
+      --ink-soft: #b0b6c1;
+      --ink-faint: #7a8190;
+      --line: #2a2f36;
+      --line-strong: #3a4048;
+      --accent: #ff7a4a;
+      --accent-ink: #1a0d06;
+      --accent-wash: #2c1a12;
+      --ok: #56b884;
+      --ok-wash: #16261e;
+      --wait: #dba13e;
+      --wait-wash: #2b2214;
+      --danger: #e0696a;
+      --danger-wash: #2c1717;
+      --queued: #9aa1ae;
+      --queued-wash: #22262c;
+      --code-bg: #20242a;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper: #14171b;
+    --paper-raised: #1b1f24;
+    --ink: #e9ebef;
+    --ink-soft: #b0b6c1;
+    --ink-faint: #7a8190;
+    --line: #2a2f36;
+    --line-strong: #3a4048;
+    --accent: #ff7a4a;
+    --accent-ink: #1a0d06;
+    --accent-wash: #2c1a12;
+    --ok: #56b884;
+    --ok-wash: #16261e;
+    --wait: #dba13e;
+    --wait-wash: #2b2214;
+    --danger: #e0696a;
+    --danger-wash: #2c1717;
+    --queued: #9aa1ae;
+    --queued-wash: #22262c;
+    --code-bg: #20242a;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 56px 32px 96px;
+    display: flex;
+    flex-direction: column;
+    gap: 64px;
+  }
+
+  .measure {
+    max-width: 700px;
+  }
+
+  code, .mono, .eyebrow, th, .chip, .pill, .kbd, .stat-num, td.num {
+    font-family: 'IBM Plex Mono', 'Cascadia Code', monospace;
+  }
+
+  h1, h2, h3 { text-wrap: balance; font-weight: 600; margin: 0; }
+
+  a { color: var(--accent); text-decoration-color: color-mix(in srgb, var(--accent) 45%, transparent); text-underline-offset: 3px; }
+  a:hover { text-decoration-thickness: 2px; }
+  a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ---------- Header ---------- */
+
+  .masthead {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    padding-bottom: 40px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .eyebrow {
+    font-size: 12.5px;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  .masthead h1 {
+    font-size: clamp(2rem, 4vw, 2.75rem);
+    letter-spacing: -0.01em;
+    max-width: 16ch;
+  }
+
+  .masthead .dek {
+    color: var(--ink-soft);
+    font-size: 1.08rem;
+    max-width: 62ch;
+  }
+
+  .meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 22px;
+    font-size: 13px;
+    color: var(--ink-faint);
+    margin-top: 4px;
+  }
+  .meta-row span { display: flex; gap: 6px; align-items: baseline; }
+  .meta-row b { color: var(--ink-soft); font-weight: 500; }
+
+  /* ---------- Verdict box ---------- */
+
+  .verdict {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 20px 28px;
+    background: var(--paper-raised);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    border-radius: 4px;
+    padding: 28px 32px;
+    box-shadow: var(--shadow);
+  }
+  .verdict .label {
+    writing-mode: horizontal-tb;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 600;
+    align-self: start;
+    padding-top: 3px;
+  }
+  .verdict p { margin: 0; max-width: 68ch; }
+  .verdict p + p { margin-top: 12px; }
+  .verdict strong { color: var(--ink); }
+
+  /* ---------- Section scaffolding ---------- */
+
+  section { display: flex; flex-direction: column; gap: 24px; }
+
+  .section-head {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 14px;
+  }
+  .section-num {
+    font-size: 13px;
+    color: var(--ink-faint);
+    font-weight: 500;
+  }
+  .section-head h2 { font-size: 1.5rem; }
+  .section-sub { color: var(--ink-soft); }
+
+  /* ---------- Tables ---------- */
+
+  .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; background: var(--paper-raised); box-shadow: var(--shadow); }
+  table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
+  th, td { text-align: left; padding: 11px 16px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  thead th {
+    font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--ink-faint); font-weight: 500; background: var(--code-bg);
+    white-space: nowrap;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: color-mix(in srgb, var(--accent) 4%, transparent); }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td .note { color: var(--ink-faint); font-size: 13px; }
+
+  /* ---------- State chips (semantic, not accent) ---------- */
+
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 11.5px; font-weight: 600; letter-spacing: 0.03em;
+    padding: 3px 9px; border-radius: 999px; white-space: nowrap;
+  }
+  .chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .chip-ok { background: var(--ok-wash); color: var(--ok); }
+  .chip-wait { background: var(--wait-wash); color: var(--wait); }
+  .chip-danger { background: var(--danger-wash); color: var(--danger); }
+  .chip-queued { background: var(--queued-wash); color: var(--queued); }
+  .chip-accent { background: var(--accent-wash); color: var(--accent); }
+
+  /* ---------- Card grid for landscape ---------- */
+
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 14px;
+  }
+  .card {
+    background: var(--paper-raised); border: 1px solid var(--line); border-radius: 6px;
+    padding: 18px 20px; display: flex; flex-direction: column; gap: 10px;
+    box-shadow: var(--shadow);
+  }
+  .card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+  .card h3 { font-size: 15.5px; }
+  .card .fact-list { display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: var(--ink-soft); }
+  .card .fact-list .k { color: var(--ink-faint); }
+
+  /* ---------- Correction callouts ---------- */
+
+  .correction {
+    display: flex; gap: 16px;
+    background: var(--wait-wash);
+    border: 1px solid color-mix(in srgb, var(--wait) 35%, var(--line));
+    border-radius: 6px;
+    padding: 20px 24px;
+  }
+  .correction .mark {
+    font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-size: 13px;
+    color: var(--wait); flex-shrink: 0; padding-top: 2px;
+  }
+  .correction p { margin: 0; color: var(--ink); }
+  .correction p + p { margin-top: 10px; }
+  .correction .src { color: var(--ink-faint); font-size: 13px; }
+
+  /* ---------- Flow diagram ---------- */
+
+  .flow {
+    background: var(--paper-raised); border: 1px solid var(--line); border-radius: 8px;
+    padding: 32px; box-shadow: var(--shadow); overflow-x: auto;
+  }
+  .flow-track { display: flex; align-items: stretch; gap: 0; min-width: 780px; }
+  .flow-node {
+    display: flex; flex-direction: column; gap: 6px; justify-content: center;
+    border: 1px solid var(--line-strong); border-radius: 6px; padding: 14px 18px;
+    min-width: 128px; background: var(--paper);
+  }
+  .flow-node .t { font-size: 13.5px; font-weight: 600; }
+  .flow-node .s { font-size: 11.5px; color: var(--ink-faint); font-family: 'IBM Plex Mono', monospace; }
+  .flow-node.agent { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+  .flow-node.human {
+    border-color: var(--ok); background: var(--ok-wash);
+  }
+  .flow-node.human .t { color: var(--ok); }
+  .flow-arrow {
+    display: flex; align-items: center; justify-content: center;
+    width: 46px; flex-shrink: 0; position: relative; color: var(--ink-faint);
+  }
+  .flow-arrow::after { content: "→"; font-size: 18px; }
+  .flow-arrow.fork::before {
+    content: "fork"; position: absolute; top: -18px; font-size: 10px;
+    font-family: 'IBM Plex Mono', monospace; letter-spacing: 0.03em; color: var(--ink-faint);
+  }
+  .flow-boundary {
+    margin-top: 20px; padding-top: 16px; border-top: 1px dashed var(--line-strong);
+    display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap;
+    font-size: 13.5px; color: var(--ink-soft);
+  }
+  .flow-boundary b { color: var(--ink); }
+
+  /* ---------- Publish gate ---------- */
+
+  .gate {
+    display: flex; gap: 14px; flex-wrap: wrap; margin-top: 4px;
+  }
+  .btn {
+    font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 500;
+    padding: 9px 16px; border-radius: 5px; border: 1px solid var(--line-strong);
+    background: var(--paper); color: var(--ink-soft);
+  }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+
+  /* ---------- Build order ---------- */
+
+  .order-list { display: flex; flex-direction: column; gap: 0; counter-reset: phase; }
+  .order-item {
+    display: grid; grid-template-columns: 44px 1fr; gap: 18px;
+    padding: 18px 0; border-bottom: 1px solid var(--line);
+  }
+  .order-item:last-child { border-bottom: none; }
+  .order-item .n {
+    counter-increment: phase; font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px; color: var(--accent); font-weight: 600;
+  }
+  .order-item .n::before { content: "0" counter(phase); }
+  .order-item h3 { font-size: 15px; margin-bottom: 4px; }
+  .order-item p { margin: 0; color: var(--ink-soft); font-size: 14px; max-width: 68ch; }
+
+  /* ---------- Risk / footer ---------- */
+
+  .risk-strip {
+    display: flex; gap: 14px; align-items: flex-start;
+    background: var(--danger-wash); border: 1px solid color-mix(in srgb, var(--danger) 30%, var(--line));
+    border-radius: 6px; padding: 18px 22px; font-size: 14px; color: var(--ink);
+  }
+  .risk-strip .mark { color: var(--danger); font-family: 'IBM Plex Mono', monospace; font-weight: 600; flex-shrink: 0; }
+
+  footer {
+    border-top: 1px solid var(--line); padding-top: 28px;
+    display: flex; flex-direction: column; gap: 14px;
+    color: var(--ink-faint); font-size: 13px;
+  }
+  footer .sources { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+  footer .sources a { color: var(--ink-soft); }
+
+  ::selection { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+</style>
+
+<div class="page">
+
+  <header class="masthead">
+    <div class="eyebrow">Research memo — AgentDock downstream product</div>
+    <h1>The Implement Button</h1>
+    <p class="dek">An open-source disruptor: a GitHub-issue-to-pull-request agent built on top of AgentDock, small enough on every PR to actually get reviewed.</p>
+    <div class="meta-row">
+      <span><b>Scope</b> landscape · stack · pipeline · PR size · UI · model routing</span>
+      <span><b>Method</b> 10 parallel research agents, frontier model, primary sources</span>
+      <span><b>License</b> open source</span>
+    </div>
+  </header>
+
+  <div class="verdict">
+    <div class="label">Verdict</div>
+    <div>
+      <p><strong>Build it, and win on the one axis every competitor is losing on: review burden.</strong> Industry-wide, agent PR acceptance sits at 55% against 82.6% for humans and review time rises 441.5% under heavy AI adoption — because every incumbent optimizes for how much an agent can ship, not how cheaply a human can trust it. A near-identical funded competitor, Sweep.dev, discontinued this exact product chasing that same metric.</p>
+      <p>This app is scoped against the metric that actually matters instead: every PR it opens is small enough to review in one sitting, by construction — gated at the planning step, not chopped after the fact — reviewed first by deterministic tools and a cross-model adversarial pass before a human ever sees it, and usable by a non-developer without ever reading a diff. AgentDock already supplies roughly 60% of the plumbing — worktree isolation, session resume/fork, an approval and audit model — for the rest.</p>
+    </div>
+  </div>
+
+  <section id="landscape">
+    <div class="section-head">
+      <span class="section-num mono">01</span>
+      <h2>The landscape</h2>
+    </div>
+    <p class="measure section-sub">Six products already occupy some part of this space. Two — Alfred and Sortie — are close enough to require correcting an earlier, shallower read of them.</p>
+
+    <div class="card-grid">
+      <div class="card">
+        <div class="card-top"><h3>Alfred</h3><span class="chip chip-accent">closest analog</span></div>
+        <div class="fact-list">
+          <div><span class="k">Model</span> MIT, free, Claude Max / Codex Pro subscription</div>
+          <div><span class="k">Runs</span> local — signed macOS Tauri + React app</div>
+          <div><span class="k">Interface</span> 6 tabs, Queued→Working→Shipped kanban, approve/decline</div>
+          <div><span class="k">Ceiling</span> 4★, Apr 2026, macOS-only, Slack-mandated, cron-scheduled</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-top"><h3>Sortie</h3><span class="chip chip-queued">infra, not UI</span></div>
+        <div class="fact-list">
+          <div><span class="k">Model</span> Apache-2.0, free, single Go binary</div>
+          <div><span class="k">Runs</span> local — polls GitHub / GitLab / Jira / Linear / Gitea</div>
+          <div><span class="k">Interface</span> read-only dashboard, 5s meta-refresh, no approve/diff</div>
+          <div><span class="k">Ceiling</span> 139★, maintainer confirms no interactive UI planned</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-top"><h3>Devin</h3><span class="chip chip-danger">cloud, funded</span></div>
+        <div class="fact-list">
+          <div><span class="k">Model</span> $20/mo + $2.25/ACU, Team $500/mo</div>
+          <div><span class="k">Runs</span> Cognition's cloud only</div>
+          <div><span class="k">Interface</span> full product + separate "Devin Review"</div>
+          <div><span class="k">Scale</span> $26B valuation; ACU pricing is HN's top complaint</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-top"><h3>OpenHands</h3><span class="chip chip-danger">cloud or self-host</span></div>
+        <div class="fact-list">
+          <div><span class="k">Model</span> MIT core, licensed enterprise tier</div>
+          <div><span class="k">Runs</span> Docker/K8s self-host or hosted cloud</div>
+          <div><span class="k">Interface</span> web UI, confirmation mode, tool visualizers</div>
+          <div><span class="k">Scale</span> 86k★, $18.8M Series A, still needed VC</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-top"><h3>Copilot coding agent</h3><span class="chip chip-danger">the commoditizer</span></div>
+        <div class="fact-list">
+          <div><span class="k">Model</span> bundled in existing Copilot plans</div>
+          <div><span class="k">Runs</span> GitHub's cloud</div>
+          <div><span class="k">Interface</span> assign an issue from github.com or a phone</div>
+          <div><span class="k">Scale</span> default distribution to every GitHub repo</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-top"><h3>Sweep.dev</h3><span class="chip chip-danger">cautionary tale</span></div>
+        <div class="fact-list">
+          <div><span class="k">Model</span> was funded, same thesis</div>
+          <div><span class="k">Outcome</span> discontinued the issue→PR bot entirely</div>
+          <div><span class="k">Pivot</span> JetBrains inline assistant instead</div>
+          <div><span class="k">Signal</span> a team with your exact idea concluded it was the wrong wedge</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Signal</th><th>Finding</th><th class="num">Source strength</th></tr></thead>
+        <tbody>
+          <tr><td>Agent PR acceptance rate</td><td>55.5% (Devin), 55.0% (Copilot) vs 82.6% for humans, across 932,791 agentic PRs</td><td class="num">arXiv</td></tr>
+          <tr><td>Review-time impact</td><td>+441.5% median PR review time under high AI adoption; 31% more PRs merged unreviewed</td><td class="num">Faros telemetry, 22k devs</td></tr>
+          <tr><td>Pricing direction</td><td>GitHub, Cursor, Devin all moved to metered/usage billing — stated reason: flat-rate agent sessions were unprofitable</td><td class="num">GitHub Blog</td></tr>
+          <tr><td>Category health</td><td>Sweep discontinued, Terragon/Bloop/Vibe Kanban shut down, Roo Code archived, Continue.dev acquired</td><td class="num">Direct, 2026</td></tr>
+          <tr><td>Compliance moat</td><td>Copilot shipped FedRAMP-authorized models + US/EU residency, Apr 2026 — closing the "cloud is a non-starter" argument</td><td class="num">GitHub Changelog</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="correction">
+    <div class="section-head">
+      <span class="section-num mono">02</span>
+      <h2>The correction — and the real wedge</h2>
+    </div>
+    <div class="correction">
+      <div class="mark">re-check</div>
+      <div>
+        <p>A first pass called Alfred "CLI/config-only." A deeper read of its actual source found a signed, six-tab desktop app with a working kanban and approve/decline UI — <b>a direct competitor to the original pitch</b>, not an absence to build into.</p>
+        <p class="src">Sources: DESKTOP_CLIENT.md, PipelineView.tsx (github.com/luminik-io/alfred)</p>
+      </div>
+    </div>
+    <p class="measure">So "nobody has a UI" doesn't hold. What does hold, on the same close read: Alfred's "team" is a set of role slugs fired by <code>launchd</code>/<code>systemd</code> on fixed cron intervals — it explicitly rejects a persistent orchestrator as a design goal, and its roles never share state across repos. Sortie's own maintainer has stated, in a public discussion, that an interactive UI is not the roadmap.</p>
+    <p class="measure">AgentDock's daemon is already long-lived. That's the wedge that survives scrutiny: <b>on-demand dispatch with live SSE streaming, on a cross-platform Windows-first Electron shell</b> — not "has a UI," but "has a UI backed by a runtime built to stay running," which is structurally outside what either close competitor is aimed at.</p>
+  </section>
+
+  <section id="stack">
+    <div class="section-head">
+      <span class="section-num mono">03</span>
+      <h2>The stack</h2>
+    </div>
+    <p class="measure section-sub">AgentDock's <code>apps/desktop</code> has zero UI runtime dependencies today — 1,246 lines of hand-written CSS, no component library. Every pick below was checked against that renderer's actual constraints: a strict CSP (<code>style-src 'self' unsafe-inline'</code>, no external script hosts), <code>contextIsolation</code> + <code>sandbox</code>, and a daemon that's esbuild-bundled to one file and run under Electron's own Node ABI — which rules out native addons.</p>
+
+    <div class="correction">
+      <div class="mark">not daisyui</div>
+      <div>
+        <p>DaisyUI was the starting suggestion. It's ruled out for one specific reason: it hands you CSS classes for markup you still write — it can't manage focus or announce state changes, so the approval dialog (where a non-developer says yes to something irreversible) would need a headless library bolted on anyway. <b>shadcn/ui</b> gives you the component <em>source</em>, owned in-repo, built on Base UI primitives that already solve focus-trapping and ARIA. That's the whole decision: a dual-audience UI is a structural problem, not a styling one — a PM needs one sentence and a button, a developer needs the branch name and the raw diff, and you can't express that difference in daisyUI's class names.</p>
+        <p class="src">shadcn/Base UI registry components target React 19; AgentDock's desktop is on React 18.3 — tracked upstream as <a href="https://github.com/jortega0033/agentdock/issues/106">agentdock#106</a>. Approved, with one sequencing condition: primitive components, design tokens, and branding get established first, before any product screen is built against them — not screen-by-screen improvisation.</p>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th style="width:22%">Layer</th><th>Pick</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td>UI components</td><td class="mono">shadcn/ui + Tailwind v4</td><td>Component source you own and restructure per audience; Base UI gives approval-dialog accessibility for free; coexists with the existing stylesheet for a screen-by-screen migration.</td></tr>
+          <tr><td>Kanban board</td><td class="mono">dnd-kit</td><td>shadcn has no kanban primitive; this is the standard pairing.</td></tr>
+          <tr><td>Diff review</td><td class="mono">react-diff-view</td><td>Parses real unified diffs into collapsible hunks with syntax tokens — tens of kB, against Monaco's multi-MB editor for a feature this focused.</td></tr>
+          <tr><td>GitHub API client</td><td class="mono">@octokit/core + paginate-rest</td><td>Not the <code>octokit</code> metapackage (11 packages, most unused) and not the <code>gh</code> binary (an external dependency to detect and version-gate) — pure JS, tree-shaken into the existing single-file daemon bundle.</td></tr>
+          <tr><td>GitHub OAuth</td><td class="mono">@octokit/auth-oauth-device</td><td>Device flow: no client secret to embed in a shipped open-source binary, and no loopback listener. What GitHub documents for headless/desktop apps.</td></tr>
+          <tr><td>Git operations</td><td class="mono">execFile('git', …)</td><td>Same trust model AgentDock's worktree manager already uses — argv array, <code>shell:false</code>, sanitized env — and it inherits the user's real credential helper and hooks. No library layer needed.</td></tr>
+          <tr><td>Notifications</td><td class="mono">Electron Notification API</td><td>Native, cross-platform, already solves this — a wrapper just adds a helper-binary dependency for nothing.</td></tr>
+          <tr><td>Ticket/queue store</td><td class="mono">JSON file store</td><td>Matches AgentDock's existing <code>FileSessionStore</code> pattern exactly. <code>better-sqlite3</code> is a native addon that breaks the esbuild bundle and needs a rebuild on every Electron upgrade — not justified for hundreds of rows, not millions.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="pipeline">
+    <div class="section-head">
+      <span class="section-num mono">04</span>
+      <h2>Plan, refine, implement, review</h2>
+    </div>
+    <p class="measure section-sub">The instinct was to reach for a multi-agent framework — Agency Swarm, LangGraph, CrewAI. All three would duplicate machinery AgentDock's daemon already runs.</p>
+
+    <div class="correction">
+      <div class="mark">no framework</div>
+      <div>
+        <p>AgentDock's daemon already negotiates <code>session.fork</code>, tracks a durable parent/child subagent graph, and gates every consequential action through one permission policy with a full audit trail. That's the same differentiator LangGraph sells. Adding a second orchestrator on top means two sources of truth for cancellation, permissions, and resume. The pipeline below is a thin state machine inside the daemon, driving scoped subagent definitions — no new runtime.</p>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th style="width:16%">Phase</th><th>Mechanism</th><th>Evidence</th></tr></thead>
+        <tbody>
+          <tr><td><b>Plan</b> <span class="note">(new)</span></td><td>The pipeline above assumed a GitHub issue already exists — it doesn't have to. A conversational brainstorm with an agent turns a rough idea into a real issue: the human describes a problem in plain language, the agent asks clarifying questions, then drafts and — on confirmation — creates the actual GitHub issue via the API. This is also the on-ramp for the non-developer audience, who may never have written an issue at all. The new ticket then enters Queued like any other.</td><td class="note">Closes a real gap: every phase after this one assumed intake was solved</td></tr>
+          <tr><td><b>Refine</b></td><td>Read-only subagent (<code>tools: [Read, Grep, Glob]</code> — cannot write) emits a structured spec: acceptance criteria in EARS notation ("WHEN &lt;trigger&gt; THE SYSTEM SHALL &lt;response&gt;"), an explicit out-of-scope list, files likely touched, and a self-estimated diff size. Missing or oversized → stop and ask a human here, while it's cheap.</td><td class="note">Kiro / Spec Kit spec-driven pattern</td></tr>
+          <tr><td><b>Implement</b></td><td>Fresh session seeded only with the spec plus symbol-graph context from a codebase-memory tool (not raw file search). Retries via <code>session.fork</code>, not a new run, to keep spec context and audit lineage intact.</td><td class="note">Symbol-graph localization: +12.2% accuracy, −53.9% completion time (Repository Intelligence Graph study); file-only repo maps largely miss this gain</td></tr>
+          <tr><td><b>Review</b></td><td>Deterministic gates first — build/typecheck, spec-generated tests (never authored by the implementer) as a hard non-negotiable gate, gitleaks, Semgrep <code>p/ci</code>, diff-scope check against the Phase-1 estimate. Only then an LLM pass, in a fresh session seeing only the spec and the diff: a reviewer finds issues, then a separate <b>adversarial verifier at the same tier or higher</b> — never a weaker model reviewing a stronger one — tries to disprove each finding before it reaches the human. See §05 for the full routing rule.</td><td class="note">Refute-or-Promote adversarial-critic pattern; spec-conformance verdicts kept advisory — LLMs systematically over-flag conformant code</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="routing">
+    <div class="section-head">
+      <span class="section-num mono">05</span>
+      <h2>Model routing</h2>
+    </div>
+    <p class="measure section-sub">The app should route each phase to a model tier by task complexity, not run everything on one frontier model — and orchestrate across providers deliberately, not just within one. AgentDock already wraps Claude and Codex; Gemini is next on its own roadmap. The routing policy below is written as tiers and vendors, not hardcoded model names, so a third provider slots into the same table rather than requiring a redesign. A verification pass found the wire support for this doesn't exist in AgentDock yet.</p>
+
+    <div class="correction">
+      <div class="mark">prerequisite</div>
+      <div>
+        <p><code>POST /v2/sessions</code> has no <code>model</code> field today — the schema is <code>.strict()</code> and a caller passing one gets rejected. The internal plumbing to run a specific model exists, but it's fed only from provider auto-detection, never from a request. Filed upstream as <a href="https://github.com/jortega0033/agentdock/issues/107">agentdock#107</a>: add an optional, validated <code>model</code> field to session creation and resume/fork, and serve the already-declared-but-unimplemented <code>model.catalog</code> capability for real.</p>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th style="width:15%">Phase</th><th>Tier</th><th>Deciding signal</th><th>Escalation</th></tr></thead>
+        <tbody>
+          <tr><td>Refine</td><td><span class="chip chip-wait">mid, fixed</span></td><td>Never cheapened — the spec is the contract everything downstream is graded against</td><td>Fails validation → 1 retry same tier; then human</td></tr>
+          <tr><td>Implement — small</td><td><span class="chip chip-ok">cheap</span></td><td>Estimate ≤ 50 LOC, ≤ 2 files, no prior retry</td><td>Gate failure → retry same tier ×1, then ↑1 tier ×1, then human</td></tr>
+          <tr><td>Implement — standard</td><td><span class="chip chip-wait">mid</span></td><td>Default, ≤ 300 LOC / ≤ 8 files</td><td>Same ladder, capped at 3 attempts</td></tr>
+          <tr><td>Implement — hard</td><td><span class="chip chip-danger">frontier</span></td><td>Above standard, or a deterministic override</td><td>1 retry with telemetry, then human — no auto-escalation</td></tr>
+          <tr><td>Review — reviewer</td><td><span class="chip chip-wait">mid, same vendor as implement</span></td><td>Fixed</td><td>Findings feed the implement retry, not a new model</td></tr>
+          <tr><td>Review — adversarial verifier</td><td><span class="chip chip-danger">≥ implement's tier, never lower</span></td><td>Cross-vendor as a tiebreaker among equal tiers only</td><td>Rejects twice → human, verifier itself never escalates</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="measure">Deterministic overrides force the hard tier before the estimate is even consulted: any prior failed attempt, paths matching security/auth/migration globs, more than 8 files touched, or a <code>priority:high</code>/<code>breaking</code> label. The estimate from the refine phase is the routing signal — a dedicated classifier step was considered and rejected: deployed routers rarely beat an oracle by much, and per-task difficulty often isn't predictable from the prompt alone, which is exactly what the deterministic overrides exist to catch.</p>
+    <p class="measure"><b>Guardrails against slop and hallucination aren't a separate system — they're what this whole pipeline is for.</b> Low quality is caught by the deterministic gates and the tier-up adversarial verifier before a human ever sees it; fabrication is refused at the source — the verification block cites only what a gate actually produced (a real test run, a real diff stat), never an unearned claim, and anything self-reported is labelled as such rather than presented as fact. What's new here: every piece of text the app generates for a human — the drafted issue in Plan, the PR description, the plain-language summary in simple mode — passes a humanizing rewrite pass before it's shown, so it reads like a careful colleague wrote it, not templated AI output. That's a real, separate step in the pipeline (a cheap-tier pass, since it's a style transform, not a judgment call), not a hope that a good prompt handles it.</p>
+    <p class="measure">The verifier rule is deliberately <b>route up, never sideways or down</b> — a 116-task cross-model study found the weaker model reviewing the stronger one caused net regressions (3 fixes, 13 new bugs introduced), while the stronger reviewing the weaker gained +18.1pp. Vendor diversity only breaks ties between reviewers of equal strength. Two more review-quality rules follow from separate evidence: the reviewer session sees only the spec and the diff, never the implementer's own transcript — same-session self-review measurably underperforms a fresh session seeing just the artifact; and tests are generated from the spec by a different pass, never written by the implementer itself, since self-authored tests are contaminated by the code they're meant to check.</p>
+  </section>
+
+  <section id="small-prs">
+    <div class="section-head">
+      <span class="section-num mono">06</span>
+      <h2>Small PRs, by construction</h2>
+    </div>
+    <p class="measure section-sub">None of Alfred, Sortie, or OpenHands has any diff-size budget today — checked their docs directly, zero hits. Devin ships stacked PRs but decomposes by architecture, not a published number. A measurable, enforced budget is unclaimed ground.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Signal</th><th>Number</th><th class="num">Source</th></tr></thead>
+        <tbody>
+          <tr><td>Ideal PR size, thousands of repos studied</td><td>50 lines — merges ~40% faster, 15% less likely reverted</td><td class="num">Graphite</td></tr>
+          <tr><td>Reasonable vs. too large</td><td>~100 lines reasonable; 1,000 too large; 200 lines over 50 files also too large</td><td class="num">Google eng-practices</td></tr>
+          <tr><td>Peer-review sweet spot</td><td>200–400 LOC per sitting → 70–90% defect discovery</td><td class="num">SmartBear / Cisco, 2,500 reviews</td></tr>
+          <tr><td>Review-effort circuit breaker</td><td>&gt;500 additions, or no written plan, predicts high review burden at AUC 0.9571</td><td class="num">arXiv 2601.00753</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="measure">The gate sits at <b>refine</b>, not at PR time — mechanically chopping a finished diff means babysitting rebases and re-proving each piece still builds alone; planning the split first gets that property nearly free.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th style="width:30%">Estimate</th><th>Action</th></tr></thead>
+        <tbody>
+          <tr><td><span class="chip chip-ok">≤ 100 lines, ≤ 10 files</span></td><td>Implement as one PR.</td></tr>
+          <tr><td><span class="chip chip-wait">100–400 lines, layered</span></td><td>Refuse to start until the agent has written down a stack of 2–4 PRs, ordered by dependency, each independently buildable.</td></tr>
+          <tr><td><span class="chip chip-danger">&gt; 500 additions, &gt; 20 files, or no clean layering</span></td><td>Do not implement. Flag <code>needs-pre-scoping</code>, post the estimate and proposed split as a comment, hand it to a human.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="architecture">
+    <div class="section-head">
+      <span class="section-num mono">06</span>
+      <h2>Autonomy &amp; the publish gate</h2>
+    </div>
+    <p class="measure section-sub">AgentDock is deliberately built so nothing classified as an <code>external_side_effect</code> — a <code>git push</code>, a PR — can ever get a persistent auto-allow. That's a safety property, not a gap to route around. The design below keeps it intact.</p>
+
+    <div class="flow">
+      <div class="flow-track">
+        <div class="flow-node agent"><span class="t">Refine</span><span class="s">cwd: source repo</span></div>
+        <div class="flow-arrow fork"></div>
+        <div class="flow-node agent"><span class="t">Implement</span><span class="s">cwd: owned worktree</span></div>
+        <div class="flow-arrow fork"></div>
+        <div class="flow-node agent"><span class="t">Self-review</span><span class="s">cwd: same worktree</span></div>
+        <div class="flow-arrow"></div>
+        <div class="flow-node human"><span class="t">Diff review</span><span class="s">human, in the UI</span></div>
+      </div>
+      <div class="flow-boundary">
+        <b>The agent stops at a committed local branch.</b> Everything left of the dashed line is <code>filesystem_write</code> — never blocked. Publishing is a daemon-side service the agent process cannot call.
+      </div>
+      <div class="gate">
+        <span class="btn">Push branch</span>
+        <span class="btn primary">Push &amp; open PR</span>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Module</th><th>Path</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>Ticket store</td><td class="mono">apps/daemon/src/ticket-store.ts</td><td><span class="chip chip-accent">new</span></td></tr>
+          <tr><td>Ticket orchestrator</td><td class="mono">apps/daemon/src/ticket-orchestrator.ts</td><td><span class="chip chip-accent">new</span></td></tr>
+          <tr><td>Publish service (branch/push/PR)</td><td class="mono">apps/daemon/src/publish-service.ts</td><td><span class="chip chip-accent">new</span> — not an agent tool</td></tr>
+          <tr><td>GitHub API client</td><td class="mono">apps/daemon/src/github-client.ts</td><td><span class="chip chip-accent">new</span></td></tr>
+          <tr><td>GitHub OAuth + token vault</td><td class="mono">apps/desktop/electron/github-auth.ts</td><td><span class="chip chip-accent">new</span> — Electron main only</td></tr>
+          <tr><td>Worktree manager</td><td class="mono">apps/daemon/src/worktree-manager.ts</td><td><span class="chip chip-wait">modify</span> — add branched creation</td></tr>
+          <tr><td>Sessions · SSE · approvals · trust · audit</td><td class="mono">apps/daemon/src/*</td><td><span class="chip chip-ok">reuse unchanged</span></td></tr>
+          <tr><td>Issue list, ticket detail, diff review UI</td><td class="mono">apps/desktop/src/components/*</td><td><span class="chip chip-accent">new</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="features">
+    <div class="section-head">
+      <span class="section-num mono">07</span>
+      <h2>Feature plan</h2>
+    </div>
+    <p class="measure section-sub">Every row below traces to a real, cited implementation choice in a shipped competitor — not a guess. Two rows are new: the diff-size gate above, and a dual-audience mode, since neither Alfred nor Sortie ever surfaces a non-developer view.</p>
+
+    <h3 style="font-size:15px;color:var(--ink-soft);margin-top:8px;">MVP</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th style="width:26%">Feature</th><th>Why</th><th>Source</th></tr></thead>
+        <tbody>
+          <tr><td>Labels as the state model</td><td>State survives an app restart with no local source of truth</td><td class="note">Alfred STATE_MACHINE.md</td></tr>
+          <tr><td>Implement dialog, not a bare button</td><td>Scope correction up front is the cheapest quality lever available</td><td class="note">Copilot assign flow</td></tr>
+          <tr><td>Kanban: Queued / Working / Ready for review</td><td>Minimum honest model of an autonomous loop</td><td class="note">Alfred PipelineView</td></tr>
+          <tr><td>Agent-state enum → OS notification exactly on "awaiting input"</td><td>This is the entire "notify me when it's ready" promise</td><td class="note">OpenHands use-agent-notification</td></tr>
+          <tr><td>Approvals as inline cards, with a reject-reason field</td><td>Sortie has nothing here — it runs with permissions bypassed</td><td class="note">OpenHands confirmation mode</td></tr>
+          <tr><td>Separate "Push branch" / "Push &amp; open PR" buttons</td><td>Users revolted when a competitor folded save and publish together</td><td class="note">OpenHands #5179</td></tr>
+          <tr><td>Verification block in the PR body, self-reported flagged as such</td><td>Never fabricate evidence a human will trust at a glance</td><td class="note">Alfred VERIFICATION.md</td></tr>
+          <tr><td>Subscription-headroom rail, not a fake dollar figure</td><td>Per-token $ is meaningless on a Max/Pro plan — a competitor removed it for this reason</td><td class="note">Alfred UsagePanel</td></tr>
+          <tr><td>Classified retry — never auto-retries a denied approval</td><td>Auto-retrying a rejection silently defeats the human gate</td><td class="note">Alfred RECOVERY.md</td></tr>
+          <tr><td>Park after 3 consecutive failures</td><td>Unbounded retry is how an unattended loop burns a night's budget</td><td class="note">Sortie max_consecutive_absences</td></tr>
+          <tr><td>Diff-size gate at refine, with a proposed split</td><td>Unclaimed ground — no OSS competitor checked has this at all; Devin has no published threshold</td><td class="note">Graphite / Google / arXiv 2601.00753</td></tr>
+          <tr><td>Simple mode by default, expert mode persisted per user</td><td>A PM should see a plain-English summary with the real diff one click away, never hidden behind a mode they can't find</td><td class="note">NN/g progressive disclosure, n8n's approach</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 style="font-size:15px;color:var(--ink-soft);margin-top:20px;">Later</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th style="width:26%">Feature</th><th>Why</th><th>Source</th></tr></thead>
+        <tbody>
+          <tr><td>Reviewer-grade diff layout</td><td>Layout is the real differentiator on the review side — not more comments</td><td class="note">Devin Review</td></tr>
+          <tr><td>Findings sidebar, by severity</td><td>Turns self-review output into an actual triage surface</td><td class="note">Devin Review</td></tr>
+          <tr><td>Plan-review gate before implementation starts</td><td>Alfred's own stated single biggest quality lever</td><td class="note">Alfred ARCHITECTURE.md</td></tr>
+          <tr><td>Steer mid-run; Stop preserves commits</td><td>Course-correction beats a full restart</td><td class="note">Copilot sessions, Devin "Take over"</td></tr>
+          <tr><td>PR-event reactions — CI failure, merge conflict</td><td>The loop isn't finished at PR-open; this is Sortie's deepest area</td><td class="note">Sortie reactions.*</td></tr>
+          <tr><td>Local lesson memory, human-gated</td><td>Alfred's "shared team memory" is concretely just this — nothing more</td><td class="note">Alfred FleetBrain</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="order">
+    <div class="section-head">
+      <span class="section-num mono">08</span>
+      <h2>Build order</h2>
+    </div>
+    <div class="order-list">
+      <div class="order-item">
+        <div class="n mono"></div>
+        <div><h3>Design system, before any screen</h3><p>Establish shadcn/ui's primitive components, design tokens (color, type, spacing), and branding first — the walking skeleton and everything after builds against this, not around it.</p></div>
+      </div>
+      <div class="order-item">
+        <div class="n mono"></div>
+        <div><h3>Walking skeleton</h3><p>Hardcoded repo, PAT from env, no queue, built against the design system above. One ticket through refine (EARS spec + size estimate) → implement → deterministic + adversarial review → react-diff-view screen → Open PR. Proves the loop end to end before anything else exists.</p></div>
+      </div>
+      <div class="order-item">
+        <div class="n mono"></div>
+        <div><h3>Ticket store + phase machine</h3><p>JSON-file persistence matching AgentDock's existing store pattern, crash recovery, phase-change SSE, a real ticket detail/progress view.</p></div>
+      </div>
+      <div class="order-item">
+        <div class="n mono"></div>
+        <div><h3>GitHub &amp; the size gate, properly</h3><p>Device-flow OAuth (@octokit/auth-oauth-device) in Electron main, token vault, real issue list via @octokit/core, the diff-size/split gate enforced at refine, a test asserting the token never reaches a provider subprocess.</p></div>
+      </div>
+      <div class="order-item">
+        <div class="n mono"></div>
+        <div><h3>Queue + dual-audience mode</h3><p>dnd-kit kanban, simple/expert toggle with a persisted default, built on the established design system. Multiple tickets queued, one worktree each, respecting the existing workspace-execution lease.</p></div>
+      </div>
+      <div class="order-item">
+        <div class="n mono"></div>
+        <div><h3>Polish</h3><p>Native notification on "awaiting approval," a rejection loop that forks implementation again, a dirty-worktree discard path, an audit entry for every publish and every review-gate result.</p></div>
+      </div>
+    </div>
+
+    <div class="risk-strip">
+      <span class="mark">watch</span>
+      <span>The biggest risk is step 1's temptation to let the agent shell out to <code>gh</code> directly. Keep publishing outside the agent loop from the first commit — retrofitting that boundary later is what breaks the safety property this whole design depends on.</span>
+    </div>
+  </section>
+
+  <section id="naming">
+    <div class="section-head">
+      <span class="section-num mono">10</span>
+      <h2>Naming — decided</h2>
+    </div>
+    <div class="card" style="max-width:520px;">
+      <div class="card-top"><h3 style="font-size:1.4rem;">Pipenzo</h3><span class="chip chip-accent">final</span></div>
+      <p style="margin:0;color:var(--ink-soft);font-size:14px;">Named after the product owner's two kids — decided over every researched alternative (Kester, Crispin, Corwin) on that basis alone. Handle: <span class="mono">pipenzo-io</span> where the bare name is unavailable.</p>
+    </div>
+  </section>
+
+  <footer>
+    <div>Compiled from ten parallel research passes (landscape, AgentDock feasibility, UI framework, supporting libraries, agent orchestration &amp; review quality, PR-size strategy, feature deep-dive, architecture design) run against primary sources — vendor docs, source repos, arXiv, and maintainer discussions — not secondary "2026 roundup" content.</div>
+    <div class="sources">
+      <a href="https://github.com/luminik-io/alfred">luminik-io/alfred</a>
+      <a href="https://github.com/sortie-ai/sortie">sortie-ai/sortie</a>
+      <a href="https://github.com/sortie-ai/sortie/discussions/825">sortie discussion #825</a>
+      <a href="https://cognition.com/blog/devin-review">Devin Review</a>
+      <a href="https://devin.ai/blog/introducing-pr-stacks">Devin PR Stacks</a>
+      <a href="https://github.com/All-Hands-AI/OpenHands/issues/5179">OpenHands #5179</a>
+      <a href="https://www.faros.ai/blog/ai-code-quality-senior-engineer-review-burden">Faros review-burden study</a>
+      <a href="https://google.github.io/eng-practices/review/developer/small-cls.html">Google eng-practices, small CLs</a>
+      <a href="https://graphite.com/blog/the-ideal-pr-is-50-lines-long">Graphite, ideal PR size</a>
+      <a href="https://arxiv.org/html/2601.00753v1">arXiv 2601.00753, review-effort prediction</a>
+      <a href="https://ui.shadcn.com/docs/changelog/2026-07-base-ui-default">shadcn/ui + Base UI</a>
+      <a href="https://github.com/VRSEN/agency-swarm">Agency Swarm</a>
+      <a href="https://code.claude.com/docs/en/agent-sdk/subagents">Claude Agent SDK subagents</a>
+      <a href="https://arxiv.org/pdf/2601.10112">Repository Intelligence Graph</a>
+      <a href="https://github.com/jortega0033/agentdock">jortega0033/agentdock</a>
+    </div>
+  </footer>
+
+</div>

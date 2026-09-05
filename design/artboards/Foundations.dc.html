@@ -1,0 +1,536 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;700&family=IBM+Plex+Mono:wght@400;700&display=swap">
+<style>
+  /* ===== pipenzo base (identical in every artboard) ===== */
+  :root{
+    --bg:#121212; --surface:#181818; --surface-2:#1f1f1f; --surface-3:#282828; --surface-4:#333333;
+    --text:#ffffff; --text-soft:#b3b3b3; --text-faint:#7a7a7a;
+    --accent:#3fb950; --accent-fg:#0a1a0d;
+    --ok:#3fb950; --ok-fg:#0a1a0d; --warn:#d29922; --warn-fg:#1f1400; --danger:#f85149; --danger-fg:#2a0705;
+    --r:8px; --r-sm:6px; --pill:9999px;
+    --shadow:0 8px 24px rgba(0,0,0,0.5); --shadow-sm:0 4px 12px rgba(0,0,0,0.4);
+    --ease:120ms ease;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:'IBM Plex Sans',system-ui,sans-serif;font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased;}
+  a{color:var(--accent);} a:hover{color:var(--accent);text-decoration-thickness:2px;}
+  .mono{font-family:'IBM Plex Mono',monospace;}
+  .brand{display:flex;align-items:center;gap:8px;}
+  .logo-mark{width:28px;height:28px;border-radius:50%;background:var(--accent);color:var(--accent-fg);display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:15px;line-height:1;flex-shrink:0;}
+  .wordmark{font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:16px;letter-spacing:-0.01em;line-height:1;}
+  .icon{width:16px;height:16px;flex-shrink:0;}
+  .icon-sm{width:14px;height:14px;flex-shrink:0;}
+  .icon-lg{width:20px;height:20px;flex-shrink:0;}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:32px;padding:0 16px;font-family:'IBM Plex Sans',sans-serif;font-size:13px;font-weight:700;line-height:1;white-space:nowrap;border-radius:var(--pill);border:none;background:var(--surface-3);color:var(--text);cursor:pointer;transition:filter var(--ease),transform var(--ease),background-color var(--ease),color var(--ease);}
+  .btn:hover{filter:brightness(1.2);}
+  .btn:active{filter:brightness(0.92);transform:scale(0.98);}
+  .btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+  .btn.primary{background:var(--accent);color:var(--accent-fg);}
+  .btn.primary:hover{filter:brightness(1.08);transform:scale(1.03);}
+  .btn.primary:active{filter:brightness(0.94);transform:scale(0.98);}
+  .btn.ghost{background:transparent;color:var(--text-soft);}
+  .btn.ghost:hover{filter:none;color:var(--text);background:var(--surface-3);}
+  .btn.danger{color:var(--danger);}
+  .btn.danger:hover{filter:none;background:var(--danger);color:var(--danger-fg);}
+  .btn.lg{height:40px;padding:0 24px;font-size:14px;}
+  .btn.sm{height:28px;padding:0 12px;font-size:12px;}
+  .icon-btn{width:32px;height:32px;border-radius:50%;border:none;background:var(--surface-3);color:var(--text);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:filter var(--ease),transform var(--ease);}
+  .icon-btn:hover{filter:brightness(1.2);} .icon-btn:active{transform:scale(0.94);}
+  .icon-btn.ghost{background:transparent;color:var(--text-soft);} .icon-btn.ghost:hover{filter:none;background:var(--surface-3);color:var(--text);}
+  .chip{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 8px;font-size:11px;font-weight:700;letter-spacing:0.04em;line-height:1;text-transform:uppercase;border-radius:var(--pill);white-space:nowrap;}
+  .chip-ok{background:var(--ok);color:var(--ok-fg);}
+  .chip-warn{background:var(--warn);color:var(--warn-fg);}
+  .chip-danger{background:var(--danger);color:var(--danger-fg);}
+  .chip-neutral{background:var(--surface-3);color:var(--text-soft);}
+  .field{display:block;width:100%;font-family:'IBM Plex Sans',sans-serif;font-size:13px;line-height:20px;padding:8px 12px;border-radius:var(--r-sm);border:none;background:var(--surface-3);color:var(--text);resize:none;transition:background-color var(--ease);}
+  .field::placeholder{color:var(--text-faint);}
+  .field:hover{background:var(--surface-4);}
+  .field:focus{outline:2px solid var(--accent);outline-offset:0;background:var(--surface-4);}
+  .field.invalid,.field.invalid:focus{outline:2px solid var(--danger);}
+  .f-lbl{display:block;font-size:12px;font-weight:700;color:var(--text-soft);margin-bottom:6px;line-height:1;}
+  .f-help{display:block;font-size:12px;color:var(--text-faint);margin-top:6px;line-height:1.4;}
+  .f-err{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--danger);margin-top:6px;line-height:1.4;}
+  .f-row{display:flex;align-items:center;justify-content:space-between;gap:16px;}
+  .select-wrap{position:relative;display:block;}
+  .select-wrap .field{appearance:none;-webkit-appearance:none;padding-right:36px;cursor:pointer;}
+  .select-wrap .icon{position:absolute;right:12px;top:50%;transform:translateY(-50%);color:var(--text-faint);pointer-events:none;}
+  .check,.radio{display:inline-flex;align-items:center;gap:10px;font-size:13px;color:var(--text);cursor:pointer;line-height:1.3;}
+  .check .box,.radio .box{width:18px;height:18px;border-radius:4px;background:var(--surface-4);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--accent-fg);transition:background-color var(--ease);}
+  .check .box.on,.radio .box.on{background:var(--accent);}
+  .radio .box{border-radius:50%;}
+  .radio .box.on::after{content:'';width:8px;height:8px;border-radius:50%;background:var(--accent-fg);}
+  .check .sub,.radio .sub{display:block;font-size:12px;color:var(--text-faint);font-weight:400;}
+  .toggle{width:36px;height:20px;border-radius:var(--pill);background:var(--surface-4);position:relative;cursor:pointer;flex-shrink:0;border:none;padding:0;transition:background-color var(--ease);}
+  .toggle::after{content:'';position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--text-soft);transition:transform var(--ease),background-color var(--ease);}
+  .toggle.on{background:var(--accent);} .toggle.on::after{transform:translateX(16px);background:var(--accent-fg);}
+  .label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-faint);line-height:1;}
+  .kbd{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:4px;background:var(--surface-4);color:var(--text-soft);font-family:'IBM Plex Mono',monospace;font-size:11px;line-height:1;}
+  .avatar{width:32px;height:32px;border-radius:50%;background:var(--surface-3);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--text);flex-shrink:0;}
+  .seg{display:flex;gap:2px;background:var(--surface-2);border-radius:var(--pill);padding:4px;}
+  .seg button{height:24px;padding:0 12px;border:none;border-radius:var(--pill);background:transparent;font-family:'IBM Plex Sans',sans-serif;font-size:12px;font-weight:700;line-height:1;cursor:pointer;color:var(--text-faint);transition:color var(--ease),background-color var(--ease);}
+  .seg button:hover{color:var(--text);}
+  .seg button.active{color:var(--text);background:var(--surface-4);}
+  .topbar{display:flex;align-items:center;justify-content:space-between;height:64px;padding:0 24px;background:var(--bg);flex-shrink:0;}
+  .dialog{background:var(--surface-3);border-radius:var(--r);padding:24px;display:flex;flex-direction:column;gap:16px;box-shadow:var(--shadow);}
+  .dialog .field{background:var(--surface-4);} .dialog .field:hover,.dialog .field:focus{background:#3e3e3e;}
+  .dialog .btn:not(.primary){background:var(--surface-4);}
+  /* --- notices: banner (page-level, persistent) · notice (inline, contextual) · toast (transient, corner) --- */
+  .banner{display:flex;align-items:center;gap:12px;min-height:44px;padding:8px 16px 8px 20px;background:var(--surface-2);font-size:13px;color:var(--text-soft);line-height:1.4;}
+  .banner b{color:var(--text);font-weight:700;}
+  .banner .b-ic{width:24px;height:24px;border-radius:50%;background:var(--surface-4);color:var(--text);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .banner.ok .b-ic{background:var(--ok);color:var(--ok-fg);} .banner.warn .b-ic{background:var(--warn);color:var(--warn-fg);} .banner.danger .b-ic{background:var(--danger);color:var(--danger-fg);}
+  .banner .b-text{flex:1;min-width:0;}
+  .banner .b-act{display:flex;align-items:center;gap:8px;flex-shrink:0;}
+  .notice{display:flex;align-items:flex-start;gap:12px;padding:12px 12px 12px 16px;border-radius:var(--r);background:var(--surface-3);font-size:13px;color:var(--text-soft);line-height:1.45;}
+  .notice .n-ic{width:20px;height:20px;border-radius:50%;background:var(--surface-4);color:var(--text);display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;}
+  .notice.ok .n-ic{background:var(--ok);color:var(--ok-fg);} .notice.warn .n-ic{background:var(--warn);color:var(--warn-fg);} .notice.danger .n-ic{background:var(--danger);color:var(--danger-fg);}
+  .notice .n-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;}
+  .notice .n-title{font-weight:700;color:var(--text);line-height:1.3;}
+  .notice .n-act{display:flex;gap:12px;margin-top:6px;}
+  .notice .n-act span{font-weight:700;color:var(--text);cursor:pointer;}
+  .notice .n-x{width:24px;height:24px;border-radius:50%;border:none;background:transparent;color:var(--text-faint);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;margin:-2px -2px 0 0;transition:background-color var(--ease),color var(--ease);}
+  .notice .n-x:hover{background:var(--surface-4);color:var(--text);}
+  .toast{display:flex;align-items:center;gap:12px;width:360px;padding:12px 12px 12px 16px;border-radius:var(--r);background:var(--surface-3);box-shadow:var(--shadow);font-size:13px;color:var(--text);line-height:1.35;}
+  .toast .t-ic{width:24px;height:24px;border-radius:50%;background:var(--surface-4);color:var(--text);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .toast.ok .t-ic{background:var(--ok);color:var(--ok-fg);} .toast.warn .t-ic{background:var(--warn);color:var(--warn-fg);} .toast.danger .t-ic{background:var(--danger);color:var(--danger-fg);}
+  .toast .t-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;}
+  .toast .t-title{font-weight:700;}
+  .toast .t-sub{font-size:12px;color:var(--text-soft);}
+  .toast .btn{flex-shrink:0;}
+  /* --- admin shell: collapsible sidebar + main --- */
+  .shell{display:flex;overflow:hidden;position:relative;background:var(--bg);}
+  .sidebar{width:240px;flex-shrink:0;display:flex;flex-direction:column;gap:4px;padding:16px 12px 12px;background:var(--surface);overflow:hidden;transition:width var(--ease);}
+  .sidebar .brand{height:32px;padding:0 6px;}
+  .sidebar.collapsed{width:64px;}
+  .sidebar.collapsed .wordmark,.sidebar.collapsed .ws-text,.sidebar.collapsed .ws-caret,.sidebar.collapsed .nav-title,.sidebar.collapsed .nav-lbl,.sidebar.collapsed .nav-count,.sidebar.collapsed .sb-user-text{display:none;}
+  .ws{display:flex;align-items:center;gap:10px;height:48px;padding:0 6px;margin-top:12px;border-radius:var(--r);background:var(--surface-2);cursor:pointer;transition:background-color var(--ease);}
+  .ws:hover{background:var(--surface-3);}
+  .ws-ic{width:28px;height:28px;border-radius:var(--r-sm);background:var(--surface-4);color:var(--text);display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:700;flex-shrink:0;}
+  .ws-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;}
+  .ws-name{font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:700;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .ws-sub{font-size:11px;color:var(--text-faint);line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .ws-caret{color:var(--text-faint);}
+  .nav-group{display:flex;flex-direction:column;gap:2px;margin-top:12px;}
+  .nav-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-faint);line-height:1;padding:6px 10px 8px;}
+  .nav-item{display:flex;align-items:center;gap:10px;height:36px;padding:0 10px;border-radius:var(--r-sm);font-size:13px;font-weight:700;color:var(--text-soft);cursor:pointer;white-space:nowrap;transition:background-color var(--ease),color var(--ease);}
+  .nav-item:hover{background:var(--surface-2);color:var(--text);}
+  .nav-item.active{background:var(--surface-3);color:var(--text);}
+  .nav-item .icon{color:inherit;}
+  .nav-count{margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:400;color:var(--text-faint);line-height:1;}
+  .nav-count.hot{color:var(--danger);font-weight:700;}
+  .sidebar.collapsed .nav-item{justify-content:center;padding:0;}
+  .sb-foot{margin-top:auto;display:flex;flex-direction:column;gap:2px;}
+  .sb-user{display:flex;align-items:center;gap:10px;height:44px;padding:0 6px;border-radius:var(--r-sm);cursor:pointer;}
+  .sb-user:hover{background:var(--surface-2);}
+  .sb-user-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;}
+  .sb-user-name{font-size:13px;font-weight:700;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .sb-user-sub{font-size:11px;color:var(--text-faint);line-height:1;}
+  .main{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;background:var(--bg);}
+  .main-head{display:flex;align-items:center;justify-content:space-between;gap:16px;height:56px;padding:0 24px;flex-shrink:0;}
+  .main-head-r{display:flex;align-items:center;gap:12px;}
+  .crumbs{display:flex;align-items:center;gap:6px;min-width:0;font-size:13px;color:var(--text-faint);line-height:1;}
+  .crumbs .icon-sm{color:var(--text-faint);}
+  .crumbs .cur{color:var(--text);font-weight:700;}
+  .crumbs .mono{font-size:12px;}
+  .cmdk{display:inline-flex;align-items:center;gap:8px;width:260px;height:32px;padding:0 8px 0 12px;border-radius:var(--pill);background:var(--surface-2);color:var(--text-faint);font-size:13px;cursor:text;transition:background-color var(--ease);}
+  .cmdk:hover{background:var(--surface-3);}
+  .cmdk span:not(.kbd){flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  /* ===== screen ===== */
+  .page{padding:40px 48px 48px;display:flex;flex-direction:column;gap:40px;width:1040px;}
+  h1{font-size:28px;font-weight:700;margin:0;letter-spacing:-0.02em;line-height:1.15;}
+  h2{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-faint);margin:0 0 16px;line-height:1;}
+  section{display:flex;flex-direction:column;}
+  .sec-note{font-size:12px;color:var(--text-faint);margin:-8px 0 16px;line-height:1.5;max-width:72ch;}
+  .swatch-row{display:grid;grid-template-columns:repeat(8, minmax(0, 1fr));gap:2px;}
+  .swatch{display:flex;flex-direction:column;gap:8px;padding:12px;background:var(--surface-2);border-radius:var(--r);}
+  .swatch-fill{height:48px;border-radius:var(--r-sm);}
+  .swatch-label{font-size:12px;color:var(--text);font-weight:700;line-height:1;}
+  .swatch-val{font-size:11px;color:var(--text-faint);line-height:1;}
+  .type-row{display:flex;flex-direction:column;gap:2px;}
+  .type-sample{display:grid;grid-template-columns:200px minmax(0, 1fr);gap:16px;align-items:baseline;background:var(--surface-2);padding:16px 20px;border-radius:var(--r-sm);}
+  .type-tag{font-size:11px;color:var(--text-faint);font-family:'IBM Plex Mono',monospace;line-height:1.5;}
+  .type-tag b{display:block;color:var(--text-soft);font-weight:700;}
+  .codeblock{font-family:'IBM Plex Mono',monospace;font-size:12px;line-height:20px;background:var(--surface-3);padding:12px 16px;border-radius:var(--r-sm);color:var(--text-soft);white-space:pre;margin:0;}
+  .codeblock .k{color:var(--accent);}
+  .icon-row{display:grid;grid-template-columns:repeat(8, minmax(0, 1fr));gap:2px;}
+  .icon-cell{display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 8px;background:var(--surface-2);border-radius:var(--r);}
+  .icon-cell .icon{width:20px;height:20px;color:var(--text);}
+  .icon-cell span{font-size:11px;color:var(--text-faint);font-family:'IBM Plex Mono',monospace;line-height:1;}
+  .elev-grid{display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:2px;}
+  .elev-card{background:var(--surface-2);border-radius:var(--r);padding:20px;display:flex;flex-direction:column;gap:12px;}
+  .elev-card .lbl,.prim-card .lbl,.spec .lbl{font-size:11px;color:var(--text-faint);font-family:'IBM Plex Mono',monospace;text-transform:uppercase;letter-spacing:0.04em;line-height:1;}
+  .step-stack{display:flex;gap:2px;}
+  .step-box{flex:1;height:72px;border-radius:var(--r-sm);display:flex;align-items:flex-end;padding:8px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);}
+  .prim-grid{display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:2px;}
+  .prim-grid.two{grid-template-columns:repeat(2, minmax(0, 1fr));}
+  .prim-card{background:var(--surface-2);border-radius:var(--r);padding:20px;display:flex;flex-direction:column;gap:12px;}
+  .row-gap{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+  .space-row{display:flex;align-items:flex-end;gap:16px;}
+  .space-box{background:var(--accent);border-radius:2px;}
+  .space-lbl{font-size:11px;color:var(--text-faint);font-family:'IBM Plex Mono',monospace;line-height:1;padding-bottom:2px;}
+  .spec{display:flex;flex-direction:column;gap:12px;}
+  .stack{display:flex;flex-direction:column;gap:2px;}
+  .stack > .banner:first-child{border-radius:var(--r) var(--r) 0 0;}
+  .stack > .banner:last-child{border-radius:0 0 var(--r) var(--r);}
+  .stack > .banner:only-child{border-radius:var(--r);}
+  .anatomy{display:grid;grid-template-columns:repeat(4, minmax(0, 1fr));gap:2px;margin-top:8px;}
+  .anatomy div{background:var(--surface-2);border-radius:var(--r-sm);padding:10px 12px;font-size:12px;color:var(--text-faint);line-height:1.45;}
+  .anatomy b{display:block;color:var(--text-soft);font-family:'IBM Plex Mono',monospace;font-size:11px;margin-bottom:2px;}
+  .form-panel{background:var(--surface-2);border-radius:var(--r);padding:20px;display:flex;flex-direction:column;gap:16px;}
+  .form-grid{display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:2px;}
+  .form-panel .field{background:var(--surface-3);}
+  .fieldset{display:flex;flex-direction:column;gap:10px;}
+  .fieldset .f-lbl{margin-bottom:0;}
+  .toast-stage{background:var(--bg);border-radius:var(--r);padding:20px;display:flex;flex-direction:column;gap:8px;align-items:flex-end;}
+  /* cards (ticket card mirrors Main.dc.html) */
+  .card-grid{display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:2px;}
+  .card{background:var(--surface);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:12px;transition:background-color var(--ease);}
+  .card:hover{background:var(--surface-2);}
+  .card-top{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:20px;}
+  .card-id{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-faint);line-height:1;}
+  .card-title{font-size:14px;font-weight:700;line-height:1.35;text-wrap:pretty;}
+  .card-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+  .card-meta{display:flex;align-items:center;gap:6px;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-faint);line-height:1;}
+  .card-progress{display:flex;align-items:center;gap:12px;}
+  .bar{flex:1;height:4px;border-radius:var(--pill);background:var(--surface-3);overflow:hidden;}
+  .bar-fill{height:100%;background:var(--accent);border-radius:var(--pill);}
+  .pct{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-soft);line-height:1;min-width:32px;text-align:right;}
+  .fail-note{display:flex;align-items:flex-start;gap:8px;font-size:12px;color:var(--text-soft);line-height:1.4;background:var(--surface-2);padding:8px 10px;border-radius:var(--r-sm);}
+  .fail-note .icon-sm{color:var(--danger);margin-top:1px;}
+  .stat-grid{display:grid;grid-template-columns:repeat(4, minmax(0, 1fr));gap:2px;}
+  .stat{background:var(--surface);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:10px;}
+  .stat-k{display:flex;align-items:center;justify-content:space-between;font-size:12px;font-weight:700;color:var(--text-soft);line-height:1;}
+  .stat-k .icon{color:var(--text-faint);}
+  .stat-v{font-family:'IBM Plex Mono',monospace;font-size:24px;font-weight:700;letter-spacing:-0.02em;line-height:1;}
+  .stat-d{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-faint);line-height:1;}
+  .stat-d.up{color:var(--ok);} .stat-d.down{color:var(--danger);}
+  .stat .bar{margin-top:2px;}
+  /* carousel */
+  .carousel-wrap{display:flex;flex-direction:column;gap:12px;background:var(--surface-2);border-radius:var(--r);padding:20px;}
+  .carousel-head{display:flex;align-items:center;justify-content:space-between;}
+  .carousel-title{font-size:14px;font-weight:700;line-height:1;}
+  .carousel-nav{display:flex;gap:4px;}
+  .carousel{display:flex;gap:8px;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;margin:0 -20px;padding:0 20px;}
+  .carousel::-webkit-scrollbar{display:none;}
+  .slide{flex:0 0 300px;scroll-snap-align:start;background:var(--surface);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:10px;}
+  .slide-top{display:flex;align-items:center;gap:8px;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-faint);line-height:1;}
+  .slide-top .icon-sm{color:var(--accent);}
+  .slide-title{font-size:14px;font-weight:700;line-height:1.35;}
+  .slide-meta{display:flex;align-items:center;justify-content:space-between;font-size:12px;color:var(--text-faint);}
+  .dots{display:flex;gap:6px;justify-content:center;}
+  .dot{width:6px;height:6px;border-radius:50%;background:var(--surface-4);}
+  .dot.on{background:var(--text);width:16px;border-radius:var(--pill);}
+</style>
+</helmet>
+<div class="page">
+  <div class="topbar" style="padding:0;height:auto;">
+    <div class="brand"><div class="logo-mark">p</div><span class="wordmark">pipenzo</span></div>
+    <span class="chip chip-neutral">dark only · light on roadmap</span>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:12px;">
+    <h1>Foundations</h1>
+    <p style="color:var(--text-soft);font-size:14px;max-width:64ch;margin:0;">Tokens and primitives, fixed before any product screen. Stepped near-black surfaces do the layering instead of border lines; every control is a pill or a circle; type is either bold or regular. The single accent is GitHub's own green, so a status colour means the same thing here as it does on github.com. Component anatomy follows GitHub Primer where Primer has an opinion (banner, flash, toast, form control) and IBM Carbon where it doesn't (tile, carousel).</p>
+  </div>
+
+  <section>
+    <h2>Color</h2>
+    <div class="swatch-row">
+      <div class="swatch"><div class="swatch-fill" style="background:var(--bg);"></div><span class="swatch-label">bg</span><span class="swatch-val mono">#121212</span></div>
+      <div class="swatch"><div class="swatch-fill" style="background:var(--surface);"></div><span class="swatch-label">surface</span><span class="swatch-val mono">#181818</span></div>
+      <div class="swatch"><div class="swatch-fill" style="background:var(--surface-2);"></div><span class="swatch-label">surface-2</span><span class="swatch-val mono">#1f1f1f</span></div>
+      <div class="swatch"><div class="swatch-fill" style="background:var(--surface-3);"></div><span class="swatch-label">surface-3</span><span class="swatch-val mono">#282828</span></div>
+      <div class="swatch"><div class="swatch-fill" style="background:var(--surface-4);"></div><span class="swatch-label">surface-4</span><span class="swatch-val mono">#333333</span></div>
+      <div class="swatch"><div class="swatch-fill" style="background:var(--accent);"></div><span class="swatch-label">accent</span><span class="swatch-val mono">#3fb950</span></div>
+      <div class="swatch"><div class="swatch-fill" style="background:var(--warn);"></div><span class="swatch-label">warn</span><span class="swatch-val mono">#d29922</span></div>
+      <div class="swatch"><div class="swatch-fill" style="background:var(--danger);"></div><span class="swatch-label">danger</span><span class="swatch-val mono">#f85149</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Type scale — IBM Plex Sans for UI, IBM Plex Mono for code, ids and data. Two weights only: 400 and 700</h2>
+    <div class="type-row">
+      <div class="type-sample"><span class="type-tag"><b>display</b>28px / 700 / 1.15 / −0.02em</span><span style="font-size:28px;font-weight:700;letter-spacing:-0.02em;line-height:1.15;">Small pull requests, by construction</span></div>
+      <div class="type-sample"><span class="type-tag"><b>h1</b>24px / 700 / 1.2 / −0.02em</span><span style="font-size:24px;font-weight:700;letter-spacing:-0.02em;line-height:1.2;">Board · jortega0033/agentdock</span></div>
+      <div class="type-sample"><span class="type-tag"><b>h2 · page title</b>20px / 700 / 1.25 / −0.01em</span><span style="font-size:20px;font-weight:700;letter-spacing:-0.01em;line-height:1.25;">Sanitize environment for MCP stdio server subprocesses</span></div>
+      <div class="type-sample"><span class="type-tag"><b>h3 · dialog title</b>16px / 700 / 1.3</span><span style="font-size:16px;font-weight:700;line-height:1.3;">Refine → implement → review → open PR</span></div>
+      <div class="type-sample"><span class="type-tag"><b>h4 · card title</b>14px / 700 / 1.35</span><span style="font-size:14px;font-weight:700;line-height:1.35;">Show an unread badge on the tray icon when a ticket is ready</span></div>
+      <div class="type-sample"><span class="type-tag"><b>body</b>14px / 400 / 1.45</span><span style="font-size:14px;line-height:1.45;">Every ticket ships a diff small enough to review in one sitting. The agent commits to a local branch; you decide what leaves the machine.</span></div>
+      <div class="type-sample"><span class="type-tag"><b>body-sm · controls</b>13px / 400 / 1.45</span><span style="font-size:13px;line-height:1.45;color:var(--text-soft);">The change is committed to a local branch. pipenzo cannot push or open a pull request without you.</span></div>
+      <div class="type-sample"><span class="type-tag"><b>caption</b>12px / 400 / 1.4 · text-soft</span><span style="font-size:12px;color:var(--text-soft);line-height:1.4;">Committed to a local branch only. Nothing is pushed until you approve.</span></div>
+      <div class="type-sample"><span class="type-tag"><b>label</b>11px / 700 / caps / +0.08em</span><span class="label">Awaiting approval</span></div>
+      <div class="type-sample"><span class="type-tag"><b>mono · id, path, timing</b>12px / 400 / 1.4</span><span class="mono" style="font-size:12px;line-height:1.4;">packages/agent-runtime/src/mcp/stdio-mcp-connection.ts:74 · sonnet · 1m 02s</span></div>
+      <div class="type-sample"><span class="type-tag"><b>mono · stat</b>24px / 700 / −0.02em</span><span class="mono" style="font-size:24px;font-weight:700;letter-spacing:-0.02em;line-height:1;">+52 <span style="color:var(--text-faint);">−6</span></span></div>
+      <div class="type-sample"><span class="type-tag"><b>code block</b>12px / 400 / 20px line</span><pre class="codeblock"><span class="k">git</span> push origin issue-94
+<span class="k">gh</span> pr create --fill --base main</pre></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Icons — Phosphor regular, 256 grid, filled with currentColor, rendered at 16 (14 inside chips and rows, 20 in hero states)</h2>
+    <div class="icon-row">
+      <div class="icon-cell"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z"/></svg><span>plus</span></div>
+      <div class="icon-cell"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z"/></svg><span>caret-down</span></div>
+      <div class="icon-cell"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"/></svg><span>caret-right</span></div>
+      <div class="icon-cell"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg><span>check</span></div>
+      <div class="icon-cell"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg><span>x</span></div>
+      <div class="icon-cell"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg><span>warning</span></div>
+      <div class="icon-cell"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm16-40a8,8,0,0,1-8,8,16,16,0,0,1-16-16V128a8,8,0,0,1,0-16,16,16,0,0,1,16,16v40A8,8,0,0,1,144,176ZM112,84a12,12,0,1,1,12,12A12,12,0,0,1,112,84Z"/></svg><span>info</span></div>
+      <div class="icon-cell"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M173.66,98.34a8,8,0,0,1,0,11.32l-56,56a8,8,0,0,1-11.32,0l-24-24a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35A8,8,0,0,1,173.66,98.34ZM232,128A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z"/></svg><span>check-circle</span></div>
+      <div class="icon-cell"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232,64a32,32,0,1,0-40,31v17a8,8,0,0,1-8,8H96a23.84,23.84,0,0,0-8,1.38V95a32,32,0,1,0-16,0v66a32,32,0,1,0,16,0V144a8,8,0,0,1,8-8h88a24,24,0,0,0,24-24V95A32.06,32.06,0,0,0,232,64ZM64,64A16,16,0,1,1,80,80,16,16,0,0,1,64,64ZM96,192a16,16,0,1,1-16-16A16,16,0,0,1,96,192ZM200,80a16,16,0,1,1,16-16A16,16,0,0,1,200,80Z"/></svg><span>git-branch</span></div>
+      <div class="icon-cell"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M104,64A32,32,0,1,0,64,95v66a32,32,0,1,0,16,0V95A32.06,32.06,0,0,0,104,64ZM56,64A16,16,0,1,1,72,80,16,16,0,0,1,56,64ZM88,192a16,16,0,1,1-16-16A16,16,0,0,1,88,192Zm120-31V110.63a23.85,23.85,0,0,0-7-17L163.31,56H192a8,8,0,0,0,0-16H144a8,8,0,0,0-8,8V96a8,8,0,0,0,16,0V67.31L189.66,105a8,8,0,0,1,2.34,5.66V161a32,32,0,1,0,16,0Zm-8,47a16,16,0,1,1,16-16A16,16,0,0,1,200,208Z"/></svg><span>git-pull-request</span></div>
+      <div class="icon-cell"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"/></svg><span>play</span></div>
+      <div class="icon-cell"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,218.34l-50.07-50.06a88.11,88.11,0,1,0-11.31,11.31l50.06,50.07a8,8,0,0,0,11.32-11.32ZM40,112a72,72,0,1,1,72,72A72.08,72.08,0,0,1,40,112Z"/></svg><span>refine · search</span></div>
+      <div class="icon-cell"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z"/></svg><span>implement</span></div>
+      <div class="icon-cell"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M208,40H48A16,16,0,0,0,32,56v56c0,52.72,25.52,84.67,46.93,102.19,23.06,18.86,46,25.26,47,25.53a8,8,0,0,0,4.2,0c1-.27,23.91-6.67,47-25.53C198.48,196.67,224,164.72,224,112V56A16,16,0,0,0,208,40Zm0,72c0,37.07-13.66,67.16-40.6,89.42A129.3,129.3,0,0,1,128,223.62a128.25,128.25,0,0,1-38.92-21.81C61.82,179.51,48,149.3,48,112l0-56,160,0ZM82.34,141.66a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35a8,8,0,0,1,11.32,11.32l-56,56a8,8,0,0,1-11.32,0Z"/></svg><span>gates</span></div>
+      <div class="icon-cell"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M247.31,124.76c-.35-.79-8.82-19.58-27.65-38.41C194.57,61.26,162.88,48,128,48S61.43,61.26,36.34,86.35C17.51,105.18,9,124,8.69,124.76a8,8,0,0,0,0,6.5c.35.79,8.82,19.57,27.65,38.4C61.43,194.74,93.12,208,128,208s66.57-13.26,91.66-38.34c18.83-18.83,27.3-37.61,27.65-38.4A8,8,0,0,0,247.31,124.76ZM128,192c-30.78,0-57.67-11.19-79.93-33.25A133.47,133.47,0,0,1,25,128,133.33,133.33,0,0,1,48.07,97.25C70.33,75.19,97.22,64,128,64s57.67,11.19,79.93,33.25A133.46,133.46,0,0,1,231.05,128C223.84,141.46,192.43,192,128,192Zm0-112a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Z"/></svg><span>review</span></div>
+      <div class="icon-cell"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M176,232a8,8,0,0,1-8,8H88a8,8,0,0,1,0-16h80A8,8,0,0,1,176,232Zm40-128a87.55,87.55,0,0,1-33.64,69.21A16.24,16.24,0,0,0,176,186v6a16,16,0,0,1-16,16H96a16,16,0,0,1-16-16v-6a16,16,0,0,0-6.23-12.66A87.59,87.59,0,0,1,40,104.49C39.74,56.83,78.26,17.14,125.88,16A88,88,0,0,1,216,104Zm-16,0a72,72,0,0,0-73.74-72c-39,.92-70.47,33.39-70.26,72.39a71.65,71.65,0,0,0,27.64,56.3A32,32,0,0,1,96,186v6h64v-6a32.15,32.15,0,0,1,12.47-25.35A71.65,71.65,0,0,0,200,104Zm-16.11-9.34a57.6,57.6,0,0,0-46.56-46.55,8,8,0,0,0-2.66,15.78c16.57,2.79,30.63,16.85,33.44,33.45A8,8,0,0,0,176,104a9,9,0,0,0,1.35-.11A8,8,0,0,0,183.89,94.66Z"/></svg><span>idea</span></div>
+      <div class="icon-cell"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,0,0,36.18,176.88L24.83,210.93a16,16,0,0,0,20.24,20.24l34.05-11.35A104,104,0,1,0,128,24Zm0,192a87.87,87.87,0,0,1-44.06-11.81,8,8,0,0,0-6.54-.67L40,216,52.47,178.6a8,8,0,0,0-.66-6.54A88,88,0,1,1,128,216Z"/></svg><span>message</span></div>
+      <div class="icon-cell"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M69.12,94.15,28.5,128l40.62,33.85a8,8,0,1,1-10.24,12.29l-48-40a8,8,0,0,1,0-12.29l48-40a8,8,0,0,1,10.24,12.3Zm176,27.7-48-40a8,8,0,1,0-10.24,12.3L227.5,128l-40.62,33.85a8,8,0,1,0,10.24,12.29l48-40a8,8,0,0,0,0-12.29ZM162.73,32.48a8,8,0,0,0-10.25,4.79l-64,176a8,8,0,0,0,4.79,10.26A8.14,8.14,0,0,0,96,224a8,8,0,0,0,7.52-5.27l64-176A8,8,0,0,0,162.73,32.48Z"/></svg><span>code</span></div>
+      <div class="icon-cell"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm64-88a8,8,0,0,1-8,8H128a8,8,0,0,1-8-8V72a8,8,0,0,1,16,0v48h48A8,8,0,0,1,192,128Z"/></svg><span>clock</span></div>
+      <div class="icon-cell"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,128a96,96,0,0,1-94.71,96H128A95.38,95.38,0,0,1,62.1,197.8a8,8,0,0,1,11-11.63A80,80,0,1,0,71.43,71.39a3.07,3.07,0,0,1-.26.25L44.59,96H72a8,8,0,0,1,0,16H24a8,8,0,0,1-8-8V56a8,8,0,0,1,16,0V85.8L60.25,60A96,96,0,0,1,224,128Z"/></svg><span>undo</span></div>
+      <div class="icon-cell"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z"/></svg><span>external</span></div>
+      <div class="icon-cell"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm88-29.84q.06-2.16,0-4.32l14.92-18.64a8,8,0,0,0,1.48-7.06,107.21,107.21,0,0,0-10.88-26.25,8,8,0,0,0-6-3.93l-23.72-2.64q-1.48-1.56-3-3L186,40.54a8,8,0,0,0-3.94-6,107.71,107.71,0,0,0-26.25-10.87,8,8,0,0,0-7.06,1.49L130.16,40Q128,40,125.84,40L107.2,25.11a8,8,0,0,0-7.06-1.48A107.6,107.6,0,0,0,73.89,34.51a8,8,0,0,0-3.93,6L67.32,64.27q-1.56,1.49-3,3L40.54,70a8,8,0,0,0-6,3.94,107.71,107.71,0,0,0-10.87,26.25,8,8,0,0,0,1.49,7.06L40,125.84Q40,128,40,130.16L25.11,148.8a8,8,0,0,0-1.48,7.06,107.21,107.21,0,0,0,10.88,26.25,8,8,0,0,0,6,3.93l23.72,2.64q1.49,1.56,3,3L70,215.46a8,8,0,0,0,3.94,6,107.71,107.71,0,0,0,26.25,10.87,8,8,0,0,0,7.06-1.49L125.84,216q2.16.06,4.32,0l18.64,14.92a8,8,0,0,0,7.06,1.48,107.21,107.21,0,0,0,26.25-10.88,8,8,0,0,0,3.93-6l2.64-23.72q1.56-1.48,3-3L215.46,186a8,8,0,0,0,6-3.94,107.71,107.71,0,0,0,10.87-26.25,8,8,0,0,0-1.49-7.06Zm-16.1-6.5a73.93,73.93,0,0,1,0,8.68,8,8,0,0,0,1.74,5.48l14.19,17.73a91.57,91.57,0,0,1-6.23,15L187,173.11a8,8,0,0,0-5.1,2.64,74.11,74.11,0,0,1-6.14,6.14,8,8,0,0,0-2.64,5.1l-2.51,22.58a91.32,91.32,0,0,1-15,6.23l-17.74-14.19a8,8,0,0,0-5-1.75h-.48a73.93,73.93,0,0,1-8.68,0,8,8,0,0,0-5.48,1.74L100.45,215.8a91.57,91.57,0,0,1-15-6.23L82.89,187a8,8,0,0,0-2.64-5.1,74.11,74.11,0,0,1-6.14-6.14,8,8,0,0,0-5.1-2.64L46.43,170.6a91.32,91.32,0,0,1-6.23-15l14.19-17.74a8,8,0,0,0,1.74-5.48,73.93,73.93,0,0,1,0-8.68,8,8,0,0,0-1.74-5.48L40.2,100.45a91.57,91.57,0,0,1,6.23-15L69,82.89a8,8,0,0,0,5.1-2.64,74.11,74.11,0,0,1,6.14-6.14A8,8,0,0,0,82.89,69L85.4,46.43a91.32,91.32,0,0,1,15-6.23l17.74,14.19a8,8,0,0,0,5.48,1.74,73.93,73.93,0,0,1,8.68,0,8,8,0,0,0,5.48-1.74L155.55,40.2a91.57,91.57,0,0,1,15,6.23L173.11,69a8,8,0,0,0,2.64,5.1,74.11,74.11,0,0,1,6.14,6.14,8,8,0,0,0,5.1,2.64l22.58,2.51a91.32,91.32,0,0,1,6.23,15l-14.19,17.74A8,8,0,0,0,199.87,123.66Z"/></svg><span>settings</span></div>
+      <div class="icon-cell"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M216,48H40a8,8,0,0,0-8,8V208a16,16,0,0,0,16,16H88a16,16,0,0,0,16-16V160h48v16a16,16,0,0,0,16,16h40a16,16,0,0,0,16-16V56A8,8,0,0,0,216,48ZM88,208H48V128H88Zm0-96H48V64H88Zm64,32H104V64h48Zm56,32H168V128h40Zm0-64H168V64h40Z"/></svg><span>board</span></div>
+      <div class="icon-cell"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M136,80v43.47l36.12,21.67a8,8,0,0,1-8.24,13.72l-40-24A8,8,0,0,1,120,128V80a8,8,0,0,1,16,0Zm-8-48A95.44,95.44,0,0,0,60.08,60.15C52.81,67.51,46.35,74.59,40,82V64a8,8,0,0,0-16,0v40a8,8,0,0,0,8,8H72a8,8,0,0,0,0-16H49c7.15-8.42,14.27-16.35,22.39-24.57a80,80,0,1,1,1.66,114.75,8,8,0,1,0-11,11.64A96,96,0,1,0,128,32Z"/></svg><span>activity</span></div>
+      <div class="icon-cell"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M188,88a27.75,27.75,0,0,0-12,2.71V60a28,28,0,0,0-41.36-24.6A28,28,0,0,0,80,44v6.71A27.75,27.75,0,0,0,68,48,28,28,0,0,0,40,76v76a88,88,0,0,0,176,0V116A28,28,0,0,0,188,88Zm12,64a72,72,0,0,1-144,0V76a12,12,0,0,1,24,0v44a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v68a8,8,0,0,0,16,0V60a12,12,0,0,1,24,0v68.67A48.08,48.08,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V116a12,12,0,0,1,24,0Z"/></svg><span>needs-human</span></div>
+      <div class="icon-cell"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,71.1a8,8,0,0,1-10.78-3.42,94.13,94.13,0,0,0-33.46-36.91,8,8,0,1,1,8.54-13.54,111.46,111.46,0,0,1,39.12,43.09A8,8,0,0,1,224,71.1ZM35.71,72a8,8,0,0,0,7.1-4.32A94.13,94.13,0,0,1,76.27,30.77a8,8,0,1,0-8.54-13.54A111.46,111.46,0,0,0,28.61,60.32,8,8,0,0,0,35.71,72Zm186.1,103.94A16,16,0,0,1,208,200H167.2a40,40,0,0,1-78.4,0H48a16,16,0,0,1-13.79-24.06C43.22,160.39,48,138.28,48,112a80,80,0,0,1,160,0C208,138.27,212.78,160.38,221.81,175.94ZM150.62,200H105.38a24,24,0,0,0,45.24,0ZM208,184c-10.64-18.27-16-42.49-16-72a64,64,0,0,0-128,0c0,29.52-5.38,53.74-16,72Z"/></svg><span>notified</span></div>
+      <div class="icon-cell"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M200,48H136V16a8,8,0,0,0-16,0V48H56A32,32,0,0,0,24,80V192a32,32,0,0,0,32,32H200a32,32,0,0,0,32-32V80A32,32,0,0,0,200,48Zm16,144a16,16,0,0,1-16,16H56a16,16,0,0,1-16-16V80A16,16,0,0,1,56,64H200a16,16,0,0,1,16,16Zm-52-56H92a28,28,0,0,0,0,56h72a28,28,0,0,0,0-56Zm-24,16v24H116V152ZM80,164a12,12,0,0,1,12-12h8v24H92A12,12,0,0,1,80,164Zm84,12h-8V152h8a12,12,0,0,1,0,24ZM72,108a12,12,0,1,1,12,12A12,12,0,0,1,72,108Zm88,0a12,12,0,1,1,12,12A12,12,0,0,1,160,108Z"/></svg><span>agent</span></div>
+      <div class="icon-cell"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M184,89.57V84c0-25.08-37.83-44-88-44S8,58.92,8,84v40c0,20.89,26.25,37.49,64,42.46V172c0,25.08,37.83,44,88,44s88-18.92,88-44V132C248,111.3,222.58,94.68,184,89.57ZM232,132c0,13.22-30.79,28-72,28-3.73,0-7.43-.13-11.08-.37C170.49,151.77,184,139,184,124V105.74C213.87,110.19,232,122.27,232,132ZM72,150.25V126.46A183.74,183.74,0,0,0,96,128a183.74,183.74,0,0,0,24-1.54v23.79A163,163,0,0,1,96,152,163,163,0,0,1,72,150.25Zm96-40.32V124c0,8.39-12.41,17.4-32,22.87V123.5C148.91,120.37,159.84,115.71,168,109.93ZM96,56c41.21,0,72,14.78,72,28s-30.79,28-72,28S24,97.22,24,84,54.79,56,96,56ZM24,124V109.93c8.16,5.78,19.09,10.44,32,13.57v23.37C36.41,141.4,24,132.39,24,124Zm64,48v-4.17c2.63.1,5.29.17,8,.17,3.88,0,7.67-.13,11.39-.35A121.92,121.92,0,0,0,120,171.41v23.46C100.41,189.4,88,180.39,88,172Zm48,26.25V174.4a179.48,179.48,0,0,0,24,1.6,183.74,183.74,0,0,0,24-1.54v23.79a165.45,165.45,0,0,1-48,0Zm64-3.38V171.5c12.91-3.13,23.84-7.79,32-13.57V172C232,180.39,219.59,189.4,200,194.87Z"/></svg><span>budget</span></div>
+      <div class="icon-cell"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M230.91,172A8,8,0,0,1,228,182.91l-96,56a8,8,0,0,1-8.06,0l-96-56A8,8,0,0,1,36,169.09l92,53.65,92-53.65A8,8,0,0,1,230.91,172ZM220,121.09l-92,53.65L36,121.09A8,8,0,0,0,28,134.91l96,56a8,8,0,0,0,8.06,0l96-56A8,8,0,1,0,220,121.09ZM24,80a8,8,0,0,1,4-6.91l96-56a8,8,0,0,1,8.06,0l96,56a8,8,0,0,1,0,13.82l-96,56a8,8,0,0,1-8.06,0l-96-56A8,8,0,0,1,24,80Zm23.88,0L128,126.74,208.12,80,128,33.26Z"/></svg><span>pr-stack</span></div>
+      <div class="icon-cell"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40ZM40,56H80V200H40ZM216,200H96V56H216V200Z"/></svg><span>sidebar</span></div>
+      <div class="icon-cell"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M180,144H160V112h20a36,36,0,1,0-36-36V96H112V76a36,36,0,1,0-36,36H96v32H76a36,36,0,1,0,36,36V160h32v20a36,36,0,1,0,36-36ZM160,76a20,20,0,1,1,20,20H160ZM56,76a20,20,0,0,1,40,0V96H76A20,20,0,0,1,56,76ZM96,180a20,20,0,1,1-20-20H96Zm16-68h32v32H112Zm68,88a20,20,0,0,1-20-20V160h20a20,20,0,0,1,0,40Z"/></svg><span>command</span></div>
+      <div class="icon-cell"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M213.66,82.34l-56-56A8,8,0,0,0,152,24H56A16,16,0,0,0,40,40V216a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V88A8,8,0,0,0,213.66,82.34ZM160,51.31,188.69,80H160ZM200,216H56V40h88V88a8,8,0,0,0,8,8h48V216Z"/></svg><span>file</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Elevation — surfaces step, dialogs float</h2>
+    <div class="elev-grid">
+      <div class="elev-card">
+        <span class="lbl">stepped surfaces, no borders</span>
+        <div class="step-stack">
+          <div class="step-box" style="background:var(--bg);">bg</div>
+          <div class="step-box" style="background:var(--surface);">card</div>
+          <div class="step-box" style="background:var(--surface-2);">hover</div>
+          <div class="step-box" style="background:var(--surface-3);">control</div>
+          <div class="step-box" style="background:var(--surface-4);">control · hover</div>
+        </div>
+      </div>
+      <div class="elev-card" style="background:var(--bg);align-items:flex-start;">
+        <span class="lbl">dialog · surface-3 + 0 8px 24px rgba(0,0,0,.5)</span>
+        <div class="dialog" style="width:100%;padding:16px 20px;gap:12px;">
+          <span style="font-size:16px;font-weight:700;line-height:1.3;">Discard this branch?</span>
+          <span style="font-size:12px;color:var(--text-soft);">The worktree for issue-94 is removed. Nothing was pushed.</span>
+          <div class="row-gap" style="justify-content:flex-end;"><button class="btn">Keep</button><button class="btn danger">Discard</button></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Primitives</h2>
+    <div class="prim-grid">
+      <div class="prim-card">
+        <span class="lbl">buttons · primary, default, ghost, danger, sizes</span>
+        <div class="row-gap">
+          <button class="btn primary"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M104,64A32,32,0,1,0,64,95v66a32,32,0,1,0,16,0V95A32.06,32.06,0,0,0,104,64ZM56,64A16,16,0,1,1,72,80,16,16,0,0,1,56,64ZM88,192a16,16,0,1,1-16-16A16,16,0,0,1,88,192Zm120-31V110.63a23.85,23.85,0,0,0-7-17L163.31,56H192a8,8,0,0,0,0-16H144a8,8,0,0,0-8,8V96a8,8,0,0,0,16,0V67.31L189.66,105a8,8,0,0,1,2.34,5.66V161a32,32,0,1,0,16,0Zm-8,47a16,16,0,1,1,16-16A16,16,0,0,1,200,208Z"/></svg>Push &amp; open PR</button>
+          <button class="btn">Push branch</button>
+        </div>
+        <div class="row-gap">
+          <button class="btn ghost">Cancel</button>
+          <button class="btn danger">Reject</button>
+          <button class="icon-btn"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z"/></svg></button>
+          <button class="icon-btn ghost"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M140,128a12,12,0,1,1-12-12A12,12,0,0,1,140,128Zm56-12a12,12,0,1,0,12,12A12,12,0,0,0,196,116ZM60,116a12,12,0,1,0,12,12A12,12,0,0,0,60,116Z"/></svg></button>
+        </div>
+        <div class="row-gap">
+          <button class="btn primary lg">Looks good — publish it</button>
+          <button class="btn sm">Retry</button>
+        </div>
+      </div>
+      <div class="prim-card">
+        <span class="lbl">status chips · one per agent state</span>
+        <div class="row-gap"><span class="chip chip-neutral">Queued</span><span class="chip chip-warn">Refining</span><span class="chip chip-warn">Implementing</span></div>
+        <div class="row-gap"><span class="chip chip-warn">Reviewing</span><span class="chip chip-danger">Awaiting input</span><span class="chip chip-ok">Ready for review</span></div>
+        <div class="row-gap"><span class="chip chip-danger"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M188,88a27.75,27.75,0,0,0-12,2.71V60a28,28,0,0,0-41.36-24.6A28,28,0,0,0,80,44v6.71A27.75,27.75,0,0,0,68,48,28,28,0,0,0,40,76v76a88,88,0,0,0,176,0V116A28,28,0,0,0,188,88Zm12,64a72,72,0,0,1-144,0V76a12,12,0,0,1,24,0v44a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v68a8,8,0,0,0,16,0V60a12,12,0,0,1,24,0v68.67A48.08,48.08,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V116a12,12,0,0,1,24,0Z"/></svg>Needs human</span><span class="chip chip-ok"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg>Done</span></div>
+      </div>
+      <div class="prim-card">
+        <span class="lbl">segmented switch · kbd · avatar</span>
+        <div class="seg" style="align-self:flex-start;"><button class="active">Simple</button><button>Expert</button></div>
+        <div class="row-gap"><span class="kbd">⌘</span><span class="kbd">K</span><span style="font-size:12px;color:var(--text-faint);">opens the command palette</span></div>
+        <div class="row-gap"><div class="avatar">JO</div><div class="avatar" style="background:var(--accent);color:var(--accent-fg);"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M200,48H136V16a8,8,0,0,0-16,0V48H56A32,32,0,0,0,24,80V192a32,32,0,0,0,32,32H200a32,32,0,0,0,32-32V80A32,32,0,0,0,200,48Zm16,144a16,16,0,0,1-16,16H56a16,16,0,0,1-16-16V80A16,16,0,0,1,56,64H200a16,16,0,0,1,16,16Zm-52-56H92a28,28,0,0,0,0,56h72a28,28,0,0,0,0-56Zm-24,16v24H116V152ZM80,164a12,12,0,0,1,12-12h8v24H92A12,12,0,0,1,80,164Zm84,12h-8V152h8a12,12,0,0,1,0,24ZM72,108a12,12,0,1,1,12,12A12,12,0,0,1,72,108Zm88,0a12,12,0,1,1,12,12A12,12,0,0,1,160,108Z"/></svg></div><span style="font-size:12px;color:var(--text-faint);">human · agent</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Forms — label above, helper below, error replaces helper. Filled fields on stepped surfaces, focus ring is the accent</h2>
+    <p class="sec-note">Anatomy after Primer's FormControl: label, optional caption, the control, then validation. Choice controls (checkbox, radio, switch) put the box first and the label second; a description line under the label is caption-sized and never bold.</p>
+    <div class="form-grid">
+      <div class="form-panel">
+        <div>
+          <label class="f-lbl">Branch name override</label>
+          <input class="field mono" value="issue-94-env-sanitize" />
+          <span class="f-help">Optional. Defaults to <span class="mono">issue-&lt;number&gt;</span>. Only lowercase, digits and dashes.</span>
+        </div>
+        <div>
+          <label class="f-lbl">Base branch</label>
+          <input class="field mono invalid" value="release/2.4 " />
+          <span class="f-err"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm-8-80V80a8,8,0,0,1,16,0v56a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,172Z"/></svg>No branch named "release/2.4 " on origin. Did you mean release/2.4?</span>
+        </div>
+        <div>
+          <label class="f-lbl">Run budget</label>
+          <span class="select-wrap"><select class="field mono"><option>Unlimited</option><option>1 run</option><option>3 runs</option><option>Cap at 200k tokens</option></select><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z"/></svg></span>
+          <span class="f-help">Applies to this ticket only. The workspace default is Unlimited.</span>
+        </div>
+        <div>
+          <label class="f-lbl">Extra instructions</label>
+          <textarea class="field" rows="3">Only touch the daemon side. Leave the renderer alone for now.</textarea>
+        </div>
+      </div>
+      <div class="form-panel">
+        <div class="fieldset">
+          <label class="f-lbl">Deterministic gates</label>
+          <label class="check"><span class="box on"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span>Build and typecheck</span></label>
+          <label class="check"><span class="box on"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span>Unit tests <span class="sub">vitest, whole workspace</span></span></label>
+          <label class="check"><span class="box on"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span>Secrets and SAST <span class="sub">gitleaks, semgrep p/ci</span></span></label>
+          <label class="check"><span class="box"></span><span>End-to-end <span class="sub">Playwright, adds ~4 min per run</span></span></label>
+        </div>
+        <div class="fieldset">
+          <label class="f-lbl">When a run fails twice</label>
+          <label class="radio"><span class="box on"></span><span>Park it in Needs human</span></label>
+          <label class="radio"><span class="box"></span><span>Retry once at a stronger model <span class="sub">opus, counts against headroom</span></span></label>
+          <label class="radio"><span class="box"></span><span>Close the ticket with a comment</span></label>
+        </div>
+        <div class="fieldset">
+          <label class="f-lbl">Notifications</label>
+          <div class="f-row"><span style="font-size:13px;">Tray badge when a ticket needs me</span><button class="toggle on"></button></div>
+          <div class="f-row"><span style="font-size:13px;">OS notification on awaiting input</span><button class="toggle on"></button></div>
+          <div class="f-row"><span style="font-size:13px;">Sound</span><button class="toggle"></button></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Notices — three altitudes: banner (page, persistent), inline notice (in context, dismissible), toast (corner, transient)</h2>
+    <p class="sec-note">Same four tones everywhere: neutral, ok, warn, danger. Tone lives in the round icon only; the container never changes colour, so a screen full of notices still reads as one surface. Toasts stack bottom-right, one action max, auto-dismiss in 6 s unless they carry an action.</p>
+    <div class="spec">
+      <span class="lbl">banner · sits directly under the main header, full width</span>
+      <div class="stack">
+        <div class="banner"><span class="b-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm16-40a8,8,0,0,1-8,8,16,16,0,0,1-16-16V128a8,8,0,0,1,0-16,16,16,0,0,1,16,16v40A8,8,0,0,1,144,176ZM112,84a12,12,0,1,1,12,12A12,12,0,0,1,112,84Z"/></svg></span><span class="b-text">You're on the <b>free tier</b> — 40 runs left this month. Runs reset on 1 Oct.</span><span class="b-act"><button class="btn sm">See plans</button></span></div>
+        <div class="banner warn"><span class="b-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg></span><span class="b-text">Subscription window at <b>91%</b>. Queued tickets will wait until it resets in 22 min.</span><span class="b-act"><button class="btn sm ghost">Pause queue</button></span></div>
+        <div class="banner danger"><span class="b-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></span><span class="b-text">Daemon unreachable since 14:02. <b>Nothing is running</b> — the board shows the last known state.</span><span class="b-act"><button class="btn sm">Reconnect</button><button class="icon-btn ghost" style="width:28px;height:28px;"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></button></span></div>
+      </div>
+      <div class="anatomy">
+        <div><b>1 · tone icon</b>24 px circle, the only coloured element</div>
+        <div><b>2 · message</b>13 px, one line, bold for the number or noun that matters</div>
+        <div><b>3 · action</b>small button, optional, never primary</div>
+        <div><b>4 · dismiss</b>only when the notice is not a system state</div>
+      </div>
+    </div>
+    <div class="spec" style="margin-top:24px;">
+      <span class="lbl">inline notice · inside a card, dialog or form</span>
+      <div class="prim-grid two">
+        <div class="notice"><span class="n-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm16-40a8,8,0,0,1-8,8,16,16,0,0,1-16-16V128a8,8,0,0,1,0-16,16,16,0,0,1,16,16v40A8,8,0,0,1,144,176ZM112,84a12,12,0,1,1,12,12A12,12,0,0,1,112,84Z"/></svg></span><span class="n-body"><span class="n-title">Refine is read-only</span><span>The agent reads the repo and drafts a spec. No files change until you start implement.</span></span><button class="n-x"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></button></div>
+        <div class="notice ok"><span class="n-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span class="n-body"><span class="n-title">Spec approved</span><span>3 acceptance criteria, ≤ 50 line estimate, 2 files in scope.</span></span><button class="n-x"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></button></div>
+        <div class="notice warn"><span class="n-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg></span><span class="n-body"><span class="n-title">Diff is over budget</span><span>+212 −40 across 9 files. pipenzo proposes a 3-PR stack instead of one review.</span><span class="n-act"><span>See proposed split</span><span style="color:var(--text-soft);">Continue anyway</span></span></span></div>
+        <div class="notice danger"><span class="n-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></span><span class="n-body"><span class="n-title">Push rejected by origin</span><span>Branch protection on main requires a signed commit. Sign locally and push again.</span><span class="n-act"><span>Show command</span></span></span><button class="n-x"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></button></div>
+      </div>
+    </div>
+    <div class="spec" style="margin-top:24px;">
+      <span class="lbl">toast · bottom-right, 360 wide, newest at the bottom</span>
+      <div class="toast-stage">
+        <div class="toast ok"><span class="t-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span class="t-body"><span class="t-title">Branch pushed</span><span class="t-sub">issue-94 → origin · 2 files</span></span><button class="btn sm">View on GitHub</button></div>
+        <div class="toast"><span class="t-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M104,64A32,32,0,1,0,64,95v66a32,32,0,1,0,16,0V95A32.06,32.06,0,0,0,104,64ZM56,64A16,16,0,1,1,72,80,16,16,0,0,1,56,64ZM88,192a16,16,0,1,1-16-16A16,16,0,0,1,88,192Zm120-31V110.63a23.85,23.85,0,0,0-7-17L163.31,56H192a8,8,0,0,0,0-16H144a8,8,0,0,0-8,8V96a8,8,0,0,0,16,0V67.31L189.66,105a8,8,0,0,1,2.34,5.66V161a32,32,0,1,0,16,0Zm-8,47a16,16,0,1,1,16-16A16,16,0,0,1,200,208Z"/></svg></span><span class="t-body"><span class="t-title">PR #112 opened</span><span class="t-sub">Sanitize environment for MCP stdio server subprocesses</span></span><button class="btn sm">Open</button></div>
+        <div class="toast warn"><span class="t-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M188,88a27.75,27.75,0,0,0-12,2.71V60a28,28,0,0,0-41.36-24.6A28,28,0,0,0,80,44v6.71A27.75,27.75,0,0,0,68,48,28,28,0,0,0,40,76v76a88,88,0,0,0,176,0V116A28,28,0,0,0,188,88Zm12,64a72,72,0,0,1-144,0V76a12,12,0,0,1,24,0v44a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v68a8,8,0,0,0,16,0V60a12,12,0,0,1,24,0v68.67A48.08,48.08,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V116a12,12,0,0,1,24,0Z"/></svg></span><span class="t-body"><span class="t-title">#87 moved to Needs human</span><span class="t-sub">3 failed attempts · vitest timeout in tray.test.ts</span></span><button class="btn sm">Undo</button></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Cards — ticket card (board) and stat card (activity). Surface on bg, hover steps one surface up, no border</h2>
+    <div class="card-grid">
+      <div class="card">
+        <div class="card-top"><span class="card-id">#88</span><span class="chip chip-ok">≤ 40 lines</span></div>
+        <span class="card-title">Offer a CLI install link when no provider is detected</span>
+        <div class="card-foot">
+          <span class="card-meta"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm64-88a8,8,0,0,1-8,8H128a8,8,0,0,1-8-8V72a8,8,0,0,1,16,0v48h48A8,8,0,0,1,192,128Z"/></svg>2d</span>
+          <button class="btn primary"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"/></svg>Implement</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-top"><span class="card-id">#94</span><span class="chip chip-warn">implementing</span></div>
+        <span class="card-title">Sanitize environment for MCP stdio server subprocesses</span>
+        <div class="card-progress"><div class="bar"><div class="bar-fill" style="width:62%;"></div></div><span class="pct">62%</span></div>
+        <div class="card-foot">
+          <span class="card-meta"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232,64a32,32,0,1,0-40,31v17a8,8,0,0,1-8,8H96a23.84,23.84,0,0,0-8,1.38V95a32,32,0,1,0-16,0v66a32,32,0,1,0,16,0V144a8,8,0,0,1,8-8h88a24,24,0,0,0,24-24V95A32.06,32.06,0,0,0,232,64ZM64,64A16,16,0,1,1,80,80,16,16,0,0,1,64,64ZM96,192a16,16,0,1,1-16-16A16,16,0,0,1,96,192ZM200,80a16,16,0,1,1,16-16A16,16,0,0,1,200,80Z"/></svg>issue-94</span>
+          <span class="card-meta">4m 12s · sonnet</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-top"><span class="card-id">#87</span><span class="chip chip-danger"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M188,88a27.75,27.75,0,0,0-12,2.71V60a28,28,0,0,0-41.36-24.6A28,28,0,0,0,80,44v6.71A27.75,27.75,0,0,0,68,48,28,28,0,0,0,40,76v76a88,88,0,0,0,176,0V116A28,28,0,0,0,188,88Zm12,64a72,72,0,0,1-144,0V76a12,12,0,0,1,24,0v44a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v68a8,8,0,0,0,16,0V60a12,12,0,0,1,24,0v68.67A48.08,48.08,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V116a12,12,0,0,1,24,0Z"/></svg>3 failed</span></div>
+        <span class="card-title">Migrate tray notifications to native OS toasts</span>
+        <div class="fail-note"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg><span>Last attempt: vitest timed out in tray.test.ts after 120 s. Parked until someone looks.</span></div>
+        <div class="card-foot">
+          <span class="card-meta"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm64-88a8,8,0,0,1-8,8H128a8,8,0,0,1-8-8V72a8,8,0,0,1,16,0v48h48A8,8,0,0,1,192,128Z"/></svg>parked 3h</span>
+          <button class="btn"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,128a96,96,0,0,1-94.71,96H128A95.38,95.38,0,0,1,62.1,197.8a8,8,0,0,1,11-11.63A80,80,0,1,0,71.43,71.39a3.07,3.07,0,0,1-.26.25L44.59,96H72a8,8,0,0,1,0,16H24a8,8,0,0,1-8-8V56a8,8,0,0,1,16,0V85.8L60.25,60A96,96,0,0,1,224,128Z"/></svg>Retry with note</button>
+        </div>
+      </div>
+    </div>
+    <div class="stat-grid" style="margin-top:2px;">
+      <div class="stat"><span class="stat-k">PRs opened · 30d<svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M104,64A32,32,0,1,0,64,95v66a32,32,0,1,0,16,0V95A32.06,32.06,0,0,0,104,64ZM56,64A16,16,0,1,1,72,80,16,16,0,0,1,56,64ZM88,192a16,16,0,1,1-16-16A16,16,0,0,1,88,192Zm120-31V110.63a23.85,23.85,0,0,0-7-17L163.31,56H192a8,8,0,0,0,0-16H144a8,8,0,0,0-8,8V96a8,8,0,0,0,16,0V67.31L189.66,105a8,8,0,0,1,2.34,5.66V161a32,32,0,1,0,16,0Zm-8,47a16,16,0,1,1,16-16A16,16,0,0,1,200,208Z"/></svg></span><span class="stat-v">23</span><span class="stat-d up"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M213.66,165.66a8,8,0,0,1-11.32,0L128,91.31,53.66,165.66a8,8,0,0,1-11.32-11.32l80-80a8,8,0,0,1,11.32,0l80,80A8,8,0,0,1,213.66,165.66Z"/></svg>+6 vs previous 30d</span></div>
+      <div class="stat"><span class="stat-k">Median diff<svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M69.12,94.15,28.5,128l40.62,33.85a8,8,0,1,1-10.24,12.29l-48-40a8,8,0,0,1,0-12.29l48-40a8,8,0,0,1,10.24,12.3Zm176,27.7-48-40a8,8,0,1,0-10.24,12.3L227.5,128l-40.62,33.85a8,8,0,1,0,10.24,12.29l48-40a8,8,0,0,0,0-12.29ZM162.73,32.48a8,8,0,0,0-10.25,4.79l-64,176a8,8,0,0,0,4.79,10.26A8.14,8.14,0,0,0,96,224a8,8,0,0,0,7.52-5.27l64-176A8,8,0,0,0,162.73,32.48Z"/></svg></span><span class="stat-v">+41 <span style="color:var(--text-faint);">−9</span></span><span class="stat-d">across 2.1 files</span></div>
+      <div class="stat"><span class="stat-k">Gates first-pass<svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M208,40H48A16,16,0,0,0,32,56v56c0,52.72,25.52,84.67,46.93,102.19,23.06,18.86,46,25.26,47,25.53a8,8,0,0,0,4.2,0c1-.27,23.91-6.67,47-25.53C198.48,196.67,224,164.72,224,112V56A16,16,0,0,0,208,40Zm0,72c0,37.07-13.66,67.16-40.6,89.42A129.3,129.3,0,0,1,128,223.62a128.25,128.25,0,0,1-38.92-21.81C61.82,179.51,48,149.3,48,112l0-56,160,0ZM82.34,141.66a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35a8,8,0,0,1,11.32,11.32l-56,56a8,8,0,0,1-11.32,0Z"/></svg></span><span class="stat-v">87%</span><span class="stat-d down"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z"/></svg>−4 pts · 3 tickets parked</span></div>
+      <div class="stat"><span class="stat-k">Headroom · 5h window<svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M200,75.64V40a16,16,0,0,0-16-16H72A16,16,0,0,0,56,40V76a16.07,16.07,0,0,0,6.4,12.8L114.67,128,62.4,167.2A16.07,16.07,0,0,0,56,180v36a16,16,0,0,0,16,16H184a16,16,0,0,0,16-16V180.36a16.09,16.09,0,0,0-6.35-12.77L141.27,128l52.38-39.6A16.05,16.05,0,0,0,200,75.64ZM72,40H184V75.64L178.23,80H77.33L72,76Zm56,78L98.67,96h58.4Zm56,98H72V180l48-36v24a8,8,0,0,0,16,0V144.08l48,36.28Z"/></svg></span><span class="stat-v">38%</span><div class="bar"><div class="bar-fill" style="width:38%;"></div></div><span class="stat-d">resets in 2h 14m</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Carousel — horizontal scroll-snap, 300 px slides, arrows plus dots. Reference sheet only; no product screen needs one today</h2>
+    <p class="sec-note">Carbon's pattern: native overflow scrolling with <span class="mono">scroll-snap-type: x mandatory</span>, arrow buttons that scroll by one slide, dots as position not navigation. Keyboard users get it for free because the slides are in document order.</p>
+    <div class="carousel-wrap">
+      <div class="carousel-head">
+        <span class="carousel-title">Shipped this week</span>
+        <div class="carousel-nav"><button class="icon-btn" style="width:28px;height:28px;"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M165.66,202.34a8,8,0,0,1-11.32,11.32l-80-80a8,8,0,0,1,0-11.32l80-80a8,8,0,0,1,11.32,11.32L91.31,128Z"/></svg></button><button class="icon-btn" style="width:28px;height:28px;"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"/></svg></button></div>
+      </div>
+      <div class="carousel">
+        <div class="slide"><span class="slide-top"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M104,64A32,32,0,1,0,64,95v66a32,32,0,1,0,16,0V95A32.06,32.06,0,0,0,104,64ZM56,64A16,16,0,1,1,72,80,16,16,0,0,1,56,64ZM88,192a16,16,0,1,1-16-16A16,16,0,0,1,88,192Zm120-31V110.63a23.85,23.85,0,0,0-7-17L163.31,56H192a8,8,0,0,0,0-16H144a8,8,0,0,0-8,8V96a8,8,0,0,0,16,0V67.31L189.66,105a8,8,0,0,1,2.34,5.66V161a32,32,0,1,0,16,0Zm-8,47a16,16,0,1,1,16-16A16,16,0,0,1,200,208Z"/></svg>#105 · merged</span><span class="slide-title">Sanitize environment for MCP stdio server subprocesses</span><span class="slide-meta"><span class="mono">+52 −6 · 2 files</span><span>Thu</span></span></div>
+        <div class="slide"><span class="slide-top"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M104,64A32,32,0,1,0,64,95v66a32,32,0,1,0,16,0V95A32.06,32.06,0,0,0,104,64ZM56,64A16,16,0,1,1,72,80,16,16,0,0,1,56,64ZM88,192a16,16,0,1,1-16-16A16,16,0,0,1,88,192Zm120-31V110.63a23.85,23.85,0,0,0-7-17L163.31,56H192a8,8,0,0,0,0-16H144a8,8,0,0,0-8,8V96a8,8,0,0,0,16,0V67.31L189.66,105a8,8,0,0,1,2.34,5.66V161a32,32,0,1,0,16,0Zm-8,47a16,16,0,1,1,16-16A16,16,0,0,1,200,208Z"/></svg>#104 · merged</span><span class="slide-title">Correct 20 stale claims found in a full docs-vs-code audit</span><span class="slide-meta"><span class="mono">+61 −58 · 7 files</span><span>Wed</span></span></div>
+        <div class="slide"><span class="slide-top"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M104,64A32,32,0,1,0,64,95v66a32,32,0,1,0,16,0V95A32.06,32.06,0,0,0,104,64ZM56,64A16,16,0,1,1,72,80,16,16,0,0,1,56,64ZM88,192a16,16,0,1,1-16-16A16,16,0,0,1,88,192Zm120-31V110.63a23.85,23.85,0,0,0-7-17L163.31,56H192a8,8,0,0,0,0-16H144a8,8,0,0,0-8,8V96a8,8,0,0,0,16,0V67.31L189.66,105a8,8,0,0,1,2.34,5.66V161a32,32,0,1,0,16,0Zm-8,47a16,16,0,1,1,16-16A16,16,0,0,1,200,208Z"/></svg>#102 · merged</span><span class="slide-title">Log session.failed events server-side in the daemon</span><span class="slide-meta"><span class="mono">+34 −6 · 2 files</span><span>Tue</span></span></div>
+        <div class="slide"><span class="slide-top"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M104,64A32,32,0,1,0,64,95v66a32,32,0,1,0,16,0V95A32.06,32.06,0,0,0,104,64ZM56,64A16,16,0,1,1,72,80,16,16,0,0,1,56,64ZM88,192a16,16,0,1,1-16-16A16,16,0,0,1,88,192Zm120-31V110.63a23.85,23.85,0,0,0-7-17L163.31,56H192a8,8,0,0,0,0-16H144a8,8,0,0,0-8,8V96a8,8,0,0,0,16,0V67.31L189.66,105a8,8,0,0,1,2.34,5.66V161a32,32,0,1,0,16,0Zm-8,47a16,16,0,1,1,16-16A16,16,0,0,1,200,208Z"/></svg>#100 · merged</span><span class="slide-title">Demo mode never activates in Electron (contextBridge freezes window.agentDock)</span><span class="slide-meta"><span class="mono">+18 −4 · 1 file</span><span>Mon</span></span></div>
+      </div>
+      <div class="dots"><span class="dot on"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Spacing — 4px base</h2>
+    <div class="space-row">
+      <sc-for list="{{spaces}}" as="s" hint-placeholder-count="7">
+        <div class="space-box" style="width:{{s.px}}px;height:{{s.px}}px;"></div>
+      </sc-for>
+      <span class="space-lbl">4 · 8 · 12 · 16 · 20 · 24 · 32 · 40</span>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      spaces: [4, 8, 12, 16, 20, 24, 32, 40].map((px) => ({ px })),
+    };
+  }
+}
+</script>
+</body>
+</html>
