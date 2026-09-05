@@ -714,8 +714,70 @@
     </div>
   </section>
 
+  <section id="competitive-2026">
+    <div class="section-head">
+      <span class="section-num mono">11</span>
+      <h2>Competitive positioning — addendum, September 2026</h2>
+    </div>
+    <p style="color:var(--ink-soft);max-width:760px;">Added after the plan was first drafted and after the design canvas was built, to check the plan against what shipped competitors actually do today rather than at the time of the original ten research passes. Primary sources only — vendor docs, changelogs, one peer-reviewed dataset — cited per claim below.</p>
+
+    <div class="risk-strip">
+      <span class="mark">headline</span>
+      <span>Two of the plan's three claimed differentiators shipped elsewhere in the first half of 2026. The diff-size-thesis is intuitive but not established by the best available evidence — acceptance rate tracks task type, not diff size.</span>
+    </div>
+
+    <h3 style="margin-top:28px;">Where the plan is genuinely ahead</h3>
+    <div class="cards">
+      <div class="card">
+        <div class="card-top"><h3>Refusal as an outcome</h3><span class="chip chip-ok">still unique</span></div>
+        <p style="margin:0;color:var(--ink-soft);font-size:14px;">Devin decomposes into stacks at plan time and announces the stack by name, but ships no size thresholds, no refusal condition, and no human approval of the decomposition. Pipenzo's numeric gate (≤100 / 100–400 / &gt;500 lines) with a hard refuse-and-flag branch is still unmatched — the mechanism is commoditized, the policy isn't.</p>
+      </div>
+      <div class="card">
+        <div class="card-top"><h3>Same-or-higher-tier verifier</h3><span class="chip chip-ok">undocumented elsewhere</span></div>
+        <p style="margin:0;color:var(--ink-soft);font-size:14px;">Jules' Code Critic re-flags before the user sees output, but Google never states its tier relative to the implementer. Cognition says only that they're "experimenting with routing the testing phase to different models" — no formal rule. The explicit anti-pattern (never a weaker model reviewing a stronger one) appears genuinely novel.</p>
+      </div>
+      <div class="card">
+        <div class="card-top"><h3>Per-ticket budget</h3><span class="chip chip-ok">unshipped elsewhere</span></div>
+        <p style="margin:0;color:var(--ink-soft);font-size:14px;">Copilot's spending limits (Jul 2, 2026) are org-wide; Devin's dollar quota is account-wide. A per-task budget ceiling wasn't found shipped anywhere.</p>
+      </div>
+      <div class="card">
+        <div class="card-top"><h3>Dual-audience mode</h3><span class="chip chip-wait">unvalidated</span></div>
+        <p style="margin:0;color:var(--ink-soft);font-size:14px;">No competitor targets non-developers on their own existing repos this way. GitHub Spark builds apps from natural language but doesn't do issue-to-PR against a repo you already own. Differentiated, but nobody has proven demand for it yet.</p>
+      </div>
+    </div>
+
+    <h3 style="margin-top:28px;">Where the plan is at parity, or behind</h3>
+    <table>
+      <thead><tr><th>Area</th><th>Status</th><th>Evidence</th></tr></thead>
+      <tbody>
+        <tr><td>Approval gating before publish</td><td><span class="chip chip-wait">table stakes now</span></td><td>Copilot, Cursor, and OpenHands all gate on human approval; OpenHands grades each action LOW/MEDIUM/HIGH and reasons about cumulative risk — a binary approve card is less sophisticated than the current bar.</td></tr>
+        <tr><td>Deterministic gates before LLM review</td><td><span class="chip chip-wait">parity</span></td><td>Kiro runs property-based testing against the spec; Cognition extracted repetitive verification into deterministic scripts specifically to cut flakiness.</td></tr>
+        <tr><td>Self-reported evidence</td><td><span class="chip chip-wait">weaker fix than the alternative</span></td><td>Pipenzo flags evidence as self-reported after the fact. Cognition's pre-commitment (annotate expected behavior right before acting) reduces the underlying lying instead of just labeling it.</td></tr>
+        <tr><td>EARS spec-driven refine</td><td><span class="chip chip-danger">behind</span></td><td>Kiro (GA, AWS, May 2026) already does EARS requirements.md + design.md + tasks.md, property-based spec verification, and an autonomous agent that opens PRs unattended. The read-only subagent and diff-size estimate are the only additive pieces left.</td></tr>
+        <tr><td>Cost transparency</td><td><span class="chip chip-danger">market moved the other way</span></td><td>Devin dropped ACUs for a dollar quota (Apr 2026); Copilot replaced Premium Request Units with AI Credits, 1 credit = $0.01 (Jun 1, 2026). "Headroom, not a dollar figure" now reads contrarian, defensible only on a flat subscription.</td></tr>
+        <tr><td>PR-stack maintenance</td><td><span class="chip chip-danger">no story yet</span></td><td>GitHub shipped native stacked PRs in public preview (Jul 30, 2026) with a <span class="mono">gh-stack</span> CLI and Copilot skill support; Devin handles rebasing/conflicts/CI across a stack. Pipenzo proposes the split, nothing for maintaining it after.</td></tr>
+      </tbody>
+    </table>
+
+    <h3 style="margin-top:28px;">Gaps to close</h3>
+    <p style="color:var(--ink-soft);max-width:760px;">Five confirmed and committed to the plan (see README §"Competitive gaps to close"): reposition the diff gate around refusal + GitHub's native stack primitive; add pre-commitment alongside evidence flagging; add screenshot/browser verification before MVP; reconcile the Refine step against Kiro explicitly rather than claiming it as a differentiator; risk-graded approval instead of binary.</p>
+    <p style="color:var(--ink-soft);max-width:760px;">Four more identified, deliberately left <strong>50/50</strong> — real gaps, not yet architected in, revisit once the walking skeleton exists rather than scope-creeping the MVP:</p>
+    <table>
+      <thead><tr><th>Gap</th><th>Who already ships it</th><th>Why it's 50/50, not committed</th></tr></thead>
+      <tbody>
+        <tr><td>Concurrency — parallel tickets</td><td>Devin (10+ parallel sandboxes), Kiro, Codegen (parallel cloud subagents, GA Mar 14, 2026)</td><td>The kanban visually implies parallel work; nothing in the plan architects for running more than one worktree's agent loop at once. Real gap, but adds real orchestration complexity before the single-ticket loop is even proven.</td></tr>
+        <tr><td>CI-failure auto-fix</td><td>Jules (automatic CI-failure detection + resubmission)</td><td>Currently a "Later" PR-event-reaction bullet with no design behind it. Worth doing, but depends on the publish/approval loop already working reliably first.</td></tr>
+        <tr><td>Persistent, queryable repo knowledge base</td><td>DeepWiki, Amp's Librarian</td><td>Durable beyond a single symbol graph, but unclear whether the added infra is justified at Pipenzo's target scale (single repos, JSON file store, no DB) versus a fresh symbol-graph pass per session.</td></tr>
+        <tr><td>MCP integration</td><td>Jules (Linear, Neon, Stitch servers)</td><td>Not on the plan at any tier. Unclear which MCP servers would actually matter for an issue-to-PR loop versus adding surface area for its own sake — needs a concrete use case before it's worth building.</td></tr>
+      </tbody>
+    </table>
+
+    <h3 style="margin-top:28px;">Updated adoption data</h3>
+    <p style="color:var(--ink-soft);max-width:760px;">The 55% vs. 82.6% figure from the original research is retired. Current best source: a task-stratified analysis of 7,156 agent PRs (MSR 2026 mining challenge) — Codex 77.9%, Cursor 74.5%, Claude Code 71.9%, Copilot 68.0%, Devin 61.6% merge rate. By task type: chore 84.0%, docs 82.1%, feature 66.1%, fix 66.0%, perf 55.4%. The paper does not analyze acceptance against PR size — the variance is driven by task type, not diff size, so Pipenzo's foundational small-PRs thesis remains a design bet, not a proven one. If the size thesis is meant to hold, the diff-size gate should be paired with task-type-aware routing, since task type is what the data actually shows moving the number.</p>
+  </section>
+
   <footer>
-    <div>Compiled from ten parallel research passes (landscape, AgentDock feasibility, UI framework, supporting libraries, agent orchestration &amp; review quality, PR-size strategy, feature deep-dive, architecture design) run against primary sources — vendor docs, source repos, arXiv, and maintainer discussions — not secondary "2026 roundup" content.</div>
+    <div>Compiled from ten parallel research passes (landscape, AgentDock feasibility, UI framework, supporting libraries, agent orchestration &amp; review quality, PR-size strategy, feature deep-dive, architecture design) run against primary sources — vendor docs, source repos, arXiv, and maintainer discussions — not secondary "2026 roundup" content. Section 11 added September 2026 as a follow-up competitive pass against shipped products.</div>
     <div class="sources">
       <a href="https://github.com/luminik-io/alfred">luminik-io/alfred</a>
       <a href="https://github.com/sortie-ai/sortie">sortie-ai/sortie</a>
@@ -732,6 +794,22 @@
       <a href="https://code.claude.com/docs/en/agent-sdk/subagents">Claude Agent SDK subagents</a>
       <a href="https://arxiv.org/pdf/2601.10112">Repository Intelligence Graph</a>
       <a href="https://github.com/jortega0033/agentdock">jortega0033/agentdock</a>
+      <a href="https://docs.github.com/en/copilot/concepts/agents/coding-agent/about-coding-agent">GitHub Copilot coding agent docs</a>
+      <a href="https://github.blog/changelog/month/07-2026/">GitHub Changelog, Jul 2026 (stacked PRs)</a>
+      <a href="https://github.blog/changelog/2026-09-01-copilot-code-review-can-now-approve-pull-requests/">Copilot code review can now approve PRs</a>
+      <a href="https://docs.github.com/copilot/concepts/copilot-billing/understanding-and-managing-requests-in-copilot">GitHub Copilot billing — AI Credits</a>
+      <a href="https://docs.devin.ai/work-with-devin/stacked-prs">Devin Docs — Stacked PRs</a>
+      <a href="https://docs.devin.ai/work-with-devin/devin-review">Devin Review docs</a>
+      <a href="https://cognition.com/blog/testing-development">Cognition — Verifying Agentic Development at Scale</a>
+      <a href="https://developers.googleblog.com/en/meet-jules-sharpest-critic-and-most-valuable-ally/">Google — Meet Jules' sharpest critic</a>
+      <a href="https://jules.google/docs/changelog/">Jules changelog</a>
+      <a href="https://kiro.dev/docs/specs/feature-specs/">Kiro Docs — Feature Specs</a>
+      <a href="https://docs.openhands.dev/sdk/guides/security">OpenHands Docs — Security &amp; Action Confirmation</a>
+      <a href="https://cursor.com/docs/cloud-agent/api/endpoints">Cursor Docs — Cloud Agents API</a>
+      <a href="https://graphite.com/blog/introducing-graphite-agent-and-pricing">Graphite Agent</a>
+      <a href="https://arxiv.org/html/2602.08915v2">arXiv 2602.08915 — per-agent PR acceptance rates</a>
+      <a href="https://www.techrepublic.com/article/news-ai-coding-agents-microsoft-pull-requests/">Microsoft study — merged PR lift</a>
+      <a href="https://www.vibekanban.com/blog/shutdown">Vibe Kanban — Bloop shutdown</a>
     </div>
   </footer>
 

@@ -8,7 +8,7 @@ Status: pre-implementation. This repo currently holds the product research, arch
 
 ## Why this exists, and why it's honest about its limits
 
-Autonomous issue-to-PR agents are a crowded, mixed-results category: published PR acceptance rates for agentic PRs sit around 55% vs. 82.6% for humans across ~930K PRs studied, and several direct competitors (Sweep, Terragon, Bloop, Vibe Kanban, Roo Code) have shut down or been discontinued. Pipenzo doesn't pretend otherwise — it exists to explore the problem properly (small PRs by construction, honest review gates, no fabricated evidence) rather than to out-market that category. See [`docs/research-report.html`](docs/research-report.html) for the full competitive/technical research this is built on (landscape, stack choices, model routing, PR-size strategy, feature plan, build order — ten research passes against primary sources).
+Autonomous issue-to-PR agents are a crowded category, and the market moved fast in 2026. Updated PR-acceptance data (7,156 agent PRs, MSR 2026 mining challenge, [arXiv 2602.08915](https://arxiv.org/html/2602.08915v2)) puts per-agent merge rates at Codex 77.9%, Cursor 74.5%, Claude Code 71.9%, Copilot 68.0%, Devin 61.6% — the earlier 55%/82.6% figure is retired. Acceptance varies by *task type* (chore 84.0%, docs 82.1%, feature 66.1%, perf 55.4%), not by diff size — Pipenzo's small-PRs-by-construction thesis is intuitive but not yet established by evidence; several direct competitors (Sweep, Terragon, Roo Code) shut down anyway, and Bloop's Vibe Kanban is now community-maintained. Pipenzo doesn't pretend otherwise — it exists to explore the problem properly (small PRs by construction, honest review gates, no fabricated evidence) rather than to out-market that category. See [`docs/research-report.html`](docs/research-report.html) for the original research (landscape, stack choices, model routing, PR-size strategy, feature plan, build order) and its **Competitive positioning addendum** for a September 2026 gap analysis against shipped competitors (Devin, Copilot, Cursor, OpenHands, Kiro, Jules, Codegen, Graphite).
 
 ## How it works
 
@@ -56,6 +56,23 @@ This gate runs at Refine, before any code is written.
 - Steer mid-run; Stop preserves commits
 - PR-event reactions (CI failure, merge conflict)
 - Local, human-gated lesson memory
+
+## Competitive gaps to close (Sept 2026 research)
+
+A deep-research pass against shipped competitors (Devin, GitHub Copilot, Cursor, OpenHands, Kiro, Jules, Codegen, Graphite) found the plan ahead on a few points (refusal-as-outcome at the diff gate, the same-or-higher-tier adversarial verifier rule, per-ticket budget, dual-audience mode) and at parity or behind on others (approval gating is now table stakes; Kiro already ships EARS spec-driven dev + property-based verification, so the Refine step is a subset of Kiro's, not ahead of it; the market moved toward dollar-quota cost display, away from abstract headroom). Full writeup: **Competitive positioning addendum** in [`docs/research-report.html`](docs/research-report.html).
+
+Five gaps confirmed and committed to the plan:
+1. **Reposition the diff-size gate** around refusal + numeric thresholds + human-approved decomposition, and build any PR-stack handling on GitHub's native stacked-PRs primitive (public preview, Jul 2026) rather than inventing one.
+2. **Pre-commitment on verification evidence** — have the implementer annotate its expected outcome right before an action, not just flag self-reported evidence after the fact (Cognition's fix for the same lying problem, cheaper and more effective than flagging alone).
+3. **Screenshot/browser verification** before MVP — for the non-developer audience especially, "here's a screenshot of it working" is more legible than a text evidence block; Devin and Codegen already attach these.
+4. **Reconcile the Refine step against Kiro explicitly** in docs — stop presenting EARS-notation spec-driven refine as a differentiator; it isn't one against a GA AWS product. The read-only subagent and diff-size estimate are the actual additive pieces.
+5. **Risk-graded approval, not binary** — OpenHands assigns LOW/MEDIUM/HIGH per action and reasons about cumulative risk; a single approve/reject card is less sophisticated than the current bar.
+
+Four more gaps identified but not yet committed either way (50-50 — worth prototyping, not yet architected in, revisit once the walking skeleton exists):
+- **Concurrency** — Devin/Kiro/Codegen run 10+ parallel sandboxed tickets; Pipenzo's kanban visually implies parallel work but nothing in the plan architects for running more than one worktree's agent loop at a time.
+- **CI-failure auto-fix** — Jules ships automatic CI-failure detection and resubmission; currently only a "Later" PR-event-reaction item here, unscoped.
+- **Persistent, queryable repo knowledge base** — DeepWiki and Amp's Librarian give agents durable, queryable repo understanding beyond a single symbol graph; unclear yet whether this is worth the added infra for Pipenzo's scale.
+- **MCP integration** — Jules ships MCP servers (Linear, Neon, Stitch); not on the plan at any tier, and it's unclear which MCP servers would actually matter for an issue-to-PR loop vs. adding surface area for its own sake.
 
 ## Stack
 
