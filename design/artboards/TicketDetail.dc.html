@@ -12,9 +12,9 @@
   /* ===== pipenzo base (identical in every artboard) ===== */
   :root{
     --bg:#121212; --surface:#181818; --surface-2:#1f1f1f; --surface-3:#282828; --surface-4:#333333;
-    --text:#ffffff; --text-soft:#b3b3b3; --text-faint:#7a7a7a;
+    --text:#ffffff; --text-soft:#b3b3b3; --text-faint:#9c9c9c;
     --accent:#3fb950; --accent-fg:#0a1a0d;
-    --ok:#3fb950; --ok-fg:#0a1a0d; --warn:#d29922; --warn-fg:#1f1400; --danger:#f85149; --danger-fg:#2a0705;
+    --ok:#3fb950; --ok-fg:#0a1a0d; --warn:#d29922; --warn-fg:#1f1400; --danger:#f85149; --danger-fg:#2a0705; --danger-text:#ff7b72;
     --r:8px; --r-sm:6px; --pill:9999px;
     --shadow:0 8px 24px rgba(0,0,0,0.5); --shadow-sm:0 4px 12px rgba(0,0,0,0.4);
     --ease:120ms ease;
@@ -24,21 +24,27 @@
   a{color:var(--accent);} a:hover{color:var(--accent);text-decoration-thickness:2px;}
   .mono{font-family:'IBM Plex Mono',monospace;}
   .brand{display:flex;align-items:center;gap:8px;}
-  .logo-mark{width:28px;height:28px;border-radius:50%;background:var(--accent);color:var(--accent-fg);display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:15px;line-height:1;flex-shrink:0;}
+  .logo-mark{width:28px;height:28px;border-radius:50%;background:var(--accent);color:var(--accent-fg);display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:16px;line-height:1;flex-shrink:0;}
   .wordmark{font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:16px;letter-spacing:-0.01em;line-height:1;}
   .icon{width:16px;height:16px;flex-shrink:0;}
   .icon-sm{width:14px;height:14px;flex-shrink:0;}
   .icon-lg{width:20px;height:20px;flex-shrink:0;}
+  .icon-xs{width:12px;height:12px;flex-shrink:0;}
   .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:32px;padding:0 16px;font-family:'IBM Plex Sans',sans-serif;font-size:13px;font-weight:700;line-height:1;white-space:nowrap;border-radius:var(--pill);border:none;background:var(--surface-3);color:var(--text);cursor:pointer;transition:filter var(--ease),transform var(--ease),background-color var(--ease),color var(--ease);}
   .btn:hover{filter:brightness(1.2);}
   .btn:active{filter:brightness(0.92);transform:scale(0.98);}
   .btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+  .icon-btn:focus-visible,.seg button:focus-visible,.toggle:focus-visible,.numctl button:focus-visible,
+  .nav-item:focus-visible,.ws:focus-visible,.sb-user:focus-visible,.cmdk:focus-visible,
+  .notice .n-x:focus-visible,.notice .n-act span:focus-visible,.pc-toggle:focus-visible,
+  .ai-undo:focus-visible,.kid .ext:focus-visible,.shot:focus-visible,.check:focus-visible,
+  .radio:focus-visible,.card:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:var(--r-sm);}
   .btn.primary{background:var(--accent);color:var(--accent-fg);}
   .btn.primary:hover{filter:brightness(1.08);transform:scale(1.03);}
   .btn.primary:active{filter:brightness(0.94);transform:scale(0.98);}
   .btn.ghost{background:transparent;color:var(--text-soft);}
   .btn.ghost:hover{filter:none;color:var(--text);background:var(--surface-3);}
-  .btn.danger{color:var(--danger);}
+  .btn.danger{color:var(--danger-text);}
   .btn.danger:hover{filter:none;background:var(--danger);color:var(--danger-fg);}
   .btn.lg{height:40px;padding:0 24px;font-size:14px;}
   .btn.sm{height:28px;padding:0 12px;font-size:12px;}
@@ -57,7 +63,7 @@
   .field.invalid,.field.invalid:focus{outline:2px solid var(--danger);}
   .f-lbl{display:block;font-size:12px;font-weight:700;color:var(--text-soft);margin-bottom:6px;line-height:1;}
   .f-help{display:block;font-size:12px;color:var(--text-faint);margin-top:6px;line-height:1.4;}
-  .f-err{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--danger);margin-top:6px;line-height:1.4;}
+  .f-err{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--danger-text);margin-top:6px;line-height:1.4;}
   .f-row{display:flex;align-items:center;justify-content:space-between;gap:16px;}
   .select-wrap{position:relative;display:block;}
   .select-wrap .field{appearance:none;-webkit-appearance:none;padding-right:36px;cursor:pointer;}
@@ -75,12 +81,12 @@
   .kbd{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:4px;background:var(--surface-4);color:var(--text-soft);font-family:'IBM Plex Mono',monospace;font-size:11px;line-height:1;}
   .avatar{width:32px;height:32px;border-radius:50%;background:var(--surface-3);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--text);flex-shrink:0;}
   .seg{display:flex;gap:2px;background:var(--surface-2);border-radius:var(--pill);padding:4px;}
-  .seg button{height:24px;padding:0 12px;border:none;border-radius:var(--pill);background:transparent;font-family:'IBM Plex Sans',sans-serif;font-size:12px;font-weight:700;line-height:1;cursor:pointer;color:var(--text-faint);transition:color var(--ease),background-color var(--ease);}
+  .seg button{height:32px;padding:0 12px;border:none;border-radius:var(--pill);background:transparent;font-family:'IBM Plex Sans',sans-serif;font-size:12px;font-weight:700;line-height:1;cursor:pointer;color:var(--text-faint);transition:color var(--ease),background-color var(--ease);}
   .seg button:hover{color:var(--text);}
   .seg button.active{color:var(--text);background:var(--surface-4);}
   .topbar{display:flex;align-items:center;justify-content:space-between;height:64px;padding:0 24px;background:var(--bg);flex-shrink:0;}
   .dialog{background:var(--surface-3);border-radius:var(--r);padding:24px;display:flex;flex-direction:column;gap:16px;box-shadow:var(--shadow);}
-  .dialog .field{background:var(--surface-4);} .dialog .field:hover,.dialog .field:focus{background:#3e3e3e;}
+  .dialog .field{background:var(--surface-4);} .dialog .field:hover,.dialog .field:focus{background:var(--surface-4);}
   .dialog .btn:not(.primary){background:var(--surface-4);}
   /* --- notices: banner (page-level, persistent) · notice (inline, contextual) · toast (transient, corner) --- */
   .banner{display:flex;align-items:center;gap:12px;min-height:44px;padding:8px 16px 8px 20px;background:var(--surface-2);font-size:13px;color:var(--text-soft);line-height:1.4;}
@@ -95,7 +101,7 @@
   .notice .n-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;}
   .notice .n-title{font-weight:700;color:var(--text);line-height:1.3;}
   .notice .n-act{display:flex;gap:12px;margin-top:6px;}
-  .notice .n-act span{font-weight:700;color:var(--text);cursor:pointer;}
+  .notice .n-act span{font-weight:700;color:var(--text);cursor:pointer;display:inline-flex;min-height:24px;align-items:center;}
   .notice .n-x{width:24px;height:24px;border-radius:50%;border:none;background:transparent;color:var(--text-faint);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;margin:-2px -2px 0 0;transition:background-color var(--ease),color var(--ease);}
   .notice .n-x:hover{background:var(--surface-4);color:var(--text);}
   .toast{display:flex;align-items:center;gap:12px;width:360px;padding:12px 12px 12px 16px;border-radius:var(--r);background:var(--surface-3);box-shadow:var(--shadow);font-size:13px;color:var(--text);line-height:1.35;}
@@ -119,13 +125,13 @@
   .ws-sub{font-size:11px;color:var(--text-faint);line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .ws-caret{color:var(--text-faint);}
   .nav-group{display:flex;flex-direction:column;gap:2px;margin-top:12px;}
-  .nav-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-faint);line-height:1;padding:6px 10px 8px;}
+  .nav-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-faint);line-height:1;padding:8px 10px;}
   .nav-item{display:flex;align-items:center;gap:10px;height:36px;padding:0 10px;border-radius:var(--r-sm);font-size:13px;font-weight:700;color:var(--text-soft);cursor:pointer;white-space:nowrap;transition:background-color var(--ease),color var(--ease);}
   .nav-item:hover{background:var(--surface-2);color:var(--text);}
   .nav-item.active{background:var(--surface-3);color:var(--text);}
   .nav-item .icon{color:inherit;}
   .nav-count{margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:400;color:var(--text-faint);line-height:1;}
-  .nav-count.hot{color:var(--danger);font-weight:700;}
+  .nav-count.hot{color:var(--danger-text);font-weight:700;}
   .sidebar.collapsed .nav-item{justify-content:center;padding:0;}
   .sb-foot{margin-top:auto;display:flex;flex-direction:column;gap:2px;}
   .sb-user{display:flex;align-items:center;gap:10px;height:44px;padding:0 6px;border-radius:var(--r-sm);cursor:pointer;}
@@ -146,12 +152,12 @@
   /* --- risk grade: LOW / MEDIUM / HIGH. Tinted, mono, leading dot — a grade never reads as an agent state (those stay filled) --- */
   .chip-risk{font-family:'IBM Plex Mono',monospace;letter-spacing:0.06em;gap:6px;}
   .chip-risk::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0;}
-  .chip-risk.low{background:rgba(63,185,80,0.14);color:var(--ok);}
-  .chip-risk.med{background:rgba(210,153,34,0.16);color:var(--warn);}
-  .chip-risk.high{background:rgba(248,81,73,0.16);color:var(--danger);}
+  .chip-risk.low{background:#1d3320;color:#56d364;}
+  .chip-risk.medium{background:#33280f;color:#e3b341;}
+  .chip-risk.high{background:#3a1e1d;color:#ff7b72;}
   .chip-wait{background:var(--surface-3);color:var(--warn);}
-  .chip-ci{background:var(--danger-fg);color:var(--danger);}
-  .self-tag{display:inline-flex;align-items:center;height:16px;padding:0 6px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-soft);background:var(--surface-3);border-radius:var(--pill);margin-left:6px;vertical-align:1px;white-space:nowrap;}
+  .chip-ci{background:var(--danger-fg);color:var(--danger-text);}
+  .self-tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-soft);background:var(--surface-3);border-radius:var(--pill);margin-left:6px;vertical-align:1px;white-space:nowrap;}
   /* --- passive LOW line: auto-proceeded and logged, no card, no chip, no notification --- */
   .low-line{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-faint);line-height:1.3;min-width:0;}
   .low-line .mono{font-size:11px;flex-shrink:0;}
@@ -161,17 +167,20 @@
   .pc-head{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--surface-3);font-size:12px;font-weight:700;color:var(--text);line-height:1;}
   .pc-head .grow{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:400;color:var(--text-soft);}
   .pc-head .grow b{color:var(--text);font-weight:700;}
-  .pc-toggle{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;color:var(--text-faint);cursor:pointer;white-space:nowrap;transition:color var(--ease);}
+  .pc-toggle{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;color:var(--text-faint);cursor:pointer;white-space:nowrap;transition:color var(--ease);min-height:24px;padding:0 6px;}
   .pc-toggle:hover{color:var(--text);}
   .pc-row{display:grid;grid-template-columns:64px minmax(0,1fr);gap:12px;padding:8px 12px;background:var(--surface-2);font-size:12px;line-height:1.45;color:var(--text-soft);}
   .pc-k{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);line-height:1.6;}
   .pc-row .mono{font-size:12px;color:var(--text);}
   .pc-row.got{color:var(--text);background:var(--surface-3);}
-  .pc-row.got .pc-k{color:var(--danger);}
+  .pc-row.got .pc-k{color:var(--danger-text);}
   .pc-row.got.ok .pc-k{color:var(--ok);}
   .pc-row.got.part .pc-k{color:var(--warn);}
+  .pc-row.got .pc-k::before{content:'✕ ';}
+  .pc-row.got.ok .pc-k::before{content:'✓ ';}
+  .pc-row.got.part .pc-k::before{content:'~ ';}
   /* --- approval, compact (MEDIUM): inline in the stream, carries the pre-commitment, Undo instead of a hard reject, notifies only after 60 s --- */
-  .approval-inline{display:flex;flex-direction:column;gap:10px;padding:12px 14px;border-radius:var(--r);background:var(--surface-2);}
+  .approval-inline{display:flex;flex-direction:column;gap:10px;padding:12px;border-radius:var(--r);background:var(--surface-2);}
   .ai-head{display:flex;align-items:center;gap:10px;font-size:13px;font-weight:700;line-height:1.3;}
   .ai-head .grow{flex:1;min-width:0;}
   .ai-head .mono{font-weight:400;font-size:12px;color:var(--text-faint);}
@@ -180,11 +189,12 @@
   .ai-note{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-faint);line-height:1.3;min-width:0;}
   .ai-note .icon-sm{flex-shrink:0;}
   .ai-acts{display:flex;gap:6px;flex-shrink:0;}
+  .ai-acts .btn{height:32px;}
   .ai-done{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:var(--r);background:var(--surface-2);font-size:12px;color:var(--text-soft);line-height:1.3;}
   .ai-done .d-ic{width:20px;height:20px;border-radius:50%;background:var(--ok);color:var(--ok-fg);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;}
   .ai-done .grow{flex:1;min-width:0;}
   .ai-done b{color:var(--text);font-weight:700;}
-  .ai-undo{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:700;color:var(--text);cursor:pointer;white-space:nowrap;}
+  .ai-undo{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:700;color:var(--text);cursor:pointer;white-space:nowrap;min-height:24px;padding:0 6px;}
   .ai-undo .mono{font-weight:400;color:var(--text-faint);font-size:11px;}
   /* --- cumulative risk strip: unreviewed LOW actions and mispredictions fill it; crossing the threshold promotes the next MEDIUM to HIGH --- */
   .risk-strip{display:flex;flex-direction:column;gap:10px;}
@@ -202,15 +212,15 @@
   .shot{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;cursor:pointer;}
   .shot-frame{border-radius:var(--r-sm);overflow:hidden;background:var(--surface-4);aspect-ratio:16/10;display:flex;flex-direction:column;transition:filter var(--ease);}
   .shot:hover .shot-frame{filter:brightness(1.15);}
-  .shot-bar{height:10px;background:var(--surface-3);display:flex;align-items:center;gap:3px;padding:0 5px;flex-shrink:0;}
+  .shot-bar{height:10px;background:var(--surface-3);display:flex;align-items:center;gap:4px;padding:0 4px;flex-shrink:0;}
   .shot-bar i{width:4px;height:4px;border-radius:50%;background:var(--text-faint);display:block;}
   .shot-bar .url{flex:1;height:4px;border-radius:2px;background:var(--surface-4);margin-left:3px;}
   .shot-body{flex:1;position:relative;background:var(--surface-2);overflow:hidden;}
   .ph{position:absolute;background:var(--surface-3);border-radius:2px;}
-  .ph.hi{background:var(--surface-4);} .ph.acc{background:var(--accent);} .ph.bad{background:var(--danger);} .ph.txt{background:var(--text-faint);opacity:0.5;}
+  .ph.hi{background:var(--surface-4);} .ph.acc{background:var(--accent);} .ph.bad{background:var(--danger);} .ph.txt{background:var(--text-faint);opacity:0.85;}
   .shot-cap{display:flex;align-items:center;justify-content:space-between;gap:6px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);line-height:1;}
   .shot-cap b{color:var(--text-soft);font-weight:700;font-family:'IBM Plex Sans',sans-serif;}
-  .shot.lg{cursor:default;} .shot.lg .shot-frame{border-radius:var(--r);} .shot.lg .shot-bar{height:20px;padding:0 8px;gap:5px;} .shot.lg .shot-bar i{width:7px;height:7px;} .shot.lg .shot-bar .url{height:7px;margin-left:6px;}
+  .shot.lg{cursor:default;} .shot.lg .shot-frame{border-radius:var(--r);} .shot.lg .shot-bar{height:20px;padding:0 8px;gap:6px;} .shot.lg .shot-bar i{width:8px;height:8px;} .shot.lg .shot-bar .url{height:7px;margin-left:6px;}
   .shot.lg:hover .shot-frame{filter:none;}
   .shot-prov{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-faint);line-height:1.3;}
   .shot-prov .icon-sm{flex-shrink:0;}
@@ -219,7 +229,7 @@
   .numctl{display:inline-flex;align-items:center;gap:2px;height:32px;padding:2px;border-radius:var(--pill);background:var(--surface-3);}
   .numctl button{width:28px;height:28px;border-radius:50%;border:none;background:transparent;color:var(--text-soft);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:background-color var(--ease),color var(--ease);}
   .numctl button:hover{background:var(--surface-4);color:var(--text);}
-  .numctl button:disabled{opacity:0.35;cursor:default;} .numctl button:disabled:hover{background:transparent;color:var(--text-soft);}
+  .numctl button:disabled{opacity:0.6;cursor:default;} .numctl button:disabled:hover{background:transparent;color:var(--text-soft);}
   .numctl .val{min-width:44px;text-align:center;font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:700;line-height:1;}
   .numctl .val small{font-size:11px;font-weight:400;color:var(--text-faint);}
   .lane-cap{display:inline-flex;align-items:center;gap:6px;height:20px;padding:0 8px;border-radius:var(--pill);background:var(--surface-2);font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-soft);line-height:1;white-space:nowrap;}
@@ -237,7 +247,7 @@
   .kid .t.done{color:var(--text-faint);}
   .kid-ic{width:16px;height:16px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;background:var(--surface-4);color:var(--text-faint);}
   .kid-ic.done{background:var(--ok);color:var(--ok-fg);} .kid-ic.run{background:var(--warn);color:var(--warn-fg);}
-  .kid .ext{color:var(--text-faint);display:inline-flex;cursor:pointer;transition:color var(--ease);} .kid .ext:hover{color:var(--text);}
+  .kid .ext{color:var(--text-faint);display:inline-flex;cursor:pointer;transition:color var(--ease);width:24px;height:24px;border-radius:50%;align-items:center;justify-content:center;} .kid .ext:hover{color:var(--text);}
   /* --- ci-failed: a failing check, one forked fix attempt (session.fork), lineage back to the original; the fix re-enters the human push gate --- */
   .ci-block{display:flex;flex-direction:column;gap:2px;border-radius:var(--r-sm);overflow:hidden;}
   .ci-row{display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--surface-2);font-size:12px;color:var(--text-soft);line-height:1.35;}
@@ -247,19 +257,27 @@
   .ci-ic{width:20px;height:20px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;background:var(--surface-4);color:var(--text-soft);}
   .ci-ic.bad{background:var(--danger);color:var(--danger-fg);} .ci-ic.ok{background:var(--ok);color:var(--ok-fg);} .ci-ic.fork{background:var(--surface-3);color:var(--text);}
   .ci-log{font-family:'IBM Plex Mono',monospace;font-size:12px;line-height:1.5;padding:8px 12px;background:var(--surface-3);color:var(--text-soft);white-space:pre-wrap;}
-  .ci-log .bad{color:var(--danger);}
-  .ci-lineage{display:flex;align-items:center;gap:6px;padding:7px 12px;background:var(--surface-3);font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);line-height:1;}
+  .ci-log .bad{color:var(--danger-text);}
+  .ci-lineage{display:flex;align-items:center;gap:6px;padding:8px 12px;background:var(--surface-3);font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);line-height:1.4;}
   .ci-lineage .icon-sm{color:var(--text-faint);flex-shrink:0;}
   .ci-lineage b{color:var(--text-soft);font-weight:700;}
+  @media (prefers-reduced-motion: reduce){
+    *,*::before,*::after{animation-duration:0.01ms !important;animation-iteration-count:1 !important;
+      transition-duration:0.01ms !important;scroll-behavior:auto !important;}
+    .btn:hover,.btn.primary:hover,.btn:active,.btn.primary:active,.icon-btn:active{transform:none !important;}
+    .step.await{box-shadow:0 0 0 2px var(--warn-fg);}
+    .evt-ic.live{box-shadow:0 0 0 2px var(--accent-fg);}
+  }
   /* ===== screen ===== */
   .shell{height:900px;}
   .header{padding:0 24px 16px;display:flex;flex-direction:column;gap:12px;flex-shrink:0;background:var(--bg);}
   .h-id{font-family:'IBM Plex Mono',monospace;color:var(--text-faint);font-size:12px;line-height:1;}
-  .h-title{font-size:20px;font-weight:700;letter-spacing:-0.01em;line-height:1.25;}
+  .h-title{font-size:20px;font-weight:700;letter-spacing:-0.01em;line-height:1.25;text-wrap:balance;}
   .step-row{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:4px;}
   .stepper{display:flex;gap:4px;align-items:center;min-width:0;overflow:hidden;}
-  .step{display:inline-flex;align-items:center;gap:8px;height:32px;padding:0 14px 0 6px;font-family:'IBM Plex Sans',sans-serif;font-size:12px;font-weight:700;line-height:1;border:none;border-radius:var(--pill);cursor:pointer;background:transparent;color:var(--text-faint);transition:background-color var(--ease),color var(--ease);}
+  .step{display:inline-flex;align-items:center;gap:8px;height:32px;padding:0 12px 0 6px;font-family:'IBM Plex Sans',sans-serif;font-size:12px;font-weight:700;line-height:1;border:none;border-radius:var(--pill);cursor:pointer;background:transparent;color:var(--text-faint);transition:background-color var(--ease),color var(--ease);}
   .step:hover{background:var(--surface-2);color:var(--text);}
+  .step:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:var(--r-sm);}
   .step-n{width:20px;height:20px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:11px;background:var(--surface-3);color:var(--text-soft);}
   .step.done{color:var(--text-soft);}
   .step.done .step-n{background:var(--surface-4);color:var(--text);}
@@ -274,7 +292,7 @@
   .step.fail{background:var(--danger);color:var(--danger-fg);}
   .step.fail:hover{background:var(--danger);color:var(--danger-fg);filter:brightness(1.06);}
   .step.fail .step-n{background:var(--danger-fg);color:var(--danger);}
-  .step-hint{display:inline-flex;align-items:center;gap:6px;margin-left:8px;font-size:12px;color:var(--warn);font-weight:700;line-height:1;white-space:nowrap;}
+  .step-hint{display:inline-flex;align-items:center;gap:6px;margin-left:8px;font-size:12px;color:var(--warn);font-weight:700;line-height:1;white-space:nowrap;min-height:24px;}
   .step-hint.quiet{color:var(--text-faint);font-weight:400;}
   .switch{display:flex;align-items:center;gap:10px;flex-shrink:0;}
   .switch .seg button{font-family:'IBM Plex Mono',monospace;}
@@ -304,6 +322,7 @@
   /* subagent output: collapsed by default, one row; expands to a mono transcript */
   .sub-row{display:inline-flex;align-items:center;gap:8px;margin-top:6px;height:28px;padding:0 12px 0 8px;border-radius:var(--pill);background:var(--surface-2);font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-soft);cursor:pointer;align-self:flex-start;transition:background-color var(--ease),color var(--ease);}
   .sub-row:hover{background:var(--surface-3);color:var(--text);}
+  .sub-row:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:var(--r-sm);}
   .sub-row .icon-sm{color:var(--text-faint);transition:transform var(--ease);}
   .sub-row.open .icon-sm{transform:rotate(90deg);}
   .sub-lines{display:flex;flex-direction:column;gap:2px;margin-top:6px;padding:10px 12px;border-radius:var(--r-sm);background:var(--surface-2);font-family:'IBM Plex Mono',monospace;font-size:12px;line-height:1.5;color:var(--text-soft);white-space:pre-wrap;}
@@ -313,9 +332,9 @@
   .kv{display:flex;justify-content:space-between;align-items:center;font-size:13px;line-height:1;gap:12px;}
   .kv .k{color:var(--text-soft);white-space:nowrap;}
   .kv .v{font-family:'IBM Plex Mono',monospace;font-size:12px;text-align:right;}
-  .kv .v.warn{color:var(--warn);} .kv .v.danger{color:var(--danger);} .kv .v.faint{color:var(--text-faint);}
+  .kv .v.warn{color:var(--warn);} .kv .v.danger{color:var(--danger-text);} .kv .v.faint{color:var(--text-faint);}
   .kv .select-wrap{width:150px;}
-  .kv .select-wrap .field{height:28px;padding:4px 32px 4px 10px;font-size:12px;line-height:20px;background:var(--surface-3);}
+  .kv .select-wrap .field{height:28px;padding:4px 32px 4px 12px;font-size:12px;line-height:20px;background:var(--surface-3);}
   .headroom-bar{height:4px;border-radius:var(--pill);background:var(--surface-3);overflow:hidden;}
   .headroom-fill{height:100%;background:var(--accent);border-radius:var(--pill);}
   /* HIGH: the full approval card — same anatomy as ApprovalPrompt, inline at the end of the stream */
@@ -326,25 +345,25 @@
   .approval-ic.warn{background:var(--warn);color:var(--warn-fg);}
   .approval-ic.quiet{background:var(--surface-4);color:var(--text);}
   .approval-ic.ok{background:var(--ok);color:var(--ok-fg);}
-  .approval-title{font-size:14px;font-weight:700;line-height:1.3;}
-  .approval-sub{display:block;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);line-height:1;margin-top:5px;}
+  .approval-title{font-size:14px;font-weight:700;line-height:1.3;text-wrap:pretty;}
+  .approval-sub{display:block;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);line-height:1.4;margin-top:4px;}
   .approval-p{margin:0;font-size:13px;color:var(--text-soft);line-height:1.45;}
   .approval-cmd{font-family:'IBM Plex Mono',monospace;font-size:12px;line-height:20px;background:var(--surface-3);padding:8px 12px;border-radius:var(--r-sm);color:var(--text-soft);white-space:pre-wrap;}
   .approval-card .pc-head{background:var(--surface-4);} .approval-card .pc-row{background:var(--surface-3);}
   .approval-actions{display:flex;gap:8px;}
   .approval-actions .btn{flex:1;}
-  .approval-foot{display:flex;align-items:center;gap:8px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);line-height:1;}
+  .approval-foot{display:flex;align-items:center;gap:8px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);line-height:1.4;}
   .approval-foot .icon-sm{color:var(--warn);}
-  .req{font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:400;color:var(--danger);margin-left:6px;}
+  .req{font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:400;color:var(--danger-text);margin-left:6px;}
   /* stack approval: accept / reorder / reject; after accept, a read-only child list that links out — maintenance is GitHub's */
   .stack-list{display:flex;flex-direction:column;gap:2px;}
   .stack-row{display:flex;align-items:center;gap:12px;padding:8px 8px 8px 12px;background:var(--surface-3);border-radius:var(--r-sm);}
   .stack-row .split-n{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);flex-shrink:0;width:24px;}
   .s-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;}
-  .s-title{font-size:13px;font-weight:700;line-height:1.3;}
+  .s-title{font-size:13px;font-weight:700;line-height:1.3;text-wrap:pretty;}
   .s-meta{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);line-height:1;}
-  .s-ctl{display:flex;gap:2px;flex-shrink:0;}
-  .s-ctl .icon-btn{width:24px;height:24px;background:var(--surface-4);}
+  .s-ctl{display:flex;gap:4px;flex-shrink:0;}
+  .s-ctl .icon-btn{width:28px;height:28px;background:var(--surface-4);}
   .approval-card .kids .kid{background:var(--surface-3);}
   .stack-note{display:flex;align-items:flex-start;gap:8px;font-size:12px;color:var(--text-faint);line-height:1.4;}
   .stack-note .icon-sm{flex-shrink:0;margin-top:1px;}
@@ -360,36 +379,37 @@
   .split-row{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-soft);line-height:1.3;}
   .split-row .mono{margin-left:auto;font-size:11px;color:var(--text-faint);flex-shrink:0;}
   .split-n{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);flex-shrink:0;}
-  .r-link{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:700;color:var(--text-soft);cursor:pointer;transition:color var(--ease);}
+  .r-link{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:700;color:var(--text-soft);cursor:pointer;transition:color var(--ease);min-height:24px;}
   .r-link:hover{color:var(--text);}
+  .r-link:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:var(--r-sm);}
   .r-link.faint{color:var(--text-faint);font-weight:400;}
   .hide{display:none !important;}
-  .pc-toggle.pinned{cursor:default;color:var(--danger);}
+  .pc-toggle.pinned{cursor:default;color:var(--danger-text);}
 </style>
 </helmet>
 <div class="shell">
   <div class="sidebar {{sidebarCls}}">
     <div class="brand"><div class="logo-mark">p</div><span class="wordmark">pipenzo</span></div>
-    <div class="ws">
+    <div class="ws" tabindex="0">
       <span class="ws-ic">JO</span>
       <span class="ws-text"><span class="ws-name">jortega0033/agentdock</span><span class="ws-sub">main · 3 repos connected</span></span>
       <svg class="icon ws-caret" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M181.66,170.34a8,8,0,0,1,0,11.32l-48,48a8,8,0,0,1-11.32,0l-48-48a8,8,0,0,1,11.32-11.32L128,212.69l42.34-42.35A8,8,0,0,1,181.66,170.34Zm-96-84.68L128,43.31l42.34,42.35a8,8,0,0,0,11.32-11.32l-48-48a8,8,0,0,0-11.32,0l-48,48A8,8,0,0,0,85.66,85.66Z"/></svg>
     </div>
     <div class="nav-group">
       <span class="nav-title">Work</span>
-      <div class="nav-item active"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M216,48H40a8,8,0,0,0-8,8V208a16,16,0,0,0,16,16H88a16,16,0,0,0,16-16V160h48v16a16,16,0,0,0,16,16h40a16,16,0,0,0,16-16V56A8,8,0,0,0,216,48ZM88,208H48V128H88Zm0-96H48V64H88Zm64,32H104V64h48Zm56,32H168V128h40Zm0-64H168V64h40Z"/></svg><span class="nav-lbl">Board</span><span class="nav-count">7</span></div>
-      <div class="nav-item"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M188,88a27.75,27.75,0,0,0-12,2.71V60a28,28,0,0,0-41.36-24.6A28,28,0,0,0,80,44v6.71A27.75,27.75,0,0,0,68,48,28,28,0,0,0,40,76v76a88,88,0,0,0,176,0V116A28,28,0,0,0,188,88Zm12,64a72,72,0,0,1-144,0V76a12,12,0,0,1,24,0v44a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v68a8,8,0,0,0,16,0V60a12,12,0,0,1,24,0v68.67A48.08,48.08,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V116a12,12,0,0,1,24,0Z"/></svg><span class="nav-lbl">Needs me</span><span class="nav-count hot">2</span></div>
-      <div class="nav-item"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M136,80v43.47l36.12,21.67a8,8,0,0,1-8.24,13.72l-40-24A8,8,0,0,1,120,128V80a8,8,0,0,1,16,0Zm-8-48A95.44,95.44,0,0,0,60.08,60.15C52.81,67.51,46.35,74.59,40,82V64a8,8,0,0,0-16,0v40a8,8,0,0,0,8,8H72a8,8,0,0,0,0-16H49c7.15-8.42,14.27-16.35,22.39-24.57a80,80,0,1,1,1.66,114.75,8,8,0,1,0-11,11.64A96,96,0,1,0,128,32Z"/></svg><span class="nav-lbl">Activity</span></div>
+      <div class="nav-item active" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M216,48H40a8,8,0,0,0-8,8V208a16,16,0,0,0,16,16H88a16,16,0,0,0,16-16V160h48v16a16,16,0,0,0,16,16h40a16,16,0,0,0,16-16V56A8,8,0,0,0,216,48ZM88,208H48V128H88Zm0-96H48V64H88Zm64,32H104V64h48Zm56,32H168V128h40Zm0-64H168V64h40Z"/></svg><span class="nav-lbl">Board</span><span class="nav-count">7</span></div>
+      <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M188,88a27.75,27.75,0,0,0-12,2.71V60a28,28,0,0,0-41.36-24.6A28,28,0,0,0,80,44v6.71A27.75,27.75,0,0,0,68,48,28,28,0,0,0,40,76v76a88,88,0,0,0,176,0V116A28,28,0,0,0,188,88Zm12,64a72,72,0,0,1-144,0V76a12,12,0,0,1,24,0v44a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v68a8,8,0,0,0,16,0V60a12,12,0,0,1,24,0v68.67A48.08,48.08,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V116a12,12,0,0,1,24,0Z"/></svg><span class="nav-lbl">Needs me</span><span class="nav-count hot">2</span></div>
+      <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M136,80v43.47l36.12,21.67a8,8,0,0,1-8.24,13.72l-40-24A8,8,0,0,1,120,128V80a8,8,0,0,1,16,0Zm-8-48A95.44,95.44,0,0,0,60.08,60.15C52.81,67.51,46.35,74.59,40,82V64a8,8,0,0,0-16,0v40a8,8,0,0,0,8,8H72a8,8,0,0,0,0-16H49c7.15-8.42,14.27-16.35,22.39-24.57a80,80,0,1,1,1.66,114.75,8,8,0,1,0-11,11.64A96,96,0,1,0,128,32Z"/></svg><span class="nav-lbl">Activity</span></div>
     </div>
     <div class="nav-group">
       <span class="nav-title">Repo</span>
-      <div class="nav-item"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M104,64A32,32,0,1,0,64,95v66a32,32,0,1,0,16,0V95A32.06,32.06,0,0,0,104,64ZM56,64A16,16,0,1,1,72,80,16,16,0,0,1,56,64ZM88,192a16,16,0,1,1-16-16A16,16,0,0,1,88,192Zm120-31V110.63a23.85,23.85,0,0,0-7-17L163.31,56H192a8,8,0,0,0,0-16H144a8,8,0,0,0-8,8V96a8,8,0,0,0,16,0V67.31L189.66,105a8,8,0,0,1,2.34,5.66V161a32,32,0,1,0,16,0Zm-8,47a16,16,0,1,1,16-16A16,16,0,0,1,200,208Z"/></svg><span class="nav-lbl">Open PRs</span><span class="nav-count">4</span></div>
-      <div class="nav-item"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M152,96H104a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8h48a8,8,0,0,0,8-8V104A8,8,0,0,0,152,96Zm-8,48H112V112h32Zm88,0H216V112h16a8,8,0,0,0,0-16H216V56a16,16,0,0,0-16-16H160V24a8,8,0,0,0-16,0V40H112V24a8,8,0,0,0-16,0V40H56A16,16,0,0,0,40,56V96H24a8,8,0,0,0,0,16H40v32H24a8,8,0,0,0,0,16H40v40a16,16,0,0,0,16,16H96v16a8,8,0,0,0,16,0V216h32v16a8,8,0,0,0,16,0V216h40a16,16,0,0,0,16-16V160h16a8,8,0,0,0,0-16Zm-32,56H56V56H200v95.87s0,.09,0,.13,0,.09,0,.13V200Z"/></svg><span class="nav-lbl">Models &amp; gates</span></div>
-      <div class="nav-item"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm88-29.84q.06-2.16,0-4.32l14.92-18.64a8,8,0,0,0,1.48-7.06,107.21,107.21,0,0,0-10.88-26.25,8,8,0,0,0-6-3.93l-23.72-2.64q-1.48-1.56-3-3L186,40.54a8,8,0,0,0-3.94-6,107.71,107.71,0,0,0-26.25-10.87,8,8,0,0,0-7.06,1.49L130.16,40Q128,40,125.84,40L107.2,25.11a8,8,0,0,0-7.06-1.48A107.6,107.6,0,0,0,73.89,34.51a8,8,0,0,0-3.93,6L67.32,64.27q-1.56,1.49-3,3L40.54,70a8,8,0,0,0-6,3.94,107.71,107.71,0,0,0-10.87,26.25,8,8,0,0,0,1.49,7.06L40,125.84Q40,128,40,130.16L25.11,148.8a8,8,0,0,0-1.48,7.06,107.21,107.21,0,0,0,10.88,26.25,8,8,0,0,0,6,3.93l23.72,2.64q1.49,1.56,3,3L70,215.46a8,8,0,0,0,3.94,6,107.71,107.71,0,0,0,26.25,10.87,8,8,0,0,0,7.06-1.49L125.84,216q2.16.06,4.32,0l18.64,14.92a8,8,0,0,0,7.06,1.48,107.21,107.21,0,0,0,26.25-10.88,8,8,0,0,0,3.93-6l2.64-23.72q1.56-1.48,3-3L215.46,186a8,8,0,0,0,6-3.94,107.71,107.71,0,0,0,10.87-26.25,8,8,0,0,0-1.49-7.06Zm-16.1-6.5a73.93,73.93,0,0,1,0,8.68,8,8,0,0,0,1.74,5.48l14.19,17.73a91.57,91.57,0,0,1-6.23,15L187,173.11a8,8,0,0,0-5.1,2.64,74.11,74.11,0,0,1-6.14,6.14,8,8,0,0,0-2.64,5.1l-2.51,22.58a91.32,91.32,0,0,1-15,6.23l-17.74-14.19a8,8,0,0,0-5-1.75h-.48a73.93,73.93,0,0,1-8.68,0,8,8,0,0,0-5.48,1.74L100.45,215.8a91.57,91.57,0,0,1-15-6.23L82.89,187a8,8,0,0,0-2.64-5.1,74.11,74.11,0,0,1-6.14-6.14,8,8,0,0,0-5.1-2.64L46.43,170.6a91.32,91.32,0,0,1-6.23-15l14.19-17.74a8,8,0,0,0,1.74-5.48,73.93,73.93,0,0,1,0-8.68,8,8,0,0,0-1.74-5.48L40.2,100.45a91.57,91.57,0,0,1,6.23-15L69,82.89a8,8,0,0,0,5.1-2.64,74.11,74.11,0,0,1,6.14-6.14A8,8,0,0,0,82.89,69L85.4,46.43a91.32,91.32,0,0,1,15-6.23l17.74,14.19a8,8,0,0,0,5.48,1.74,73.93,73.93,0,0,1,8.68,0,8,8,0,0,0,5.48-1.74L155.55,40.2a91.57,91.57,0,0,1,15,6.23L173.11,69a8,8,0,0,0,2.64,5.1,74.11,74.11,0,0,1,6.14,6.14,8,8,0,0,0,5.1,2.64l22.58,2.51a91.32,91.32,0,0,1,6.23,15l-14.19,17.74A8,8,0,0,0,199.87,123.66Z"/></svg><span class="nav-lbl">Settings</span></div>
+      <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M104,64A32,32,0,1,0,64,95v66a32,32,0,1,0,16,0V95A32.06,32.06,0,0,0,104,64ZM56,64A16,16,0,1,1,72,80,16,16,0,0,1,56,64ZM88,192a16,16,0,1,1-16-16A16,16,0,0,1,88,192Zm120-31V110.63a23.85,23.85,0,0,0-7-17L163.31,56H192a8,8,0,0,0,0-16H144a8,8,0,0,0-8,8V96a8,8,0,0,0,16,0V67.31L189.66,105a8,8,0,0,1,2.34,5.66V161a32,32,0,1,0,16,0Zm-8,47a16,16,0,1,1,16-16A16,16,0,0,1,200,208Z"/></svg><span class="nav-lbl">Open PRs</span><span class="nav-count">4</span></div>
+      <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M152,96H104a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8h48a8,8,0,0,0,8-8V104A8,8,0,0,0,152,96Zm-8,48H112V112h32Zm88,0H216V112h16a8,8,0,0,0,0-16H216V56a16,16,0,0,0-16-16H160V24a8,8,0,0,0-16,0V40H112V24a8,8,0,0,0-16,0V40H56A16,16,0,0,0,40,56V96H24a8,8,0,0,0,0,16H40v32H24a8,8,0,0,0,0,16H40v40a16,16,0,0,0,16,16H96v16a8,8,0,0,0,16,0V216h32v16a8,8,0,0,0,16,0V216h40a16,16,0,0,0,16-16V160h16a8,8,0,0,0,0-16Zm-32,56H56V56H200v95.87s0,.09,0,.13,0,.09,0,.13V200Z"/></svg><span class="nav-lbl">Models &amp; gates</span></div>
+      <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm88-29.84q.06-2.16,0-4.32l14.92-18.64a8,8,0,0,0,1.48-7.06,107.21,107.21,0,0,0-10.88-26.25,8,8,0,0,0-6-3.93l-23.72-2.64q-1.48-1.56-3-3L186,40.54a8,8,0,0,0-3.94-6,107.71,107.71,0,0,0-26.25-10.87,8,8,0,0,0-7.06,1.49L130.16,40Q128,40,125.84,40L107.2,25.11a8,8,0,0,0-7.06-1.48A107.6,107.6,0,0,0,73.89,34.51a8,8,0,0,0-3.93,6L67.32,64.27q-1.56,1.49-3,3L40.54,70a8,8,0,0,0-6,3.94,107.71,107.71,0,0,0-10.87,26.25,8,8,0,0,0,1.49,7.06L40,125.84Q40,128,40,130.16L25.11,148.8a8,8,0,0,0-1.48,7.06,107.21,107.21,0,0,0,10.88,26.25,8,8,0,0,0,6,3.93l23.72,2.64q1.49,1.56,3,3L70,215.46a8,8,0,0,0,3.94,6,107.71,107.71,0,0,0,26.25,10.87,8,8,0,0,0,7.06-1.49L125.84,216q2.16.06,4.32,0l18.64,14.92a8,8,0,0,0,7.06,1.48,107.21,107.21,0,0,0,26.25-10.88,8,8,0,0,0,3.93-6l2.64-23.72q1.56-1.48,3-3L215.46,186a8,8,0,0,0,6-3.94,107.71,107.71,0,0,0,10.87-26.25,8,8,0,0,0-1.49-7.06Zm-16.1-6.5a73.93,73.93,0,0,1,0,8.68,8,8,0,0,0,1.74,5.48l14.19,17.73a91.57,91.57,0,0,1-6.23,15L187,173.11a8,8,0,0,0-5.1,2.64,74.11,74.11,0,0,1-6.14,6.14,8,8,0,0,0-2.64,5.1l-2.51,22.58a91.32,91.32,0,0,1-15,6.23l-17.74-14.19a8,8,0,0,0-5-1.75h-.48a73.93,73.93,0,0,1-8.68,0,8,8,0,0,0-5.48,1.74L100.45,215.8a91.57,91.57,0,0,1-15-6.23L82.89,187a8,8,0,0,0-2.64-5.1,74.11,74.11,0,0,1-6.14-6.14,8,8,0,0,0-5.1-2.64L46.43,170.6a91.32,91.32,0,0,1-6.23-15l14.19-17.74a8,8,0,0,0,1.74-5.48,73.93,73.93,0,0,1,0-8.68,8,8,0,0,0-1.74-5.48L40.2,100.45a91.57,91.57,0,0,1,6.23-15L69,82.89a8,8,0,0,0,5.1-2.64,74.11,74.11,0,0,1,6.14-6.14A8,8,0,0,0,82.89,69L85.4,46.43a91.32,91.32,0,0,1,15-6.23l17.74,14.19a8,8,0,0,0,5.48,1.74,73.93,73.93,0,0,1,8.68,0,8,8,0,0,0,5.48-1.74L155.55,40.2a91.57,91.57,0,0,1,15,6.23L173.11,69a8,8,0,0,0,2.64,5.1,74.11,74.11,0,0,1,6.14,6.14,8,8,0,0,0,5.1,2.64l22.58,2.51a91.32,91.32,0,0,1,6.23,15l-14.19,17.74A8,8,0,0,0,199.87,123.66Z"/></svg><span class="nav-lbl">Settings</span></div>
     </div>
     <div class="sb-foot">
-      <div class="nav-item" onClick="{{toggleSidebar}}"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40ZM40,56H80V200H40ZM216,200H96V56H216V200Z"/></svg><span class="nav-lbl">Collapse</span><span class="nav-count kbd">[</span></div>
-      <div class="sb-user"><div class="avatar">JO</div><span class="sb-user-text"><span class="sb-user-name">Jake Ortega</span><span class="sb-user-sub">Expert mode</span></span></div>
+      <div class="nav-item" tabindex="0" onClick="{{toggleSidebar}}"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40ZM40,56H80V200H40ZM216,200H96V56H216V200Z"/></svg><span class="nav-lbl">Collapse</span><span class="nav-count kbd">[</span></div>
+      <div class="sb-user" tabindex="0"><div class="avatar">JO</div><span class="sb-user-text"><span class="sb-user-name">Jake Ortega</span><span class="sb-user-sub">Expert mode</span></span></div>
     </div>
   </div>
 
@@ -397,7 +417,7 @@
     <div class="main-head">
       <div class="crumbs"><span class="mono">jortega0033/agentdock</span><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"/></svg><span>Board</span><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"/></svg><span class="cur mono">#{{tNum}}</span></div>
       <div class="main-head-r">
-        <div class="cmdk"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,218.34l-50.07-50.06a88.11,88.11,0,1,0-11.31,11.31l50.06,50.07a8,8,0,0,0,11.32-11.32ZM40,112a72,72,0,1,1,72,72A72.08,72.08,0,0,1,40,112Z"/></svg><span>Jump to ticket, repo, action…</span><span class="kbd">⌘K</span></div>
+        <div class="cmdk" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,218.34l-50.07-50.06a88.11,88.11,0,1,0-11.31,11.31l50.06,50.07a8,8,0,0,0,11.32-11.32ZM40,112a72,72,0,1,1,72,72A72.08,72.08,0,0,1,40,112Z"/></svg><span>Jump to ticket, repo, action…</span><span class="kbd">⌘K</span></div>
         <button class="btn"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,128a96,96,0,0,1-94.71,96H128A95.38,95.38,0,0,1,62.1,197.8a8,8,0,0,1,11-11.63A80,80,0,1,0,71.43,71.39a3.07,3.07,0,0,1-.26.25L44.59,96H72a8,8,0,0,1,0,16H24a8,8,0,0,1-8-8V56a8,8,0,0,1,16,0V85.8L60.25,60A96,96,0,0,1,224,128Z"/></svg>Retry phase</button>
         <div class="avatar">JO</div>
       </div>
@@ -459,19 +479,19 @@
                 <span class="evt-title">{{e.title}}</span>
               </sc-if>
                 <sc-if value="{{e.hasSub}}" hint-placeholder-val="{{false}}">
-                  <span class="sub-row {{e.subCls}}" onClick="{{e.toggleSub}}"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"/></svg><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,128a8,8,0,0,1-3,6.25l-40,32a8,8,0,1,1-10-12.5L107.19,128,75,102.25a8,8,0,1,1,10-12.5l40,32A8,8,0,0,1,128,128Zm48,24H136a8,8,0,0,0,0,16h40a8,8,0,0,0,0-16Zm56-96V200a16,16,0,0,1-16,16H40a16,16,0,0,1-16-16V56A16,16,0,0,1,40,40H216A16,16,0,0,1,232,56ZM216,200V56H40V200H216Z"/></svg>{{e.subLabel}}</span>
+                  <span class="sub-row {{e.subCls}}" tabindex="0" onClick="{{e.toggleSub}}"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"/></svg><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,128a8,8,0,0,1-3,6.25l-40,32a8,8,0,1,1-10-12.5L107.19,128,75,102.25a8,8,0,1,1,10-12.5l40,32A8,8,0,0,1,128,128Zm48,24H136a8,8,0,0,0,0,16h40a8,8,0,0,0,0-16Zm56-96V200a16,16,0,0,1-16,16H40a16,16,0,0,1-16-16V56A16,16,0,0,1,40,40H216A16,16,0,0,1,232,56ZM216,200V56H40V200H216Z"/></svg>{{e.subLabel}}</span>
                 </sc-if>
                 <sc-if value="{{e.subOpen}}" hint-placeholder-val="{{false}}">
                   <div class="sub-lines">{{e.subText}}</div>
                 </sc-if>
               <sc-if value="{{e.pcCollapsed}}" hint-placeholder-val="{{false}}">
                 <div class="precommit">
-                  <div class="pc-head"><span class="grow">Pre-commitment <b>· {{e.pcCmd}}</b></span><span class="chip {{e.pcChipCls}}">{{e.pcChipLabel}}</span><span class="pc-toggle" onClick="{{e.pcToggle}}">show</span></div>
+                  <div class="pc-head"><span class="grow">Pre-commitment <b>· {{e.pcCmd}}</b></span><span class="chip {{e.pcChipCls}}">{{e.pcChipLabel}}</span><span class="pc-toggle" tabindex="0" onClick="{{e.pcToggle}}">show</span></div>
                 </div>
               </sc-if>
               <sc-if value="{{e.pcExpanded}}" hint-placeholder-val="{{false}}">
                 <div class="precommit">
-                  <div class="pc-head"><span class="grow">Pre-commitment <b>· {{e.pcCmd}}</b></span><span class="chip {{e.pcChipCls}}">{{e.pcChipLabel}}</span><span class="pc-toggle {{e.pcToggleHide}}" onClick="{{e.pcToggle}}">hide</span><span class="pc-toggle pinned {{e.pcPinHide}}">stays open</span></div>
+                  <div class="pc-head"><span class="grow">Pre-commitment <b>· {{e.pcCmd}}</b></span><span class="chip {{e.pcChipCls}}">{{e.pcChipLabel}}</span><span class="pc-toggle {{e.pcToggleHide}}" tabindex="0" onClick="{{e.pcToggle}}">hide</span><span class="pc-toggle pinned {{e.pcPinHide}}">stays open</span></div>
                   <div class="pc-row"><span class="pc-k">action</span><span>{{e.pcAction}}</span></div>
                   <div class="pc-row"><span class="pc-k">expect</span><span>{{e.pcExpect}}</span></div>
                   <div class="pc-row"><span class="pc-k">if_wrong</span><span>{{e.pcIfWrong}}</span></div>
@@ -480,10 +500,10 @@
               </sc-if>
                 <sc-if value="{{e.hasCi}}" hint-placeholder-val="{{false}}">
                   <div class="ci-block">
-                    <div class="ci-row"><span class="ci-ic bad"><svg style="width:12px;height:12px;" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></span><span class="grow"><b>typecheck</b> failed on PR #115 — a failure the deterministic gate set can classify (build / typecheck / test / lint), so exactly one fix attempt is allowed</span><span class="mono">11:14</span></div>
+                    <div class="ci-row"><span class="ci-ic bad"><svg class="icon-xs" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></span><span class="grow"><b>typecheck</b> failed on PR #115 — a failure the deterministic gate set can classify (build / typecheck / test / lint), so exactly one fix attempt is allowed</span><span class="mono">11:14</span></div>
                     <div class="ci-log">apps/desktop/src/main/tray.ts(41,7): <span class="bad">error TS2322</span>: Type 'Timer' is not assignable to type 'number'.</div>
-                    <div class="ci-row"><span class="ci-ic fork"><svg style="width:12px;height:12px;" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,64a32,32,0,1,0-40,31v17a8,8,0,0,1-8,8H80a8,8,0,0,1-8-8V95a32,32,0,1,0-16,0v17a24,24,0,0,0,24,24h40v25a32,32,0,1,0,16,0V136h40a24,24,0,0,0,24-24V95A32.06,32.06,0,0,0,224,64ZM48,64A16,16,0,1,1,64,80,16,16,0,0,1,48,64Zm96,128a16,16,0,1,1-16-16A16,16,0,0,1,144,192ZM192,80a16,16,0,1,1,16-16A16,16,0,0,1,192,80Z"/></svg></span><span class="grow"><b>Forked the implement session</b> — <span class="mono" style="color:var(--text-soft);">session.fork</span> keeps the spec and the audit lineage; this is not a fresh run</span><span class="mono">fix attempt 1 of 1</span></div>
-                    <div class="ci-row"><span class="ci-ic ok"><svg style="width:12px;height:12px;" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span class="grow"><b>Fix committed to issue-85</b> — +3 −1, typecheck passes locally. It goes back through the push gate below and is never resubmitted to CI on its own</span><span class="mono">11:19</span></div>
+                    <div class="ci-row"><span class="ci-ic fork"><svg class="icon-xs" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,64a32,32,0,1,0-40,31v17a8,8,0,0,1-8,8H80a8,8,0,0,1-8-8V95a32,32,0,1,0-16,0v17a24,24,0,0,0,24,24h40v25a32,32,0,1,0,16,0V136h40a24,24,0,0,0,24-24V95A32.06,32.06,0,0,0,224,64ZM48,64A16,16,0,1,1,64,80,16,16,0,0,1,48,64Zm96,128a16,16,0,1,1-16-16A16,16,0,0,1,144,192ZM192,80a16,16,0,1,1,16-16A16,16,0,0,1,192,80Z"/></svg></span><span class="grow"><b>Forked the implement session</b> — <span class="mono" style="color:var(--text-soft);">session.fork</span> keeps the spec and the audit lineage; this is not a fresh run</span><span class="mono">fix attempt 1 of 1</span></div>
+                    <div class="ci-row"><span class="ci-ic ok"><svg class="icon-xs" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span class="grow"><b>Fix committed to issue-85</b> — +3 −1, typecheck passes locally. It goes back through the push gate below and is never resubmitted to CI on its own</span><span class="mono">11:19</span></div>
                     <div class="ci-lineage"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,64a32,32,0,1,0-40,31v17a8,8,0,0,1-8,8H80a8,8,0,0,1-8-8V95a32,32,0,1,0-16,0v17a24,24,0,0,0,24,24h40v25a32,32,0,1,0,16,0V136h40a24,24,0,0,0,24-24V95A32.06,32.06,0,0,0,224,64ZM48,64A16,16,0,1,1,64,80,16,16,0,0,1,48,64Zm96,128a16,16,0,1,1-16-16A16,16,0,0,1,144,192ZM192,80a16,16,0,1,1,16-16A16,16,0,0,1,192,80Z"/></svg><span><b>run 2</b> ← session.fork ← <b>run 1</b> (a3f9c2) · spec unchanged · PR #115</span></div>
                   </div>
                 </sc-if>
@@ -495,7 +515,7 @@
           <div class="evt">
             <div class="evt-col"><div class="evt-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z"/></svg></div><div class="evt-line end"></div></div>
             <div class="evt-body">
-              <div class="evt-head"><span class="evt-tool">implement</span><span class="chip chip-risk med">MEDIUM</span><span class="evt-meta">14:09 · waiting on you</span></div>
+              <div class="evt-head"><span class="evt-tool">implement</span><span class="chip chip-risk medium">MEDIUM</span><span class="evt-meta">14:09 · waiting on you</span></div>
               <span class="evt-title">Wants to remove a fixture nothing imports any more</span>
                 <div class="approval-inline">
                   <div class="ai-head"><span class="grow">Allow this step?</span><span class="mono">blocks the run</span></div>
@@ -519,9 +539,9 @@
           <div class="evt">
             <div class="evt-col"><div class="evt-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z"/></svg></div><div class="evt-line end"></div></div>
             <div class="evt-body">
-              <div class="evt-head"><span class="evt-tool">implement</span><span class="chip chip-risk med">MEDIUM</span><span class="evt-meta">14:09 · waiting on you</span></div>
+              <div class="evt-head"><span class="evt-tool">implement</span><span class="chip chip-risk medium">MEDIUM</span><span class="evt-meta">14:09 · waiting on you</span></div>
               <span class="evt-title">Wants to remove a fixture nothing imports any more</span>
-                <div class="ai-done"><span class="d-ic"><svg style="width:12px;height:12px;" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span class="grow"><b>Allowed</b> — removing the fixture and re-running vitest. The outcome is appended to the pre-commitment when it lands.</span><span class="ai-undo" onClick="{{undoMedium}}"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,128a96,96,0,0,1-94.71,96H128A95.38,95.38,0,0,1,62.1,197.8a8,8,0,0,1,11-11.63A80,80,0,1,0,71.43,71.39a3.07,3.07,0,0,1-.26.25L44.59,96H72a8,8,0,0,1,0,16H24a8,8,0,0,1-8-8V56a8,8,0,0,1,16,0V85.8L60.25,60A96,96,0,0,1,224,128Z"/></svg>Undo <span class="mono">57 s</span></span></div>
+                <div class="ai-done"><span class="d-ic"><svg class="icon-xs" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span class="grow"><b>Allowed</b> — removing the fixture and re-running vitest. The outcome is appended to the pre-commitment when it lands.</span><span class="ai-undo" tabindex="0" onClick="{{undoMedium}}"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,128a96,96,0,0,1-94.71,96H128A95.38,95.38,0,0,1,62.1,197.8a8,8,0,0,1,11-11.63A80,80,0,1,0,71.43,71.39a3.07,3.07,0,0,1-.26.25L44.59,96H72a8,8,0,0,1,0,16H24a8,8,0,0,1-8-8V56a8,8,0,0,1,16,0V85.8L60.25,60A96,96,0,0,1,224,128Z"/></svg>Undo <span class="mono">57 s</span></span></div>
             </div>
           </div>
         </sc-if>
@@ -529,9 +549,9 @@
           <div class="evt">
             <div class="evt-col"><div class="evt-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z"/></svg></div><div class="evt-line end"></div></div>
             <div class="evt-body">
-              <div class="evt-head"><span class="evt-tool">implement</span><span class="chip chip-risk med">MEDIUM</span><span class="evt-meta">14:09 · waiting on you</span></div>
+              <div class="evt-head"><span class="evt-tool">implement</span><span class="chip chip-risk medium">MEDIUM</span><span class="evt-meta">14:09 · waiting on you</span></div>
               <span class="evt-title">Wants to remove a fixture nothing imports any more</span>
-                <div class="ai-done"><span class="d-ic" style="background:var(--surface-4);color:var(--text);"><svg style="width:12px;height:12px;" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></span><span class="grow"><b>Rejected</b> — the fixture stays. The agent continues with your reason; a denied step is never retried on its own.</span><span class="ai-undo" onClick="{{undoMedium}}"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,128a96,96,0,0,1-94.71,96H128A95.38,95.38,0,0,1,62.1,197.8a8,8,0,0,1,11-11.63A80,80,0,1,0,71.43,71.39a3.07,3.07,0,0,1-.26.25L44.59,96H72a8,8,0,0,1,0,16H24a8,8,0,0,1-8-8V56a8,8,0,0,1,16,0V85.8L60.25,60A96,96,0,0,1,224,128Z"/></svg>Undo <span class="mono">57 s</span></span></div>
+                <div class="ai-done"><span class="d-ic" style="background:var(--surface-4);color:var(--text);"><svg class="icon-xs" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></span><span class="grow"><b>Rejected</b> — the fixture stays. The agent continues with your reason; a denied step is never retried on its own.</span><span class="ai-undo" tabindex="0" onClick="{{undoMedium}}"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,128a96,96,0,0,1-94.71,96H128A95.38,95.38,0,0,1,62.1,197.8a8,8,0,0,1,11-11.63A80,80,0,1,0,71.43,71.39a3.07,3.07,0,0,1-.26.25L44.59,96H72a8,8,0,0,1,0,16H24a8,8,0,0,1-8-8V56a8,8,0,0,1,16,0V85.8L60.25,60A96,96,0,0,1,224,128Z"/></svg>Undo <span class="mono">57 s</span></span></div>
             </div>
           </div>
         </sc-if>
@@ -572,12 +592,12 @@
               <div class="grow"><span class="approval-title">Stack accepted — 3 child tickets created</span><span class="approval-sub">#108 is now a container card · children run in dependency order, one worktree each, under the concurrency limit</span></div>
             </div>
             <div class="kids">
-              <div class="kid"><span class="kid-ic {{sk1Ic}}"><svg class="{{sk1PlayHide}}" style="width:10px;height:10px;" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"/></svg></span><span class="n">1/3</span><span class="t">{{sk1Title}}</span><span class="id">#{{sk1Num}} · {{sk1State}}</span><span class="ext"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z"/></svg></span></div>
-              <div class="kid"><span class="kid-ic {{sk2Ic}}"><svg class="{{sk2PlayHide}}" style="width:10px;height:10px;" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"/></svg></span><span class="n">2/3</span><span class="t">{{sk2Title}}</span><span class="id">#{{sk2Num}} · {{sk2State}}</span><span class="ext"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z"/></svg></span></div>
-              <div class="kid"><span class="kid-ic {{sk3Ic}}"><svg class="{{sk3PlayHide}}" style="width:10px;height:10px;" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"/></svg></span><span class="n">3/3</span><span class="t">{{sk3Title}}</span><span class="id">#{{sk3Num}} · {{sk3State}}</span><span class="ext"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z"/></svg></span></div>
+              <div class="kid"><span class="kid-ic {{sk1Ic}}"><svg class="{{sk1PlayHide}} icon-xs" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"/></svg></span><span class="n">1/3</span><span class="t">{{sk1Title}}</span><span class="id">#{{sk1Num}} · {{sk1State}}</span><span class="ext" tabindex="0"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z"/></svg></span></div>
+              <div class="kid"><span class="kid-ic {{sk2Ic}}"><svg class="{{sk2PlayHide}} icon-xs" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"/></svg></span><span class="n">2/3</span><span class="t">{{sk2Title}}</span><span class="id">#{{sk2Num}} · {{sk2State}}</span><span class="ext" tabindex="0"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z"/></svg></span></div>
+              <div class="kid"><span class="kid-ic {{sk3Ic}}"><svg class="{{sk3PlayHide}} icon-xs" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"/></svg></span><span class="n">3/3</span><span class="t">{{sk3Title}}</span><span class="id">#{{sk3Num}} · {{sk3State}}</span><span class="ext" tabindex="0"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z"/></svg></span></div>
             </div>
             <div class="stack-note"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm16-40a8,8,0,0,1-8,8,16,16,0,0,1-16-16V128a8,8,0,0,1,0-16,16,16,0,0,1,16,16v40A8,8,0,0,1,144,176ZM112,84a12,12,0,1,1,12,12A12,12,0,0,1,112,84Z"/></svg><span><b>Maintenance is read-only here.</b> Restack, rebase and the PR-to-PR view live on GitHub's native stacked PRs. Without <span class="mono">gh</span> the stack still ships as dependency-ordered sequential PRs with a base-branch note.</span></div>
-            <div class="approval-actions" style="justify-content:space-between;"><button class="btn" style="flex:0 0 auto;">Open stack on GitHub<svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z"/></svg></button><span class="r-link faint" onClick="{{resetStack}}">Back to the proposal</span></div>
+            <div class="approval-actions" style="justify-content:space-between;"><button class="btn" style="flex:0 0 auto;">Open stack on GitHub<svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z"/></svg></button><span class="r-link faint" tabindex="0" onClick="{{resetStack}}">Back to the proposal</span></div>
           </div>
         </sc-if>
         <sc-if value="{{showStackRejected}}" hint-placeholder-val="{{false}}">
@@ -586,7 +606,7 @@
               <div class="approval-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></div>
               <div class="grow"><span class="approval-title">Stack rejected — reason posted to #108</span><span class="approval-sub">the ticket stays in Needs human · no worktree was created · nothing retries on its own</span></div>
             </div>
-            <div class="approval-actions" style="justify-content:flex-end;"><span class="r-link faint" onClick="{{resetStack}}">Back to the proposal</span></div>
+            <div class="approval-actions" style="justify-content:flex-end;"><span class="r-link faint" tabindex="0" onClick="{{resetStack}}">Back to the proposal</span></div>
           </div>
         </sc-if>
 
@@ -809,7 +829,7 @@ class Component extends DCLogic {
         icCls: e.live ? 'live' : e.kind === 'ci' ? 'bad' : '',
         metaCls: e.live ? 'live' : '',
         lineCls: i === raw.length - 1 && !streamEndsInCard ? 'end' : '',
-        risk, riskHide: risk ? '' : 'hide', riskCls: risk === 'HIGH' ? 'high' : risk === 'MEDIUM' ? 'med' : 'low',
+        risk, riskHide: risk ? '' : 'hide', riskCls: risk === 'HIGH' ? 'high' : risk === 'MEDIUM' ? 'medium' : 'low',
         hasSub: !!e.sub, subOpen, subCls: subOpen ? 'open' : '',
         subLabel: e.sub ? e.sub.label : '', subText: e.sub ? e.sub.text : '',
         toggleSub: e.sub ? () => this.setState({ openSubs: { ...openSubs, [e.sub.id]: !openSubs[e.sub.id] } }) : null,
@@ -821,7 +841,7 @@ class Component extends DCLogic {
         pcToggleHide: pcIsMismatch ? 'hide' : '', pcPinHide: pcIsMismatch ? '' : 'hide',
         pcGotHide: pc && pc.status === 'pending' ? 'hide' : '',
         pcToggle: pc ? () => this.setState({ openPcs: { ...openPcs, [pc.id]: !openPcs[pc.id] } }) : null,
-        pcGotK: pc ? (pc.status === 'match' ? 'outcome' : 'got') : '',
+        pcGotK: pc ? ({ match: 'outcome', mismatch: 'mismatch', partial: 'partial' })[pc.status] ?? 'got' : '',
         pcGotCls: pc ? ({ match: 'ok', partial: 'part', mismatch: '' })[pc.status] ?? '' : '',
         pcGot: pc ? pc.got : '',
         hasCi: !!e.ci,
