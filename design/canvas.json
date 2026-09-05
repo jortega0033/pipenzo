@@ -1,14 +1,17 @@
 {
   "artboards": [
-    { "file": "Foundations.dc.html", "x": 0, "y": 0, "w": 1040, "h": 4800 },
+    { "file": "Foundations.dc.html", "x": 0, "y": 0, "w": 1040, "h": 8700 },
     { "file": "Main.dc.html", "x": 1160, "y": 0, "w": 1360, "h": 900, "is_interactive": true },
     { "file": "TicketDetail.dc.html", "x": 2600, "y": 0, "w": 1320, "h": 900, "is_interactive": true },
-    { "file": "ApprovalPrompt.dc.html", "x": 4000, "y": 0, "w": 480, "h": 520, "is_interactive": true },
-    { "file": "DiffReview.dc.html", "x": 1160, "y": 1020, "w": 1360, "h": 900 },
-    { "file": "SimpleMode.dc.html", "x": 2600, "y": 1020, "w": 900, "h": 780 }
+    { "file": "ApprovalPrompt.dc.html", "x": 4000, "y": 0, "w": 480, "h": 660, "is_interactive": true },
+    { "file": "DiffReview.dc.html", "x": 1160, "y": 1020, "w": 1360, "h": 900, "is_interactive": true },
+    { "file": "SimpleMode.dc.html", "x": 2600, "y": 1020, "w": 900, "h": 1180 }
   ],
   "annotations": [
-    { "id": "flow-note", "x": 1160, "y": -120, "w": 320, "text": "Flow: Board (kanban + New from idea) -> live progress -> approve the publish -> diff review -> Push & open PR.\nSimpleMode is the same ticket, non-developer view — deliberately no sidebar." }
+    { "id": "flow-note", "x": 1160, "y": -120, "w": 320, "text": "Flow: Board (kanban + New from idea) -> live progress -> approve the publish -> diff review -> Push & open PR.\nSimpleMode is the same ticket, non-developer view — deliberately no sidebar." },
+    { "id": "risk-note", "x": 4000, "y": -120, "w": 480, "text": "ApprovalPrompt = the HIGH-risk treatment only (publish gate; always an OS notification, mandatory reject reason, no Undo, no auto-allow).\nMEDIUM is the compact inline card and LOW the passive line — both in TicketDetail's stream. The cumulative-risk strip in TicketDetail's rail promotes the next MEDIUM to HIGH." },
+    { "id": "ticket-note", "x": 2600, "y": -120, "w": 320, "text": "TicketDetail: use the \"Needs you\" switch to see #94 (in flight, click the stepper for phases), #108 pipenzo:awaiting-stack-approval, #113 pipenzo:needs-pre-scoping, #85 ci-failed." },
+    { "id": "board-note", "x": 1500, "y": -120, "w": 320, "text": "Board: Working shows bounded concurrency (2 of 2 running, a held card with the file overlap, an approved stack as a container card). Both diff-gate outcomes land in Needs human. ci-failed sits in Ready for review because the fix re-enters the push gate." }
   ],
   "launch": { "view": "canvas" }
 }

@@ -143,25 +143,142 @@
   .cmdk{display:inline-flex;align-items:center;gap:8px;width:260px;height:32px;padding:0 8px 0 12px;border-radius:var(--pill);background:var(--surface-2);color:var(--text-faint);font-size:13px;cursor:text;transition:background-color var(--ease);}
   .cmdk:hover{background:var(--surface-3);}
   .cmdk span:not(.kbd){flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  /* --- risk grade: LOW / MEDIUM / HIGH. Tinted, mono, leading dot — a grade never reads as an agent state (those stay filled) --- */
+  .chip-risk{font-family:'IBM Plex Mono',monospace;letter-spacing:0.06em;gap:6px;}
+  .chip-risk::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0;}
+  .chip-risk.low{background:rgba(63,185,80,0.14);color:var(--ok);}
+  .chip-risk.med{background:rgba(210,153,34,0.16);color:var(--warn);}
+  .chip-risk.high{background:rgba(248,81,73,0.16);color:var(--danger);}
+  .chip-wait{background:var(--surface-3);color:var(--warn);}
+  .chip-ci{background:var(--danger-fg);color:var(--danger);}
+  .self-tag{display:inline-flex;align-items:center;height:16px;padding:0 6px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-soft);background:var(--surface-3);border-radius:var(--pill);margin-left:6px;vertical-align:1px;white-space:nowrap;}
+  /* --- passive LOW line: auto-proceeded and logged, no card, no chip, no notification --- */
+  .low-line{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-faint);line-height:1.3;min-width:0;}
+  .low-line .mono{font-size:11px;flex-shrink:0;}
+  .low-line .lt{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  /* --- pre-commitment record: action / expect / if_wrong before every MEDIUM or HIGH action; the outcome is appended and diffed --- */
+  .precommit{display:flex;flex-direction:column;gap:2px;border-radius:var(--r-sm);overflow:hidden;}
+  .pc-head{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--surface-3);font-size:12px;font-weight:700;color:var(--text);line-height:1;}
+  .pc-head .grow{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:400;color:var(--text-soft);}
+  .pc-head .grow b{color:var(--text);font-weight:700;}
+  .pc-toggle{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;color:var(--text-faint);cursor:pointer;white-space:nowrap;transition:color var(--ease);}
+  .pc-toggle:hover{color:var(--text);}
+  .pc-row{display:grid;grid-template-columns:64px minmax(0,1fr);gap:12px;padding:8px 12px;background:var(--surface-2);font-size:12px;line-height:1.45;color:var(--text-soft);}
+  .pc-k{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);line-height:1.6;}
+  .pc-row .mono{font-size:12px;color:var(--text);}
+  .pc-row.got{color:var(--text);background:var(--surface-3);}
+  .pc-row.got .pc-k{color:var(--danger);}
+  .pc-row.got.ok .pc-k{color:var(--ok);}
+  .pc-row.got.part .pc-k{color:var(--warn);}
+  /* --- approval, compact (MEDIUM): inline in the stream, carries the pre-commitment, Undo instead of a hard reject, notifies only after 60 s --- */
+  .approval-inline{display:flex;flex-direction:column;gap:10px;padding:12px 14px;border-radius:var(--r);background:var(--surface-2);}
+  .ai-head{display:flex;align-items:center;gap:10px;font-size:13px;font-weight:700;line-height:1.3;}
+  .ai-head .grow{flex:1;min-width:0;}
+  .ai-head .mono{font-weight:400;font-size:12px;color:var(--text-faint);}
+  .ai-cmd{font-family:'IBM Plex Mono',monospace;font-size:12px;line-height:20px;background:var(--surface-3);padding:6px 10px;border-radius:var(--r-sm);color:var(--text-soft);white-space:pre-wrap;}
+  .ai-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;}
+  .ai-note{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-faint);line-height:1.3;min-width:0;}
+  .ai-note .icon-sm{flex-shrink:0;}
+  .ai-acts{display:flex;gap:6px;flex-shrink:0;}
+  .ai-done{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:var(--r);background:var(--surface-2);font-size:12px;color:var(--text-soft);line-height:1.3;}
+  .ai-done .d-ic{width:20px;height:20px;border-radius:50%;background:var(--ok);color:var(--ok-fg);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .ai-done .grow{flex:1;min-width:0;}
+  .ai-done b{color:var(--text);font-weight:700;}
+  .ai-undo{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:700;color:var(--text);cursor:pointer;white-space:nowrap;}
+  .ai-undo .mono{font-weight:400;color:var(--text-faint);font-size:11px;}
+  /* --- cumulative risk strip: unreviewed LOW actions and mispredictions fill it; crossing the threshold promotes the next MEDIUM to HIGH --- */
+  .risk-strip{display:flex;flex-direction:column;gap:10px;}
+  .risk-segs{display:flex;gap:2px;height:6px;}
+  .risk-seg{flex:1;border-radius:2px;background:var(--surface-3);}
+  .risk-seg.on{background:var(--ok);} .risk-seg.on.warm{background:var(--warn);} .risk-seg.on.hot{background:var(--danger);}
+  .risk-lbl{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font-size:12px;color:var(--text-soft);line-height:1.35;}
+  .risk-lbl b{color:var(--text);font-weight:700;}
+  .risk-lbl .mono{color:var(--text-faint);font-size:11px;flex-shrink:0;}
+  .risk-promo{display:flex;align-items:flex-start;gap:8px;font-size:12px;color:var(--text-soft);line-height:1.4;background:var(--surface-3);padding:8px 10px;border-radius:var(--r-sm);}
+  .risk-promo .icon-sm{color:var(--warn);flex-shrink:0;margin-top:1px;}
+  .risk-promo b{color:var(--text);font-weight:700;}
+  /* --- screenshot evidence: browser-viewport thumbnails, captured by the daemon on the agent's behalf, self-reported — never satisfies a gate --- */
+  .shots{display:flex;gap:8px;}
+  .shot{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;cursor:pointer;}
+  .shot-frame{border-radius:var(--r-sm);overflow:hidden;background:var(--surface-4);aspect-ratio:16/10;display:flex;flex-direction:column;transition:filter var(--ease);}
+  .shot:hover .shot-frame{filter:brightness(1.15);}
+  .shot-bar{height:10px;background:var(--surface-3);display:flex;align-items:center;gap:3px;padding:0 5px;flex-shrink:0;}
+  .shot-bar i{width:4px;height:4px;border-radius:50%;background:var(--text-faint);display:block;}
+  .shot-bar .url{flex:1;height:4px;border-radius:2px;background:var(--surface-4);margin-left:3px;}
+  .shot-body{flex:1;position:relative;background:var(--surface-2);overflow:hidden;}
+  .ph{position:absolute;background:var(--surface-3);border-radius:2px;}
+  .ph.hi{background:var(--surface-4);} .ph.acc{background:var(--accent);} .ph.bad{background:var(--danger);} .ph.txt{background:var(--text-faint);opacity:0.5;}
+  .shot-cap{display:flex;align-items:center;justify-content:space-between;gap:6px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);line-height:1;}
+  .shot-cap b{color:var(--text-soft);font-weight:700;font-family:'IBM Plex Sans',sans-serif;}
+  .shot.lg{cursor:default;} .shot.lg .shot-frame{border-radius:var(--r);} .shot.lg .shot-bar{height:20px;padding:0 8px;gap:5px;} .shot.lg .shot-bar i{width:7px;height:7px;} .shot.lg .shot-bar .url{height:7px;margin-left:6px;}
+  .shot.lg:hover .shot-frame{filter:none;}
+  .shot-prov{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-faint);line-height:1.3;}
+  .shot-prov .icon-sm{flex-shrink:0;}
+  .shot-prov .self-tag{margin-left:0;}
+  /* --- bounded concurrency: numeric stepper (default 2, hard cap 4), lane capacity indicator, held-by-overlap card note --- */
+  .numctl{display:inline-flex;align-items:center;gap:2px;height:32px;padding:2px;border-radius:var(--pill);background:var(--surface-3);}
+  .numctl button{width:28px;height:28px;border-radius:50%;border:none;background:transparent;color:var(--text-soft);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:background-color var(--ease),color var(--ease);}
+  .numctl button:hover{background:var(--surface-4);color:var(--text);}
+  .numctl button:disabled{opacity:0.35;cursor:default;} .numctl button:disabled:hover{background:transparent;color:var(--text-soft);}
+  .numctl .val{min-width:44px;text-align:center;font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:700;line-height:1;}
+  .numctl .val small{font-size:11px;font-weight:400;color:var(--text-faint);}
+  .lane-cap{display:inline-flex;align-items:center;gap:6px;height:20px;padding:0 8px;border-radius:var(--pill);background:var(--surface-2);font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-soft);line-height:1;white-space:nowrap;}
+  .lane-cap.full{color:var(--warn);}
+  .lane-cap .icon-sm{color:inherit;}
+  .wait-note{display:flex;align-items:flex-start;gap:8px;font-size:12px;color:var(--text-soft);line-height:1.4;background:var(--surface-2);padding:8px 10px;border-radius:var(--r-sm);}
+  .wait-note .icon-sm{color:var(--warn);margin-top:1px;flex-shrink:0;}
+  .wait-note b{color:var(--text);font-weight:700;}
+  /* --- stack container: parent card of an approved 2–4 PR stack; children are real tickets, restacking is GitHub's job (gh stack) --- */
+  .kids{display:flex;flex-direction:column;gap:2px;}
+  .kid{display:flex;align-items:center;gap:8px;height:32px;padding:0 10px;background:var(--surface-2);font-size:12px;color:var(--text-soft);line-height:1;}
+  .kid:first-child{border-radius:var(--r-sm) var(--r-sm) 0 0;} .kid:last-child{border-radius:0 0 var(--r-sm) var(--r-sm);} .kid:only-child{border-radius:var(--r-sm);}
+  .kid .n,.kid .id{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);flex-shrink:0;}
+  .kid .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .kid .t.done{color:var(--text-faint);}
+  .kid-ic{width:16px;height:16px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;background:var(--surface-4);color:var(--text-faint);}
+  .kid-ic.done{background:var(--ok);color:var(--ok-fg);} .kid-ic.run{background:var(--warn);color:var(--warn-fg);}
+  .kid .ext{color:var(--text-faint);display:inline-flex;cursor:pointer;transition:color var(--ease);} .kid .ext:hover{color:var(--text);}
+  /* --- ci-failed: a failing check, one forked fix attempt (session.fork), lineage back to the original; the fix re-enters the human push gate --- */
+  .ci-block{display:flex;flex-direction:column;gap:2px;border-radius:var(--r-sm);overflow:hidden;}
+  .ci-row{display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--surface-2);font-size:12px;color:var(--text-soft);line-height:1.35;}
+  .ci-row .grow{flex:1;min-width:0;}
+  .ci-row b{color:var(--text);font-weight:700;}
+  .ci-row .mono{font-size:11px;color:var(--text-faint);white-space:nowrap;}
+  .ci-ic{width:20px;height:20px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;background:var(--surface-4);color:var(--text-soft);}
+  .ci-ic.bad{background:var(--danger);color:var(--danger-fg);} .ci-ic.ok{background:var(--ok);color:var(--ok-fg);} .ci-ic.fork{background:var(--surface-3);color:var(--text);}
+  .ci-log{font-family:'IBM Plex Mono',monospace;font-size:12px;line-height:1.5;padding:8px 12px;background:var(--surface-3);color:var(--text-soft);white-space:pre-wrap;}
+  .ci-log .bad{color:var(--danger);}
+  .ci-lineage{display:flex;align-items:center;gap:6px;padding:7px 12px;background:var(--surface-3);font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);line-height:1;}
+  .ci-lineage .icon-sm{color:var(--text-faint);flex-shrink:0;}
+  .ci-lineage b{color:var(--text-soft);font-weight:700;}
   /* ===== screen ===== */
-  .stage{width:480px;height:520px;display:flex;align-items:center;justify-content:center;background:var(--bg);}
-  .wrap{width:420px;}
+  /* This artboard is the HIGH-risk treatment. LOW is a passive line and MEDIUM a compact inline card — both live in TicketDetail. */
+  .stage{width:480px;height:660px;display:flex;align-items:center;justify-content:center;background:var(--bg);}
+  .wrap{width:432px;}
   .top{display:flex;align-items:center;gap:12px;}
-  .ic{width:32px;height:32px;border-radius:50%;background:var(--warn);color:var(--warn-fg);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .top .grow{flex:1;min-width:0;}
+  .ic{width:32px;height:32px;border-radius:50%;background:var(--danger);color:var(--danger-fg);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
   .title{font-size:16px;font-weight:700;line-height:1.3;}
   .kind{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-faint);line-height:1;margin-top:4px;}
   .sub{font-size:13px;color:var(--text-soft);line-height:1.45;}
   .cmd{font-family:'IBM Plex Mono',monospace;font-size:12px;line-height:20px;background:var(--surface-4);padding:8px 12px;border-radius:var(--r-sm);color:var(--text-soft);white-space:pre-wrap;}
+  .dialog .pc-head{background:var(--surface-4);} .dialog .pc-row{background:#2e2e2e;} .dialog .pc-row.got{background:var(--surface-4);}
+  .req{font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:400;color:var(--danger);text-transform:none;letter-spacing:0;margin-left:6px;}
   .actions{display:flex;gap:8px;}
   .actions .btn{flex:1;}
+  .high-foot{display:flex;align-items:center;flex-wrap:wrap;gap:6px 8px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);line-height:1.4;margin-top:-4px;}
+  .high-foot .icon-sm{color:var(--warn);}
+  .high-foot .sep{opacity:0.5;}
   .resolved{display:flex;align-items:center;gap:12px;}
   .r-ic{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
   .r-ic.ok{background:var(--ok);color:var(--ok-fg);}
   .r-ic.no{background:var(--danger);color:var(--danger-fg);}
   .r-text{font-size:14px;font-weight:700;line-height:1.3;}
   .r-sub{font-size:12px;color:var(--text-soft);line-height:1.4;margin-top:4px;}
-  .r-link{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:700;color:var(--text-soft);cursor:pointer;margin-top:4px;transition:color var(--ease);}
+  .r-links{display:flex;gap:16px;margin-top:6px;}
+  .r-link{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:700;color:var(--text-soft);cursor:pointer;transition:color var(--ease);}
   .r-link:hover{color:var(--text);}
+  .r-link.faint{color:var(--text-faint);font-weight:400;}
 </style>
 </helmet>
 <div class="stage">
@@ -170,30 +287,39 @@
       <sc-if value="{{pending}}" hint-placeholder-val="{{true}}">
         <div class="top">
           <div class="ic"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg></div>
-          <div>
+          <div class="grow">
             <div class="title">Approval needed</div>
-            <div class="kind">external_side_effect · issue-94</div>
+            <div class="kind">external_side_effect · publish gate · issue-94</div>
           </div>
+          <span class="chip chip-risk high">HIGH</span>
         </div>
-        <div class="sub">pipenzo wants to push the finished branch for <b style="color:var(--text);font-weight:700;">#94 Sanitize environment for MCP stdio server subprocesses</b> and open a pull request. It never does this on its own.</div>
+        <div class="sub">pipenzo wants to push the finished branch for <b style="color:var(--text);font-weight:700;">#94 Sanitize environment for MCP stdio server subprocesses</b> and open a pull request. Publishing is always HIGH: it never does this on its own, and there is no auto-allow at any risk level.</div>
         <div class="cmd">git push origin issue-94
 gh pr create --fill --base main</div>
+        <div class="precommit">
+          <div class="pc-head"><span class="grow">Pre-commitment <b>· posted before this action</b></span><span class="chip chip-wait">pending</span></div>
+          <div class="pc-row"><span class="pc-k">action</span><span>Push <span class="mono">issue-94</span> to origin and open one PR against <span class="mono">main</span></span></div>
+          <div class="pc-row"><span class="pc-k">expect</span><span>1 PR, +52 −6 across 2 files; CI runs the same 5 gates that passed locally</span></div>
+          <div class="pc-row"><span class="pc-k">if_wrong</span><span>Close the PR, keep the branch, move the ticket to Needs human with the CI log attached</span></div>
+        </div>
         <div>
-          <label class="f-lbl">Reason, if rejecting</label>
-          <textarea class="field" rows="2" placeholder="Optional — fed back into the next attempt"></textarea>
+          <label class="f-lbl">Reason, if rejecting<span class="req">required at HIGH</span></label>
+          <textarea class="field" rows="2">Wait for #96 to land first — same file, avoid a rebase.</textarea>
+          <span class="f-help">Fed back into the next attempt. A rejected HIGH action is never retried on its own.</span>
         </div>
         <div class="actions">
           <button class="btn danger" onClick="{{reject}}"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg>Reject</button>
           <button class="btn primary" onClick="{{approve}}"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg>Approve</button>
         </div>
+        <div class="high-foot"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,71.1a8,8,0,0,1-10.78-3.42,94.13,94.13,0,0,0-33.46-36.91,8,8,0,1,1,8.54-13.54,111.46,111.46,0,0,1,39.12,43.09A8,8,0,0,1,224,71.1ZM35.71,72a8,8,0,0,0,7.1-4.32A94.13,94.13,0,0,1,76.27,30.77a8,8,0,1,0-8.54-13.54A111.46,111.46,0,0,0,28.61,60.32,8,8,0,0,0,35.71,72Zm186.1,103.94A16,16,0,0,1,208,200H167.2a40,40,0,0,1-78.4,0H48a16,16,0,0,1-13.79-24.06C43.22,160.39,48,138.28,48,112a80,80,0,0,1,160,0C208,138.27,212.78,160.38,221.81,175.94ZM150.62,200H105.38a24,24,0,0,0,45.24,0ZM208,184c-10.64-18.27-16-42.49-16-72a64,64,0,0,0-128,0c0,29.52-5.38,53.74-16,72Z"/></svg><span>OS notified 14:02</span><span class="sep">·</span><span>no Undo at HIGH</span><span class="sep">·</span><span>no auto-allow</span></div>
       </sc-if>
       <sc-if value="{{approved}}" hint-placeholder-val="{{false}}">
         <div class="resolved">
           <div class="r-ic ok"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></div>
           <div>
             <div class="r-text">Approved — opening the diff</div>
-            <div class="r-sub">Nothing is pushed yet. The push waits for you on the review screen.</div>
-            <span class="r-link" onClick="{{reset}}">Undo<svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,128a96,96,0,0,1-94.71,96H128A95.38,95.38,0,0,1,62.1,197.8a8,8,0,0,1,11-11.63A80,80,0,1,0,71.43,71.39a3.07,3.07,0,0,1-.26.25L44.59,96H72a8,8,0,0,1,0,16H24a8,8,0,0,1-8-8V56a8,8,0,0,1,16,0V85.8L60.25,60A96,96,0,0,1,224,128Z"/></svg></span>
+            <div class="r-sub">Nothing is pushed yet. The push itself waits for you on the review screen; the outcome is appended to the pre-commitment once it runs.</div>
+            <div class="r-links"><span class="r-link">Open the diff<svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z"/></svg></span><span class="r-link faint" onClick="{{reset}}">Back to the card</span></div>
           </div>
         </div>
       </sc-if>
@@ -201,9 +327,9 @@ gh pr create --fill --base main</div>
         <div class="resolved">
           <div class="r-ic no"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></div>
           <div>
-            <div class="r-text">Rejected — retrying implement</div>
-            <div class="r-sub">Your reason is passed to the agent. One retry at the same model tier before escalating.</div>
-            <span class="r-link" onClick="{{reset}}">Undo<svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,128a96,96,0,0,1-94.71,96H128A95.38,95.38,0,0,1,62.1,197.8a8,8,0,0,1,11-11.63A80,80,0,1,0,71.43,71.39a3.07,3.07,0,0,1-.26.25L44.59,96H72a8,8,0,0,1,0,16H24a8,8,0,0,1-8-8V56a8,8,0,0,1,16,0V85.8L60.25,60A96,96,0,0,1,224,128Z"/></svg></span>
+            <div class="r-text">Rejected — reason sent to the next attempt</div>
+            <div class="r-sub">One retry at the same model tier before escalating. It stops here again before anything leaves the machine; a denied approval is never auto-retried.</div>
+            <div class="r-links"><span class="r-link">View in activity<svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"/></svg></span><span class="r-link faint" onClick="{{reset}}">Back to the card</span></div>
           </div>
         </div>
       </sc-if>

@@ -143,6 +143,114 @@
   .cmdk{display:inline-flex;align-items:center;gap:8px;width:260px;height:32px;padding:0 8px 0 12px;border-radius:var(--pill);background:var(--surface-2);color:var(--text-faint);font-size:13px;cursor:text;transition:background-color var(--ease);}
   .cmdk:hover{background:var(--surface-3);}
   .cmdk span:not(.kbd){flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  /* --- risk grade: LOW / MEDIUM / HIGH. Tinted, mono, leading dot — a grade never reads as an agent state (those stay filled) --- */
+  .chip-risk{font-family:'IBM Plex Mono',monospace;letter-spacing:0.06em;gap:6px;}
+  .chip-risk::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0;}
+  .chip-risk.low{background:rgba(63,185,80,0.14);color:var(--ok);}
+  .chip-risk.med{background:rgba(210,153,34,0.16);color:var(--warn);}
+  .chip-risk.high{background:rgba(248,81,73,0.16);color:var(--danger);}
+  .chip-wait{background:var(--surface-3);color:var(--warn);}
+  .chip-ci{background:var(--danger-fg);color:var(--danger);}
+  .self-tag{display:inline-flex;align-items:center;height:16px;padding:0 6px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-soft);background:var(--surface-3);border-radius:var(--pill);margin-left:6px;vertical-align:1px;white-space:nowrap;}
+  /* --- passive LOW line: auto-proceeded and logged, no card, no chip, no notification --- */
+  .low-line{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-faint);line-height:1.3;min-width:0;}
+  .low-line .mono{font-size:11px;flex-shrink:0;}
+  .low-line .lt{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  /* --- pre-commitment record: action / expect / if_wrong before every MEDIUM or HIGH action; the outcome is appended and diffed --- */
+  .precommit{display:flex;flex-direction:column;gap:2px;border-radius:var(--r-sm);overflow:hidden;}
+  .pc-head{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--surface-3);font-size:12px;font-weight:700;color:var(--text);line-height:1;}
+  .pc-head .grow{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:400;color:var(--text-soft);}
+  .pc-head .grow b{color:var(--text);font-weight:700;}
+  .pc-toggle{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;color:var(--text-faint);cursor:pointer;white-space:nowrap;transition:color var(--ease);}
+  .pc-toggle:hover{color:var(--text);}
+  .pc-row{display:grid;grid-template-columns:64px minmax(0,1fr);gap:12px;padding:8px 12px;background:var(--surface-2);font-size:12px;line-height:1.45;color:var(--text-soft);}
+  .pc-k{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);line-height:1.6;}
+  .pc-row .mono{font-size:12px;color:var(--text);}
+  .pc-row.got{color:var(--text);background:var(--surface-3);}
+  .pc-row.got .pc-k{color:var(--danger);}
+  .pc-row.got.ok .pc-k{color:var(--ok);}
+  .pc-row.got.part .pc-k{color:var(--warn);}
+  /* --- approval, compact (MEDIUM): inline in the stream, carries the pre-commitment, Undo instead of a hard reject, notifies only after 60 s --- */
+  .approval-inline{display:flex;flex-direction:column;gap:10px;padding:12px 14px;border-radius:var(--r);background:var(--surface-2);}
+  .ai-head{display:flex;align-items:center;gap:10px;font-size:13px;font-weight:700;line-height:1.3;}
+  .ai-head .grow{flex:1;min-width:0;}
+  .ai-head .mono{font-weight:400;font-size:12px;color:var(--text-faint);}
+  .ai-cmd{font-family:'IBM Plex Mono',monospace;font-size:12px;line-height:20px;background:var(--surface-3);padding:6px 10px;border-radius:var(--r-sm);color:var(--text-soft);white-space:pre-wrap;}
+  .ai-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;}
+  .ai-note{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-faint);line-height:1.3;min-width:0;}
+  .ai-note .icon-sm{flex-shrink:0;}
+  .ai-acts{display:flex;gap:6px;flex-shrink:0;}
+  .ai-done{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:var(--r);background:var(--surface-2);font-size:12px;color:var(--text-soft);line-height:1.3;}
+  .ai-done .d-ic{width:20px;height:20px;border-radius:50%;background:var(--ok);color:var(--ok-fg);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .ai-done .grow{flex:1;min-width:0;}
+  .ai-done b{color:var(--text);font-weight:700;}
+  .ai-undo{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:700;color:var(--text);cursor:pointer;white-space:nowrap;}
+  .ai-undo .mono{font-weight:400;color:var(--text-faint);font-size:11px;}
+  /* --- cumulative risk strip: unreviewed LOW actions and mispredictions fill it; crossing the threshold promotes the next MEDIUM to HIGH --- */
+  .risk-strip{display:flex;flex-direction:column;gap:10px;}
+  .risk-segs{display:flex;gap:2px;height:6px;}
+  .risk-seg{flex:1;border-radius:2px;background:var(--surface-3);}
+  .risk-seg.on{background:var(--ok);} .risk-seg.on.warm{background:var(--warn);} .risk-seg.on.hot{background:var(--danger);}
+  .risk-lbl{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font-size:12px;color:var(--text-soft);line-height:1.35;}
+  .risk-lbl b{color:var(--text);font-weight:700;}
+  .risk-lbl .mono{color:var(--text-faint);font-size:11px;flex-shrink:0;}
+  .risk-promo{display:flex;align-items:flex-start;gap:8px;font-size:12px;color:var(--text-soft);line-height:1.4;background:var(--surface-3);padding:8px 10px;border-radius:var(--r-sm);}
+  .risk-promo .icon-sm{color:var(--warn);flex-shrink:0;margin-top:1px;}
+  .risk-promo b{color:var(--text);font-weight:700;}
+  /* --- screenshot evidence: browser-viewport thumbnails, captured by the daemon on the agent's behalf, self-reported — never satisfies a gate --- */
+  .shots{display:flex;gap:8px;}
+  .shot{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;cursor:pointer;}
+  .shot-frame{border-radius:var(--r-sm);overflow:hidden;background:var(--surface-4);aspect-ratio:16/10;display:flex;flex-direction:column;transition:filter var(--ease);}
+  .shot:hover .shot-frame{filter:brightness(1.15);}
+  .shot-bar{height:10px;background:var(--surface-3);display:flex;align-items:center;gap:3px;padding:0 5px;flex-shrink:0;}
+  .shot-bar i{width:4px;height:4px;border-radius:50%;background:var(--text-faint);display:block;}
+  .shot-bar .url{flex:1;height:4px;border-radius:2px;background:var(--surface-4);margin-left:3px;}
+  .shot-body{flex:1;position:relative;background:var(--surface-2);overflow:hidden;}
+  .ph{position:absolute;background:var(--surface-3);border-radius:2px;}
+  .ph.hi{background:var(--surface-4);} .ph.acc{background:var(--accent);} .ph.bad{background:var(--danger);} .ph.txt{background:var(--text-faint);opacity:0.5;}
+  .shot-cap{display:flex;align-items:center;justify-content:space-between;gap:6px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);line-height:1;}
+  .shot-cap b{color:var(--text-soft);font-weight:700;font-family:'IBM Plex Sans',sans-serif;}
+  .shot.lg{cursor:default;} .shot.lg .shot-frame{border-radius:var(--r);} .shot.lg .shot-bar{height:20px;padding:0 8px;gap:5px;} .shot.lg .shot-bar i{width:7px;height:7px;} .shot.lg .shot-bar .url{height:7px;margin-left:6px;}
+  .shot.lg:hover .shot-frame{filter:none;}
+  .shot-prov{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-faint);line-height:1.3;}
+  .shot-prov .icon-sm{flex-shrink:0;}
+  .shot-prov .self-tag{margin-left:0;}
+  /* --- bounded concurrency: numeric stepper (default 2, hard cap 4), lane capacity indicator, held-by-overlap card note --- */
+  .numctl{display:inline-flex;align-items:center;gap:2px;height:32px;padding:2px;border-radius:var(--pill);background:var(--surface-3);}
+  .numctl button{width:28px;height:28px;border-radius:50%;border:none;background:transparent;color:var(--text-soft);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:background-color var(--ease),color var(--ease);}
+  .numctl button:hover{background:var(--surface-4);color:var(--text);}
+  .numctl button:disabled{opacity:0.35;cursor:default;} .numctl button:disabled:hover{background:transparent;color:var(--text-soft);}
+  .numctl .val{min-width:44px;text-align:center;font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:700;line-height:1;}
+  .numctl .val small{font-size:11px;font-weight:400;color:var(--text-faint);}
+  .lane-cap{display:inline-flex;align-items:center;gap:6px;height:20px;padding:0 8px;border-radius:var(--pill);background:var(--surface-2);font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-soft);line-height:1;white-space:nowrap;}
+  .lane-cap.full{color:var(--warn);}
+  .lane-cap .icon-sm{color:inherit;}
+  .wait-note{display:flex;align-items:flex-start;gap:8px;font-size:12px;color:var(--text-soft);line-height:1.4;background:var(--surface-2);padding:8px 10px;border-radius:var(--r-sm);}
+  .wait-note .icon-sm{color:var(--warn);margin-top:1px;flex-shrink:0;}
+  .wait-note b{color:var(--text);font-weight:700;}
+  /* --- stack container: parent card of an approved 2–4 PR stack; children are real tickets, restacking is GitHub's job (gh stack) --- */
+  .kids{display:flex;flex-direction:column;gap:2px;}
+  .kid{display:flex;align-items:center;gap:8px;height:32px;padding:0 10px;background:var(--surface-2);font-size:12px;color:var(--text-soft);line-height:1;}
+  .kid:first-child{border-radius:var(--r-sm) var(--r-sm) 0 0;} .kid:last-child{border-radius:0 0 var(--r-sm) var(--r-sm);} .kid:only-child{border-radius:var(--r-sm);}
+  .kid .n,.kid .id{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);flex-shrink:0;}
+  .kid .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .kid .t.done{color:var(--text-faint);}
+  .kid-ic{width:16px;height:16px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;background:var(--surface-4);color:var(--text-faint);}
+  .kid-ic.done{background:var(--ok);color:var(--ok-fg);} .kid-ic.run{background:var(--warn);color:var(--warn-fg);}
+  .kid .ext{color:var(--text-faint);display:inline-flex;cursor:pointer;transition:color var(--ease);} .kid .ext:hover{color:var(--text);}
+  /* --- ci-failed: a failing check, one forked fix attempt (session.fork), lineage back to the original; the fix re-enters the human push gate --- */
+  .ci-block{display:flex;flex-direction:column;gap:2px;border-radius:var(--r-sm);overflow:hidden;}
+  .ci-row{display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--surface-2);font-size:12px;color:var(--text-soft);line-height:1.35;}
+  .ci-row .grow{flex:1;min-width:0;}
+  .ci-row b{color:var(--text);font-weight:700;}
+  .ci-row .mono{font-size:11px;color:var(--text-faint);white-space:nowrap;}
+  .ci-ic{width:20px;height:20px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;background:var(--surface-4);color:var(--text-soft);}
+  .ci-ic.bad{background:var(--danger);color:var(--danger-fg);} .ci-ic.ok{background:var(--ok);color:var(--ok-fg);} .ci-ic.fork{background:var(--surface-3);color:var(--text);}
+  .ci-log{font-family:'IBM Plex Mono',monospace;font-size:12px;line-height:1.5;padding:8px 12px;background:var(--surface-3);color:var(--text-soft);white-space:pre-wrap;}
+  .ci-log .bad{color:var(--danger);}
+  .ci-lineage{display:flex;align-items:center;gap:6px;padding:7px 12px;background:var(--surface-3);font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);line-height:1;}
+  .ci-lineage .icon-sm{color:var(--text-faint);flex-shrink:0;}
+  .ci-lineage b{color:var(--text-soft);font-weight:700;}
   /* ===== screen ===== */
   .shell{height:900px;}
   .board{flex:1;display:grid;grid-template-columns:repeat(4, minmax(0, 1fr));gap:8px;overflow:hidden;background:var(--bg);padding:8px 16px 16px;}
@@ -151,9 +259,12 @@
   .lane-title{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text);line-height:1;}
   .lane-dot{width:8px;height:8px;border-radius:50%;}
   .lane-count{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-faint);line-height:1;}
+  .lane-r{display:flex;align-items:center;gap:8px;}
   .lane-cards{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:4px;}
   .card{background:var(--surface);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:12px;transition:background-color var(--ease);}
   .card:hover{background:var(--surface-2);}
+  .card.held{background:var(--bg);box-shadow:inset 0 0 0 2px var(--surface);}
+  .card.held:hover{background:var(--surface);}
   .card-top{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:20px;}
   .card-id{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-faint);line-height:1;}
   .card-title{font-size:14px;font-weight:700;line-height:1.35;text-wrap:pretty;}
@@ -166,10 +277,14 @@
   .pct{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-soft);line-height:1;min-width:32px;text-align:right;}
   .split{display:flex;flex-direction:column;gap:6px;background:var(--surface-2);border-radius:var(--r-sm);padding:10px 12px;}
   .split-head{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--warn);line-height:1;}
+  .split-head.quiet{color:var(--text-soft);}
   .split-row{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-soft);line-height:1.3;}
   .split-n{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);flex-shrink:0;}
+  .split-kv{display:flex;flex-wrap:wrap;gap:4px 10px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);line-height:1.4;}
+  .split-kv b{color:var(--text-soft);font-weight:700;}
   .fail-note{display:flex;align-items:flex-start;gap:8px;font-size:12px;color:var(--text-soft);line-height:1.4;background:var(--surface-2);padding:8px 10px;border-radius:var(--r-sm);}
   .fail-note .icon-sm{color:var(--danger);margin-top:1px;flex-shrink:0;}
+  .fail-note b{color:var(--text);font-weight:700;}
   .scrim{position:absolute;inset:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:5;}
   .dialog-title{font-size:16px;font-weight:700;line-height:1.3;}
   .dialog-sub{font-size:12px;color:var(--text-soft);margin-top:4px;line-height:1.4;}
@@ -179,6 +294,7 @@
   .dialog-actions{display:flex;justify-content:flex-end;gap:8px;}
   .dialog .select-wrap .field{background:var(--surface-4);}
   .two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  .hide{display:none !important;}
 </style>
 </helmet>
 <div class="shell">
@@ -225,17 +341,9 @@
             <div class="card">
               <div class="card-top"><span class="card-id">#{{t.num}}</span><span class="chip {{t.chipClass}}">{{t.chipLabel}}</span></div>
               <span class="card-title">{{t.title}}</span>
-              <sc-if value="{{t.hasSplit}}" hint-placeholder-val="{{false}}">
-                <div class="split">
-                  <span class="split-head"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M230.91,172A8,8,0,0,1,228,182.91l-96,56a8,8,0,0,1-8.06,0l-96-56A8,8,0,0,1,36,169.09l92,53.65,92-53.65A8,8,0,0,1,230.91,172ZM220,121.09l-92,53.65L36,121.09A8,8,0,0,0,28,134.91l96,56a8,8,0,0,0,8.06,0l96-56A8,8,0,1,0,220,121.09ZM24,80a8,8,0,0,1,4-6.91l96-56a8,8,0,0,1,8.06,0l96,56a8,8,0,0,1,0,13.82l-96,56a8,8,0,0,1-8.06,0l-96-56A8,8,0,0,1,24,80Zm23.88,0L128,126.74,208.12,80,128,33.26Z"/></svg>Proposed stack · 3 PRs</span>
-                  <span class="split-row"><span class="split-n">1/3</span>Extract a ProviderCapabilities interface</span>
-                  <span class="split-row"><span class="split-n">2/3</span>Negotiate over stdio and http</span>
-                  <span class="split-row"><span class="split-n">3/3</span>Negotiate over websocket, remove fallbacks</span>
-                </div>
-              </sc-if>
               <div class="card-foot">
                 <span class="card-meta"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm64-88a8,8,0,0,1-8,8H128a8,8,0,0,1-8-8V72a8,8,0,0,1,16,0v48h48A8,8,0,0,1,192,128Z"/></svg>{{t.age}}</span>
-                <button class="btn primary" onClick="{{t.open}}"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"/></svg>{{t.cta}}</button>
+                <button class="btn primary" onClick="{{t.open}}"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"/></svg>Implement</button>
               </div>
             </div>
           </sc-for>
@@ -243,17 +351,38 @@
       </div>
 
       <div class="lane">
-        <div class="lane-head"><span class="lane-title"><span class="lane-dot" style="background:var(--warn);"></span>Working</span><span class="lane-count">{{workingCount}}</span></div>
+        <div class="lane-head"><span class="lane-title"><span class="lane-dot" style="background:var(--warn);"></span>Working</span><span class="lane-r"><span class="lane-cap full"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"/></svg>2 of 2 running</span><span class="lane-count">{{workingCount}}</span></span></div>
         <div class="lane-cards">
-          <sc-for list="{{working}}" as="t" hint-placeholder-count="2">
-            <div class="card">
-              <div class="card-top"><span class="card-id">#{{t.num}}</span><span class="chip chip-warn">{{t.phase}}</span></div>
+          <sc-for list="{{working}}" as="t" hint-placeholder-count="3">
+            <div class="card {{t.cardCls}}">
+              <div class="card-top"><span class="card-id">{{t.idLabel}}</span><span class="chip {{t.chipClass}}">{{t.chipLabel}}</span></div>
               <span class="card-title">{{t.title}}</span>
-              <div class="card-progress"><div class="bar"><div class="bar-fill" style="width:{{t.pct}}%;"></div></div><span class="pct">{{t.pct}}%</span></div>
-              <div class="card-foot">
-                <span class="card-meta"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232,64a32,32,0,1,0-40,31v17a8,8,0,0,1-8,8H96a23.84,23.84,0,0,0-8,1.38V95a32,32,0,1,0-16,0v66a32,32,0,1,0,16,0V144a8,8,0,0,1,8-8h88a24,24,0,0,0,24-24V95A32.06,32.06,0,0,0,232,64ZM64,64A16,16,0,1,1,80,80,16,16,0,0,1,64,64ZM96,192a16,16,0,1,1-16-16A16,16,0,0,1,96,192ZM200,80a16,16,0,1,1,16-16A16,16,0,0,1,200,80Z"/></svg>issue-{{t.num}}</span>
-                <span class="card-meta">{{t.elapsed}} · {{t.model}}</span>
-              </div>
+              <sc-if value="{{t.isRun}}" hint-placeholder-val="{{true}}">
+                <div class="card-progress"><div class="bar"><div class="bar-fill" style="width:{{t.pct}}%;"></div></div><span class="pct">{{t.pct}}%</span></div>
+                <div class="card-foot">
+                  <span class="card-meta"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232,64a32,32,0,1,0-40,31v17a8,8,0,0,1-8,8H96a23.84,23.84,0,0,0-8,1.38V95a32,32,0,1,0-16,0v66a32,32,0,1,0,16,0V144a8,8,0,0,1,8-8h88a24,24,0,0,0,24-24V95A32.06,32.06,0,0,0,232,64ZM64,64A16,16,0,1,1,80,80,16,16,0,0,1,64,64ZM96,192a16,16,0,1,1-16-16A16,16,0,0,1,96,192ZM200,80a16,16,0,1,1,16-16A16,16,0,0,1,200,80Z"/></svg>issue-{{t.num}}</span>
+                  <span class="card-meta">{{t.elapsed}} · {{t.model}}</span>
+                </div>
+              </sc-if>
+              <sc-if value="{{t.isStack}}" hint-placeholder-val="{{false}}">
+                <div class="card-progress"><div class="bar"><div class="bar-fill" style="width:{{t.pct}}%;"></div></div><span class="pct">{{t.merged}}/{{t.total}}</span></div>
+                <div class="kids">
+                  <div class="kid"><span class="kid-ic {{t.k1Ic}}"><svg class="{{t.k1CheckHide}}" style="width:10px;height:10px;" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg><svg class="{{t.k1PlayHide}}" style="width:10px;height:10px;" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"/></svg></span><span class="n">1/3</span><span class="t {{t.k1TCls}}">{{t.k1Title}}</span><span class="id">#{{t.k1Num}}</span><span class="ext"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z"/></svg></span></div>
+                  <div class="kid"><span class="kid-ic {{t.k2Ic}}"><svg class="{{t.k2CheckHide}}" style="width:10px;height:10px;" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg><svg class="{{t.k2PlayHide}}" style="width:10px;height:10px;" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"/></svg></span><span class="n">2/3</span><span class="t {{t.k2TCls}}">{{t.k2Title}}</span><span class="id">#{{t.k2Num}}</span><span class="ext"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z"/></svg></span></div>
+                  <div class="kid"><span class="kid-ic {{t.k3Ic}}"><svg class="{{t.k3CheckHide}}" style="width:10px;height:10px;" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg><svg class="{{t.k3PlayHide}}" style="width:10px;height:10px;" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"/></svg></span><span class="n">3/3</span><span class="t {{t.k3TCls}}">{{t.k3Title}}</span><span class="id">#{{t.k3Num}}</span><span class="ext"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z"/></svg></span></div>
+                </div>
+                <div class="card-foot">
+                  <span class="card-meta"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M230.91,172A8,8,0,0,1,228,182.91l-96,56a8,8,0,0,1-8.06,0l-96-56A8,8,0,0,1,36,169.09l92,53.65,92-53.65A8,8,0,0,1,230.91,172ZM220,121.09l-92,53.65L36,121.09A8,8,0,0,0,28,134.91l96,56a8,8,0,0,0,8.06,0l96-56A8,8,0,1,0,220,121.09ZM24,80a8,8,0,0,1,4-6.91l96-56a8,8,0,0,1,8.06,0l96,56a8,8,0,0,1,0,13.82l-96,56a8,8,0,0,1-8.06,0l-96-56A8,8,0,0,1,24,80Zm23.88,0L128,126.74,208.12,80,128,33.26Z"/></svg>via gh stack</span>
+                  <button class="btn sm">Open stack<svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z"/></svg></button>
+                </div>
+              </sc-if>
+              <sc-if value="{{t.isWait}}" hint-placeholder-val="{{false}}">
+                <div class="wait-note"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M200,32H160a16,16,0,0,0-16,16V208a16,16,0,0,0,16,16h40a16,16,0,0,0,16-16V48A16,16,0,0,0,200,32Zm0,176H160V48h40ZM96,32H56A16,16,0,0,0,40,48V208a16,16,0,0,0,16,16H96a16,16,0,0,0,16-16V48A16,16,0,0,0,96,32Zm0,176H56V48H96Z"/></svg><span><b>Waiting — file overlap with #{{t.overlapWith}}.</b> Both plan to touch <span class="mono">{{t.overlapFile}}</span>. Starts on its own when #{{t.overlapWith}} finishes; a slot is reserved.</span></div>
+                <div class="card-foot">
+                  <span class="card-meta"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm64-88a8,8,0,0,1-8,8H128a8,8,0,0,1-8-8V72a8,8,0,0,1,16,0v48h48A8,8,0,0,1,192,128Z"/></svg>held {{t.held}}</span>
+                  <button class="btn sm ghost">Run anyway</button>
+                </div>
+              </sc-if>
             </div>
           </sc-for>
         </div>
@@ -262,13 +391,16 @@
       <div class="lane">
         <div class="lane-head"><span class="lane-title"><span class="lane-dot" style="background:var(--ok);"></span>Ready for review</span><span class="lane-count">{{readyCount}}</span></div>
         <div class="lane-cards">
-          <sc-for list="{{ready}}" as="t" hint-placeholder-count="1">
+          <sc-for list="{{ready}}" as="t" hint-placeholder-count="2">
             <div class="card">
-              <div class="card-top"><span class="card-id">#{{t.num}}</span><span class="chip chip-ok">{{t.gates}}</span></div>
+              <div class="card-top"><span class="card-id">#{{t.num}}</span><span class="chip {{t.chipClass}}">{{t.chipLabel}}</span></div>
               <span class="card-title">{{t.title}}</span>
+              <sc-if value="{{t.isCi}}" hint-placeholder-val="{{false}}">
+                <div class="fail-note"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg><span><b>typecheck failed on PR #{{t.pr}}.</b> One fix attempt ran as a fork of the original session and committed <span class="mono">+3 −1</span> locally. It waits on the push gate — never resubmitted on its own.</span></div>
+              </sc-if>
               <div class="card-foot">
                 <span class="card-meta"><span style="color:var(--ok);">+{{t.add}}</span><span style="color:var(--danger);">−{{t.del}}</span><span>· {{t.files}} files</span></span>
-                <button class="btn"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M247.31,124.76c-.35-.79-8.82-19.58-27.65-38.41C194.57,61.26,162.88,48,128,48S61.43,61.26,36.34,86.35C17.51,105.18,9,124,8.69,124.76a8,8,0,0,0,0,6.5c.35.79,8.82,19.57,27.65,38.4C61.43,194.74,93.12,208,128,208s66.57-13.26,91.66-38.34c18.83-18.83,27.3-37.61,27.65-38.4A8,8,0,0,0,247.31,124.76ZM128,192c-30.78,0-57.67-11.19-79.93-33.25A133.47,133.47,0,0,1,25,128,133.33,133.33,0,0,1,48.07,97.25C70.33,75.19,97.22,64,128,64s57.67,11.19,79.93,33.25A133.46,133.46,0,0,1,231.05,128C223.84,141.46,192.43,192,128,192Zm0-112a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Z"/></svg>Review diff</button>
+                <button class="btn"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M247.31,124.76c-.35-.79-8.82-19.58-27.65-38.41C194.57,61.26,162.88,48,128,48S61.43,61.26,36.34,86.35C17.51,105.18,9,124,8.69,124.76a8,8,0,0,0,0,6.5c.35.79,8.82,19.57,27.65,38.4C61.43,194.74,93.12,208,128,208s66.57-13.26,91.66-38.34c18.83-18.83,27.3-37.61,27.65-38.4A8,8,0,0,0,247.31,124.76ZM128,192c-30.78,0-57.67-11.19-79.93-33.25A133.47,133.47,0,0,1,25,128,133.33,133.33,0,0,1,48.07,97.25C70.33,75.19,97.22,64,128,64s57.67,11.19,79.93,33.25A133.46,133.46,0,0,1,231.05,128C223.84,141.46,192.43,192,128,192Zm0-112a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Z"/></svg>{{t.cta}}</button>
               </div>
             </div>
           </sc-for>
@@ -278,14 +410,34 @@
       <div class="lane">
         <div class="lane-head"><span class="lane-title"><span class="lane-dot" style="background:var(--danger);"></span>Needs human</span><span class="lane-count">{{parkedCount}}</span></div>
         <div class="lane-cards">
-          <sc-for list="{{parked}}" as="t" hint-placeholder-count="1">
+          <sc-for list="{{parked}}" as="t" hint-placeholder-count="3">
             <div class="card">
-              <div class="card-top"><span class="card-id">#{{t.num}}</span><span class="chip chip-danger"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M188,88a27.75,27.75,0,0,0-12,2.71V60a28,28,0,0,0-41.36-24.6A28,28,0,0,0,80,44v6.71A27.75,27.75,0,0,0,68,48,28,28,0,0,0,40,76v76a88,88,0,0,0,176,0V116A28,28,0,0,0,188,88Zm12,64a72,72,0,0,1-144,0V76a12,12,0,0,1,24,0v44a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v68a8,8,0,0,0,16,0V60a12,12,0,0,1,24,0v68.67A48.08,48.08,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V116a12,12,0,0,1,24,0Z"/></svg>{{t.attempts}} failed</span></div>
+              <div class="card-top"><span class="card-id">#{{t.num}}</span><span class="chip {{t.chipClass}}"><sc-if value="{{t.isFailed}}" hint-placeholder-val="{{false}}"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M188,88a27.75,27.75,0,0,0-12,2.71V60a28,28,0,0,0-41.36-24.6A28,28,0,0,0,80,44v6.71A27.75,27.75,0,0,0,68,48,28,28,0,0,0,40,76v76a88,88,0,0,0,176,0V116A28,28,0,0,0,188,88Zm12,64a72,72,0,0,1-144,0V76a12,12,0,0,1,24,0v44a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v68a8,8,0,0,0,16,0V60a12,12,0,0,1,24,0v68.67A48.08,48.08,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V116a12,12,0,0,1,24,0Z"/></svg></sc-if>{{t.chipLabel}}</span></div>
               <span class="card-title">{{t.title}}</span>
-              <div class="fail-note"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg><span>{{t.reason}}</span></div>
+              <sc-if value="{{t.isStack}}" hint-placeholder-val="{{false}}">
+                <div class="split">
+                  <span class="split-head"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M230.91,172A8,8,0,0,1,228,182.91l-96,56a8,8,0,0,1-8.06,0l-96-56A8,8,0,0,1,36,169.09l92,53.65,92-53.65A8,8,0,0,1,230.91,172ZM220,121.09l-92,53.65L36,121.09A8,8,0,0,0,28,134.91l96,56a8,8,0,0,0,8.06,0l96-56A8,8,0,1,0,220,121.09ZM24,80a8,8,0,0,1,4-6.91l96-56a8,8,0,0,1,8.06,0l96,56a8,8,0,0,1,0,13.82l-96,56a8,8,0,0,1-8.06,0l-96-56A8,8,0,0,1,24,80Zm23.88,0L128,126.74,208.12,80,128,33.26Z"/></svg>Proposed stack · 3 PRs · est. +212 −40</span>
+                  <span class="split-row"><span class="split-n">1/3</span>Extract a ProviderCapabilities interface</span>
+                  <span class="split-row"><span class="split-n">2/3</span>Negotiate over stdio and http</span>
+                  <span class="split-row"><span class="split-n">3/3</span>Negotiate over websocket, remove fallbacks</span>
+                </div>
+              </sc-if>
+              <sc-if value="{{t.isRefusal}}" hint-placeholder-val="{{false}}">
+                <div class="split">
+                  <span class="split-head quiet"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm88,104a87.56,87.56,0,0,1-20.41,56.28L71.72,60.4A88,88,0,0,1,216,128ZM40,128A87.56,87.56,0,0,1,60.41,71.72L184.28,195.6A88,88,0,0,1,40,128Z"/></svg>Declined at Refine · nothing written</span>
+                  <span class="split-kv"><span>est. <b>+1,340 −410</b></span><span><b>31</b> files</span><span>tripped <b>&gt; 500 additions</b>, <b>&gt; 20 files</b></span></span>
+                  <span class="split-row"><span class="split-n">1</span>Storage interface in front of the JSON store</span>
+                  <span class="split-row"><span class="split-n">2</span>SQLite adapter behind that interface</span>
+                  <span class="split-row"><span class="split-n">3</span>Migrate daemon reads, then desktop reads</span>
+                  <span class="split-row"><span class="split-n">4</span>Remove the JSON path</span>
+                </div>
+              </sc-if>
+              <sc-if value="{{t.isFailed}}" hint-placeholder-val="{{false}}">
+                <div class="fail-note"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg><span>{{t.reason}}</span></div>
+              </sc-if>
               <div class="card-foot">
-                <span class="card-meta"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm64-88a8,8,0,0,1-8,8H128a8,8,0,0,1-8-8V72a8,8,0,0,1,16,0v48h48A8,8,0,0,1,192,128Z"/></svg>parked {{t.parked}}</span>
-                <button class="btn"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,128a96,96,0,0,1-94.71,96H128A95.38,95.38,0,0,1,62.1,197.8a8,8,0,0,1,11-11.63A80,80,0,1,0,71.43,71.39a3.07,3.07,0,0,1-.26.25L44.59,96H72a8,8,0,0,1,0,16H24a8,8,0,0,1-8-8V56a8,8,0,0,1,16,0V85.8L60.25,60A96,96,0,0,1,224,128Z"/></svg>Retry with note</button>
+                <span class="card-meta"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm64-88a8,8,0,0,1-8,8H128a8,8,0,0,1-8-8V72a8,8,0,0,1,16,0v48h48A8,8,0,0,1,192,128Z"/></svg>{{t.since}}</span>
+                <button class="btn {{t.ctaCls}}"><sc-if value="{{t.isFailed}}" hint-placeholder-val="{{false}}"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,128a96,96,0,0,1-94.71,96H128A95.38,95.38,0,0,1,62.1,197.8a8,8,0,0,1,11-11.63A80,80,0,1,0,71.43,71.39a3.07,3.07,0,0,1-.26.25L44.59,96H72a8,8,0,0,1,0,16H24a8,8,0,0,1-8-8V56a8,8,0,0,1,16,0V85.8L60.25,60A96,96,0,0,1,224,128Z"/></svg></sc-if><sc-if value="{{t.isRefusal}}" hint-placeholder-val="{{false}}"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z"/></svg></sc-if><sc-if value="{{t.isStack}}" hint-placeholder-val="{{false}}"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M230.91,172A8,8,0,0,1,228,182.91l-96,56a8,8,0,0,1-8.06,0l-96-56A8,8,0,0,1,36,169.09l92,53.65,92-53.65A8,8,0,0,1,230.91,172ZM220,121.09l-92,53.65L36,121.09A8,8,0,0,0,28,134.91l96,56a8,8,0,0,0,8.06,0l96-56A8,8,0,1,0,220,121.09ZM24,80a8,8,0,0,1,4-6.91l96-56a8,8,0,0,1,8.06,0l96,56a8,8,0,0,1,0,13.82l-96,56a8,8,0,0,1-8.06,0l-96-56A8,8,0,0,1,24,80Zm23.88,0L128,126.74,208.12,80,128,33.26Z"/></svg></sc-if>{{t.cta}}</button>
               </div>
             </div>
           </sc-for>
@@ -354,21 +506,37 @@ class Component extends DCLogic {
   renderVals() {
     const open = (t) => () => this.setState({ dialogOpen: true, activeId: t.num });
     const queuedRaw = [
-      { num: 88, repo: 'jortega0033/agentdock', title: 'Offer a CLI install link when no provider is detected', chipLabel: '≤ 40 lines', chipClass: 'chip-ok', age: '2d', cta: 'Implement', hasSplit: false },
-      { num: 91, repo: 'jortega0033/agentdock', title: 'Recommend agent-browser as a stdio MCP server example', chipLabel: '≤ 20 lines', chipClass: 'chip-ok', age: '1d', cta: 'Implement', hasSplit: false },
-      { num: 108, repo: 'jortega0033/agentdock', title: 'Rework provider capability negotiation across all transports', chipLabel: 'over budget · split first', chipClass: 'chip-danger', age: '4h', cta: 'Accept split', hasSplit: true },
+      { num: 88, repo: 'jortega0033/agentdock', title: 'Offer a CLI install link when no provider is detected', chipLabel: '≤ 40 lines', chipClass: 'chip-ok', age: '2d' },
+      { num: 91, repo: 'jortega0033/agentdock', title: 'Recommend agent-browser as a stdio MCP server example', chipLabel: '≤ 20 lines', chipClass: 'chip-ok', age: '1d' },
+      { num: 96, repo: 'jortega0033/agentdock', title: 'Polish provider sandbox badge and auth-label casing', chipLabel: '≤ 30 lines', chipClass: 'chip-ok', age: '5h' },
     ];
     const queued = queuedRaw.map((t) => ({ ...t, open: open(t) }));
+    // Working: bounded concurrency — 2 slots (default), hard cap 4, one worktree each. A ticket whose Refine "files likely touched" overlaps a running one is held, not started.
     const working = [
-      { num: 94, repo: 'jortega0033/agentdock', title: 'Sanitize environment for MCP stdio server subprocesses', phase: 'implementing', pct: 62, elapsed: '4m 12s', model: 'sonnet' },
-      { num: 96, repo: 'jortega0033/agentdock', title: 'Polish provider sandbox badge and auth-label casing', phase: 'refining', pct: 18, elapsed: '0m 48s', model: 'sonnet' },
-    ];
+      { kind: 'run', num: 94, idLabel: '#94', title: 'Sanitize environment for MCP stdio server subprocesses', chipLabel: 'implementing', chipClass: 'chip-warn', pct: 62, elapsed: '4m 12s', model: 'sonnet' },
+      { kind: 'stack', num: 103, idLabel: '#103 · stack', title: 'Move provider auth labels into one shared table', chipLabel: '2 of 3 PRs merged', chipClass: 'chip-warn', pct: 67, merged: 2, total: 3,
+        kids: [
+          { n: '1/3', num: 109, title: 'Extract the label table from the renderer', state: 'done' },
+          { n: '2/3', num: 110, title: 'Read labels from the table in the daemon', state: 'done' },
+          { n: '3/3', num: 111, title: 'Delete the duplicated renderer strings', state: 'run' },
+        ] },
+      { kind: 'wait', num: 97, idLabel: '#97', title: 'Retry the MCP stdio handshake once on EPIPE', chipLabel: 'waiting', chipClass: 'chip-neutral', overlapWith: 94, overlapFile: 'stdio-mcp-connection.ts', held: '3m' },
+    ].map((t) => ({
+      ...t,
+      isRun: t.kind === 'run', isStack: t.kind === 'stack', isWait: t.kind === 'wait',
+      cardCls: t.kind === 'wait' ? 'held' : '',
+      ...Object.fromEntries((t.kids ?? []).flatMap((k, i) => [[`k${i + 1}Title`, k.title], [`k${i + 1}Num`, k.num], [`k${i + 1}Ic`, k.state], [`k${i + 1}TCls`, k.state === 'done' ? 'done' : ''], [`k${i + 1}CheckHide`, k.state === 'done' ? '' : 'hide'], [`k${i + 1}PlayHide`, k.state === 'run' ? '' : 'hide']])),
+    }));
     const ready = [
-      { num: 90, repo: 'jortega0033/agentdock', title: 'Log session.failed events server-side in the daemon', gates: '5/5 gates passed', add: 34, del: 6, files: 2 },
+      { num: 90, repo: 'jortega0033/agentdock', title: 'Log session.failed events server-side in the daemon', chipLabel: '5/5 gates passed', chipClass: 'chip-ok', add: 34, del: 6, files: 2, cta: 'Review diff', isCi: false },
+      { num: 85, repo: 'jortega0033/agentdock', title: 'Batch tray badge updates to one repaint per tick', chipLabel: 'ci-failed · fix ready', chipClass: 'chip-ci', add: 3, del: 1, files: 1, cta: 'Review fix', isCi: true, pr: 115 },
     ];
+    // Needs human: both diff-gate outcomes are real ticket states backed by GitHub labels, next to the ordinary parked-after-3-failures card.
     const parked = [
-      { num: 87, title: 'Migrate tray notifications to native OS toasts', attempts: 3, reason: 'Last attempt: vitest timed out in tray.test.ts after 120 s. Parked until someone looks — no more runs will be spent.', parked: '3h' },
-    ];
+      { kind: 'stack', num: 108, title: 'Rework provider capability negotiation across all transports', chipLabel: 'awaiting-stack-approval', chipClass: 'chip-warn', since: 'waiting 4h', cta: 'Review stack', ctaCls: 'primary' },
+      { kind: 'refusal', num: 113, title: 'Replace the JSON file store with SQLite across daemon and desktop', chipLabel: 'needs-pre-scoping', chipClass: 'chip-neutral', since: 'declined 2h · comment posted', cta: 'Open on GitHub', ctaCls: '' },
+      { kind: 'failed', num: 87, title: 'Migrate tray notifications to native OS toasts', chipLabel: '3 failed', chipClass: 'chip-danger', reason: 'Last attempt: vitest timed out in tray.test.ts after 120 s. Parked until someone looks — no more runs will be spent.', since: 'parked 3h', cta: 'Retry with note', ctaCls: '' },
+    ].map((t) => ({ ...t, isStack: t.kind === 'stack', isRefusal: t.kind === 'refusal', isFailed: t.kind === 'failed' }));
     const activeTicket = queuedRaw.find((t) => t.num === this.state.activeId) ?? queuedRaw[0];
     return {
       queued, working, ready, parked,

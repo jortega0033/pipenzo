@@ -143,6 +143,114 @@
   .cmdk{display:inline-flex;align-items:center;gap:8px;width:260px;height:32px;padding:0 8px 0 12px;border-radius:var(--pill);background:var(--surface-2);color:var(--text-faint);font-size:13px;cursor:text;transition:background-color var(--ease);}
   .cmdk:hover{background:var(--surface-3);}
   .cmdk span:not(.kbd){flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  /* --- risk grade: LOW / MEDIUM / HIGH. Tinted, mono, leading dot — a grade never reads as an agent state (those stay filled) --- */
+  .chip-risk{font-family:'IBM Plex Mono',monospace;letter-spacing:0.06em;gap:6px;}
+  .chip-risk::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0;}
+  .chip-risk.low{background:rgba(63,185,80,0.14);color:var(--ok);}
+  .chip-risk.med{background:rgba(210,153,34,0.16);color:var(--warn);}
+  .chip-risk.high{background:rgba(248,81,73,0.16);color:var(--danger);}
+  .chip-wait{background:var(--surface-3);color:var(--warn);}
+  .chip-ci{background:var(--danger-fg);color:var(--danger);}
+  .self-tag{display:inline-flex;align-items:center;height:16px;padding:0 6px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-soft);background:var(--surface-3);border-radius:var(--pill);margin-left:6px;vertical-align:1px;white-space:nowrap;}
+  /* --- passive LOW line: auto-proceeded and logged, no card, no chip, no notification --- */
+  .low-line{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-faint);line-height:1.3;min-width:0;}
+  .low-line .mono{font-size:11px;flex-shrink:0;}
+  .low-line .lt{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  /* --- pre-commitment record: action / expect / if_wrong before every MEDIUM or HIGH action; the outcome is appended and diffed --- */
+  .precommit{display:flex;flex-direction:column;gap:2px;border-radius:var(--r-sm);overflow:hidden;}
+  .pc-head{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--surface-3);font-size:12px;font-weight:700;color:var(--text);line-height:1;}
+  .pc-head .grow{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:400;color:var(--text-soft);}
+  .pc-head .grow b{color:var(--text);font-weight:700;}
+  .pc-toggle{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;color:var(--text-faint);cursor:pointer;white-space:nowrap;transition:color var(--ease);}
+  .pc-toggle:hover{color:var(--text);}
+  .pc-row{display:grid;grid-template-columns:64px minmax(0,1fr);gap:12px;padding:8px 12px;background:var(--surface-2);font-size:12px;line-height:1.45;color:var(--text-soft);}
+  .pc-k{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);line-height:1.6;}
+  .pc-row .mono{font-size:12px;color:var(--text);}
+  .pc-row.got{color:var(--text);background:var(--surface-3);}
+  .pc-row.got .pc-k{color:var(--danger);}
+  .pc-row.got.ok .pc-k{color:var(--ok);}
+  .pc-row.got.part .pc-k{color:var(--warn);}
+  /* --- approval, compact (MEDIUM): inline in the stream, carries the pre-commitment, Undo instead of a hard reject, notifies only after 60 s --- */
+  .approval-inline{display:flex;flex-direction:column;gap:10px;padding:12px 14px;border-radius:var(--r);background:var(--surface-2);}
+  .ai-head{display:flex;align-items:center;gap:10px;font-size:13px;font-weight:700;line-height:1.3;}
+  .ai-head .grow{flex:1;min-width:0;}
+  .ai-head .mono{font-weight:400;font-size:12px;color:var(--text-faint);}
+  .ai-cmd{font-family:'IBM Plex Mono',monospace;font-size:12px;line-height:20px;background:var(--surface-3);padding:6px 10px;border-radius:var(--r-sm);color:var(--text-soft);white-space:pre-wrap;}
+  .ai-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;}
+  .ai-note{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-faint);line-height:1.3;min-width:0;}
+  .ai-note .icon-sm{flex-shrink:0;}
+  .ai-acts{display:flex;gap:6px;flex-shrink:0;}
+  .ai-done{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:var(--r);background:var(--surface-2);font-size:12px;color:var(--text-soft);line-height:1.3;}
+  .ai-done .d-ic{width:20px;height:20px;border-radius:50%;background:var(--ok);color:var(--ok-fg);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .ai-done .grow{flex:1;min-width:0;}
+  .ai-done b{color:var(--text);font-weight:700;}
+  .ai-undo{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:700;color:var(--text);cursor:pointer;white-space:nowrap;}
+  .ai-undo .mono{font-weight:400;color:var(--text-faint);font-size:11px;}
+  /* --- cumulative risk strip: unreviewed LOW actions and mispredictions fill it; crossing the threshold promotes the next MEDIUM to HIGH --- */
+  .risk-strip{display:flex;flex-direction:column;gap:10px;}
+  .risk-segs{display:flex;gap:2px;height:6px;}
+  .risk-seg{flex:1;border-radius:2px;background:var(--surface-3);}
+  .risk-seg.on{background:var(--ok);} .risk-seg.on.warm{background:var(--warn);} .risk-seg.on.hot{background:var(--danger);}
+  .risk-lbl{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font-size:12px;color:var(--text-soft);line-height:1.35;}
+  .risk-lbl b{color:var(--text);font-weight:700;}
+  .risk-lbl .mono{color:var(--text-faint);font-size:11px;flex-shrink:0;}
+  .risk-promo{display:flex;align-items:flex-start;gap:8px;font-size:12px;color:var(--text-soft);line-height:1.4;background:var(--surface-3);padding:8px 10px;border-radius:var(--r-sm);}
+  .risk-promo .icon-sm{color:var(--warn);flex-shrink:0;margin-top:1px;}
+  .risk-promo b{color:var(--text);font-weight:700;}
+  /* --- screenshot evidence: browser-viewport thumbnails, captured by the daemon on the agent's behalf, self-reported — never satisfies a gate --- */
+  .shots{display:flex;gap:8px;}
+  .shot{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;cursor:pointer;}
+  .shot-frame{border-radius:var(--r-sm);overflow:hidden;background:var(--surface-4);aspect-ratio:16/10;display:flex;flex-direction:column;transition:filter var(--ease);}
+  .shot:hover .shot-frame{filter:brightness(1.15);}
+  .shot-bar{height:10px;background:var(--surface-3);display:flex;align-items:center;gap:3px;padding:0 5px;flex-shrink:0;}
+  .shot-bar i{width:4px;height:4px;border-radius:50%;background:var(--text-faint);display:block;}
+  .shot-bar .url{flex:1;height:4px;border-radius:2px;background:var(--surface-4);margin-left:3px;}
+  .shot-body{flex:1;position:relative;background:var(--surface-2);overflow:hidden;}
+  .ph{position:absolute;background:var(--surface-3);border-radius:2px;}
+  .ph.hi{background:var(--surface-4);} .ph.acc{background:var(--accent);} .ph.bad{background:var(--danger);} .ph.txt{background:var(--text-faint);opacity:0.5;}
+  .shot-cap{display:flex;align-items:center;justify-content:space-between;gap:6px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);line-height:1;}
+  .shot-cap b{color:var(--text-soft);font-weight:700;font-family:'IBM Plex Sans',sans-serif;}
+  .shot.lg{cursor:default;} .shot.lg .shot-frame{border-radius:var(--r);} .shot.lg .shot-bar{height:20px;padding:0 8px;gap:5px;} .shot.lg .shot-bar i{width:7px;height:7px;} .shot.lg .shot-bar .url{height:7px;margin-left:6px;}
+  .shot.lg:hover .shot-frame{filter:none;}
+  .shot-prov{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-faint);line-height:1.3;}
+  .shot-prov .icon-sm{flex-shrink:0;}
+  .shot-prov .self-tag{margin-left:0;}
+  /* --- bounded concurrency: numeric stepper (default 2, hard cap 4), lane capacity indicator, held-by-overlap card note --- */
+  .numctl{display:inline-flex;align-items:center;gap:2px;height:32px;padding:2px;border-radius:var(--pill);background:var(--surface-3);}
+  .numctl button{width:28px;height:28px;border-radius:50%;border:none;background:transparent;color:var(--text-soft);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:background-color var(--ease),color var(--ease);}
+  .numctl button:hover{background:var(--surface-4);color:var(--text);}
+  .numctl button:disabled{opacity:0.35;cursor:default;} .numctl button:disabled:hover{background:transparent;color:var(--text-soft);}
+  .numctl .val{min-width:44px;text-align:center;font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:700;line-height:1;}
+  .numctl .val small{font-size:11px;font-weight:400;color:var(--text-faint);}
+  .lane-cap{display:inline-flex;align-items:center;gap:6px;height:20px;padding:0 8px;border-radius:var(--pill);background:var(--surface-2);font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-soft);line-height:1;white-space:nowrap;}
+  .lane-cap.full{color:var(--warn);}
+  .lane-cap .icon-sm{color:inherit;}
+  .wait-note{display:flex;align-items:flex-start;gap:8px;font-size:12px;color:var(--text-soft);line-height:1.4;background:var(--surface-2);padding:8px 10px;border-radius:var(--r-sm);}
+  .wait-note .icon-sm{color:var(--warn);margin-top:1px;flex-shrink:0;}
+  .wait-note b{color:var(--text);font-weight:700;}
+  /* --- stack container: parent card of an approved 2–4 PR stack; children are real tickets, restacking is GitHub's job (gh stack) --- */
+  .kids{display:flex;flex-direction:column;gap:2px;}
+  .kid{display:flex;align-items:center;gap:8px;height:32px;padding:0 10px;background:var(--surface-2);font-size:12px;color:var(--text-soft);line-height:1;}
+  .kid:first-child{border-radius:var(--r-sm) var(--r-sm) 0 0;} .kid:last-child{border-radius:0 0 var(--r-sm) var(--r-sm);} .kid:only-child{border-radius:var(--r-sm);}
+  .kid .n,.kid .id{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);flex-shrink:0;}
+  .kid .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .kid .t.done{color:var(--text-faint);}
+  .kid-ic{width:16px;height:16px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;background:var(--surface-4);color:var(--text-faint);}
+  .kid-ic.done{background:var(--ok);color:var(--ok-fg);} .kid-ic.run{background:var(--warn);color:var(--warn-fg);}
+  .kid .ext{color:var(--text-faint);display:inline-flex;cursor:pointer;transition:color var(--ease);} .kid .ext:hover{color:var(--text);}
+  /* --- ci-failed: a failing check, one forked fix attempt (session.fork), lineage back to the original; the fix re-enters the human push gate --- */
+  .ci-block{display:flex;flex-direction:column;gap:2px;border-radius:var(--r-sm);overflow:hidden;}
+  .ci-row{display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--surface-2);font-size:12px;color:var(--text-soft);line-height:1.35;}
+  .ci-row .grow{flex:1;min-width:0;}
+  .ci-row b{color:var(--text);font-weight:700;}
+  .ci-row .mono{font-size:11px;color:var(--text-faint);white-space:nowrap;}
+  .ci-ic{width:20px;height:20px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;background:var(--surface-4);color:var(--text-soft);}
+  .ci-ic.bad{background:var(--danger);color:var(--danger-fg);} .ci-ic.ok{background:var(--ok);color:var(--ok-fg);} .ci-ic.fork{background:var(--surface-3);color:var(--text);}
+  .ci-log{font-family:'IBM Plex Mono',monospace;font-size:12px;line-height:1.5;padding:8px 12px;background:var(--surface-3);color:var(--text-soft);white-space:pre-wrap;}
+  .ci-log .bad{color:var(--danger);}
+  .ci-lineage{display:flex;align-items:center;gap:6px;padding:7px 12px;background:var(--surface-3);font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);line-height:1;}
+  .ci-lineage .icon-sm{color:var(--text-faint);flex-shrink:0;}
+  .ci-lineage b{color:var(--text-soft);font-weight:700;}
   /* ===== screen ===== */
   .shell{height:900px;}
   .head{padding:0 24px 16px;display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-shrink:0;background:var(--bg);}
@@ -175,12 +283,29 @@
   tr.del td.ln{background:#602e2c;color:#f1b7b3;}
   .rail{padding:8px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;background:var(--surface);border-radius:var(--r);}
   .v-block{background:var(--surface-2);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:12px;}
+  .v-head{display:flex;flex-direction:column;gap:6px;}
+  .v-head .sub{font-size:12px;color:var(--text-faint);line-height:1.4;}
   .v-row{display:flex;align-items:flex-start;gap:8px;font-size:13px;line-height:1.4;}
   .v-row .v-ic{width:20px;height:20px;border-radius:50%;background:var(--ok);color:var(--ok-fg);display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:-1px;}
   .v-row .v-ic.self{background:var(--surface-3);color:var(--text-soft);}
   .v-row .m{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-faint);}
-  .self-tag{display:inline-flex;align-items:center;height:16px;padding:0 6px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-soft);background:var(--surface-3);border-radius:var(--pill);margin-left:6px;vertical-align:1px;}
+  .v-row .lnk{font-weight:700;color:var(--text-soft);cursor:pointer;} .v-row .lnk:hover{color:var(--text);}
+  /* agent-captured zone: one surface darker than the gate zone, grey icons, provenance in the header — a different kind of evidence, never a gate */
+  .v-block.agent{background:var(--surface);box-shadow:inset 0 0 0 2px var(--surface-2);}
+  .v-block.agent .v-row{color:var(--text-soft);}
+  .v-block .shots{margin-top:2px;}
   .commit{font-family:'IBM Plex Mono',monospace;font-size:12px;line-height:1.5;color:var(--text-soft);background:var(--surface-3);padding:12px;border-radius:var(--r-sm);white-space:pre-wrap;}
+  .confidence{display:flex;align-items:flex-start;gap:8px;font-size:12px;color:var(--text-soft);line-height:1.4;}
+  .confidence .icon-sm{color:var(--warn);flex-shrink:0;margin-top:1px;}
+  .confidence b{color:var(--text);font-weight:700;}
+  /* expanded screenshot */
+  .scrim{position:absolute;inset:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:5;}
+  .lightbox{width:760px;display:flex;flex-direction:column;gap:12px;}
+  .lb-head{display:flex;align-items:center;justify-content:space-between;gap:12px;}
+  .lb-title{font-size:14px;font-weight:700;line-height:1.3;}
+  .lb-sub{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-faint);line-height:1;margin-top:6px;}
+  .lb-nav{display:flex;gap:4px;}
+  .lightbox .shot-frame{box-shadow:var(--shadow);}
 </style>
 </helmet>
 <div class="shell">
@@ -209,6 +334,7 @@
     </div>
   </div>
 
+
   <div class="main">
     <div class="main-head">
       <div class="crumbs"><span class="mono">jortega0033/agentdock</span><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"/></svg><span>Board</span><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"/></svg><span class="mono">#94</span><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"/></svg><span class="cur">Review diff</span></div>
@@ -218,6 +344,7 @@
       </div>
     </div>
 
+
     <div class="head">
       <div class="head-l">
         <span class="h-id">#94 · issue-94 → main · committed locally, nothing pushed</span>
@@ -226,6 +353,7 @@
           <span class="mono"><span class="add-t">+52</span> <span class="del-t">−6</span></span>
           <span>2 files changed</span>
           <span class="chip chip-ok">within budget · ≤ 100 lines, ≤ 10 files</span>
+          <span class="chip chip-risk high">HIGH · publish</span>
         </div>
       </div>
       <div class="actions">
@@ -280,11 +408,45 @@
       </div>
       <div class="rail">
         <div class="v-block">
-          <span class="label">Verification</span>
+          <div class="v-head"><span class="label">Machine-verified</span><span class="sub">Deterministic gates. Each one ran on this machine and either passed or blocked the ticket.</span></div>
           <div class="v-row"><span class="v-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span>Build and typecheck passed <span class="m">pnpm build · 9s</span></span></div>
-          <div class="v-row"><span class="v-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span>vitest: 21 passed, 0 failed <span class="m">1 new</span></span></div>
+          <div class="v-row"><span class="v-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span>vitest: 21 passed, 0 failed <span class="m">1 new · spec-generated</span></span></div>
+          <div class="v-row"><span class="v-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span>eslint: 0 errors, 0 warnings</span></div>
           <div class="v-row"><span class="v-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span>gitleaks and semgrep p/ci: no findings</span></div>
-          <div class="v-row"><span class="v-ic self"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span>3/3 acceptance criteria met<span class="self-tag">self-reported</span></span></div>
+          <div class="v-row"><span class="v-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span>Diff scope within the Refine estimate <span class="m">+52 of ≤ 100</span></span></div>
+        </div>
+        <div class="v-block agent">
+          <div class="v-head"><span class="label">Agent-captured<span class="self-tag">self-reported — not verified by a human</span></span><span class="sub">Evidence the agent gathered about its own work. Shown for context; none of it can satisfy a gate.</span></div>
+          <div class="v-row"><span class="v-ic self"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span>3/3 acceptance criteria met, by its own reading</span></div>
+          <div class="v-row"><span class="v-ic self"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span>Pre-commitments: 2 matched, 1 mismatch (recovered) <span class="m lnk">activity →</span></span></div>
+          <div class="v-row"><span class="v-ic self"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M208,56H180.28L166.65,35.56A8,8,0,0,0,160,32H96a8,8,0,0,0-6.65,3.56L75.71,56H48A24,24,0,0,0,24,80V192a24,24,0,0,0,24,24H208a24,24,0,0,0,24-24V80A24,24,0,0,0,208,56Zm8,136a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V80a8,8,0,0,1,8-8H80a8,8,0,0,0,6.66-3.56L100.28,48h55.43l13.63,20.44A8,8,0,0,0,176,72h32a8,8,0,0,1,8,8ZM128,88a44,44,0,1,0,44,44A44.05,44.05,0,0,0,128,88Zm0,72a28,28,0,1,1,28-28A28,28,0,0,1,128,160Z"/></svg></span><span>Screenshots: MCP servers panel, before and after <span class="m">no visible change expected</span></span></div>
+          <div class="shots">
+            <sc-for list="{{shots}}" as="s" hint-placeholder-count="2">
+              <div class="shot" onClick="{{s.open}}">
+                <div class="shot-frame">
+                  <div class="shot-bar"><i></i><i></i><i></i><span class="url"></span></div>
+                  <div class="shot-body">
+                    <div class="ph" style="left:0;top:0;bottom:0;width:22%;background:var(--surface-3);"></div>
+                    <div class="ph txt" style="left:4%;top:8%;width:12%;height:6%;"></div>
+                    <div class="ph hi" style="left:4%;top:22%;width:14%;height:8%;"></div>
+                    <div class="ph txt" style="left:4%;top:38%;width:10%;height:5%;"></div>
+                    <div class="ph txt" style="left:28%;top:8%;width:30%;height:7%;"></div>
+                    <div class="ph hi" style="left:28%;top:24%;width:66%;height:14%;"></div>
+                    <div class="ph {{s.dot}}" style="left:31%;top:29%;width:2.6%;height:4.2%;border-radius:50%;"></div>
+                    <div class="ph txt" style="left:37%;top:28.5%;width:22%;height:5%;"></div>
+                    <div class="ph hi" style="left:28%;top:44%;width:66%;height:14%;"></div>
+                    <div class="ph acc" style="left:31%;top:49%;width:2.6%;height:4.2%;border-radius:50%;"></div>
+                    <div class="ph txt" style="left:37%;top:48.5%;width:18%;height:5%;"></div>
+                    <div class="ph hi" style="left:28%;top:64%;width:66%;height:14%;"></div>
+                    <div class="ph acc" style="left:31%;top:69%;width:2.6%;height:4.2%;border-radius:50%;"></div>
+                    <div class="ph txt" style="left:37%;top:68.5%;width:26%;height:5%;"></div>
+                  </div>
+                </div>
+                <div class="shot-cap"><b>{{s.label}}</b><span>{{s.ref}}</span></div>
+              </div>
+            </sc-for>
+          </div>
+          <div class="shot-prov"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M208,56H180.28L166.65,35.56A8,8,0,0,0,160,32H96a8,8,0,0,0-6.65,3.56L75.71,56H48A24,24,0,0,0,24,80V192a24,24,0,0,0,24,24H208a24,24,0,0,0,24-24V80A24,24,0,0,0,208,56Zm8,136a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V80a8,8,0,0,1,8-8H80a8,8,0,0,0,6.66-3.56L100.28,48h55.43l13.63,20.44A8,8,0,0,0,176,72h32a8,8,0,0,1,8,8ZM128,88a44,44,0,1,0,44,44A44.05,44.05,0,0,0,128,88Zm0,72a28,28,0,1,1,28-28A28,28,0,0,1,128,160Z"/></svg><span>Captured by the daemon with the repo's Playwright · 1280×800 · against base <span class="mono">287a4a6</span></span></div>
         </div>
         <div class="v-block">
           <span class="label">Review</span>
@@ -296,11 +458,71 @@
           <div class="commit">fix(mcp): sanitize environment for MCP stdio server subprocesses
 
 Spawned servers no longer inherit the full host env. Closes #94.</div>
+          <div class="confidence"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg><span>The PR body will carry a confidence line: <b>2 of 3 pre-commitments matched</b>, 1 mismatch on the first test run, recovered via its own if_wrong path.</span></div>
         </div>
       </div>
     </div>
   </div>
+
+  <sc-if value="{{shotOpen}}" hint-placeholder-val="{{false}}">
+    <div class="scrim">
+      <div class="lightbox">
+        <div class="lb-head">
+          <div>
+            <div class="lb-title">{{activeShot.label}} — MCP servers panel</div>
+            <div class="lb-sub">{{activeShot.ref}} · 1280×800 · captured 14:06 by the daemon · self-reported, not verified by a human</div>
+          </div>
+          <div class="lb-nav"><button class="icon-btn" onClick="{{prevShot}}"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M165.66,202.34a8,8,0,0,1-11.32,11.32l-80-80a8,8,0,0,1,0-11.32l80-80a8,8,0,0,1,11.32,11.32L91.31,128Z"/></svg></button><button class="icon-btn" onClick="{{nextShot}}"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"/></svg></button><button class="icon-btn" onClick="{{closeShot}}"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></button></div>
+        </div>
+        <div class="shot lg">
+          <div class="shot-frame">
+            <div class="shot-bar"><i></i><i></i><i></i><span class="url"></span></div>
+            <div class="shot-body">
+              <div class="ph" style="left:0;top:0;bottom:0;width:22%;background:var(--surface-3);"></div>
+              <div class="ph txt" style="left:4%;top:8%;width:12%;height:4%;"></div>
+              <div class="ph hi" style="left:4%;top:18%;width:14%;height:6%;"></div>
+              <div class="ph txt" style="left:4%;top:30%;width:10%;height:3.5%;"></div>
+              <div class="ph txt" style="left:4%;top:38%;width:11%;height:3.5%;"></div>
+              <div class="ph txt" style="left:28%;top:8%;width:30%;height:5%;"></div>
+              <div class="ph hi" style="left:28%;top:20%;width:66%;height:14%;"></div>
+              <div class="ph {{activeShot.dot}}" style="left:31%;top:25%;width:2.2%;height:3.6%;border-radius:50%;"></div>
+              <div class="ph txt" style="left:36%;top:24.5%;width:22%;height:4%;"></div>
+              <div class="ph txt" style="left:36%;top:30%;width:34%;height:2.5%;"></div>
+              <div class="ph hi" style="left:28%;top:38%;width:66%;height:14%;"></div>
+              <div class="ph acc" style="left:31%;top:43%;width:2.2%;height:3.6%;border-radius:50%;"></div>
+              <div class="ph txt" style="left:36%;top:42.5%;width:18%;height:4%;"></div>
+              <div class="ph txt" style="left:36%;top:48%;width:28%;height:2.5%;"></div>
+              <div class="ph hi" style="left:28%;top:56%;width:66%;height:14%;"></div>
+              <div class="ph acc" style="left:31%;top:61%;width:2.2%;height:3.6%;border-radius:50%;"></div>
+              <div class="ph txt" style="left:36%;top:60.5%;width:26%;height:4%;"></div>
+              <div class="ph txt" style="left:36%;top:66%;width:40%;height:2.5%;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </sc-if>
 </div>
 </x-dc>
+<script data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    const SHOTS = [
+      { i: 0, label: 'Before', ref: 'main · 287a4a6', dot: 'acc' },
+      { i: 1, label: 'After', ref: 'issue-94 · working tree', dot: 'acc' },
+    ];
+    const cur = this.state.shot ?? null;
+    const shots = SHOTS.map((s) => ({ ...s, open: () => this.setState({ shot: s.i }) }));
+    const activeShot = SHOTS[cur ?? 0];
+    return {
+      shots, activeShot,
+      shotOpen: cur !== null,
+      closeShot: () => this.setState({ shot: null }),
+      prevShot: () => this.setState({ shot: (cur + SHOTS.length - 1) % SHOTS.length }),
+      nextShot: () => this.setState({ shot: (cur + 1) % SHOTS.length }),
+    };
+  }
+}
+</script>
 </body>
 </html>
