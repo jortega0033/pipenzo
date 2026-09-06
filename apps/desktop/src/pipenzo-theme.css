@@ -4348,6 +4348,32 @@
     padding-left: 8px;
   }
 
+  /* The hunk-collapse toggle (issue #107) -- a real <button> living inside the hunk header's
+     td.code so it stays a keyboard/screen-reader target, styled to read as the same plain mono
+     header text the canvas shows with no toggle at all. */
+  .hunk-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: transparent;
+    border: none;
+    padding: 0;
+    margin: 0;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+  }
+
+  .hunk-toggle:hover {
+    color: var(--color-text);
+  }
+
+  .hunk-toggle:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: var(--radius-pipenzo-sm);
+  }
+
   tr.add td.code {
     background: #213224;
     color: var(--color-text);
