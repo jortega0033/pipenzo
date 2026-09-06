@@ -1868,6 +1868,106 @@
     color: var(--color-text-faint);
     flex-shrink: 0;
   }
+
+  /* Ticket card — ported verbatim from Foundations.dc.html's "Cards" section (mirrors
+     Main.dc.html's kanban board). A plain surface, no border anywhere in this system, that steps
+     up one surface on hover; `.held` (bounded-concurrency, a card waiting on a file-overlap slot)
+     dims to `--bg` with an inset outline instead. See Card.tsx. */
+  .card {
+    background: var(--color-surface);
+    border-radius: var(--radius-pipenzo);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    transition: background-color var(--ease-pipenzo);
+  }
+
+  .card:hover {
+    background: var(--color-surface-2);
+  }
+
+  .card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-height: 20px;
+  }
+
+  .card-top .chip {
+    height: 18px;
+    padding: 0 6px;
+  }
+
+  .card-id {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--color-text-faint);
+    line-height: 1;
+  }
+
+  .card-title {
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.35;
+    text-wrap: pretty;
+  }
+
+  .card-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .card-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--color-text-faint);
+    line-height: 1;
+  }
+
+  .card-progress {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .bar {
+    flex: 1;
+    height: 4px;
+    border-radius: var(--radius-pipenzo-pill);
+    background: var(--color-surface-3);
+    overflow: hidden;
+  }
+
+  .bar-fill {
+    height: 100%;
+    background: var(--color-accent);
+    border-radius: var(--radius-pipenzo-pill);
+  }
+
+  .pct {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--color-text-soft);
+    line-height: 1;
+    min-width: 32px;
+    text-align: right;
+  }
+
+  .card.held {
+    background: var(--color-bg);
+    box-shadow: inset 0 0 0 2px var(--color-surface);
+  }
+
+  .card.held:hover {
+    background: var(--color-surface);
+  }
 }
 
 @keyframes sk-shimmer {
