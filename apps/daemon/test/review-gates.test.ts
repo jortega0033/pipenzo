@@ -534,3 +534,46 @@ describe('ReviewGatesRunner — input validation', () => {
     }
   });
 });
+
+/**
+ * Issue #145's daemon half: the `diff_scope` gate's *summary* has to name the exclusion, not just
+ * its detail pane. A one-line summary reading "3.20x the estimate" beside a diff that is mostly
+ * generated tests is the exact misreading the split exists to prevent, and nobody opens the detail
+ * pane before forming that impression.
+ */
+describe('the diff_scope gate summary', () => {
+  const scoped = (numstat: string) =>
+    harness({ numstat }).runner.run(
+      request({
+        spec: spec({ estimate: { changedLines: 100, filesTouched: 4, layered: false } }),
+      }) as never,
+    );
+
+  const row = (added: number, deleted: number, path: string): string =>
+    [added, deleted, path].join('\t');
+
+  it('names the generated-test lines it excluded, in the summary itself', async () => {
+    const report = await scoped(
+      `${row(40, 10, 'src/a.ts')}\n${row(900, 0, 'test/pipenzo-generated/a.test.ts')}\n`,
+    );
+    const gate = report.deterministic.find((entry) => entry.id === 'diff_scope');
+    expect(gate?.status).toBe('passed');
+    expect(gate?.summary).toContain('900 generated-test lines excluded');
+    expect(gate?.detail).toContain('the estimate is compared against the implementation half only');
+  });
+
+  it('says nothing about exclusions when there were none to exclude', async () => {
+    const report = await scoped(`${row(40, 10, 'src/a.ts')}\n`);
+    const gate = report.deterministic.find((entry) => entry.id === 'diff_scope');
+    expect(gate?.summary).not.toContain('excluded');
+  });
+
+  /** The property itself: a large generated test file cannot fail the gate on its own. */
+  it('passes a diff whose generated tests alone would have blown the estimate', async () => {
+    const report = await scoped(
+      `${row(10, 0, 'src/a.ts')}\n${row(5_000, 0, 'test/pipenzo-generated/a.test.ts')}\n`,
+    );
+    const gate = report.deterministic.find((entry) => entry.id === 'diff_scope');
+    expect(gate?.status).toBe('passed');
+  });
+});

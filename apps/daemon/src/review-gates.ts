@@ -342,13 +342,24 @@ export class ReviewGatesRunner {
     if (id === 'diff_scope') {
       // Pure, and the only gate that needs no subprocess. Reported against implementation files
       // only; the generated-test numbers travel alongside rather than inside (issue #145).
+      //
+      // The summary names the exclusion whenever there is one to name. A one-line summary reading
+      // "implementation diff is 3.20x the estimate" beside a diff that is mostly generated tests
+      // is the exact misreading the split exists to prevent, and the detail pane is not where a
+      // reader looks before forming that impression.
+      const excluded =
+        scope.generatedTests.changedLines > 0
+          ? ` (${scope.generatedTests.changedLines} generated-test lines excluded)`
+          : '';
       return finish(
         scope.exceededEstimate ? 'failed' : 'passed',
-        scope.exceededEstimate
+        (scope.exceededEstimate
           ? `implementation diff is ${scope.ratio.toFixed(2)}x the ${scope.estimate.changedLines}-line estimate`
-          : `implementation diff is ${scope.implementation.changedLines} lines against a ${scope.estimate.changedLines}-line estimate`,
+          : `implementation diff is ${scope.implementation.changedLines} lines against a ${scope.estimate.changedLines}-line estimate`) +
+          excluded,
         `implementation: ${scope.implementation.changedLines} lines / ${scope.implementation.filesTouched} files\n` +
-          `generated tests: ${scope.generatedTests.changedLines} lines / ${scope.generatedTests.filesTouched} files`,
+          `generated tests: ${scope.generatedTests.changedLines} lines / ${scope.generatedTests.filesTouched} files\n` +
+          'the estimate is compared against the implementation half only',
       );
     }
 

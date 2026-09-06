@@ -109,9 +109,20 @@ describe('buildPullRequestBody', () => {
     expect(body).toContain('⚠️ gitleaks not installed');
   });
 
+  /**
+   * Issue #145. A PR body reader has no rail to look at, so the split has to carry its own
+   * explanation -- otherwise it is two numbers next to an estimate and the reader picks one.
+   */
   it('reports the diff-scope implementation and generated-test totals separately', () => {
     const body = buildPullRequestBody(SPEC, REPORT);
-    expect(body).toContain('+8 of ≤ 60 implementation · +44 generated tests, reported separately');
+    expect(body).toContain('- Implementation: 8 lines across 1 file');
+    expect(body).toContain('- Generated tests: 44 lines across 1 file');
+  });
+
+  it('says which half the estimate was measured against, in the body itself', () => {
+    const body = buildPullRequestBody(SPEC, REPORT);
+    expect(body).toContain('implementation half only');
+    expect(body).toContain('never charged to the estimate');
   });
 
   it('reports "None." for dropped spec-test rulings when none are given', () => {

@@ -104,10 +104,43 @@ const DIFF_SCOPE: DiffScopeV1 = {
 
 describe('formatDiffScopeSummary', () => {
   it('reports the implementation total against the estimate and the test total separately', () => {
-    expect(formatDiffScopeSummary(DIFF_SCOPE)).toEqual({
+    expect(formatDiffScopeSummary(DIFF_SCOPE)).toMatchObject({
       statusText: 'Diff scope within the Refine estimate',
       detailText: '+8 of ≤ 60 implementation · +44 generated tests, reported separately',
     });
+  });
+
+  /**
+   * Issue #145. `DiffScopeV1` carries `filesTouched` on both halves and on the estimate, and a
+   * summary that reported only line counts threw away half of what was measured.
+   */
+  it('reports lines and files for each half, never merged into one count', () => {
+    const summary = formatDiffScopeSummary(DIFF_SCOPE);
+    expect(summary.implementationText).toBe('Implementation: 8 lines across 1 file');
+    expect(summary.generatedTestsText).toBe('Generated tests: 44 lines across 1 file');
+  });
+
+  /**
+   * The point of the split, said out loud. Two numbers beside a 60-line estimate do not on their
+   * own tell a reader which one the gate judged -- and a reader who guesses wrong concludes the
+   * ticket blew its estimate because its generated tests were large, which is exactly the
+   * misreading the split exists to prevent.
+   */
+  it('states which half the estimate was measured against', () => {
+    const summary = formatDiffScopeSummary(DIFF_SCOPE);
+    expect(summary.measuredAgainstText).toContain('60-line / 2-file estimate');
+    expect(summary.measuredAgainstText).toContain('implementation half only');
+    expect(summary.measuredAgainstText).toContain('never charged to the estimate');
+  });
+
+  it('pluralises a single changed line and a single file correctly', () => {
+    const single = formatDiffScopeSummary({
+      ...DIFF_SCOPE,
+      implementation: { changedLines: 1, filesTouched: 1 },
+      generatedTests: { changedLines: 0, filesTouched: 0 },
+    });
+    expect(single.implementationText).toBe('Implementation: 1 line across 1 file');
+    expect(single.generatedTestsText).toBe('Generated tests: 0 lines across 0 files');
   });
 
   it('reports an exceeded estimate distinctly from within-budget', () => {

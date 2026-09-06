@@ -9,6 +9,7 @@ import {
   formatDiffScopeSummary,
   mapFindingSeverity,
   tallyFindings,
+  type DiffScopeSummary,
 } from './rail.js';
 import { ScreenshotEvidence, type RailScreenshot } from './ScreenshotEvidence.js';
 
@@ -28,6 +29,24 @@ export type { RailScreenshot };
  * empty by default rather than faked -- an empty agent-captured zone with no rows is an honest
  * rendering of "nothing to show yet", not a placeholder standing in for missing wiring.
  */
+/**
+ * The two halves of the diff, and the sentence that says which one the gate judged (issue #145).
+ *
+ * The sentence is not decoration. "412 implementation lines" and "980 generated-test lines" next
+ * to a "400-line estimate" is ambiguous until something says the estimate was compared against the
+ * first number only — and that ambiguity is exactly what would let a reader conclude a ticket blew
+ * its estimate because its generated tests were large.
+ */
+function DiffScopeSplit({ summary }: { summary: DiffScopeSummary }) {
+  return (
+    <span className="diff-scope-split">
+      <span className="m"> {summary.implementationText}</span>
+      <span className="m"> · {summary.generatedTestsText}</span>
+      <span className="m"> — {summary.measuredAgainstText}</span>
+    </span>
+  );
+}
+
 export function RailPanel({
   report,
   agentCapturedRows = [],
@@ -56,6 +75,8 @@ export function RailPanel({
 }) {
   const findings = combineFindings(report.reviewer, report.verifier);
   const tally = tallyFindings(findings);
+  const diffScope = report.diffScope ? formatDiffScopeSummary(report.diffScope) : undefined;
+  const hasDiffScopeGate = report.deterministic.some((gate) => gate.id === 'diff_scope');
 
   return (
     <div className="rail">
@@ -69,17 +90,22 @@ export function RailPanel({
             {gate.durationMs > 0 && (
               <span className="m"> {(gate.durationMs / 1000).toFixed(gate.durationMs >= 1000 ? 0 : 1)}s</span>
             )}
+            {/* The implementation/generated-test split belongs *inside* the gate that judged it
+                (issue #145). It used to be a second row below the gate list, which read as a
+                seventh deterministic gate and said the same thing twice. */}
+            {gate.id === 'diff_scope' && diffScope && (
+              <DiffScopeSplit summary={diffScope} />
+            )}
           </VRow>
         ))}
-        {report.diffScope &&
-          (() => {
-            const summary = formatDiffScopeSummary(report.diffScope);
-            return (
-              <VRow tone={report.diffScope.exceededEstimate ? 'danger' : 'ok'}>
-                {summary.statusText} <span className="m">{summary.detailText}</span>
-              </VRow>
-            );
-          })()}
+        {/* Only when the report carries scope numbers but no `diff_scope` gate ran to hang them
+            on. The numbers are the point; losing them because a gate row is missing would be the
+            one outcome worse than duplicating them. */}
+        {report.diffScope && !hasDiffScopeGate && (
+          <VRow tone={report.diffScope.exceededEstimate ? 'danger' : 'ok'}>
+            {diffScope?.statusText} <DiffScopeSplit summary={diffScope!} />
+          </VRow>
+        )}
       </VerificationBlock>
 
       {(agentCapturedRows.length > 0 || screenshots.length > 0) && (

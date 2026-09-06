@@ -93,7 +93,21 @@ export function buildPullRequestBody(
 
   if (report.diffScope) {
     const summary = formatDiffScopeSummary(report.diffScope);
-    sections.push(`## Diff scope\n\n${summary.statusText} — ${summary.detailText}`);
+    // The two halves are listed as separate lines, and the sentence naming which one the estimate
+    // was measured against is one of them (issue #145). A PR body reader has no rail to look at,
+    // so the split has to carry its own explanation or it is just two numbers.
+    sections.push(
+      [
+        '## Diff scope',
+        '',
+        summary.statusText,
+        '',
+        `- ${summary.implementationText}`,
+        `- ${summary.generatedTestsText}`,
+        '',
+        summary.measuredAgainstText,
+      ].join('\n'),
+    );
   }
 
   const reviewLines: string[] = [];

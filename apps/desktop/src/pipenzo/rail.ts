@@ -114,20 +114,52 @@ export function findingLocation(finding: CombinedFinding): string | undefined {
 export interface DiffScopeSummary {
   readonly statusText: string;
   readonly detailText: string;
+  /** The half the estimate is actually measured against. Lines and files, never merged. */
+  readonly implementationText: string;
+  /** Counted, reported, and excluded from the estimate comparison. */
+  readonly generatedTestsText: string;
+  /**
+   * The sentence that makes the split mean something. Rendered wherever the numbers are, because
+   * two counts side by side do not on their own say which one the gate judged.
+   */
+  readonly measuredAgainstText: string;
 }
 
-/** DiffReview.dc.html's diff-scope `VRow`: "Diff scope within/exceeded the Refine estimate" plus
- * a mono detail naming the implementation total against the estimate and the generated-test total
- * reported separately -- the implementation/test split issue #145 and README require so a large
- * generated test file can never blow a ticket's size estimate on its own. */
+function countText(part: { changedLines: number; filesTouched: number }): string {
+  const files = `${part.filesTouched} file${part.filesTouched === 1 ? '' : 's'}`;
+  return `${part.changedLines} line${part.changedLines === 1 ? '' : 's'} across ${files}`;
+}
+
+/**
+ * DiffReview.dc.html's diff-scope row, as the implementation/generated-test split (issue #145).
+ *
+ * README's requirement is not "show two numbers", it is that **a large generated test file can
+ * never blow a ticket's size estimate on its own**. Two numbers side by side do not say that — a
+ * reader seeing "412 lines" and "980 lines" against a "400-line estimate" has no way to tell which
+ * one the gate compared. So `measuredAgainstText` is part of the summary rather than a caption a
+ * renderer may drop, and both halves report files as well as lines: `DiffScopeV1` carries
+ * `filesTouched` on every half and on the estimate, and reporting only the line counts threw away
+ * half of what was measured.
+ */
 export function formatDiffScopeSummary(diffScope: DiffScopeV1): DiffScopeSummary {
   const statusText = diffScope.exceededEstimate
     ? 'Diff scope exceeded the Refine estimate'
     : 'Diff scope within the Refine estimate';
-  const detailText =
-    `+${diffScope.implementation.changedLines} of ≤ ${diffScope.estimate.changedLines} implementation` +
-    ` · +${diffScope.generatedTests.changedLines} generated tests, reported separately`;
-  return { statusText, detailText };
+  const implementationText = `Implementation: ${countText(diffScope.implementation)}`;
+  const generatedTestsText = `Generated tests: ${countText(diffScope.generatedTests)}`;
+  const measuredAgainstText =
+    `Measured against the ${diffScope.estimate.changedLines}-line / ` +
+    `${diffScope.estimate.filesTouched}-file estimate using the implementation half only; ` +
+    'generated tests are counted and reported, never charged to the estimate.';
+  return {
+    statusText,
+    detailText:
+      `+${diffScope.implementation.changedLines} of ≤ ${diffScope.estimate.changedLines} implementation` +
+      ` · +${diffScope.generatedTests.changedLines} generated tests, reported separately`,
+    implementationText,
+    generatedTestsText,
+    measuredAgainstText,
+  };
 }
 
 /** One line per deterministic gate, in the order the report lists them -- README's requirement

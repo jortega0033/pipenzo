@@ -58,9 +58,41 @@ describe('RailPanel', () => {
   it('renders the diff-scope row reporting implementation and generated tests separately', () => {
     render(<RailPanel report={BASE_REPORT} />);
     expect(screen.getByText('Diff scope within the Refine estimate')).toBeInTheDocument();
-    expect(
-      screen.getByText('+8 of ≤ 60 implementation · +44 generated tests, reported separately'),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Implementation: 8 lines across 1 file/)).toBeInTheDocument();
+    expect(screen.getByText(/Generated tests: 44 lines across 1 file/)).toBeInTheDocument();
+    expect(screen.getByText(/implementation half only/)).toBeInTheDocument();
+  });
+
+  /**
+   * Issue #145: the split belongs inside the gate that judged it. It used to render as a second
+   * row below the gate list, which read as a seventh deterministic gate and said the same thing
+   * twice -- once in the `diff_scope` gate's own summary and once again underneath it.
+   */
+  it('hangs the split on the diff_scope gate rather than adding a row beside it', () => {
+    const report: ReviewReportV1 = {
+      ...BASE_REPORT,
+      deterministic: [
+        ...BASE_REPORT.deterministic,
+        {
+          id: 'diff_scope',
+          status: 'passed',
+          summary: 'implementation diff is 8 lines against a 60-line estimate',
+          durationMs: 0,
+        },
+      ],
+    };
+    const { container } = render(<RailPanel report={report} />);
+    const machineVerified = container.querySelector('.v-block');
+    // Three gates, and no fourth row carrying the same numbers again.
+    expect(machineVerified?.querySelectorAll('.v-row')).toHaveLength(3);
+    expect(screen.getAllByText(/Implementation: 8 lines across 1 file/)).toHaveLength(1);
+    expect(screen.queryByText('Diff scope within the Refine estimate')).not.toBeInTheDocument();
+  });
+
+  /** The numbers are the point; losing them because no gate row exists would be worse. */
+  it('still shows the split when the report carries scope numbers but no diff_scope gate ran', () => {
+    render(<RailPanel report={BASE_REPORT} />);
+    expect(screen.getByText(/Generated tests: 44 lines/)).toBeInTheDocument();
   });
 
   it('omits the agent-captured zone entirely when there is nothing self-reported or captured', () => {
