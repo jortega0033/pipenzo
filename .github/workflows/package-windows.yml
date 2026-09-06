@@ -1,0 +1,82 @@
+name: Windows Packaging
+
+# Proves the NSIS packaging pipeline (electron-builder) still produces a real installer — the
+# one thing Core CI's `pnpm build` alone doesn't exercise. See docs/packaging.md for why a
+# packaging-sensitive change needs this and not just a plain build. No signing, no publishing,
+# no release automation — this only verifies packaging still works.
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package-win:
+    name: Package Windows installer
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Provider conformance
+        run: pnpm test:provider-conformance
+
+      - name: Package (electron-builder, NSIS)
+        run: pnpm package:win
+
+      - name: Verify Windows Job Object ownership and command launch
+        run: >-
+          pnpm vitest run
+          packages/agent-runtime/test/managed-process.test.ts
+          packages/agent-runtime/test/spawn-process.test.ts
+          packages/agent-runtime/test/exec-capture.test.ts
+          --testTimeout=20000
+
+      # `pnpm package:win` can exit 0 without electron-builder actually having produced an
+      # installer (e.g. a silently-skipped target) — fail the job explicitly rather than trust
+      # the exit code alone.
+      - name: Verify installer was produced
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem -Path "dist-packages" -Filter "AgentDock-Setup-*.exe" -ErrorAction SilentlyContinue
+          if (-not $installer) {
+            Write-Error "No NSIS installer found matching dist-packages/AgentDock-Setup-*.exe"
+            exit 1
+          }
+          Write-Host "Found installer: $($installer.FullName)"
+
+          $exePath = "dist-packages/win-unpacked/AgentDock.exe"
+          if (-not (Test-Path $exePath)) {
+            Write-Error "Unpacked executable not found at $exePath"
+            exit 1
+          }
+          Write-Host "Found unpacked executable: $exePath"
+
+      - name: Verify packaged daemon launches a PATH-installed Codex CLI
+        run: pnpm --filter @agent-dock/desktop run test:packaged-daemon-win
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: AgentDock-Windows-CI
+          path: dist-packages/AgentDock-Setup-*.exe
+          retention-days: 7
+          if-no-files-found: error

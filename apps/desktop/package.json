@@ -1,0 +1,36 @@
+{
+  "name": "@agent-dock/desktop",
+  "version": "0.1.0",
+  "description": "AgentDock desktop client: Electron + React demo for the AgentDock boilerplate",
+  "author": "AgentDock contributors",
+  "private": true,
+  "type": "module",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -p tsconfig.json --noEmit && vite build",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:packaged-daemon-win": "node scripts/packaged-daemon-win-smoke.mjs",
+    "package": "electron-builder",
+    "package:win": "electron-builder --win nsis"
+  },
+  "devDependencies": {
+    "@agent-dock/client": "workspace:*",
+    "@agent-dock/shared": "workspace:*",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.1.0",
+    "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.0.2",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^44.0.0",
+    "electron-builder": "^25.1.8",
+    "jsdom": "^25.0.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "^5.7.3",
+    "vite": "^6.0.7",
+    "vite-plugin-electron": "^0.29.0",
+    "vitest": "^3.2.6"
+  }
+}

@@ -276,4 +276,22 @@ Named after the product owner's two kids — decided over every researched alter
 
 ## License
 
-Apache-2.0 is the intended license, and the reasoning is friction rather than preference: agentdock — the foundation this is built on and the source of the packaging, worktree, and session machinery — is Apache-2.0, and the UI dependencies (shadcn/ui, dnd-kit, react-diff-view) are MIT, which is compatible either way. Matching agentdock is the path of least friction for code moving between the two. Not yet formally applied; no `LICENSE` file is committed until the repo has code in it.
+[Apache-2.0](LICENSE) — matching agentdock, the foundation this is built on and the source of the packaging, worktree, and session machinery (merged in directly, see "Relationship to agentdock" below). The UI dependencies (shadcn/ui, dnd-kit, react-diff-view) are MIT, compatible either way.
+
+## Relationship to agentdock
+
+This repo's application code (`apps/`, `packages/`) started as agentdock's codebase, merged in with full git history via `git remote add upstream-agentdock` + `git merge --allow-unrelated-histories`, not a copy-paste. That keeps `git fetch upstream-agentdock` available going forward to pull in upstream fixes — including the three real gaps found and filed against agentdock while building this plan: [agentdock#116](https://github.com/jortega0033/agentdock/issues/116) (a discarded rate-limit event), [#117](https://github.com/jortega0033/agentdock/issues/117) (worktree cleanup refuses on any untracked file, never deletes the branch), and [#118](https://github.com/jortega0033/agentdock/issues/118) (concurrent worktree creation throws instead of queuing) — all three matter directly to Pipenzo's own build order.
+
+agentdock's own README is preserved at [`docs/agentdock-upstream-README.md`](docs/agentdock-upstream-README.md) for reference rather than duplicated here.
+
+## Everyday commands (inherited from agentdock)
+
+```bash
+pnpm build             # compile every package and application
+pnpm typecheck         # strict TypeScript across the workspace
+pnpm test              # unit + integration tests; no real provider calls
+pnpm lint              # ESLint
+pnpm package:win       # Windows NSIS installer
+```
+
+Full setup, architecture, provider-transport details, and the rest of agentdock's own docs live in [`docs/agentdock-upstream-README.md`](docs/agentdock-upstream-README.md) and the `docs/*.md` files carried over with it (`architecture.md`, `daemon.md`, `providers.md`, `protocol-v1.md`, `protocol-v2.md`, `client-sdk.md`, `packaging.md`, `troubleshooting.md`) — not duplicated here since they describe the inherited runtime, not Pipenzo's own product decisions.

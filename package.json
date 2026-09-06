@@ -1,0 +1,48 @@
+{
+  "name": "agent-dock",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Open-source Electron and local-daemon boilerplate for apps using Claude Agent SDK, Claude CLI, or Codex",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20 <23",
+    "pnpm": "10.29.2"
+  },
+  "scripts": {
+    "preinstall": "node scripts/preflight.mjs",
+    "build": "pnpm -r --filter=./packages/* --filter=./apps/* run build",
+    "dev:daemon": "pnpm --filter @agent-dock/daemon run dev",
+    "dev:desktop": "pnpm --filter @agent-dock/desktop run dev",
+    "daemon": "pnpm --filter @agent-dock/daemon run start",
+    "package": "pnpm build && pnpm --filter @agent-dock/desktop run package",
+    "prepackage:win": "node apps/daemon/scripts/build-windows-job-host.mjs --assert-windows",
+    "package:win": "pnpm build && pnpm --filter @agent-dock/desktop run package:win",
+    "assets:generate": "python scripts/assets/generate_assets.py && python scripts/assets/generate_public_assets.py",
+    "assets:validate": "python scripts/assets/validate_assets.py",
+    "docs:claim-check": "node scripts/docs-claim-check.mjs",
+    "test": "pnpm -r --filter=./packages/* --filter=./apps/* run test",
+    "test:provider-conformance": "pnpm --filter @agent-dock/agent-runtime run test:conformance",
+    "typecheck": "pnpm -r run typecheck",
+    "lint": "eslint .",
+    "format": "prettier --write ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.18.0",
+    "@types/node": "^22.10.5",
+    "eslint": "^9.18.0",
+    "globals": "^15.14.0",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.19.1",
+    "vitest": "^3.2.6"
+  },
+  "packageManager": "pnpm@10.29.2",
+  "pnpm": {
+    "overrides": {
+      "vite": "^6.0.7",
+      "@types/node": "^22.10.5",
+      "tar": "^7.5.18"
+    }
+  }
+}
