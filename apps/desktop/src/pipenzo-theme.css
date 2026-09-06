@@ -2900,6 +2900,137 @@
   .stat .bar {
     margin-top: 2px;
   }
+
+  /* MEDIUM inline approval — ported verbatim from Foundations.dc.html's "Risk-graded approval"
+     section. `.approval-inline` is the compact, lives-in-the-stream card (HIGH's full card is
+     `.dialog`-based instead, since it may also be shown as a modal -- see HighApprovalCard.tsx);
+     `.ai-done`/`.ai-undo` are the resolved one-line state with a short Undo window, which HIGH
+     never offers. See MediumApproval.tsx. */
+  .approval-inline {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+    border-radius: var(--radius-pipenzo);
+    background: var(--color-surface-2);
+  }
+
+  .ai-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.3;
+  }
+
+  .ai-head .grow {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .ai-head .mono {
+    font-weight: 400;
+    font-size: 12px;
+    color: var(--color-text-faint);
+  }
+
+  .ai-cmd {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 20px;
+    background: var(--color-surface-3);
+    padding: 6px 10px;
+    border-radius: var(--radius-pipenzo-sm);
+    color: var(--color-text-soft);
+    white-space: pre-wrap;
+  }
+
+  .ai-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .ai-note {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--color-text-faint);
+    line-height: 1.3;
+    min-width: 0;
+  }
+
+  .ai-note .icon-sm {
+    flex-shrink: 0;
+  }
+
+  .ai-acts {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .ai-acts .btn {
+    height: 32px;
+  }
+
+  .ai-done {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: var(--radius-pipenzo);
+    background: var(--color-surface-2);
+    font-size: 12px;
+    color: var(--color-text-soft);
+    line-height: 1.3;
+  }
+
+  .ai-done .d-ic {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--color-ok);
+    color: var(--color-ok-fg);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .ai-done .grow {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .ai-done b {
+    color: var(--color-text);
+    font-weight: 700;
+  }
+
+  .ai-undo {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--color-text);
+    cursor: pointer;
+    white-space: nowrap;
+    min-height: 24px;
+    padding: 0 6px;
+    border: none;
+    background: transparent;
+  }
+
+  .ai-undo .mono {
+    font-weight: 400;
+    color: var(--color-text-faint);
+    font-size: 11px;
+  }
 }
 
 @keyframes pulse-warn {
