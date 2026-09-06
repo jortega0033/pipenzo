@@ -882,6 +882,77 @@
     cursor: default;
   }
 
+  /* Models & gates rows (issues #123/#124) — ported from Models.dc.html's two gate panels. One
+     row shape serves both: a deterministic gate with a locked switch, and an agent-captured
+     capability with a real one. The control column never grows, so a long description wraps
+     under its own name rather than squeezing the switch. */
+  .gate-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .gate-text {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  .gate-name {
+    font-size: 13px;
+    line-height: 1.3;
+  }
+
+  .gate-sub {
+    font-size: 12px;
+    color: var(--color-text-faint);
+    line-height: 1.45;
+    text-wrap: pretty;
+  }
+
+  .gate-sub b {
+    color: var(--color-text);
+    font-weight: 700;
+  }
+
+  .gate-ctl {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    padding-top: 1px;
+  }
+
+  .gate-lock {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--color-text-faint);
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  /* The capability line: what was actually detected, in mono so it reads as a fact about this
+     machine rather than as more description. `.cap.on` is the detected case. */
+  .cap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--color-text-faint);
+    line-height: 1.4;
+    margin-top: 2px;
+  }
+
+  .cap .icon-sm {
+    flex-shrink: 0;
+  }
+
+  .cap.on .icon-sm {
+    color: var(--color-ok);
+  }
+
   /* Bounded concurrency — ported verbatim from Foundations.dc.html's "Bounded concurrency"
      section. .numctl is the 1-4 stepper (default 2, hard cap 4 -- one machine sharing one
      subscription's rate limit); .lane-cap is the Working lane header's capacity pill, in three
