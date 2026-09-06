@@ -1604,6 +1604,90 @@
     color: var(--color-text-soft);
     font-weight: 700;
   }
+
+  /* Toast — ported verbatim from Foundations.dc.html's "Notices" section. The corner, transient
+     altitude: 360px wide, same four tones as Banner/Notice in the 24px .t-ic circle, one action
+     max (the canvas's own toast row is a single .btn.sm, not an .n-act-style link pair). The
+     canvas only shows a static demo stage (.toast-stage, flex column for the artboard preview) --
+     .toast-stack below is this ticket's own addition for the real fixed bottom-right container
+     the demo stage doesn't need to provide, since a static artboard never has to actually
+     position anything against the viewport. See ToastProvider.tsx for the stack-limit/queueing
+     and 6s-auto-dismiss-unless-actioned behaviour. */
+  .toast {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 360px;
+    padding: 12px 12px 12px 16px;
+    border-radius: var(--radius-pipenzo);
+    background: var(--color-surface-3);
+    box-shadow: var(--shadow-pipenzo);
+    font-size: 13px;
+    color: var(--color-text);
+    line-height: 1.35;
+  }
+
+  .toast .t-ic {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--color-surface-4);
+    color: var(--color-text);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .toast.ok .t-ic {
+    background: var(--color-ok);
+    color: var(--color-ok-fg);
+  }
+
+  .toast.warn .t-ic {
+    background: var(--color-warn);
+    color: var(--color-warn-fg);
+  }
+
+  .toast.danger .t-ic {
+    background: var(--color-danger);
+    color: var(--color-danger-fg);
+  }
+
+  .toast .t-body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .toast .t-title {
+    font-weight: 700;
+  }
+
+  .toast .t-sub {
+    font-size: 12px;
+    color: var(--color-text-soft);
+  }
+
+  .toast .btn {
+    flex-shrink: 0;
+  }
+
+  /* Real fixed positioning for the toast stack -- not part of the canvas's own base CSS block
+     (only the static .toast-stage demo container is), since a static artboard never has to
+     position anything against an actual viewport. Newest toast renders last in DOM order, which
+     is also lowest on screen, matching "newest at the bottom" without a reversed stacking order. */
+  .toast-stack {
+    position: fixed;
+    right: 24px;
+    bottom: 24px;
+    z-index: 6;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
 }
 
 @keyframes sk-shimmer {
