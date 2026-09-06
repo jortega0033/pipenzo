@@ -554,8 +554,8 @@
     </div>
     <div class="nav-group">
       <span class="nav-title">Work</span>
-      <div class="nav-item active" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M216,48H40a8,8,0,0,0-8,8V208a16,16,0,0,0,16,16H88a16,16,0,0,0,16-16V160h48v16a16,16,0,0,0,16,16h40a16,16,0,0,0,16-16V56A8,8,0,0,0,216,48ZM88,208H48V128H88Zm0-96H48V64H88Zm64,32H104V64h48Zm56,32H168V128h40Zm0-64H168V64h40Z"/></svg><span class="nav-lbl">Board</span><span class="nav-count">14</span></div>
-      <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M188,88a27.75,27.75,0,0,0-12,2.71V60a28,28,0,0,0-41.36-24.6A28,28,0,0,0,80,44v6.71A27.75,27.75,0,0,0,68,48,28,28,0,0,0,40,76v76a88,88,0,0,0,176,0V116A28,28,0,0,0,188,88Zm12,64a72,72,0,0,1-144,0V76a12,12,0,0,1,24,0v44a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v68a8,8,0,0,0,16,0V60a12,12,0,0,1,24,0v68.67A48.08,48.08,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V116a12,12,0,0,1,24,0Z"/></svg><span class="nav-lbl">Needs me</span><span class="nav-count hot">6</span></div>
+      <div class="nav-item active" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M216,48H40a8,8,0,0,0-8,8V208a16,16,0,0,0,16,16H88a16,16,0,0,0,16-16V160h48v16a16,16,0,0,0,16,16h40a16,16,0,0,0,16-16V56A8,8,0,0,0,216,48ZM88,208H48V128H88Zm0-96H48V64H88Zm64,32H104V64h48Zm56,32H168V128h40Zm0-64H168V64h40Z"/></svg><span class="nav-lbl">Board</span><span class="nav-count">15</span></div>
+      <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M188,88a27.75,27.75,0,0,0-12,2.71V60a28,28,0,0,0-41.36-24.6A28,28,0,0,0,80,44v6.71A27.75,27.75,0,0,0,68,48,28,28,0,0,0,40,76v76a88,88,0,0,0,176,0V116A28,28,0,0,0,188,88Zm12,64a72,72,0,0,1-144,0V76a12,12,0,0,1,24,0v44a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v68a8,8,0,0,0,16,0V60a12,12,0,0,1,24,0v68.67A48.08,48.08,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V116a12,12,0,0,1,24,0Z"/></svg><span class="nav-lbl">Needs me</span><span class="nav-count hot">7</span></div>
       <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M136,80v43.47l36.12,21.67a8,8,0,0,1-8.24,13.72l-40-24A8,8,0,0,1,120,128V80a8,8,0,0,1,16,0Zm-8-48A95.44,95.44,0,0,0,60.08,60.15C52.81,67.51,46.35,74.59,40,82V64a8,8,0,0,0-16,0v40a8,8,0,0,0,8,8H72a8,8,0,0,0,0-16H49c7.15-8.42,14.27-16.35,22.39-24.57a80,80,0,1,1,1.66,114.75,8,8,0,1,0-11,11.64A96,96,0,1,0,128,32Z"/></svg><span class="nav-lbl">Activity</span></div>
     </div>
     <div class="nav-group">
@@ -1004,6 +1004,7 @@
             <div class="kv"><span class="k">{{r.k}}</span><span class="v {{r.cls}}">{{r.v}}</span></div>
           </sc-for>
           <div class="kv"><span class="k">Budget</span><span class="select-wrap"><select class="field mono"><option>Unlimited</option><option>1 run</option><option>3 runs</option><option>Cap at 200k tokens</option></select><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z"/></svg></span></div>
+          <div class="kv"><span class="k">Screenshot baseline</span><span class="v faint">2nd checkout + dev server, if verified</span></div>
         </div>
         <div class="rail-block">
           <span class="label">Cumulative risk</span>
@@ -1138,7 +1139,6 @@ class Component extends DCLogic {
         ack,
         { kind: 'implement', tool: 'implement', risk: 'MEDIUM', title: 'Ran the new regression test in isolation — it did not go as predicted', meta: 'sonnet · 22s', pc: pcMismatch },
         { kind: 'implement', tool: 'implement', risk: 'MEDIUM', title: 'Re-ran the suite after the fallback', meta: 'sonnet · 9s', pc: pcMatch },
-        { kind: 'low', title: 'Removed legacy-env-server.js after your Allow · +0 −38', meta: '14:10' },
         { kind: 'gates', tool: 'gates', title: 'pnpm build, typecheck, vitest — 21 passed, 0 failed', meta: 'deterministic · 9s' },
         { kind: 'gates', tool: 'gates', title: 'gitleaks and semgrep p/ci — no findings', meta: 'deterministic · 4s' },
         { kind: 'review', tool: 'review', title: 'Reviewer left 3 advisory findings, none blocking; adversarial verifier (opus · codex) still reading the test', meta: 'running', live: true },
@@ -1148,7 +1148,7 @@ class Component extends DCLogic {
         { kind: 'implement', tool: 'implement', risk: 'MEDIUM', title: 'Ran the new regression test in isolation — it did not go as predicted', meta: 'sonnet · 22s', pc: pcMismatch },
         { kind: 'implement', tool: 'implement', risk: 'MEDIUM', title: 'Re-ran the suite after the fallback', meta: 'sonnet · 9s', pc: pcMatch },
         { kind: 'implement', tool: 'implement', title: 'Regression test added: a secret set on the host env must not reach the spawned server', meta: 'sonnet · 1m 40s', sub: testSub },
-        { kind: 'gates', tool: 'gates', title: 'Build, typecheck, tests, gitleaks, semgrep — 5/5 passed', meta: 'deterministic · 13s' },
+        { kind: 'gates', tool: 'gates', title: 'Build and typecheck, spec-generated tests, gitleaks, semgrep, diff-scope — 5/5 passed', meta: 'deterministic · 13s' },
         { kind: 'review', tool: 'review', title: 'Adversarial verifier sustained 0 critical findings after one round — 3 advisory reviewer notes stand, listed by severity in the diff view', meta: 'opus · codex · 2m 05s' },
         { kind: 'implement', tool: 'implement', title: 'Committed to issue-94 — 2 files, +52 −6. Local branch only, nothing pushed', meta: 'sonnet' },
       ],
@@ -1173,7 +1173,7 @@ class Component extends DCLogic {
     const events85 = [
       { kind: 'ack', tool: 'pipenzo', title: 'Picked up #85 — created worktree .worktrees/issue-85 from main and read the issue.', meta: '10:41 · 2s' },
       { kind: 'implement', tool: 'implement', title: 'Committed to issue-85 — 1 file, +18 −4. Local branch only', meta: 'sonnet · 3m 10s' },
-      { kind: 'gates', tool: 'gates', title: 'Build, typecheck, tests, gitleaks, semgrep — 5/5 passed locally', meta: 'deterministic · 11s' },
+      { kind: 'gates', tool: 'gates', title: 'Build and typecheck, spec-generated tests, gitleaks, semgrep, diff-scope — 5/5 passed locally', meta: 'deterministic · 11s' },
       { kind: 'publish', tool: 'publish', risk: 'HIGH', title: 'Pushed issue-85 and opened PR #115 — approved by you at 11:02', meta: '11:02', pc: pcPublish },
       { kind: 'ci', tool: 'ci · post-MVP', title: 'GitHub check failed on PR #115 → ci-failed. One classifiable fix attempt, forked from the original session', meta: '11:14 → 11:19', ci: true },
     ];
@@ -1263,8 +1263,8 @@ class Component extends DCLogic {
       risk = ({
         refining: { filled: 0, level: 'Calm', text: 'refine is read-only — nothing has been written, so nothing counts yet', count: '0.0 / 10' },
         implementing: { filled: 7, level: 'Moderate', text: '8 low-risk actions (4.0) and 1 mismatch (3.0) since your last look', count: '7.0 / 10' },
-        reviewing: { filled: 10, level: 'High', text: '14 low-risk actions (7.0) and 1 mismatch (3.0) since your last look', count: '10.0 / 10', promo: '14 unreviewed low-risk actions at +0.5 each, plus 1 mispredicted test run at +3, reach the threshold at 10.' },
-        awaiting_approval: { filled: 10, level: 'High', text: '14 low-risk actions (7.0) and 1 mismatch (3.0) since your last look', count: '10.0 / 10', promo: 'The publish gate below is HIGH regardless, and approving it resets the strip to zero. So does opening this ticket’s Activity view — a MEDIUM approval deliberately does not.' },
+        reviewing: { filled: 10, level: 'High', text: '14 low-risk actions (7.0), 2 approvals (2.0) and 1 mismatch (3.0) since your last look — capped at the threshold', count: '10.0 / 10', promo: '14 unreviewed low-risk actions at +0.5 each, 2 approved MEDIUM actions at +1 each, plus 1 mispredicted test run at +3, reach the threshold at 10.' },
+        awaiting_approval: { filled: 10, level: 'High', text: '14 low-risk actions (7.0), 2 approvals (2.0) and 1 mismatch (3.0) since your last look — capped at the threshold', count: '10.0 / 10', promo: 'The publish gate below is HIGH regardless, and approving it resets the strip to zero. So does opening this ticket’s Activity view — a MEDIUM approval deliberately does not.' },
       })[phase];
     } else if (ticket === 108) {
       statusLabel = 'Awaiting stack approval'; statusBadgeCls = 'chip-warn';
