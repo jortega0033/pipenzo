@@ -2792,6 +2792,55 @@
   .kid .ext:hover {
     color: var(--color-text);
   }
+
+  /* Stack proposal row — ported verbatim from Foundations.dc.html's "Cards" section and
+     TicketDetail.dc.html's stack-approval panel (identical rule). See StackRow.tsx. */
+  .stack-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 8px 8px 12px;
+    background: var(--color-surface-3);
+    border-radius: var(--radius-pipenzo-sm);
+  }
+
+  .stack-row .split-n {
+    width: 24px;
+  }
+
+  .s-body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .s-title {
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.3;
+    text-wrap: pretty;
+  }
+
+  .s-meta {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--color-text-faint);
+    line-height: 1;
+  }
+
+  .s-ctl {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
+  .s-ctl .icon-btn {
+    width: 28px;
+    height: 28px;
+    background: var(--color-surface-4);
+  }
 }
 
 @keyframes pulse-warn {
