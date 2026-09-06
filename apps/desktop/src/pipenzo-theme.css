@@ -531,6 +531,73 @@
     white-space: nowrap;
   }
 
+  /* Segmented switch, kbd, avatar — ported verbatim from Foundations.dc.html's "segmented
+     switch · kbd · avatar" primitive sample. .seg is shared by every pill-shaped multi-way
+     switch in the canvas (Simple/Expert, the ticket switcher, Connect's step bar, Activity's
+     filter tabs) -- one visual treatment, several different interaction models layered on top
+     by whatever screen uses it; Segmented.tsx below covers the toggle-button-group case
+     (aria-pressed per option), which is what Simple/Expert and the filter tabs actually are. */
+  .kbd {
+    display: inline-flex;
+    align-items: center;
+    height: 18px;
+    padding: 0 6px;
+    border-radius: 4px;
+    background: var(--color-surface-4);
+    color: var(--color-text-soft);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1;
+  }
+
+  .avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--color-surface-3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--color-text);
+    flex-shrink: 0;
+  }
+
+  .seg {
+    display: flex;
+    gap: 2px;
+    background: var(--color-surface-2);
+    border-radius: var(--radius-pipenzo-pill);
+    padding: 4px;
+  }
+
+  .seg button {
+    height: 32px;
+    padding: 0 12px;
+    border: none;
+    border-radius: var(--radius-pipenzo-pill);
+    background: transparent;
+    font-family: var(--font-sans);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+    color: var(--color-text-faint);
+    transition:
+      color var(--ease-pipenzo),
+      background-color var(--ease-pipenzo);
+  }
+
+  .seg button:hover {
+    color: var(--color-text);
+  }
+
+  .seg button.active {
+    color: var(--color-text);
+    background: var(--color-surface-4);
+  }
+
   /* Live-run pulse: a small dot (the run indicator on an in-progress ticket) breathing via its
      box-shadow, softened to a static ring by the reduced-motion block below instead of stopped
      outright -- it should still read as "live", just not moving. */
