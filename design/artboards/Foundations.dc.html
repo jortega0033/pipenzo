@@ -268,10 +268,11 @@
     .step.await{box-shadow:0 0 0 2px var(--warn-fg);}
     .evt-ic.live{box-shadow:0 0 0 2px var(--accent-fg);}
   }
-  /* ===== screen ===== */
+  /* --- sync status: board header polling indicator, GitHub state polls every 30–60s, not push --- */
   .sync-status{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 4px 0 10px;border-radius:var(--pill);background:var(--surface-2);color:var(--text-faint);font-size:12px;line-height:1;white-space:nowrap;}
   .sync-status .icon-sm{color:var(--text-faint);flex-shrink:0;}
   .sync-status .icon-btn{width:24px;height:24px;flex-shrink:0;}
+  /* ===== screen ===== */
   .page{padding:40px 48px 48px;display:flex;flex-direction:column;gap:40px;width:1040px;}
   h1{font-size:28px;font-weight:700;margin:0;letter-spacing:-0.02em;line-height:1.15;text-wrap:balance;}
   h2{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-faint);margin:0 0 16px;line-height:1;}
@@ -388,7 +389,7 @@
   .s-meta{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);line-height:1;}
   .s-ctl{display:flex;gap:4px;flex-shrink:0;}
   .s-ctl .icon-btn{width:28px;height:28px;background:var(--surface-4);}
-  .dialog .pc-head{background:var(--surface-4);} .dialog .pc-row{background:#2e2e2e;}
+  .dialog .pc-head{background:var(--surface-4);} .dialog .pc-row{background:#2e2e2e;} /* intentionally between --surface-3 and --surface-4: the dialog itself sits on --surface-3, so var(--surface-3) here would make this row disappear into the dialog background — needs a --surface-3-alt token to fix properly */
   .hi-ic{width:32px;height:32px;border-radius:50%;background:var(--danger);color:var(--danger-fg);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
   .hi-foot{display:flex;align-items:center;gap:8px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);line-height:1;}
   .hi-foot .icon-sm{color:var(--warn);}
@@ -536,6 +537,7 @@
         <div class="row-gap"><span class="chip chip-neutral">Queued</span><span class="chip chip-warn">Refining</span><span class="chip chip-warn">Implementing</span></div>
         <div class="row-gap"><span class="chip chip-warn">Reviewing</span><span class="chip chip-danger">Awaiting input</span><span class="chip chip-ok">Ready for review</span></div>
         <div class="row-gap"><span class="chip chip-danger"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M188,88a27.75,27.75,0,0,0-12,2.71V60a28,28,0,0,0-41.36-24.6A28,28,0,0,0,80,44v6.71A27.75,27.75,0,0,0,68,48,28,28,0,0,0,40,76v76a88,88,0,0,0,176,0V116A28,28,0,0,0,188,88Zm12,64a72,72,0,0,1-144,0V76a12,12,0,0,1,24,0v44a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v68a8,8,0,0,0,16,0V60a12,12,0,0,1,24,0v68.67A48.08,48.08,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V116a12,12,0,0,1,24,0Z"/></svg>Needs human</span><span class="chip chip-ok"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg>Done</span></div>
+        <div class="row-gap"><span class="chip chip-ci">ci-failed</span><span class="chip chip-warn">Awaiting stack approval</span><span class="chip chip-neutral">Declined</span></div>
       </div>
       <div class="prim-card">
         <span class="lbl">segmented switch · kbd · avatar</span>
@@ -593,7 +595,7 @@
           <label class="check"><span class="box"></span><span>End-to-end <span class="sub">Playwright, adds ~4 min per run</span></span></label>
         </div>
         <div class="fieldset">
-          <label class="f-lbl">When a run fails twice</label>
+          <label class="f-lbl">When a run fails 3 times in a row</label>
           <label class="radio"><span class="box on"></span><span>Park it in Needs human</span></label>
           <label class="radio"><span class="box"></span><span>Retry once at a stronger model <span class="sub">opus, counts against headroom</span></span></label>
           <label class="radio"><span class="box"></span><span>Close the ticket with a comment</span></label>
@@ -614,7 +616,7 @@
     <div class="spec">
       <span class="lbl">banner · sits directly under the main header, full width</span>
       <div class="stack">
-        <div class="banner"><span class="b-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm16-40a8,8,0,0,1-8,8,16,16,0,0,1-16-16V128a8,8,0,0,1,0-16,16,16,0,0,1,16,16v40A8,8,0,0,1,144,176ZM112,84a12,12,0,1,1,12,12A12,12,0,0,1,112,84Z"/></svg></span><span class="b-text">You're on the <b>free tier</b> — 40 runs left this month. Runs reset on 1 Oct.</span><span class="b-act"><button class="btn sm">See plans</button></span></div>
+        <div class="banner"><span class="b-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm16-40a8,8,0,0,1-8,8,16,16,0,0,1-16-16V128a8,8,0,0,1,0-16,16,16,0,0,1,16,16v40A8,8,0,0,1,144,176ZM112,84a12,12,0,1,1,12,12A12,12,0,0,1,112,84Z"/></svg></span><span class="b-text">Signed in as <b>jortega0033</b> via device flow · 3 repos connected. Ticket state polls GitHub every 30–60s.</span></div>
         <div class="banner warn"><span class="b-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg></span><span class="b-text">Subscription window at <b>91%</b>. Queued tickets will wait until it resets in 22 min.</span><span class="b-act"><button class="btn sm ghost">Pause queue</button></span></div>
         <div class="banner danger"><span class="b-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></span><span class="b-text">Daemon unreachable since 14:02. <b>Nothing is running</b> — the board shows the last known state.</span><span class="b-act"><button class="btn sm">Reconnect</button><button class="icon-btn ghost" style="width:28px;height:28px;"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></button></span></div>
       </div>
@@ -629,8 +631,8 @@
       <span class="lbl">inline notice · inside a card, dialog or form</span>
       <div class="prim-grid two">
         <div class="notice"><span class="n-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm16-40a8,8,0,0,1-8,8,16,16,0,0,1-16-16V128a8,8,0,0,1,0-16,16,16,0,0,1,16,16v40A8,8,0,0,1,144,176ZM112,84a12,12,0,1,1,12,12A12,12,0,0,1,112,84Z"/></svg></span><span class="n-body"><span class="n-title">Refine is read-only</span><span>The agent reads the repo and drafts a spec. No files change until you start implement.</span></span><button class="n-x"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></button></div>
-        <div class="notice ok"><span class="n-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span class="n-body"><span class="n-title">Spec approved</span><span>3 acceptance criteria, ≤ 50 line estimate, 2 files in scope.</span></span><button class="n-x"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></button></div>
-        <div class="notice warn"><span class="n-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg></span><span class="n-body"><span class="n-title">Diff is over budget</span><span>+212 −40 across 9 files. pipenzo proposes a 3-PR stack instead of one review.</span><span class="n-act"><span>See proposed split</span><span style="color:var(--text-soft);">Continue anyway</span></span></span></div>
+        <div class="notice ok"><span class="n-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span class="n-body"><span class="n-title">Spec approved</span><span>3 acceptance criteria, ≤ 60 line estimate, 2 files in scope.</span></span><button class="n-x"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></button></div>
+        <div class="notice warn"><span class="n-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg></span><span class="n-body"><span class="n-title">Diff is over budget</span><span>+212 −40 across 9 files. pipenzo proposes a 3-PR stack instead of one review.</span><span class="n-act"><span>See proposed split</span><span style="color:var(--text-soft);">Reject the split</span></span></span></div>
         <div class="notice danger"><span class="n-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></span><span class="n-body"><span class="n-title">Push rejected by origin</span><span>Branch protection on main requires a signed commit. Sign locally and push again.</span><span class="n-act"><span>Show command</span></span></span><button class="n-x"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></button></div>
       </div>
     </div>
@@ -639,7 +641,7 @@
       <div class="toast-stage">
         <div class="toast ok"><span class="t-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span class="t-body"><span class="t-title">Branch pushed</span><span class="t-sub">issue-94 → origin · 2 files</span></span><button class="btn sm">View on GitHub</button></div>
         <div class="toast"><span class="t-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M104,64A32,32,0,1,0,64,95v66a32,32,0,1,0,16,0V95A32.06,32.06,0,0,0,104,64ZM56,64A16,16,0,1,1,72,80,16,16,0,0,1,56,64ZM88,192a16,16,0,1,1-16-16A16,16,0,0,1,88,192Zm120-31V110.63a23.85,23.85,0,0,0-7-17L163.31,56H192a8,8,0,0,0,0-16H144a8,8,0,0,0-8,8V96a8,8,0,0,0,16,0V67.31L189.66,105a8,8,0,0,1,2.34,5.66V161a32,32,0,1,0,16,0Zm-8,47a16,16,0,1,1,16-16A16,16,0,0,1,200,208Z"/></svg></span><span class="t-body"><span class="t-title">PR #112 opened</span><span class="t-sub">Sanitize environment for MCP stdio server subprocesses</span></span><button class="btn sm">Open</button></div>
-        <div class="toast warn"><span class="t-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M188,88a27.75,27.75,0,0,0-12,2.71V60a28,28,0,0,0-41.36-24.6A28,28,0,0,0,80,44v6.71A27.75,27.75,0,0,0,68,48,28,28,0,0,0,40,76v76a88,88,0,0,0,176,0V116A28,28,0,0,0,188,88Zm12,64a72,72,0,0,1-144,0V76a12,12,0,0,1,24,0v44a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v68a8,8,0,0,0,16,0V60a12,12,0,0,1,24,0v68.67A48.08,48.08,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V116a12,12,0,0,1,24,0Z"/></svg></span><span class="t-body"><span class="t-title">#87 moved to Needs human</span><span class="t-sub">3 failed attempts · vitest timeout in tray.test.ts</span></span><button class="btn sm">Undo</button></div>
+        <div class="toast warn"><span class="t-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M188,88a27.75,27.75,0,0,0-12,2.71V60a28,28,0,0,0-41.36-24.6A28,28,0,0,0,80,44v6.71A27.75,27.75,0,0,0,68,48,28,28,0,0,0,40,76v76a88,88,0,0,0,176,0V116A28,28,0,0,0,188,88Zm12,64a72,72,0,0,1-144,0V76a12,12,0,0,1,24,0v44a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v68a8,8,0,0,0,16,0V60a12,12,0,0,1,24,0v68.67A48.08,48.08,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V116a12,12,0,0,1,24,0Z"/></svg></span><span class="t-body"><span class="t-title">#87 moved to Needs human</span><span class="t-sub">3 failed attempts · vitest timeout in tray.test.ts</span></span><button class="btn sm">Retry with note</button></div>
       </div>
     </div>
   </section>
@@ -673,8 +675,8 @@
         </div>
         <div class="risk-strip">
           <div class="risk-segs"><span class="risk-seg on"></span><span class="risk-seg on"></span><span class="risk-seg on"></span><span class="risk-seg on"></span><span class="risk-seg on warm"></span><span class="risk-seg on warm"></span><span class="risk-seg on warm"></span><span class="risk-seg on warm"></span><span class="risk-seg on hot"></span><span class="risk-seg on hot"></span><span class="risk-seg"></span><span class="risk-seg"></span></div>
-          <div class="risk-lbl"><span><b>High</b> — 14 low-risk actions and 1 mismatch since your last look</span><span class="mono">10 / 12</span></div>
-          <div class="risk-promo"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg><span><b>Next MEDIUM asks as HIGH.</b> 14 unreviewed low-risk actions plus 1 mispredicted test run crossed the threshold at 10.</span></div>
+          <div class="risk-lbl"><span><b>High</b> — 9 low-risk actions and 1 mismatch since your last look</span><span class="mono">10 / 12</span></div>
+          <div class="risk-promo"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg><span><b>Next MEDIUM asks as HIGH.</b> 9 unreviewed low-risk actions plus 1 mispredicted test run crossed the threshold at 10.</span></div>
         </div>
       </div>
     </div>
@@ -795,12 +797,12 @@ gh pr create --fill --base main</div>
         <div class="v-row"><span class="v-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span>vitest: 21 passed, 0 failed <span class="m">1 new · spec-generated</span></span></div>
         <div class="v-row"><span class="v-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span>eslint: 0 errors, 0 warnings</span></div>
         <div class="v-row"><span class="v-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span>gitleaks and semgrep p/ci: no findings</span></div>
-        <div class="v-row"><span class="v-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span>Diff scope within the Refine estimate <span class="m">+52 of ≤ 100</span></span></div>
+        <div class="v-row"><span class="v-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span>Diff scope within the Refine estimate <span class="m">+52 of ≤ 60</span></span></div>
       </div>
       <div class="v-block agent">
         <div class="v-head"><span class="label">Agent-captured<span class="self-tag">self-reported — not verified by a human</span></span><span class="sub">Evidence the agent gathered about its own work. Shown for context; none of it can satisfy a gate.</span></div>
         <div class="v-row"><span class="v-ic self"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span>3/3 acceptance criteria met, by its own reading</span></div>
-        <div class="v-row"><span class="v-ic self"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span>Pre-commitments: 2 matched, 1 mismatch (recovered)</span></div>
+        <div class="v-row"><span class="v-ic self"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span>Pre-commitments: 1 matched, 1 mismatch (recovered)</span></div>
         <div class="v-row"><span class="v-ic self"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M208,56H180.28L166.65,35.56A8,8,0,0,0,160,32H96a8,8,0,0,0-6.65,3.56L75.71,56H48A24,24,0,0,0,24,80V192a24,24,0,0,0,24,24H208a24,24,0,0,0,24-24V80A24,24,0,0,0,208,56Zm8,136a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V80a8,8,0,0,1,8-8H80a8,8,0,0,0,6.66-3.56L100.28,48h55.43l13.63,20.44A8,8,0,0,0,176,72h32a8,8,0,0,1,8,8ZM128,88a44,44,0,1,0,44,44A44.05,44.05,0,0,0,128,88Zm0,72a28,28,0,1,1,28-28A28,28,0,0,1,128,160Z"/></svg></span><span>Screenshots: tray, before and after</span></div>
         <div class="shots">
           <div class="shot" tabindex="0">
@@ -835,7 +837,7 @@ gh pr create --fill --base main</div>
                 <div class="ph hi" style="left:10%;top:72%;width:52%;height:8%;"></div>
               </div>
             </div>
-            <div class="shot-cap"><b>After</b><span>issue-94</span></div>
+            <div class="shot-cap"><b>After</b><span>issue-85</span></div>
           </div>
         </div>
         <div class="shot-prov"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M208,56H180.28L166.65,35.56A8,8,0,0,0,160,32H96a8,8,0,0,0-6.65,3.56L75.71,56H48A24,24,0,0,0,24,80V192a24,24,0,0,0,24,24H208a24,24,0,0,0,24-24V80A24,24,0,0,0,208,56Zm8,136a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V80a8,8,0,0,1,8-8H80a8,8,0,0,0,6.66-3.56L100.28,48h55.43l13.63,20.44A8,8,0,0,0,176,72h32a8,8,0,0,1,8,8ZM128,88a44,44,0,1,0,44,44A44.05,44.05,0,0,0,128,88Zm0,72a28,28,0,1,1,28-28A28,28,0,0,1,128,160Z"/></svg><span>Captured by the daemon with the repo's Playwright · 1280×800 · against base <span class="mono">287a4a6</span></span></div>
@@ -862,7 +864,7 @@ gh pr create --fill --base main</div>
               <div class="ph hi" style="left:9%;top:76%;width:48%;height:7%;"></div>
             </div>
           </div>
-          <div class="shot-cap"><b>After · tray</b><span>issue-94 · 1280×800 · 14:06</span></div>
+          <div class="shot-cap"><b>After · tray</b><span>issue-85 · 1280×800 · 14:06</span></div>
         </div>
         <div class="anatomy" style="grid-template-columns:repeat(2, minmax(0, 1fr));">
           <div><b>1 · frame</b>surface-4, 16:10, radius r-sm (r when expanded)</div>
@@ -930,7 +932,7 @@ gh pr create --fill --base main</div>
     </div>
     <div class="card-grid" style="margin-top:2px;">
       <div class="card" tabindex="0">
-        <div class="card-top"><span class="card-id">#108</span><span class="chip chip-warn">awaiting-stack-approval</span></div>
+        <div class="card-top"><span class="card-id">#108</span><span class="chip chip-warn">pipenzo:awaiting-stack-approval</span></div>
         <span class="card-title">Rework provider capability negotiation across all transports</span>
         <div class="split">
           <span class="split-head"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M230.91,172A8,8,0,0,1,228,182.91l-96,56a8,8,0,0,1-8.06,0l-96-56A8,8,0,0,1,36,169.09l92,53.65,92-53.65A8,8,0,0,1,230.91,172ZM220,121.09l-92,53.65L36,121.09A8,8,0,0,0,28,134.91l96,56a8,8,0,0,0,8.06,0l96-56A8,8,0,1,0,220,121.09ZM24,80a8,8,0,0,1,4-6.91l96-56a8,8,0,0,1,8.06,0l96,56a8,8,0,0,1,0,13.82l-96,56a8,8,0,0,1-8.06,0l-96-56A8,8,0,0,1,24,80Zm23.88,0L128,126.74,208.12,80,128,33.26Z"/></svg>Proposed stack · 3 PRs · est. +212 −40</span>
@@ -944,7 +946,7 @@ gh pr create --fill --base main</div>
         </div>
       </div>
       <div class="card" tabindex="0">
-        <div class="card-top"><span class="card-id">#113</span><span class="chip chip-neutral">needs-pre-scoping</span></div>
+        <div class="card-top"><span class="card-id">#113</span><span class="chip chip-neutral">pipenzo:needs-pre-scoping</span></div>
         <span class="card-title">Replace the JSON file store with SQLite across daemon and desktop</span>
         <div class="split">
           <span class="split-head quiet"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm88,104a87.56,87.56,0,0,1-20.41,56.28L71.72,60.4A88,88,0,0,1,216,128ZM40,128A87.56,87.56,0,0,1,60.41,71.72L184.28,195.6A88,88,0,0,1,40,128Z"/></svg>Declined at Refine · nothing written</span>
@@ -1035,7 +1037,7 @@ gh pr create --fill --base main</div>
   <section>
     <h2>Spacing — 2px base</h2>
     <div class="space-row">
-      <sc-for list="{{spaces}}" as="s" hint-placeholder-count="7">
+      <sc-for list="{{spaces}}" as="s" hint-placeholder-count="11">
         <div class="space-box" style="width:{{s.px}}px;height:{{s.px}}px;"></div>
       </sc-for>
       <span class="space-lbl">2 · 4 · 6 · 8 · 10 · 12 · 16 · 20 · 24 · 32 · 40</span>

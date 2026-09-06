@@ -257,3 +257,7 @@
     .step.await{box-shadow:0 0 0 2px var(--warn-fg);}
     .evt-ic.live{box-shadow:0 0 0 2px var(--accent-fg);}
   }
+  /* --- sync status: board header polling indicator, GitHub state polls every 30–60s, not push --- */
+  .sync-status{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 4px 0 10px;border-radius:var(--pill);background:var(--surface-2);color:var(--text-faint);font-size:12px;line-height:1;white-space:nowrap;}
+  .sync-status .icon-sm{color:var(--text-faint);flex-shrink:0;}
+  .sync-status .icon-btn{width:24px;height:24px;flex-shrink:0;}

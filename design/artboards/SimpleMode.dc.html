@@ -268,6 +268,10 @@
     .step.await{box-shadow:0 0 0 2px var(--warn-fg);}
     .evt-ic.live{box-shadow:0 0 0 2px var(--accent-fg);}
   }
+  /* --- sync status: board header polling indicator, GitHub state polls every 30–60s, not push --- */
+  .sync-status{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 4px 0 10px;border-radius:var(--pill);background:var(--surface-2);color:var(--text-faint);font-size:12px;line-height:1;white-space:nowrap;}
+  .sync-status .icon-sm{color:var(--text-faint);flex-shrink:0;}
+  .sync-status .icon-btn{width:24px;height:24px;flex-shrink:0;}
   /* ===== screen ===== */
   .app{height:1180px;display:flex;flex-direction:column;}
   .center{flex:1;display:flex;align-items:center;padding:0 80px 32px;background:var(--bg);}
@@ -360,11 +364,11 @@
 
       <p class="summary">pipenzo found where the tray icon is drawn and added a small dot that appears when a change is ready for you, and goes away once you open it. <b>It built the app and ran every existing test before showing you this.</b> Nothing is published until you say so.</p>
 
-      <div class="notice warn"><span class="n-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg></span><span class="n-body"><span class="n-title">One step didn't go as expected</span><span>The agent said all 20 tests would pass on the first try. One didn't. It fixed that and ran them again — everything passes now, but it's worth a look before you publish.</span><span class="n-act"><span>See what happened</span></span></span></div>
+      <div class="notice warn"><span class="n-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg></span><span class="n-body"><span class="n-title">One step didn't go as expected</span><span>The agent said all 22 tests would pass on the first try. One didn't. It fixed that and ran them again — everything passes now, but it's worth a look before you publish.</span><span class="n-act"><span>See what happened</span></span></span></div>
 
       <div class="checks">
         <div class="check-row"><span class="c-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span>Builds cleanly</div>
-        <div class="check-row"><span class="c-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span>All 20 tests pass, 2 new ones added</div>
+        <div class="check-row"><span class="c-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span>All 22 tests pass, 2 new ones added</div>
         <div class="check-row"><span class="c-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span>Small change: 2 files, about 40 lines</div>
       </div>
       <button class="btn primary lg" style="align-self:flex-start;"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M104,64A32,32,0,1,0,64,95v66a32,32,0,1,0,16,0V95A32.06,32.06,0,0,0,104,64ZM56,64A16,16,0,1,1,72,80,16,16,0,0,1,56,64ZM88,192a16,16,0,1,1-16-16A16,16,0,0,1,88,192Zm120-31V110.63a23.85,23.85,0,0,0-7-17L163.31,56H192a8,8,0,0,0,0-16H144a8,8,0,0,0-8,8V96a8,8,0,0,0,16,0V67.31L189.66,105a8,8,0,0,1,2.34,5.66V161a32,32,0,1,0,16,0Zm-8,47a16,16,0,1,1,16-16A16,16,0,0,1,200,208Z"/></svg>Looks good — publish it</button>

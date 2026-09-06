@@ -268,6 +268,10 @@
     .step.await{box-shadow:0 0 0 2px var(--warn-fg);}
     .evt-ic.live{box-shadow:0 0 0 2px var(--accent-fg);}
   }
+  /* --- sync status: board header polling indicator, GitHub state polls every 30–60s, not push --- */
+  .sync-status{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 4px 0 10px;border-radius:var(--pill);background:var(--surface-2);color:var(--text-faint);font-size:12px;line-height:1;white-space:nowrap;}
+  .sync-status .icon-sm{color:var(--text-faint);flex-shrink:0;}
+  .sync-status .icon-btn{width:24px;height:24px;flex-shrink:0;}
   /* ===== screen ===== */
   /* This artboard is the HIGH-risk treatment. LOW is a passive line and MEDIUM a compact inline card — both live in TicketDetail. */
   .stage{width:480px;height:660px;display:flex;align-items:center;justify-content:center;background:var(--bg);}
@@ -279,7 +283,7 @@
   .kind{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-faint);line-height:1;margin-top:4px;}
   .sub{font-size:13px;color:var(--text-soft);line-height:1.45;}
   .cmd{font-family:'IBM Plex Mono',monospace;font-size:12px;line-height:20px;background:var(--surface-4);padding:8px 12px;border-radius:var(--r-sm);color:var(--text-soft);white-space:pre-wrap;}
-  .dialog .pc-head{background:var(--surface-4);} .dialog .pc-row{background:#2e2e2e;} .dialog .pc-row.got{background:var(--surface-4);}
+  .dialog .pc-head{background:var(--surface-4);} .dialog .pc-row{background:#2e2e2e;} .dialog .pc-row.got{background:var(--surface-4);} /* intentionally between --surface-3 and --surface-4: the dialog itself sits on --surface-3, so var(--surface-3) here would make this row disappear into the dialog background — needs a --surface-3-alt token to fix properly */
   .req{font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:400;color:var(--danger-text);text-transform:none;letter-spacing:0;margin-left:6px;}
   .actions{display:flex;gap:8px;}
   .actions .btn{flex:1;}
@@ -322,12 +326,12 @@ gh pr create --fill --base main</div>
         </div>
         <div>
           <label class="f-lbl">Reason, if rejecting<span class="req">required at HIGH</span></label>
-          <textarea class="field" rows="2">Wait for #96 to land first — same file, avoid a rebase.</textarea>
+          <textarea class="field" rows="2">Wait for #97 to land first — same file, avoid a rebase.</textarea>
           <span class="f-help">Fed back into the next attempt. A rejected HIGH action is never retried on its own.</span>
         </div>
         <div class="actions">
           <button class="btn danger" onClick="{{reject}}"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg>Reject</button>
-          <button class="btn primary" onClick="{{approve}}"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg>Approve</button>
+          <button class="btn primary" onClick="{{approve}}"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg>Approve &amp; open diff</button>
         </div>
         <div class="high-foot"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,71.1a8,8,0,0,1-10.78-3.42,94.13,94.13,0,0,0-33.46-36.91,8,8,0,1,1,8.54-13.54,111.46,111.46,0,0,1,39.12,43.09A8,8,0,0,1,224,71.1ZM35.71,72a8,8,0,0,0,7.1-4.32A94.13,94.13,0,0,1,76.27,30.77a8,8,0,1,0-8.54-13.54A111.46,111.46,0,0,0,28.61,60.32,8,8,0,0,0,35.71,72Zm186.1,103.94A16,16,0,0,1,208,200H167.2a40,40,0,0,1-78.4,0H48a16,16,0,0,1-13.79-24.06C43.22,160.39,48,138.28,48,112a80,80,0,0,1,160,0C208,138.27,212.78,160.38,221.81,175.94ZM150.62,200H105.38a24,24,0,0,0,45.24,0ZM208,184c-10.64-18.27-16-42.49-16-72a64,64,0,0,0-128,0c0,29.52-5.38,53.74-16,72Z"/></svg><span>OS notified 14:02</span><span class="sep">·</span><span>no Undo at HIGH</span><span class="sep">·</span><span>no auto-allow</span></div>
       </sc-if>
@@ -346,7 +350,7 @@ gh pr create --fill --base main</div>
           <div class="r-ic no"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></div>
           <div>
             <div class="r-text">Rejected — reason sent to the next attempt</div>
-            <div class="r-sub">One retry at the same model tier before escalating. It stops here again before anything leaves the machine; a denied approval is never auto-retried.</div>
+            <div class="r-sub">Nothing retries on its own. When you re-run it, the next attempt gets your reason and stops here again before anything leaves the machine.</div>
             <div class="r-links"><span class="r-link" tabindex="0">View in activity<svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"/></svg></span><span class="r-link faint" tabindex="0" onClick="{{reset}}">Back to the card</span></div>
           </div>
         </div>

@@ -268,6 +268,10 @@
     .step.await{box-shadow:0 0 0 2px var(--warn-fg);}
     .evt-ic.live{box-shadow:0 0 0 2px var(--accent-fg);}
   }
+  /* --- sync status: board header polling indicator, GitHub state polls every 30–60s, not push --- */
+  .sync-status{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 4px 0 10px;border-radius:var(--pill);background:var(--surface-2);color:var(--text-faint);font-size:12px;line-height:1;white-space:nowrap;}
+  .sync-status .icon-sm{color:var(--text-faint);flex-shrink:0;}
+  .sync-status .icon-btn{width:24px;height:24px;flex-shrink:0;}
   /* ===== screen ===== */
   .shell{height:900px;}
   .head{padding:0 24px 16px;display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-shrink:0;background:var(--bg);}
@@ -336,8 +340,8 @@
     </div>
     <div class="nav-group">
       <span class="nav-title">Work</span>
-      <div class="nav-item active" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M216,48H40a8,8,0,0,0-8,8V208a16,16,0,0,0,16,16H88a16,16,0,0,0,16-16V160h48v16a16,16,0,0,0,16,16h40a16,16,0,0,0,16-16V56A8,8,0,0,0,216,48ZM88,208H48V128H88Zm0-96H48V64H88Zm64,32H104V64h48Zm56,32H168V128h40Zm0-64H168V64h40Z"/></svg><span class="nav-lbl">Board</span><span class="nav-count">7</span></div>
-      <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M188,88a27.75,27.75,0,0,0-12,2.71V60a28,28,0,0,0-41.36-24.6A28,28,0,0,0,80,44v6.71A27.75,27.75,0,0,0,68,48,28,28,0,0,0,40,76v76a88,88,0,0,0,176,0V116A28,28,0,0,0,188,88Zm12,64a72,72,0,0,1-144,0V76a12,12,0,0,1,24,0v44a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v68a8,8,0,0,0,16,0V60a12,12,0,0,1,24,0v68.67A48.08,48.08,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V116a12,12,0,0,1,24,0Z"/></svg><span class="nav-lbl">Needs me</span><span class="nav-count hot">2</span></div>
+      <div class="nav-item active" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M216,48H40a8,8,0,0,0-8,8V208a16,16,0,0,0,16,16H88a16,16,0,0,0,16-16V160h48v16a16,16,0,0,0,16,16h40a16,16,0,0,0,16-16V56A8,8,0,0,0,216,48ZM88,208H48V128H88Zm0-96H48V64H88Zm64,32H104V64h48Zm56,32H168V128h40Zm0-64H168V64h40Z"/></svg><span class="nav-lbl">Board</span><span class="nav-count">11</span></div>
+      <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M188,88a27.75,27.75,0,0,0-12,2.71V60a28,28,0,0,0-41.36-24.6A28,28,0,0,0,80,44v6.71A27.75,27.75,0,0,0,68,48,28,28,0,0,0,40,76v76a88,88,0,0,0,176,0V116A28,28,0,0,0,188,88Zm12,64a72,72,0,0,1-144,0V76a12,12,0,0,1,24,0v44a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v68a8,8,0,0,0,16,0V60a12,12,0,0,1,24,0v68.67A48.08,48.08,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V116a12,12,0,0,1,24,0Z"/></svg><span class="nav-lbl">Needs me</span><span class="nav-count hot">4</span></div>
       <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M136,80v43.47l36.12,21.67a8,8,0,0,1-8.24,13.72l-40-24A8,8,0,0,1,120,128V80a8,8,0,0,1,16,0Zm-8-48A95.44,95.44,0,0,0,60.08,60.15C52.81,67.51,46.35,74.59,40,82V64a8,8,0,0,0-16,0v40a8,8,0,0,0,8,8H72a8,8,0,0,0,0-16H49c7.15-8.42,14.27-16.35,22.39-24.57a80,80,0,1,1,1.66,114.75,8,8,0,1,0-11,11.64A96,96,0,1,0,128,32Z"/></svg><span class="nav-lbl">Activity</span></div>
     </div>
     <div class="nav-group">
@@ -406,7 +410,7 @@
         <div class="file">
           <div class="file-head">
             <span class="path"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M213.66,82.34l-56-56A8,8,0,0,0,152,24H56A16,16,0,0,0,40,40V216a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V88A8,8,0,0,0,213.66,82.34ZM160,51.31,188.69,80H160ZM200,216H56V40h88V88a8,8,0,0,0,8,8h48V216Z"/></svg><span class="dir">packages/agent-runtime/test/</span>mcp-stdio-client.test.ts</span>
-            <span class="file-stat"><span class="add-t">+44</span><span class="del-t">−5</span></span>
+            <span class="file-stat"><span class="add-t">+44</span><span class="del-t">−0</span></span>
           </div>
           <table class="hunk">
             <tr class="hh"><td class="ln"></td><td class="ln"></td><td class="sign"></td><td class="code">@@ -138,4 +138,17 @@ describe('StdioMcpConnection', () =&gt; {</td></tr>
@@ -431,12 +435,12 @@
           <div class="v-row"><span class="v-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span>vitest: 21 passed, 0 failed <span class="m">1 new · spec-generated</span></span></div>
           <div class="v-row"><span class="v-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span>eslint: 0 errors, 0 warnings</span></div>
           <div class="v-row"><span class="v-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span>gitleaks and semgrep p/ci: no findings</span></div>
-          <div class="v-row"><span class="v-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span>Diff scope within the Refine estimate <span class="m">+52 of ≤ 100</span></span></div>
+          <div class="v-row"><span class="v-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span>Diff scope within the Refine estimate <span class="m">+52 of ≤ 60</span></span></div>
         </div>
         <div class="v-block agent">
           <div class="v-head"><span class="label">Agent-captured<span class="self-tag">self-reported — not verified by a human</span></span><span class="sub">Evidence the agent gathered about its own work. Shown for context; none of it can satisfy a gate.</span></div>
           <div class="v-row"><span class="v-ic self"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span>3/3 acceptance criteria met, by its own reading</span></div>
-          <div class="v-row"><span class="v-ic self"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span>Pre-commitments: 2 matched, 1 mismatch (recovered) <span class="m lnk" tabindex="0">activity →</span></span></div>
+          <div class="v-row"><span class="v-ic self"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span>Pre-commitments: 1 matched, 1 mismatch (recovered) <span class="m lnk" tabindex="0">activity →</span></span></div>
           <div class="v-row"><span class="v-ic self"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M208,56H180.28L166.65,35.56A8,8,0,0,0,160,32H96a8,8,0,0,0-6.65,3.56L75.71,56H48A24,24,0,0,0,24,80V192a24,24,0,0,0,24,24H208a24,24,0,0,0,24-24V80A24,24,0,0,0,208,56Zm8,136a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V80a8,8,0,0,1,8-8H80a8,8,0,0,0,6.66-3.56L100.28,48h55.43l13.63,20.44A8,8,0,0,0,176,72h32a8,8,0,0,1,8,8ZM128,88a44,44,0,1,0,44,44A44.05,44.05,0,0,0,128,88Zm0,72a28,28,0,1,1,28-28A28,28,0,0,1,128,160Z"/></svg></span><span>Screenshots: MCP servers panel, before and after <span class="m">no visible change expected</span></span></div>
           <div class="shots">
             <sc-for list="{{shots}}" as="s" hint-placeholder-count="2">
@@ -476,21 +480,21 @@
           <div class="commit">fix(mcp): sanitize environment for MCP stdio server subprocesses
 
 Spawned servers no longer inherit the full host env. Closes #94.</div>
-          <div class="confidence"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg><span>The PR body will carry a confidence line: <b>2 of 3 pre-commitments matched</b>, 1 mismatch on the first test run, recovered via its own if_wrong path.</span></div>
+          <div class="confidence"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg><span>The PR body will carry a confidence line: <b>1 of 2 pre-commitments matched</b>, 1 mismatch on the first test run, recovered via its own if_wrong path.</span></div>
         </div>
       </div>
     </div>
   </div>
 
   <sc-if value="{{shotOpen}}" hint-placeholder-val="{{false}}">
-    <div class="scrim">
+    <div class="scrim" onClick="{{closeShot}}">
       <div class="lightbox">
         <div class="lb-head">
           <div>
             <div class="lb-title">{{activeShot.label}} — MCP servers panel</div>
             <div class="lb-sub">{{activeShot.ref}} · 1280×800 · captured 14:06 by the daemon · self-reported, not verified by a human</div>
           </div>
-          <div class="lb-nav"><button class="icon-btn" onClick="{{prevShot}}"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M165.66,202.34a8,8,0,0,1-11.32,11.32l-80-80a8,8,0,0,1,0-11.32l80-80a8,8,0,0,1,11.32,11.32L91.31,128Z"/></svg></button><button class="icon-btn" onClick="{{nextShot}}"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"/></svg></button><button class="icon-btn" onClick="{{closeShot}}"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></button></div>
+          <div class="lb-nav"><button class="icon-btn" onClick="{{prevShot}}" aria-label="Previous photo"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M165.66,202.34a8,8,0,0,1-11.32,11.32l-80-80a8,8,0,0,1,0-11.32l80-80a8,8,0,0,1,11.32,11.32L91.31,128Z"/></svg></button><button class="icon-btn" onClick="{{nextShot}}" aria-label="Next photo"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"/></svg></button><button class="icon-btn" onClick="{{closeShot}}" aria-label="Close"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></button></div>
         </div>
         <div class="shot lg">
           <div class="shot-frame">
@@ -526,7 +530,7 @@ Spawned servers no longer inherit the full host env. Closes #94.</div>
 class Component extends DCLogic {
   renderVals() {
     const SHOTS = [
-      { i: 0, label: 'Before', ref: 'main · 287a4a6', dot: 'acc' },
+      { i: 0, label: 'Before', ref: 'main · 287a4a6', dot: 'bad' },
       { i: 1, label: 'After', ref: 'issue-94 · working tree', dot: 'acc' },
     ];
     const cur = this.state.shot ?? null;
