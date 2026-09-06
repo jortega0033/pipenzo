@@ -492,8 +492,6 @@
   .kv .v.warn{color:var(--warn);} .kv .v.danger{color:var(--danger-text);} .kv .v.faint{color:var(--text-faint);}
   .kv .select-wrap{width:150px;}
   .kv .select-wrap .field{height:28px;padding:4px 32px 4px 12px;font-size:12px;line-height:20px;background:var(--surface-3);}
-  .headroom-bar{height:4px;border-radius:var(--pill);background:var(--surface-3);overflow:hidden;}
-  .headroom-fill{height:100%;background:var(--accent);border-radius:var(--pill);}
   /* HIGH: the full approval card — same anatomy as ApprovalPrompt, inline at the end of the stream */
   .approval-card{background:var(--surface-2);border-radius:var(--r);padding:20px;display:flex;flex-direction:column;gap:12px;margin-left:40px;box-shadow:var(--shadow-sm);}
   .approval-head{display:flex;align-items:center;gap:12px;}
@@ -533,8 +531,12 @@
   .approval-card .split{background:var(--surface-3);}
   .split{display:flex;flex-direction:column;gap:6px;border-radius:var(--r-sm);padding:10px 12px;}
   .split-head{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-soft);line-height:1;}
-  .split-row{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-soft);line-height:1.3;}
+  .split-row{display:flex;align-items:flex-start;gap:8px;font-size:12px;color:var(--text-soft);line-height:1.45;}
   .split-row .mono{margin-left:auto;font-size:11px;color:var(--text-faint);flex-shrink:0;}
+  /* a split row that carries a sentence wraps it in one span, so the trailing mono keeps its hard-right slot
+     and any code fragment inside the sentence stays inline instead of becoming a third flex item */
+  .split-row > span:not(.split-n):not(.mono){flex:1;min-width:0;}
+  .split-row > span span.mono{margin-left:0;font-size:12px;color:var(--text);}
   .split-n{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);flex-shrink:0;}
   .pc-toggle.pinned{cursor:default;color:var(--danger-text);}
   /* run controls and the lesson prompt both sit in the run's own column: the stream gutter is 28px + a 12px gap */
@@ -552,7 +554,7 @@
     </div>
     <div class="nav-group">
       <span class="nav-title">Work</span>
-      <div class="nav-item active" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M216,48H40a8,8,0,0,0-8,8V208a16,16,0,0,0,16,16H88a16,16,0,0,0,16-16V160h48v16a16,16,0,0,0,16,16h40a16,16,0,0,0,16-16V56A8,8,0,0,0,216,48ZM88,208H48V128H88Zm0-96H48V64H88Zm64,32H104V64h48Zm56,32H168V128h40Zm0-64H168V64h40Z"/></svg><span class="nav-lbl">Board</span><span class="nav-count">13</span></div>
+      <div class="nav-item active" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M216,48H40a8,8,0,0,0-8,8V208a16,16,0,0,0,16,16H88a16,16,0,0,0,16-16V160h48v16a16,16,0,0,0,16,16h40a16,16,0,0,0,16-16V56A8,8,0,0,0,216,48ZM88,208H48V128H88Zm0-96H48V64H88Zm64,32H104V64h48Zm56,32H168V128h40Zm0-64H168V64h40Z"/></svg><span class="nav-lbl">Board</span><span class="nav-count">14</span></div>
       <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M188,88a27.75,27.75,0,0,0-12,2.71V60a28,28,0,0,0-41.36-24.6A28,28,0,0,0,80,44v6.71A27.75,27.75,0,0,0,68,48,28,28,0,0,0,40,76v76a88,88,0,0,0,176,0V116A28,28,0,0,0,188,88Zm12,64a72,72,0,0,1-144,0V76a12,12,0,0,1,24,0v44a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v68a8,8,0,0,0,16,0V60a12,12,0,0,1,24,0v68.67A48.08,48.08,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V116a12,12,0,0,1,24,0Z"/></svg><span class="nav-lbl">Needs me</span><span class="nav-count hot">6</span></div>
       <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M136,80v43.47l36.12,21.67a8,8,0,0,1-8.24,13.72l-40-24A8,8,0,0,1,120,128V80a8,8,0,0,1,16,0Zm-8-48A95.44,95.44,0,0,0,60.08,60.15C52.81,67.51,46.35,74.59,40,82V64a8,8,0,0,0-16,0v40a8,8,0,0,0,8,8H72a8,8,0,0,0,0-16H49c7.15-8.42,14.27-16.35,22.39-24.57a80,80,0,1,1,1.66,114.75,8,8,0,1,0-11,11.64A96,96,0,1,0,128,32Z"/></svg><span class="nav-lbl">Activity</span></div>
     </div>
@@ -775,6 +777,78 @@
           </div>
         </sc-if>
 
+        <!-- Plan-review gate (README, Near-term post-MVP: "Plan-review gate before implementation starts"). Refine is read-only and finished;
+             the gate holds at Refine so a human accepts the spec before an implement run is spent. Same anatomy as the stack-approval card
+             above — head, what it is, the evidence, a reason field, then the actions — because it is the same kind of decision at the same
+             point in the run. The label set in the README does not name this state yet, so the ticket parks under pipenzo:needs-human and says so. -->
+        <sc-if value="{{showPlanPanel}}" hint-placeholder-val="{{false}}">
+          <div class="approval-card">
+            <div class="approval-head">
+              <div class="approval-ic warn"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,128a8,8,0,0,1-8,8H128a8,8,0,0,1,0-16h88A8,8,0,0,1,224,128ZM128,72h88a8,8,0,0,0,0-16H128a8,8,0,0,0,0,16Zm88,112H128a8,8,0,0,0,0,16h88a8,8,0,0,0,0-16ZM82.34,42.34,56,68.69,45.66,58.34A8,8,0,0,0,34.34,69.66l16,16a8,8,0,0,0,11.32,0l32-32A8,8,0,0,0,82.34,42.34Zm0,64L56,132.69,45.66,122.34a8,8,0,0,0-11.32,11.32l16,16a8,8,0,0,0,11.32,0l32-32a8,8,0,0,0-11.32-11.32Zm0,64L56,196.69,45.66,186.34a8,8,0,0,0-11.32,11.32l16,16a8,8,0,0,0,11.32,0l32-32a8,8,0,0,0-11.32-11.32Z"/></svg></div>
+              <div class="grow"><span class="approval-title">Plan review — approve the spec before Implement starts</span><span class="approval-sub">pipenzo:needs-human · refine finished 10:24 · no worktree, no branch, nothing written</span></div>
+              <span class="chip chip-warn">blocks the run</span>
+            </div>
+            <p class="approval-p">Refine is read-only by construction, so nothing has been implemented and no run has been spent. Implement does not start until you accept this spec — it is seeded with the spec and nothing else, which is exactly why the spec is worth a look before it goes.</p>
+            <div class="split">
+              <span class="split-head"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,128a8,8,0,0,1-8,8H128a8,8,0,0,1,0-16h88A8,8,0,0,1,224,128ZM128,72h88a8,8,0,0,0,0-16H128a8,8,0,0,0,0,16Zm88,112H128a8,8,0,0,0,0,16h88a8,8,0,0,0,0-16ZM82.34,42.34,56,68.69,45.66,58.34A8,8,0,0,0,34.34,69.66l16,16a8,8,0,0,0,11.32,0l32-32A8,8,0,0,0,82.34,42.34Zm0,64L56,132.69,45.66,122.34a8,8,0,0,0-11.32,11.32l16,16a8,8,0,0,0,11.32,0l32-32a8,8,0,0,0-11.32-11.32Zm0,64L56,196.69,45.66,186.34a8,8,0,0,0-11.32,11.32l16,16a8,8,0,0,0,11.32,0l32-32a8,8,0,0,0-11.32-11.32Z"/></svg>Acceptance criteria · EARS notation</span>
+              <span class="split-row"><span class="split-n">1</span><span>When a poll for a repo's issues completes, the reconciler shall store the response ETag under that <span class="mono">(repo, resource)</span> key in the ticket store.</span></span>
+              <span class="split-row"><span class="split-n">2</span><span>When a poll is issued for a <span class="mono">(repo, resource)</span> that has a stored ETag, the client shall send it as <span class="mono">If-None-Match</span>.</span></span>
+              <span class="split-row"><span class="split-n">3</span><span>When GitHub answers <span class="mono">304</span>, the reconciler shall reuse the cached tickets and shall not count the request against the primary rate limit.</span></span>
+            </div>
+            <div class="split">
+              <span class="split-head"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm88,104a87.56,87.56,0,0,1-20.41,56.28L71.72,60.4A88,88,0,0,1,216,128ZM40,128A87.56,87.56,0,0,1,60.41,71.72L184.28,195.6A88,88,0,0,1,40,128Z"/></svg>Out of scope · written down so it cannot drift</span>
+              <span class="split-row"><span class="split-n">—</span><span>The secondary-limit and <span class="mono">Retry-After</span> handling — that is the throttling plugin's job, not this ticket's.</span></span>
+              <span class="split-row"><span class="split-n">—</span><span>Changing the poll interval or the "syncing slowly" degradation.</span></span>
+              <span class="split-row"><span class="split-n">—</span><span>Any ETag for the checks or PR resources; issues only, on this pass.</span></span>
+            </div>
+            <div class="split">
+              <span class="split-head"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M213.66,82.34l-56-56A8,8,0,0,0,152,24H56A16,16,0,0,0,40,40V216a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V88A8,8,0,0,0,213.66,82.34ZM160,51.31,188.69,80H160ZM200,216H56V40h88V88a8,8,0,0,0,8,8h48V216Z"/></svg>Files likely touched · 2</span>
+              <span class="split-row"><span class="split-n">1</span><span><span class="mono">apps/daemon/src/github-reconciler.ts</span></span><span class="mono">≈ +26 −4</span></span>
+              <span class="split-row"><span class="split-n">2</span><span><span class="mono">apps/daemon/src/ticket-store.ts</span></span><span class="mono">≈ +12 −2</span></span>
+            </div>
+            <div class="ref-grid">
+              <div class="ref-cell"><span class="label">Estimated diff</span><span class="ref-v mono">+38 −6</span><span class="ref-s">2 files · 44 changed lines</span></div>
+              <div class="ref-cell"><span class="label">Rung</span><span class="ref-v">One PR</span><span class="ref-s">inside ≤ 100 changed lines and ≤ 10 files</span></div>
+              <div class="ref-cell"><span class="label">Task type</span><span class="ref-v">chore</span><span class="ref-s">84.0% measured merge rate · cheap tier, standard gates</span></div>
+            </div>
+            <div>
+              <label class="f-lbl">Reason, if rejecting or asking for changes<span class="req">required on both</span></label>
+              <textarea class="field" rows="2" placeholder="Fed back into a fresh Refine. Nothing is implemented against a spec you have not accepted."></textarea>
+            </div>
+            <div class="approval-actions"><button class="btn danger" onClick="{{rejectPlan}}"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg>Reject</button><button class="btn" onClick="{{changesPlan}}"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z"/></svg>Request changes</button><button class="btn primary" onClick="{{approvePlan}}"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg>Approve &amp; start Implement</button></div>
+            <div class="approval-foot"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,71.1a8,8,0,0,1-10.78-3.42,94.13,94.13,0,0,0-33.46-36.91,8,8,0,1,1,8.54-13.54,111.46,111.46,0,0,1,39.12,43.09A8,8,0,0,1,224,71.1ZM35.71,72a8,8,0,0,0,7.1-4.32A94.13,94.13,0,0,1,76.27,30.77a8,8,0,1,0-8.54-13.54A111.46,111.46,0,0,0,28.61,60.32,8,8,0,0,0,35.71,72Zm186.1,103.94A16,16,0,0,1,208,200H167.2a40,40,0,0,1-78.4,0H48a16,16,0,0,1-13.79-24.06C43.22,160.39,48,138.28,48,112a80,80,0,0,1,160,0C208,138.27,212.78,160.38,221.81,175.94ZM150.62,200H105.38a24,24,0,0,0,45.24,0ZM208,184c-10.64-18.27-16-42.49-16-72a64,64,0,0,0-128,0c0,29.52-5.38,53.74-16,72Z"/></svg><span>OS notification sent 10:24 — a run that will not start until a person answers counts as "awaiting input"</span></div>
+            <span class="f-help" style="margin-top:-6px;">The published label set does not name this state yet, so the ticket parks under <span class="mono">pipenzo:needs-human</span> rather than inventing a label a teammate's older build would not understand.</span>
+          </div>
+        </sc-if>
+        <sc-if value="{{showPlanApproved}}" hint-placeholder-val="{{false}}">
+          <div class="approval-card">
+            <div class="approval-head">
+              <div class="approval-ic ok"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></div>
+              <div class="grow"><span class="approval-title">Spec approved — Implement starts on the next free slot</span><span class="approval-sub">worktree .worktrees/issue-98 and branch issue-98 created · seeded with this spec and nothing else</span></div>
+            </div>
+            <div class="stack-note"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm16-40a8,8,0,0,1-8,8,16,16,0,0,1-16-16V128a8,8,0,0,1,0-16,16,16,0,0,1,16,16v40A8,8,0,0,1,144,176ZM112,84a12,12,0,1,1,12,12A12,12,0,0,1,112,84Z"/></svg><span><b>The spec is now the thing the diff is checked against.</b> The estimate you accepted is what the diff-scope gate measures at Review, and a final diff more than 50% over it moves the ticket to <span class="mono">pipenzo:awaiting-stack-approval</span> with the real numbers against these.</span></div>
+            <div class="approval-actions" style="justify-content:flex-end;"><span class="r-link faint" tabindex="0" onClick="{{resetPlan}}">Back to the spec</span></div>
+          </div>
+        </sc-if>
+        <sc-if value="{{showPlanChanges}}" hint-placeholder-val="{{false}}">
+          <div class="approval-card">
+            <div class="approval-head">
+              <div class="approval-ic quiet"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z"/></svg></div>
+              <div class="grow"><span class="approval-title">Changes requested — Refine runs again with your note</span><span class="approval-sub">still no worktree · a fresh read-only pass, not a continuation of the last one</span></div>
+            </div>
+            <div class="approval-actions" style="justify-content:flex-end;"><span class="r-link faint" tabindex="0" onClick="{{resetPlan}}">Back to the spec</span></div>
+          </div>
+        </sc-if>
+        <sc-if value="{{showPlanRejected}}" hint-placeholder-val="{{false}}">
+          <div class="approval-card">
+            <div class="approval-head">
+              <div class="approval-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></div>
+              <div class="grow"><span class="approval-title">Plan rejected — reason posted to #98</span><span class="approval-sub">the ticket stays in Needs human · no worktree was created · nothing retries on its own</span></div>
+            </div>
+            <div class="approval-actions" style="justify-content:flex-end;"><span class="r-link faint" tabindex="0" onClick="{{resetPlan}}">Back to the spec</span></div>
+          </div>
+        </sc-if>
+
         <sc-if value="{{showStackPanel}}" hint-placeholder-val="{{false}}">
           <div class="approval-card">
             <div class="approval-head">
@@ -839,8 +913,8 @@
             <p class="approval-p">This is the finished outcome for the ticket, not an error. Nothing was written, no worktree exists, and no runs will be spent until a person re-scopes it.</p>
             <div class="ref-grid">
               <div class="ref-cell"><span class="label">Estimate</span><span class="ref-v mono">+1,340 −410</span><span class="ref-s">31 files · no clean layering</span></div>
-              <div class="ref-cell"><span class="label">Tripped</span><span class="ref-v">&gt; 500 additions</span><span class="ref-s">also &gt; 20 files — either one alone declines</span></div>
-              <div class="ref-cell"><span class="label">One-PR budget</span><span class="ref-v mono">≤ 100 · ≤ 10</span><span class="ref-s">lines · files. Stacks cover 100–400, layered</span></div>
+              <div class="ref-cell"><span class="label">Tripped</span><span class="ref-v">&gt; 400 changed lines</span><span class="ref-s">also &gt; 20 files — either one alone declines</span></div>
+              <div class="ref-cell"><span class="label">One-PR budget</span><span class="ref-v mono">≤ 100 · ≤ 10</span><span class="ref-s">changed lines · files. Stacks cover 100–400, layered</span></div>
             </div>
             <div class="split">
               <span class="split-head"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M230.91,172A8,8,0,0,1,228,182.91l-96,56a8,8,0,0,1-8.06,0l-96-56A8,8,0,0,1,36,169.09l92,53.65,92-53.65A8,8,0,0,1,230.91,172ZM220,121.09l-92,53.65L36,121.09A8,8,0,0,0,28,134.91l96,56a8,8,0,0,0,8.06,0l96-56A8,8,0,1,0,220,121.09ZM24,80a8,8,0,0,1,4-6.91l96-56a8,8,0,0,1,8.06,0l96,56a8,8,0,0,1,0,13.82l-96,56a8,8,0,0,1-8.06,0l-96-56A8,8,0,0,1,24,80Zm23.88,0L128,126.74,208.12,80,128,33.26Z"/></svg>Proposed split · 4 tickets, in this order</span>
@@ -935,7 +1009,7 @@
           <span class="label">Cumulative risk</span>
           <div class="risk-strip">
             <div class="risk-segs">
-              <sc-for list="{{riskSegs}}" as="s" hint-placeholder-count="12">
+              <sc-for list="{{riskSegs}}" as="s" hint-placeholder-count="10">
                 <span class="risk-seg {{s.cls}}"></span>
               </sc-for>
             </div>
@@ -952,11 +1026,15 @@
           <div class="kv"><span class="k">Reviewer</span><span class="v">sonnet</span></div>
           <div class="kv"><span class="k">Verifier</span><span class="v">opus · codex</span></div>
         </div>
+        <!-- Subscription headroom, labelled as an estimate because that is what it is (README, MVP feature list).
+             Neither provider hands the daemon a usable quota number — Codex emits a rate-limit event agentdock normalizes and discards,
+             and Claude has no quota notification at all — so there is no percentage bar and no reset countdown here. Only what is
+             genuinely derivable on this machine: how many sessions this app has run in the window, and the tokens they cost. -->
         <div class="rail-block">
-          <span class="label">Subscription headroom</span>
-          <div class="headroom-bar"><div class="headroom-fill" style="width:38%;"></div></div>
-          <div class="kv"><span class="k">5h window</span><span class="v">38% used</span></div>
-          <div class="kv"><span class="k">Resets in</span><span class="v">2h 14m</span></div>
+          <span class="label">Subscription headroom<span class="self-tag">estimate</span></span>
+          <div class="kv"><span class="k">Sessions this window</span><span class="v">7</span></div>
+          <div class="kv"><span class="k">Tokens used</span><span class="v">~412k</span></div>
+          <span class="f-help" style="margin-top:-4px;">Counted locally from this app's own runs — no provider reports a quota, so there is no percentage and no reset to show.</span>
         </div>
       </div>
     </div>
@@ -973,19 +1051,21 @@ class Component extends DCLogic {
     const medium = this.state.medium ?? null;
     const stackDecision = this.state.stackDecision ?? null;
     const highDecision = this.state.highDecision ?? null;
+    const planDecision = this.state.planDecision ?? null;
     const run = this.state.run ?? null;
     const lesson = this.state.lesson ?? null;
 
-    // ---- the five tickets this artboard can show: in-flight, stack approval, refusal, ci-failed, and one still loading its stream ----
+    // ---- the six tickets this artboard can show: in-flight, plan review, stack approval, refusal, ci-failed, and one still loading its stream ----
     const TICKETS = {
       94: { num: 94, id: '#94 · issue-94 · .worktrees/issue-94', title: 'Sanitize environment for MCP stdio server subprocesses' },
+      98: { num: 98, id: '#98 · plan review · pipenzo:needs-human · no worktree yet', title: 'Persist poll ETags per repo and resource in the ticket store' },
       108: { num: 108, id: '#108 · pipenzo:awaiting-stack-approval · no worktree yet', title: 'Rework provider capability negotiation across all transports' },
       113: { num: 113, id: '#113 · pipenzo:needs-pre-scoping · no worktree', title: 'Replace the JSON file store with SQLite across daemon and desktop' },
       85: { num: 85, id: '#85 · issue-85 · PR #115 · ci-failed', title: 'Batch tray badge updates to one repaint per tick' },
       87: { num: 87, id: '#87 · issue-87 · pipenzo:needs-human · 3 attempts', title: 'Migrate tray notifications to native OS toasts' },
     };
     const t = TICKETS[ticket];
-    const tickets = [94, 108, 113, 85, 87].map((n) => ({ num: n, cls: n === ticket ? 'active' : '', select: () => this.setState({ ticket: n, medium: null, stackDecision: null, highDecision: null, run: null, lesson: null }) }));
+    const tickets = [94, 98, 108, 113, 85, 87].map((n) => ({ num: n, cls: n === ticket ? 'active' : '', select: () => this.setState({ ticket: n, medium: null, stackDecision: null, highDecision: null, planDecision: null, run: null, lesson: null }) }));
     // #87 is the loading state: id, title, stepper and rail come from the ticket store and render at once; the stream replays
     // three attempts out of the session log, so it is the one part that arrives late and the one part that gets skeletons.
     const skRows = [{ tool: 76, meta: 52, a: 100, b: 54 }, { tool: 62, meta: 44, a: 88, b: 38 }, { tool: 84, meta: 48, a: 96, b: 62 }, { tool: 58, meta: 56, a: 72, b: 44 }];
@@ -1005,6 +1085,10 @@ class Component extends DCLogic {
         return { ...p, n: i + 1, cls: isAwait ? 'await' : isActive ? 'active' : isDone ? 'done' : '', isDone, isAwait, isFail: false, showNum: !isDone && !isAwait, select: () => this.setState({ phase: p.id, medium: null, highDecision: null, run: null, lesson: null }) };
       });
       showHint = phase === 'awaiting_approval'; hintText = 'Waiting on you · notified 14:02';
+    } else if (ticket === 98) {
+      // The plan-review gate blocks at Refine: the spec is finished but Implement cannot start until a human accepts it.
+      phases = BASE.map((p, i) => ({ ...p, n: i + 1, cls: i === 0 ? 'await' : '', isDone: false, isAwait: i === 0, isFail: false, showNum: i !== 0, select: () => {} }));
+      showHint = true; hintText = 'Plan review — waiting on you · notified 10:24';
     } else if (ticket === 108) {
       phases = BASE.map((p, i) => ({ ...p, n: i + 1, cls: i === 0 ? 'await' : '', isDone: false, isAwait: i === 0, isFail: false, showNum: i !== 0, select: () => {} }));
       showHint = true; hintText = 'Stack awaiting sign-off · notified 09:41';
@@ -1040,6 +1124,8 @@ class Component extends DCLogic {
       implementing: [
         ack,
         { kind: 'refine', tool: 'refine', title: 'Spec approved — 3 acceptance criteria, ≤ 60 line estimate, 2 files in scope', meta: 'sonnet · 41s' },
+        // Task-type-aware routing (README, Near-term post-MVP): Refine emits a task type next to the size estimate, and the tier and gate strictness are read off both.
+        { kind: 'refine', tool: 'refine', title: 'Classified this as fix — routing the mid tier with standard gates, plus a spec-generated regression test naming the reported symptom. Merge rate tracks task type, not diff size, so the two are read together.', meta: 'sonnet · 3s' },
         { kind: 'low', title: 'Read stdio-mcp-connection.ts:60–90 and base-environment.ts', meta: '14:03' },
         { kind: 'low', title: 'Edited stdio-mcp-connection.ts — +4 −1, inside the worktree', meta: '14:04' },
         { kind: 'implement', tool: 'implement', risk: 'MEDIUM', title: 'Ran the new regression test in isolation — it did not go as predicted', meta: 'sonnet · 22s', pc: pcMismatch },
@@ -1067,6 +1153,12 @@ class Component extends DCLogic {
         { kind: 'implement', tool: 'implement', title: 'Committed to issue-94 — 2 files, +52 −6. Local branch only, nothing pushed', meta: 'sonnet' },
       ],
     };
+    const events98 = [
+      { kind: 'ack', tool: 'pipenzo', title: 'Picked up #98 — read the issue and the poll path in github-reconciler.ts. Read-only; no worktree created.', meta: '10:22 · 2s' },
+      { kind: 'low', title: 'Grep for If-None-Match and ETag across apps/daemon/src — 4 hits, 2 relevant', meta: '10:23' },
+      { kind: 'refine', tool: 'refine · read-only', title: 'Classified this as chore — routing the cheap tier with standard gates. The task type is emitted alongside the size estimate and the two are read together.', meta: 'sonnet · 3s' },
+      { kind: 'refine', tool: 'refine · read-only', title: 'Spec ready — 3 acceptance criteria in EARS notation, an out-of-scope list, 2 files likely touched, +38 −6 estimated. Stopping here for plan review.', meta: 'sonnet · 52s' },
+    ];
     const events108 = [
       { kind: 'ack', tool: 'pipenzo', title: 'Picked up #108 — read the issue and 14 files under packages/agent-runtime/src/providers. Read-only; no worktree yet.', meta: '09:38 · 3s' },
       { kind: 'low', title: 'Grep for capability negotiation across 3 transports — 9 files likely touched', meta: '09:38' },
@@ -1085,8 +1177,9 @@ class Component extends DCLogic {
       { kind: 'publish', tool: 'publish', risk: 'HIGH', title: 'Pushed issue-85 and opened PR #115 — approved by you at 11:02', meta: '11:02', pc: pcPublish },
       { kind: 'ci', tool: 'ci · post-MVP', title: 'GitHub check failed on PR #115 → ci-failed. One classifiable fix attempt, forked from the original session', meta: '11:14 → 11:19', ci: true },
     ];
-    const raw = ticket === 94 ? (byPhase94[phase] ?? []) : ticket === 108 ? events108 : ticket === 113 ? events113 : ticket === 85 ? events85 : [];
+    const raw = ticket === 94 ? (byPhase94[phase] ?? []) : ticket === 98 ? events98 : ticket === 108 ? events108 : ticket === 113 ? events113 : ticket === 85 ? events85 : [];
     const streamEndsInCard = (ticket !== 94 && ticket !== 87) || phase === 'awaiting_approval' || phase === 'implementing';
+    // (#98 ends in the plan-review card, so its last event keeps the connecting line — same as 108, 113 and 85.)
     const events = raw.map((e, i) => {
       const subOpen = !!(e.sub && openSubs[e.sub.id]);
       const pc = e.pc;
@@ -1137,7 +1230,7 @@ class Component extends DCLogic {
       const s = STACK.find((x) => x.id === id);
       return { ...s, n: i + 1, base: i === 0 ? 'main' : `PR ${i}`, up: move(id, -1), down: move(id, 1) };
     });
-    const kidNums = [117, 118, 119];
+    const kidNums = [122, 123, 124];
     const stackKids = order.map((id, i) => {
       const s = STACK.find((x) => x.id === id);
       return { ...s, n: i + 1, num: kidNums[i], state: i === 0 ? 'waiting for a slot · 2 of 2 running' : `after ${i}/3`, isRun: i === 0, icCls: i === 0 ? 'run' : '' };
@@ -1155,45 +1248,56 @@ class Component extends DCLogic {
       reviewing: { label: 'Reviewing', cls: 'chip-warn' },
       awaiting_approval: { label: 'Awaiting input', cls: 'chip-danger' },
     };
+    // Cumulative risk is a weighted score, not a count of actions: LOW +0.5, MEDIUM +1, a pre-commitment mismatch +3, HIGH +0
+    // (a human already looked hard at a HIGH). Threshold 10, and only a HIGH approval or opening the Activity view resets it.
+    // So the strip is 10 segments — one per point — and the number beside it is the score, never the number of actions.
     let statusLabel, statusBadgeCls, railRows, risk;
     if (ticket === 94) {
       const s = phase === 'implementing' && medium === null ? { label: 'Awaiting input', cls: 'chip-danger' } : STATUS94[phase];
       statusLabel = s.label; statusBadgeCls = s.cls;
       railRows = [
-        { k: 'Elapsed', v: '6m 42s' }, { k: 'Est. diff', v: '≤ 60 lines · 1 PR' }, { k: 'Attempt', v: '1 of unlimited' },
+        { k: 'Label', v: phase === 'awaiting_approval' ? 'pipenzo:ready-for-review' : 'pipenzo:working' },
+        { k: 'Task type', v: 'fix · mid tier' },
+        { k: 'Elapsed', v: '6m 42s' }, { k: 'Est. diff', v: '≤ 60 lines · 1 PR' }, { k: 'Attempt', v: '1 of 3' },
       ];
       risk = ({
-        refining: { filled: 0, level: 'Calm', text: 'refine is read-only, nothing to review yet', count: '0 / 12' },
-        implementing: { filled: 7, level: 'Moderate', text: '6 low-risk actions and 1 mismatch since your last look', count: '7 / 12' },
-        reviewing: { filled: 10, level: 'High', text: '9 low-risk actions and 1 mismatch since your last look', count: '10 / 12', promo: '9 unreviewed low-risk actions plus 1 mispredicted test run crossed the threshold at 10.' },
-        awaiting_approval: { filled: 10, level: 'High', text: '9 low-risk actions and 1 mismatch since your last look', count: '10 / 12', promo: 'The publish gate below is HIGH regardless; the strip resets once you have looked.' },
+        refining: { filled: 0, level: 'Calm', text: 'refine is read-only — nothing has been written, so nothing counts yet', count: '0.0 / 10' },
+        implementing: { filled: 7, level: 'Moderate', text: '8 low-risk actions (4.0) and 1 mismatch (3.0) since your last look', count: '7.0 / 10' },
+        reviewing: { filled: 10, level: 'High', text: '14 low-risk actions (7.0) and 1 mismatch (3.0) since your last look', count: '10.0 / 10', promo: '14 unreviewed low-risk actions at +0.5 each, plus 1 mispredicted test run at +3, reach the threshold at 10.' },
+        awaiting_approval: { filled: 10, level: 'High', text: '14 low-risk actions (7.0) and 1 mismatch (3.0) since your last look', count: '10.0 / 10', promo: 'The publish gate below is HIGH regardless, and approving it resets the strip to zero. So does opening this ticket’s Activity view — a MEDIUM approval deliberately does not.' },
       })[phase];
     } else if (ticket === 108) {
       statusLabel = 'Awaiting stack approval'; statusBadgeCls = 'chip-warn';
       railRows = [
-        { k: 'Label', v: 'pipenzo:awaiting-stack-approval', cls: 'warn' }, { k: 'Est. diff', v: '+212 −40 · 9 files' }, { k: 'Proposed', v: '3 PRs, layered' }, { k: 'Attempt', v: 'refine only · no code', cls: 'faint' },
+        { k: 'Label', v: 'pipenzo:awaiting-stack-approval', cls: 'warn' }, { k: 'Task type', v: 'feature · mid tier' }, { k: 'Est. diff', v: '+212 −40 · 9 files' }, { k: 'Proposed', v: '3 PRs, layered' }, { k: 'Attempt', v: 'refine only · no code', cls: 'faint' },
       ];
-      risk = { filled: 0, level: 'Calm', text: 'refine is read-only; 1 low-risk grep, nothing written', count: '0 / 12' };
+      risk = { filled: 1, level: 'Calm', text: '1 low-risk grep (0.5); refine is read-only and nothing was written', count: '0.5 / 10' };
     } else if (ticket === 113) {
       statusLabel = 'Declined'; statusBadgeCls = 'chip-neutral';
       railRows = [
-        { k: 'Label', v: 'pipenzo:needs-pre-scoping' }, { k: 'Est. diff', v: '+1,340 −410 · 31 files', cls: 'danger' }, { k: 'Tripped', v: '> 500 adds · > 20 files' }, { k: 'Runs spent', v: '0 · none will be', cls: 'faint' },
+        { k: 'Label', v: 'pipenzo:needs-pre-scoping' }, { k: 'Task type', v: 'chore · read-only', cls: 'faint' }, { k: 'Est. diff', v: '+1,340 −410 · 31 files', cls: 'danger' }, { k: 'Tripped', v: '> 400 lines · > 20 files' }, { k: 'Runs spent', v: '0 · none will be', cls: 'faint' },
       ];
-      risk = { filled: 0, level: 'Calm', text: 'read-only; no actions were taken on this ticket', count: '0 / 12' };
+      risk = { filled: 0, level: 'Calm', text: 'read-only; no actions were taken on this ticket', count: '0.0 / 10' };
+    } else if (ticket === 98) {
+      statusLabel = 'Plan review'; statusBadgeCls = 'chip-warn';
+      railRows = [
+        { k: 'Label', v: 'pipenzo:needs-human', cls: 'warn' }, { k: 'Task type', v: 'chore · cheap tier' }, { k: 'Est. diff', v: '+38 −6 · 2 files' }, { k: 'Worktree', v: 'none until you approve', cls: 'faint' }, { k: 'Attempt', v: 'refine only · no code', cls: 'faint' },
+      ];
+      risk = { filled: 1, level: 'Calm', text: '1 low-risk grep (0.5); refine is read-only and no worktree exists', count: '0.5 / 10' };
     } else if (ticket === 85) {
       statusLabel = 'ci-failed'; statusBadgeCls = 'chip-ci';
       railRows = [
-        { k: 'State', v: 'ci-failed', cls: 'danger' }, { k: 'PR', v: '#115 · typecheck ✗' }, { k: 'Fix attempt', v: '1 of 1 · session.fork' }, { k: 'Lineage', v: 'run 2 ← run 1 (a3f9c2)', cls: 'faint' },
+        { k: 'Label', v: 'pipenzo:ci-failed', cls: 'danger' }, { k: 'Task type', v: 'perf · frontier tier' }, { k: 'PR', v: '#115 · typecheck ✗' }, { k: 'Fix attempt', v: '1 of 1 · session.fork' }, { k: 'Lineage', v: 'run 2 ← run 1 (a3f9c2)', cls: 'faint' },
       ];
-      risk = { filled: 6, level: 'Moderate', text: '5 low-risk actions and 1 mispredicted publish (CI failed) since your last look', count: '6 / 12' };
+      risk = { filled: 4, level: 'Moderate', text: '2 low-risk actions (1.0) and 1 mispredicted publish (3.0) since the HIGH approval reset the strip', count: '4.0 / 10' };
     } else {
       statusLabel = '3 failed'; statusBadgeCls = 'chip-danger';
       railRows = [
-        { k: 'Label', v: 'pipenzo:needs-human', cls: 'danger' }, { k: 'Attempts', v: '3 of 3 · parked', cls: 'danger' }, { k: 'Last failure', v: 'vitest timeout · 120s' }, { k: 'Tiers tried', v: 'sonnet → sonnet → opus', cls: 'faint' },
+        { k: 'Label', v: 'pipenzo:needs-human', cls: 'danger' }, { k: 'Task type', v: 'feature · frontier tier' }, { k: 'Attempts', v: '3 of 3 · parked', cls: 'danger' }, { k: 'Last failure', v: 'vitest timeout · 120s' }, { k: 'Tiers tried', v: 'sonnet → sonnet → opus', cls: 'faint' },
       ];
-      risk = { filled: 4, level: 'Moderate', text: '4 low-risk actions since your last look; the failures were gate results, not actions', count: '4 / 12' };
+      risk = { filled: 2, level: 'Calm', text: '4 low-risk actions (2.0) since your last look; the failures were gate results, not actions', count: '2.0 / 10' };
     }
-    const riskSegs = Array.from({ length: 12 }, (_, i) => ({ cls: i < risk.filled ? 'on ' + (i < 4 ? '' : i < 8 ? 'warm' : 'hot') : '' }));
+    const riskSegs = Array.from({ length: 10 }, (_, i) => ({ cls: i < risk.filled ? 'on ' + (i < 4 ? '' : i < 7 ? 'warm' : 'hot') : '' }));
 
     // ---- live run controls: only while a phase is actually running. At awaiting_approval the run has already stopped on its own,
     // and on 108 / 113 / 85 / 87 there is nothing in flight to steer, so the controls are absent rather than disabled.
@@ -1220,6 +1324,14 @@ class Component extends DCLogic {
       rejectStack: () => this.setState({ stackDecision: 'rejected' }),
       resetStack: () => this.setState({ stackDecision: null }),
       showRefusal: ticket === 113,
+      showPlanPanel: ticket === 98 && planDecision === null,
+      showPlanApproved: ticket === 98 && planDecision === 'approved',
+      showPlanChanges: ticket === 98 && planDecision === 'changes',
+      showPlanRejected: ticket === 98 && planDecision === 'rejected',
+      approvePlan: () => this.setState({ planDecision: 'approved' }),
+      changesPlan: () => this.setState({ planDecision: 'changes' }),
+      rejectPlan: () => this.setState({ planDecision: 'rejected' }),
+      resetPlan: () => this.setState({ planDecision: null }),
       showApprovalPending: ((ticket === 94 && phase === 'awaiting_approval') || ticket === 85) && highDecision === null,
       showApprovalAllowed: ((ticket === 94 && phase === 'awaiting_approval') || ticket === 85) && highDecision === 'allowed',
       showApprovalRejected: ((ticket === 94 && phase === 'awaiting_approval') || ticket === 85) && highDecision === 'rejected',
@@ -1245,7 +1357,7 @@ class Component extends DCLogic {
       resetLesson: () => this.setState({ lesson: null }),
       sidebarCls: this.state.collapsed ? 'collapsed' : '',
       toggleSidebar: () => this.setState({ collapsed: !this.state.collapsed }),
-      retryPhase: () => this.setState({ medium: null, highDecision: null, stackDecision: null, run: null, lesson: null }),
+      retryPhase: () => this.setState({ medium: null, highDecision: null, stackDecision: null, planDecision: null, run: null, lesson: null }),
     };
   }
 }

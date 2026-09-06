@@ -426,7 +426,7 @@
   .r-link.faint{color:var(--text-faint);font-weight:400;}
   .hide{display:none !important;}
   /* ===== screen ===== */
-  .shell{height:1180px;}
+  .shell{height:1420px;}
   .page{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:16px;background:var(--bg);padding:0 24px 24px;}
   .sec-note{font-size:12px;color:var(--text-faint);margin:0;line-height:1.5;max-width:104ch;text-wrap:pretty;}
   .sec-note b{color:var(--text-soft);font-weight:700;}
@@ -466,6 +466,15 @@
   .prov .mono{font-size:11px;color:var(--text-faint);}
   .acct-v{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-soft);line-height:1.3;text-align:right;white-space:nowrap;}
   .danger-row{display:flex;align-items:center;justify-content:space-between;gap:16px;}
+  /* saved lessons: the same list shape as the connected repos, because it is the same promise — a short list of things a person put here, each with the control that takes it back out */
+  .lesson-list{display:flex;flex-direction:column;gap:2px;background:var(--surface);border-radius:var(--r);padding:6px;}
+  .lesson-item{display:flex;align-items:flex-start;gap:10px;padding:10px 6px 10px 12px;border-radius:var(--r-sm);transition:background-color var(--ease);}
+  .lesson-item:hover{background:var(--surface-3);}
+  .li-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px;}
+  .li-text{font-size:13px;color:var(--text);line-height:1.45;text-wrap:pretty;}
+  .li-meta{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);line-height:1.3;}
+  .lesson-item .icon-btn{width:28px;height:28px;background:transparent;color:var(--text-faint);flex-shrink:0;}
+  .lesson-item .icon-btn:hover{background:var(--danger);color:var(--danger-fg);}
 </style>
 </helmet>
 <div class="shell">
@@ -478,7 +487,7 @@
     </div>
     <div class="nav-group">
       <span class="nav-title">Work</span>
-      <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M216,48H40a8,8,0,0,0-8,8V208a16,16,0,0,0,16,16H88a16,16,0,0,0,16-16V160h48v16a16,16,0,0,0,16,16h40a16,16,0,0,0,16-16V56A8,8,0,0,0,216,48ZM88,208H48V128H88Zm0-96H48V64H88Zm64,32H104V64h48Zm56,32H168V128h40Zm0-64H168V64h40Z"/></svg><span class="nav-lbl">Board</span><span class="nav-count">13</span></div>
+      <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M216,48H40a8,8,0,0,0-8,8V208a16,16,0,0,0,16,16H88a16,16,0,0,0,16-16V160h48v16a16,16,0,0,0,16,16h40a16,16,0,0,0,16-16V56A8,8,0,0,0,216,48ZM88,208H48V128H88Zm0-96H48V64H88Zm64,32H104V64h48Zm56,32H168V128h40Zm0-64H168V64h40Z"/></svg><span class="nav-lbl">Board</span><span class="nav-count">14</span></div>
       <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M188,88a27.75,27.75,0,0,0-12,2.71V60a28,28,0,0,0-41.36-24.6A28,28,0,0,0,80,44v6.71A27.75,27.75,0,0,0,68,48,28,28,0,0,0,40,76v76a88,88,0,0,0,176,0V116A28,28,0,0,0,188,88Zm12,64a72,72,0,0,1-144,0V76a12,12,0,0,1,24,0v44a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v68a8,8,0,0,0,16,0V60a12,12,0,0,1,24,0v68.67A48.08,48.08,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V116a12,12,0,0,1,24,0Z"/></svg><span class="nav-lbl">Needs me</span><span class="nav-count hot">6</span></div>
       <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M136,80v43.47l36.12,21.67a8,8,0,0,1-8.24,13.72l-40-24A8,8,0,0,1,120,128V80a8,8,0,0,1,16,0Zm-8-48A95.44,95.44,0,0,0,60.08,60.15C52.81,67.51,46.35,74.59,40,82V64a8,8,0,0,0-16,0v40a8,8,0,0,0,8,8H72a8,8,0,0,0,0-16H49c7.15-8.42,14.27-16.35,22.39-24.57a80,80,0,1,1,1.66,114.75,8,8,0,1,0-11,11.64A96,96,0,1,0,128,32Z"/></svg><span class="nav-lbl">Activity</span></div>
     </div>
@@ -584,6 +593,24 @@
               <span class="f-help" style="margin-top:-4px;">Simple mode is the default on a new install; your choice is persisted per user. The switch stays in the corner of every ticket either way — this only sets which side it starts on.</span>
             </div>
           </div>
+
+          <!-- Lesson memory (README, Near-term post-MVP) — the ticket detail promises these are "reviewable and deletable in Settings", so this is where that is true.
+               The deliberate small substitute for the repo knowledge base that is out of scope: a person wrote it, a person removes it, and it never goes stale silently. -->
+          <div class="form-panel">
+            <div class="fieldset">
+              <span class="f-lbl">Lesson memory <span class="self-tag">local · human-gated</span></span>
+              <span class="set-sub">One-line notes a person chose to save when a ticket resolved. Handed to the next Refine on that repo as context, never as an instruction, and never sent to a provider. Nothing is ever written here on its own.</span>
+              <div class="lesson-list">
+                <sc-for list="{{lessons}}" as="l" hint-placeholder-count="1">
+                  <div class="lesson-item">
+                    <span class="li-body"><span class="li-text">{{l.text}}</span><span class="li-meta">{{l.meta}}</span></span>
+                    <button class="icon-btn ghost" title="Delete this lesson" aria-label="Delete this lesson"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></button>
+                  </div>
+                </sc-for>
+              </div>
+              <span class="f-help">1 lesson across 3 connected repos. Deleting removes it from that repo's local ticket store and nothing else changes — it is not an index, so there is nothing to reindex and nothing that breaks without it.</span>
+            </div>
+          </div>
         </div>
 
         <div class="col">
@@ -677,9 +704,16 @@ class Component extends DCLogic {
       toggle: n.locked ? () => {} : () => this.setState({ notif: { ...on, [n.key]: !on[n.key] } }),
     }));
 
+    // Lesson memory (README, Near-term post-MVP). Saved from the one pre-commitment mismatch on #94 — the same line the
+    // ticket detail's lesson prompt offered and a person chose to keep. Reviewable and deletable here, and nowhere else.
+    const lessons = [
+      { text: 'On Windows the host sets Path, not PATH — the sanitized env floor has to carry both spellings.',
+        meta: 'jortega0033/agentdock · saved from #94 · 6 Sep 14:14' },
+    ];
+
     const mode = this.state.mode ?? 'expert';
     return {
-      repos, notifs: NOTIFS,
+      repos, notifs: NOTIFS, lessons,
       conc,
       atMin: conc <= 1, atMax: conc >= 4,
       canDec: conc > 1, canInc: conc < 4,

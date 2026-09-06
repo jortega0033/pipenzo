@@ -426,7 +426,7 @@
   .r-link.faint{color:var(--text-faint);font-weight:400;}
   .hide{display:none !important;}
   /* ===== screen ===== */
-  .shell{height:1880px;}
+  .shell{height:2300px;}
   .page{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:28px;background:var(--bg);padding:0 24px 24px;}
   section{display:flex;flex-direction:column;}
   h2{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-faint);margin:0 0 8px;line-height:1;}
@@ -475,6 +475,14 @@
   .cap{display:flex;align-items:center;gap:6px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);line-height:1.4;margin-top:2px;}
   .cap .icon-sm{flex-shrink:0;}
   .cap.on .icon-sm{color:var(--ok);}
+  /* task type: the second thing Refine emits, next to the size estimate. A table, not a control — the merge rates are measured, and the two right-hand columns are what pipenzo does about them */
+  .tt{display:grid;grid-template-columns:120px 104px 176px minmax(0,1fr);gap:2px;}
+  .tt > span{background:var(--surface-3);padding:10px 12px;font-size:12px;color:var(--text-soft);line-height:1.45;min-width:0;display:flex;align-items:center;}
+  .tt > span.h{background:transparent;padding:0 12px 2px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);text-transform:uppercase;letter-spacing:0.04em;}
+  .tt .tt-k{font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:700;color:var(--text);}
+  .tt .tt-r{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-faint);}
+  .tt .tt-r.low{color:var(--warn);}
+  .tt b{color:var(--text);font-weight:700;}
 </style>
 </helmet>
 <div class="shell">
@@ -487,7 +495,7 @@
     </div>
     <div class="nav-group">
       <span class="nav-title">Work</span>
-      <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M216,48H40a8,8,0,0,0-8,8V208a16,16,0,0,0,16,16H88a16,16,0,0,0,16-16V160h48v16a16,16,0,0,0,16,16h40a16,16,0,0,0,16-16V56A8,8,0,0,0,216,48ZM88,208H48V128H88Zm0-96H48V64H88Zm64,32H104V64h48Zm56,32H168V128h40Zm0-64H168V64h40Z"/></svg><span class="nav-lbl">Board</span><span class="nav-count">13</span></div>
+      <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M216,48H40a8,8,0,0,0-8,8V208a16,16,0,0,0,16,16H88a16,16,0,0,0,16-16V160h48v16a16,16,0,0,0,16,16h40a16,16,0,0,0,16-16V56A8,8,0,0,0,216,48ZM88,208H48V128H88Zm0-96H48V64H88Zm64,32H104V64h48Zm56,32H168V128h40Zm0-64H168V64h40Z"/></svg><span class="nav-lbl">Board</span><span class="nav-count">14</span></div>
       <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M188,88a27.75,27.75,0,0,0-12,2.71V60a28,28,0,0,0-41.36-24.6A28,28,0,0,0,80,44v6.71A27.75,27.75,0,0,0,68,48,28,28,0,0,0,40,76v76a88,88,0,0,0,176,0V116A28,28,0,0,0,188,88Zm12,64a72,72,0,0,1-144,0V76a12,12,0,0,1,24,0v44a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v68a8,8,0,0,0,16,0V60a12,12,0,0,1,24,0v68.67A48.08,48.08,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V116a12,12,0,0,1,24,0Z"/></svg><span class="nav-lbl">Needs me</span><span class="nav-count hot">6</span></div>
       <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M136,80v43.47l36.12,21.67a8,8,0,0,1-8.24,13.72l-40-24A8,8,0,0,1,120,128V80a8,8,0,0,1,16,0Zm-8-48A95.44,95.44,0,0,0,60.08,60.15C52.81,67.51,46.35,74.59,40,82V64a8,8,0,0,0-16,0v40a8,8,0,0,0,8,8H72a8,8,0,0,0,0-16H49c7.15-8.42,14.27-16.35,22.39-24.57a80,80,0,1,1,1.66,114.75,8,8,0,1,0-11,11.64A96,96,0,1,0,128,32Z"/></svg><span class="nav-lbl">Activity</span></div>
     </div>
@@ -582,6 +590,24 @@
             </div>
           </div>
         </div>
+
+        <!-- Task-type-aware routing (README, Near-term post-MVP; trigger: after the diff-size gate is enforced at refine, build step 4).
+             The size gate is a review-burden argument; this is an acceptance-rate argument. They are not the same claim, so this pairs with the size gate rather than replacing it. -->
+        <div class="form-panel" style="margin-top:16px;">
+          <div class="fieldset">
+            <span class="f-lbl">Task-type-aware routing <span class="self-tag">near-term post-MVP</span></span>
+            <span class="gate-sub">Refine already classifies the ticket, so it emits a <b>task type</b> alongside the size estimate, and the tier and gate strictness are read off both. The merge rates are measured, not assumed — 7,156 agent PRs, MSR 2026 mining challenge — and they track task type, not diff size.</span>
+            <div class="tt">
+              <span class="h">Task type</span><span class="h">Merge rate</span><span class="h">Tier floor</span><span class="h">Gate strictness, on top of the five</span>
+              <span class="tt-k">chore</span><span class="tt-r">84.0%</span><span><span class="tier">cheap</span></span><span>Standard. The estimate and the overrides decide the rest.</span>
+              <span class="tt-k">docs</span><span class="tt-r">82.1%</span><span><span class="tier">cheap</span></span><span>Standard, and the diff-scope check is the one that matters most here.</span>
+              <span class="tt-k">feature</span><span class="tt-r">66.1%</span><span><span class="tier">mid</span></span><span><b>Strict</b> — the adversarial verifier runs a second round before the push gate opens.</span>
+              <span class="tt-k">fix</span><span class="tt-r">66.0%</span><span><span class="tier">mid</span></span><span>Standard, plus a spec-generated regression test naming the reported symptom.</span>
+              <span class="tt-k">perf</span><span class="tt-r low">55.4%</span><span><span class="tier">frontier</span></span><span><b>Strict</b> — lowest measured acceptance of the five, so it starts where the others escalate to.</span>
+            </div>
+            <span class="f-help">A tier floor is a floor, not an override: a deterministic override above still forces frontier, and a size estimate can still push a <span class="mono">chore</span> up a rung. Nothing here can lower a tier, and nothing here relaxes the five deterministic gates — strictness only ever adds.</span>
+          </div>
+        </div>
       </section>
 
       <section>
@@ -598,7 +624,7 @@
                 </div>
               </sc-for>
             </div>
-            <span class="f-help">In the diff view these render as the <b>Machine-verified</b> block, where gitleaks and Semgrep report on one line and the repo's own lint sits alongside them — the same set, grouped for reading rather than for configuring.</span>
+            <span class="f-help">In the diff view these render as the <b>Machine-verified</b> block, where gitleaks and Semgrep report on one line — the same five, grouped for reading rather than for configuring. Nothing else joins that block: a repo's own lint runs in its CI and can move a ticket to <span class="mono">pipenzo:ci-failed</span>, but it is not one of pipenzo's gates and never appears in the gate count.</span>
           </div>
 
           <div class="col">

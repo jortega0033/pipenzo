@@ -533,7 +533,7 @@
   .split{display:flex;flex-direction:column;gap:6px;background:var(--surface-2);border-radius:var(--r-sm);padding:10px 12px;}
   .split-head{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--warn);line-height:1;}
   .split-head.quiet{color:var(--text-soft);}
-  .split-row{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-soft);line-height:1.3;}
+  .split-row{display:flex;align-items:flex-start;gap:8px;font-size:12px;color:var(--text-soft);line-height:1.45;}
   .split-n{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);flex-shrink:0;}
   .split-kv{display:flex;flex-wrap:wrap;gap:4px 10px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);line-height:1.4;}
   .split-kv b{color:var(--text-soft);font-weight:700;}
@@ -550,7 +550,25 @@
   .hi-ic{width:32px;height:32px;border-radius:50%;background:var(--danger);color:var(--danger-fg);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
   .hi-foot{display:flex;align-items:center;gap:8px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);line-height:1;}
   .hi-foot .icon-sm{color:var(--warn);}
+  /* a .split inside a .dialog needs to step up, not down: the dialog is already --surface-3 */
+  .dialog .split{background:var(--surface-4);}
+  .dialog .split-row .mono{color:var(--text-soft);}
   .req{font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:400;color:var(--danger-text);margin-left:6px;}
+  /* --- native OS notification (Electron's Notification API): the operating system's surface, not pipenzo's. It is not a fourth
+     in-app altitude, so it deliberately does not look like .toast — it carries the app's identity in a head row, sits a surface
+     lighter, and its buttons are the OS's shape rather than the pill every pipenzo control uses. --- */
+  .osn-stage{background:var(--bg);border-radius:var(--r);padding:24px;display:flex;flex-direction:column;gap:12px;align-items:flex-end;}
+  .osn{width:380px;display:flex;gap:12px;padding:14px;border-radius:12px;background:var(--surface-4);box-shadow:0 12px 32px rgba(0,0,0,0.6);}
+  .osn-app{width:32px;height:32px;border-radius:8px;background:var(--accent);color:var(--accent-fg);display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:16px;line-height:1;flex-shrink:0;}
+  .osn-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;}
+  .osn-top{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text-faint);line-height:1;}
+  .osn-top .grow{flex:1;min-width:0;}
+  .osn-title{font-size:13px;font-weight:700;line-height:1.3;text-wrap:pretty;}
+  .osn-text{font-size:12px;color:var(--text-soft);line-height:1.45;text-wrap:pretty;}
+  .osn-acts{display:flex;gap:6px;margin-top:8px;}
+  .osn-acts button{height:26px;padding:0 12px;border:none;border-radius:6px;background:var(--surface-2);color:var(--text);font-family:'IBM Plex Sans',sans-serif;font-size:12px;font-weight:700;line-height:1;cursor:pointer;transition:filter var(--ease);}
+  .osn-acts button:hover{filter:brightness(1.3);}
+  .osn-acts button:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
 </style>
 </helmet>
 <div class="page">
@@ -847,7 +865,7 @@
       <span class="lbl">banner · sits directly under the main header, full width</span>
       <div class="stack">
         <div class="banner"><span class="b-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm16-40a8,8,0,0,1-8,8,16,16,0,0,1-16-16V128a8,8,0,0,1,0-16,16,16,0,0,1,16,16v40A8,8,0,0,1,144,176ZM112,84a12,12,0,1,1,12,12A12,12,0,0,1,112,84Z"/></svg></span><span class="b-text">Signed in as <b>jortega0033</b> via device flow · 3 repos connected. Ticket state polls GitHub every 30–60s.</span></div>
-        <div class="banner warn"><span class="b-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg></span><span class="b-text">Subscription window at <b>91%</b>. Queued tickets will wait until it resets in 22 min.</span><span class="b-act"><button class="btn sm ghost">Pause queue</button></span></div>
+        <div class="banner warn"><span class="b-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg></span><span class="b-text">Below <b>15%</b> of this hour's GitHub rate limit. Poll intervals have widened and the board reads "syncing slowly" — degraded, not failed.</span><span class="b-act"><button class="btn sm ghost">Poll now</button></span></div>
         <div class="banner danger"><span class="b-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></span><span class="b-text">Daemon unreachable since 14:02. <b>Nothing is running</b> — the board shows the last known state.</span><span class="b-act"><button class="btn sm">Reconnect</button><button class="icon-btn ghost" style="width:28px;height:28px;"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></button></span></div>
       </div>
       <div class="anatomy">
@@ -873,6 +891,49 @@
         <div class="toast"><span class="t-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M104,64A32,32,0,1,0,64,95v66a32,32,0,1,0,16,0V95A32.06,32.06,0,0,0,104,64ZM56,64A16,16,0,1,1,72,80,16,16,0,0,1,56,64ZM88,192a16,16,0,1,1-16-16A16,16,0,0,1,88,192Zm120-31V110.63a23.85,23.85,0,0,0-7-17L163.31,56H192a8,8,0,0,0,0-16H144a8,8,0,0,0-8,8V96a8,8,0,0,0,16,0V67.31L189.66,105a8,8,0,0,1,2.34,5.66V161a32,32,0,1,0,16,0Zm-8,47a16,16,0,1,1,16-16A16,16,0,0,1,200,208Z"/></svg></span><span class="t-body"><span class="t-title">PR #112 opened</span><span class="t-sub">Sanitize environment for MCP stdio server subprocesses</span></span><button class="btn sm">Open</button></div>
         <div class="toast warn"><span class="t-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M188,88a27.75,27.75,0,0,0-12,2.71V60a28,28,0,0,0-41.36-24.6A28,28,0,0,0,80,44v6.71A27.75,27.75,0,0,0,68,48,28,28,0,0,0,40,76v76a88,88,0,0,0,176,0V116A28,28,0,0,0,188,88Zm12,64a72,72,0,0,1-144,0V76a12,12,0,0,1,24,0v44a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v68a8,8,0,0,0,16,0V60a12,12,0,0,1,24,0v68.67A48.08,48.08,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V116a12,12,0,0,1,24,0Z"/></svg></span><span class="t-body"><span class="t-title">#87 moved to Needs human</span><span class="t-sub">3 failed attempts · vitest timeout in tray.test.ts</span></span><button class="btn sm">Retry with note</button></div>
       </div>
+    </div>
+
+    <!-- The OS notification itself. Referenced as text on every blocking card ("OS notification sent 14:02") and never drawn until now.
+         It is the operating system's own surface, delivered through Electron's Notification API — the app has a title, a body and up to two
+         actions, and no control over anything else, which is exactly why it needs its own specimen rather than a restyled toast. -->
+    <div class="spec" style="margin-top:24px;">
+      <span class="lbl">native OS notification · not an in-app altitude — Electron's Notification API, drawn by the operating system</span>
+      <div class="osn-stage">
+        <div class="osn">
+          <span class="osn-app">p</span>
+          <span class="osn-body">
+            <span class="osn-top"><b style="color:var(--text-soft);font-weight:700;">pipenzo</b><span class="grow"></span><span>now</span></span>
+            <span class="osn-title">#94 needs your approval</span>
+            <span class="osn-text">Push issue-94 and open a pull request against main. Publishing is HIGH — pipenzo never does this on its own, and there is no auto-allow to turn on.</span>
+            <span class="osn-acts"><button>Open pipenzo</button><button>Dismiss</button></span>
+          </span>
+        </div>
+        <div class="osn">
+          <span class="osn-app">p</span>
+          <span class="osn-body">
+            <span class="osn-top"><b style="color:var(--text-soft);font-weight:700;">pipenzo</b><span class="grow"></span><span>2m ago</span></span>
+            <span class="osn-title">#113 was declined at Refine</span>
+            <span class="osn-text">+1,340 −410 across 31 files, no clean layering. Nothing was written and no run was spent — the estimate and a proposed 4-ticket split are on the issue.</span>
+            <span class="osn-acts"><button>Open pipenzo</button><button>Dismiss</button></span>
+          </span>
+        </div>
+        <div class="osn">
+          <span class="osn-app">p</span>
+          <span class="osn-body">
+            <span class="osn-top"><b style="color:var(--text-soft);font-weight:700;">pipenzo</b><span class="grow"></span><span>09:41</span></span>
+            <span class="osn-title">#108 has a 3-PR stack waiting on you</span>
+            <span class="osn-text">Refine wrote a dependency-ordered split instead of starting, and will not start until you accept, reorder or reject it.</span>
+            <span class="osn-acts"><button>Open pipenzo</button><button>Dismiss</button></span>
+          </span>
+        </div>
+      </div>
+      <div class="anatomy">
+        <div><b>1 · app identity</b>the OS puts the app's name and icon on it, so the title does not have to spend words saying which app is asking</div>
+        <div><b>2 · title</b>the ticket number and what is wanted, in that order — it is often the only line a person reads from a lock screen</div>
+        <div><b>3 · body</b>enough to decide whether to switch, never a repeat of the title. A notification that only says "needs your attention" costs a context switch to read</div>
+        <div><b>4 · actions</b>at most two, and neither of them approves anything. Approving happens on the card, where the pre-commitment and the reject-reason field are</div>
+      </div>
+      <span style="font-size:12px;color:var(--text-faint);line-height:1.45;">Exactly three states reach the OS, and they are the three above: a <b style="color:var(--text-soft);">HIGH-risk approval</b>, a <b style="color:var(--text-soft);">refusal</b>, and a <b style="color:var(--text-soft);">stack awaiting sign-off</b> — plus one late arrival, a MEDIUM still blocking after 60 seconds. LOW never notifies at all. That list is the whole definition of "awaiting input": nothing is running, and nothing will run, until a person answers. This is not a fourth notice altitude — the banner, notice and toast are pipenzo's surfaces and are styled by this system; this one is the operating system's, and the only things the app controls are the title, the body and the two actions.</span>
     </div>
   </section>
 
@@ -964,6 +1025,10 @@
         <div class="banner retrying"><span class="b-ic"><svg class="icon-sm spin" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232,128a104,104,0,0,1-208,0c0-41,23.81-78.36,60.66-95.27a8,8,0,0,1,6.68,14.54C60.15,61.59,40,93.27,40,128a88,88,0,0,0,176,0c0-34.73-20.15-66.41-51.34-80.73a8,8,0,0,1,6.68-14.54C208.19,49.64,232,87,232,128Z"/></svg></span><span class="b-text">Can't reach GitHub — retrying in <b>18s</b>. The board is showing the last state that polled cleanly, at 14:02.</span><span class="b-count mono">attempt 2 of 5</span><span class="b-act"><button class="btn sm ghost">Retry now</button></span></div>
         <div class="banner danger blocking"><span class="b-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></span><span class="b-text"><b>GitHub is unreachable.</b> 5 polls failed since 14:02. Labels are the state model, so nothing can start, change lane or push until it is back — running agents keep working in their worktrees.</span><span class="b-count mono">backoff 8m</span><span class="b-act"><button class="btn sm">Retry now</button></span></div>
         <div class="banner danger blocking"><span class="b-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg></span><span class="b-text"><b>Your GitHub sign-in expired.</b> pipenzo signs in with device flow and holds the token in the Electron-main vault; it was revoked or timed out. Reading issues, writing labels and opening pull requests all need it back.</span><span class="b-act"><button class="btn sm primary">Re-authenticate</button></span></div>
+        <!-- Schema versioning (README, "Ticket store"): pipenzo ships unsigned with no update feed, so an old and a new build will meet on one
+             team's repo. An instance that finds a marker newer than it understands goes read-only on that repo rather than writing v1 semantics
+             over v2 state. Blocking, because the screen behind it is real but untouchable — and the message is plain, not a schema error. -->
+        <div class="banner danger blocking"><span class="b-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm88,104a87.56,87.56,0,0,1-20.41,56.28L71.72,60.4A88,88,0,0,1,216,128ZM40,128A87.56,87.56,0,0,1,60.41,71.72L184.28,195.6A88,88,0,0,1,40,128Z"/></svg></span><span class="b-text"><b>This repo is managed by a newer Pipenzo (schema v2). Read-only until you update.</b> Someone on this repo is running a build whose marker label this one does not understand, so nothing here will write a label, start a run or open a pull request on it. The board still reads. Your other two repos are unaffected.</span><span class="b-count mono">pipenzo:schema-v2</span><span class="b-act"><button class="btn sm">Get the update</button></span></div>
         <div class="banner warn"><span class="b-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm16-40a8,8,0,0,1-8,8,16,16,0,0,1-16-16V128a8,8,0,0,1,0-16,16,16,0,0,1,16,16v40A8,8,0,0,1,144,176ZM112,84a12,12,0,1,1,12,12A12,12,0,0,1,112,84Z"/></svg></span><span class="b-text">Signed in again as <b>jortega0033</b> · 3 repos reconnected. The two tickets that parked while the token was gone are back in Queued.</span><span class="b-act"><button class="icon-btn ghost" style="width:28px;height:28px;"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></button></span></div>
       </div>
       <div class="anatomy">
@@ -972,19 +1037,20 @@
         <div><b>3 · re-authenticate</b>blocking, and the action is the primary button: there is no read-only mode without a token</div>
         <div><b>4 · recovery</b>the same banner slot says it came back. A blocking state that vanishes silently is its own bug report</div>
       </div>
+      <span style="font-size:12px;color:var(--text-faint);line-height:1.45;">The schema banner is the one blocking state that is nobody's fault and has no in-app fix: there is no auto-update, so the only way out is a new build. It reads as a sentence about the repo rather than a version error, and it names the marker label in mono so the cause is checkable on github.com. Read-only is a per-repo state — the other connected repos keep polling and running normally.</span>
     </div>
 
     <div class="spec" style="margin-top:24px;">
       <span class="lbl">error · pipenzo:interrupted — the daemon died mid-run. Same card family as needs-pre-scoping and awaiting-stack-approval, in the same Needs-human lane</span>
       <div class="card-grid">
         <div class="card" tabindex="0">
-          <div class="card-top"><span class="card-id">#94</span><span class="chip chip-warn">pipenzo:interrupted</span></div>
-          <span class="card-title">Sanitize environment for MCP stdio server subprocesses</span>
+          <div class="card-top"><span class="card-id">#92</span><span class="chip chip-warn">pipenzo:interrupted</span></div>
+          <span class="card-title">Surface the discarded Codex rate-limit event in the headroom rail</span>
           <div class="resume">
             <span class="resume-head"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg>Daemon restarted mid-implement</span>
             <div class="resume-kv">
-              <b>last phase</b><span>Refine — spec approved, 3 criteria, 2 files in scope</span>
-              <b>worktree</b><span>.worktrees/issue-94 · branch issue-94 · dirty</span>
+              <b>last phase</b><span>Refine — spec approved, 2 criteria, 1 file in scope</span>
+              <b>worktree</b><span>.worktrees/issue-92 · branch issue-92 · dirty</span>
               <b>session</b><span>providerSessionId and continuationScope both present</span>
             </div>
             <span class="resume-why"><b>Nothing was resumed on its own.</b> A MEDIUM or HIGH action can be mid-approval when the daemon dies, and resuming into it would re-run something you were about to deny.</span>
@@ -998,16 +1064,16 @@
           </div>
         </div>
         <div class="card" tabindex="0">
-          <div class="card-top"><span class="card-id">#97</span><span class="chip chip-warn">pipenzo:interrupted</span></div>
-          <span class="card-title">Retry the MCP stdio handshake once on EPIPE</span>
+          <div class="card-top"><span class="card-id">#93</span><span class="chip chip-warn">pipenzo:interrupted</span></div>
+          <span class="card-title">Reconcile a lane divergence when a teammate drags the card on github.com</span>
           <div class="resume">
             <span class="resume-head"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg>Daemon restarted mid-implement</span>
             <div class="resume-kv">
               <b>last phase</b><span>Implement — 2 edits committed, gates never ran</span>
-              <b>worktree</b><span>.worktrees/issue-97 · branch issue-97 · dirty</span>
+              <b>worktree</b><span>.worktrees/issue-93 · branch issue-93 · dirty</span>
               <b>session</b><span>continuationScope missing — resume would be rejected</span>
             </div>
-            <span class="resume-why"><b>Resume is not offered here.</b> It appears only when a providerSessionId and a continuationScope both exist, so the button is never a guess that fails after you press it. Discarding removes the worktree and starts a fresh session from the same spec; the commits on issue-97 are kept.</span>
+            <span class="resume-why"><b>Resume is not offered here.</b> It appears only when a providerSessionId and a continuationScope both exist, so the button is never a guess that fails after you press it. Discarding removes the worktree and starts a fresh session from the same spec; the commits on issue-93 are kept.</span>
             <div class="resume-acts">
               <button class="btn sm" disabled title="No continuationScope — the provider thread cannot be continued"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"/></svg>Resume</button>
               <button class="btn sm primary"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,128a96,96,0,0,1-94.71,96H128A95.38,95.38,0,0,1,62.1,197.8a8,8,0,0,1,11-11.63A80,80,0,1,0,71.43,71.39a3.07,3.07,0,0,1-.26.25L44.59,96H72a8,8,0,0,1,0,16H24a8,8,0,0,1-8-8V56a8,8,0,0,1,16,0V85.8L60.25,60A96,96,0,0,1,224,128Z"/></svg>Discard and restart</button>
@@ -1073,7 +1139,7 @@
 
   <section>
     <h2>Risk-graded approval — LOW proceeds and is logged, MEDIUM blocks on a compact inline card, HIGH gets the full card plus an OS notification</h2>
-    <p class="sec-note">About 95% of actions are LOW: routine edits inside the owned worktree, reads, greps. They get one muted line in the stream and nothing else. MEDIUM and HIGH both carry the pre-commitment record and a reject-reason field; only MEDIUM has Undo, only HIGH pings the OS immediately. Publishing is permanently HIGH — no auto-allow exists for it at any level. A cumulative strip per ticket fills as unreviewed LOW actions and mispredictions pile up, and promotes the next MEDIUM to HIGH once it crosses the line.</p>
+    <p class="sec-note">The classifier is targeting ~95% LOW — routine edits inside the owned worktree, reads, greps — and that number is measured against the fixture corpus of real diffs and action envelopes, not assumed: if the corpus does not come out near 95%, the classifier is wrong. LOW actions get one muted line in the stream and nothing else. MEDIUM and HIGH both carry the pre-commitment record and a reject-reason field; only MEDIUM has Undo, only HIGH pings the OS immediately. Publishing is permanently HIGH — no auto-allow exists for it at any level. A cumulative strip per ticket adds up what has gone unreviewed — <b style="color:var(--text-soft);">LOW +0.5, MEDIUM +1, a pre-commitment mismatch +3, HIGH +0</b> — and promotes the next MEDIUM to a full HIGH card once the score reaches 10.</p>
     <div class="prim-grid">
       <div class="prim-card">
         <span class="lbl">risk chips · a grade, not a state — tinted and mono so they never read as the filled status chips</span>
@@ -1086,23 +1152,24 @@
         <div class="low-line"><span class="mono">14:03</span><span class="lt">Read stdio-mcp-connection.ts:60–90 and base-environment.ts</span><span class="mono">LOW · auto</span></div>
         <div class="low-line"><span class="mono">14:04</span><span class="lt">Edited stdio-mcp-connection.ts — +4 −1, inside the worktree</span><span class="mono">LOW · auto</span></div>
         <div class="low-line"><span class="mono">14:06</span><span class="lt">Grep for process.env across packages/agent-runtime/src — 6 hits</span><span class="mono">LOW · auto</span></div>
-        <span style="font-size:12px;color:var(--text-faint);line-height:1.45;">12 px, text-faint, a 8 px dot instead of the 28 px icon in the stream. Each one still counts on the cumulative strip.</span>
+        <span style="font-size:12px;color:var(--text-faint);line-height:1.45;">12 px, text-faint, a 8 px dot instead of the 28 px icon in the stream. Each one still counts <span class="mono">+0.5</span> on the cumulative strip — that is the whole point of logging them.</span>
       </div>
       <div class="prim-card">
-        <span class="lbl">cumulative risk strip · 12 segments, green → amber → red as it fills</span>
+        <span class="lbl">cumulative risk strip · 10 segments, one per point of the threshold, green → amber → red as it fills</span>
         <div class="risk-strip">
-          <div class="risk-segs"><span class="risk-seg on"></span><span class="risk-seg on"></span><span class="risk-seg"></span><span class="risk-seg"></span><span class="risk-seg"></span><span class="risk-seg"></span><span class="risk-seg"></span><span class="risk-seg"></span><span class="risk-seg"></span><span class="risk-seg"></span><span class="risk-seg"></span><span class="risk-seg"></span></div>
-          <div class="risk-lbl"><span><b>Calm</b> — 2 low-risk actions since your last look</span><span class="mono">2 / 12</span></div>
+          <div class="risk-segs"><span class="risk-seg on"></span><span class="risk-seg"></span><span class="risk-seg"></span><span class="risk-seg"></span><span class="risk-seg"></span><span class="risk-seg"></span><span class="risk-seg"></span><span class="risk-seg"></span><span class="risk-seg"></span><span class="risk-seg"></span></div>
+          <div class="risk-lbl"><span><b>Calm</b> — 2 low-risk actions (1.0) since your last look</span><span class="mono">1.0 / 10</span></div>
         </div>
         <div class="risk-strip">
-          <div class="risk-segs"><span class="risk-seg on"></span><span class="risk-seg on"></span><span class="risk-seg on"></span><span class="risk-seg on"></span><span class="risk-seg on warm"></span><span class="risk-seg on warm"></span><span class="risk-seg on warm"></span><span class="risk-seg"></span><span class="risk-seg"></span><span class="risk-seg"></span><span class="risk-seg"></span><span class="risk-seg"></span></div>
-          <div class="risk-lbl"><span><b>Moderate</b> — 6 low-risk actions and 1 mismatch since your last look</span><span class="mono">7 / 12</span></div>
+          <div class="risk-segs"><span class="risk-seg on"></span><span class="risk-seg on"></span><span class="risk-seg on"></span><span class="risk-seg on"></span><span class="risk-seg on warm"></span><span class="risk-seg on warm"></span><span class="risk-seg"></span><span class="risk-seg"></span><span class="risk-seg"></span><span class="risk-seg"></span></div>
+          <div class="risk-lbl"><span><b>Moderate</b> — 6 low-risk actions (3.0) and 1 mismatch (3.0) since your last look</span><span class="mono">6.0 / 10</span></div>
         </div>
         <div class="risk-strip">
-          <div class="risk-segs"><span class="risk-seg on"></span><span class="risk-seg on"></span><span class="risk-seg on"></span><span class="risk-seg on"></span><span class="risk-seg on warm"></span><span class="risk-seg on warm"></span><span class="risk-seg on warm"></span><span class="risk-seg on warm"></span><span class="risk-seg on hot"></span><span class="risk-seg on hot"></span><span class="risk-seg"></span><span class="risk-seg"></span></div>
-          <div class="risk-lbl"><span><b>High</b> — 9 low-risk actions and 1 mismatch since your last look</span><span class="mono">10 / 12</span></div>
-          <div class="risk-promo"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg><span><b>Next MEDIUM asks as HIGH.</b> 9 unreviewed low-risk actions plus 1 mispredicted test run crossed the threshold at 10.</span></div>
+          <div class="risk-segs"><span class="risk-seg on"></span><span class="risk-seg on"></span><span class="risk-seg on"></span><span class="risk-seg on"></span><span class="risk-seg on warm"></span><span class="risk-seg on warm"></span><span class="risk-seg on warm"></span><span class="risk-seg on hot"></span><span class="risk-seg on hot"></span><span class="risk-seg on hot"></span></div>
+          <div class="risk-lbl"><span><b>High</b> — 14 low-risk actions (7.0) and 1 mismatch (3.0) since your last look</span><span class="mono">10.0 / 10</span></div>
+          <div class="risk-promo"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg><span><b>Next MEDIUM asks as HIGH.</b> 14 unreviewed low-risk actions at +0.5 each, plus 1 mispredicted test run at +3, reach the threshold at 10.</span></div>
         </div>
+        <span style="font-size:12px;color:var(--text-faint);line-height:1.45;">The number beside the strip is the score, never the number of actions — a run with one mismatch and nothing else already sits at 3.0. Only a HIGH approval, or opening the ticket's Activity view, resets it to zero; a MEDIUM approval deliberately does not, because approving one inline card is a glance at one action rather than a review of the run.</span>
       </div>
     </div>
     <div class="grade-table" style="margin-top:2px;">
@@ -1112,6 +1179,7 @@
       <div class="gh">Pre-commitment</div><div class="no">Not required</div><div><b>Required</b>, shown on the card</div><div><b>Required</b>, shown on the card</div>
       <div class="gh">Reject reason</div><div class="no">—</div><div>Optional</div><div><b>Mandatory</b></div>
       <div class="gh">Undo</div><div class="no">—</div><div><b>Yes</b>, short window after Allow</div><div class="no">No — and no auto-allow, ever</div>
+      <div class="gh">Cumulative weight</div><div><b>+0.5</b> each</div><div><b>+1</b> each</div><div class="no"><b>+0</b> — and approving one resets the score</div>
       <div class="gh">Typical</div><div>edit in worktree, read, grep</div><div>delete a file, spawn a process, install</div><div>push, open PR, anything off-machine</div>
     </div>
     <div class="prim-grid two" style="margin-top:24px;">
@@ -1220,49 +1288,58 @@ gh pr create --fill --base main</div>
         <div class="v-head"><span class="label">Machine-verified</span><span class="sub">Deterministic gates. Each one ran on this machine and either passed or blocked the ticket.</span></div>
         <div class="v-row"><span class="v-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span>Build and typecheck passed <span class="m">pnpm build · 9s</span></span></div>
         <div class="v-row"><span class="v-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span>vitest: 21 passed, 0 failed <span class="m">1 new · spec-generated</span></span></div>
-        <div class="v-row"><span class="v-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span>eslint: 0 errors, 0 warnings</span></div>
         <div class="v-row"><span class="v-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span>gitleaks and semgrep p/ci: no findings</span></div>
-        <div class="v-row"><span class="v-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span>Diff scope within the Refine estimate <span class="m">+52 of ≤ 60</span></span></div>
+        <div class="v-row"><span class="v-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span>Diff scope within the Refine estimate <span class="m">+8 of ≤ 60 implementation · +44 generated tests, reported separately</span></span></div>
       </div>
       <div class="v-block agent">
         <div class="v-head"><span class="label">Agent-captured<span class="self-tag">self-reported — not verified by a human</span></span><span class="sub">Evidence the agent gathered about its own work. Shown for context; none of it can satisfy a gate.</span></div>
         <div class="v-row"><span class="v-ic self"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span>3/3 acceptance criteria met, by its own reading</span></div>
         <div class="v-row"><span class="v-ic self"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span>Pre-commitments: 1 matched, 1 mismatch (recovered)</span></div>
-        <div class="v-row"><span class="v-ic self"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M208,56H180.28L166.65,35.56A8,8,0,0,0,160,32H96a8,8,0,0,0-6.65,3.56L75.71,56H48A24,24,0,0,0,24,80V192a24,24,0,0,0,24,24H208a24,24,0,0,0,24-24V80A24,24,0,0,0,208,56Zm8,136a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V80a8,8,0,0,1,8-8H80a8,8,0,0,0,6.66-3.56L100.28,48h55.43l13.63,20.44A8,8,0,0,0,176,72h32a8,8,0,0,1,8,8ZM128,88a44,44,0,1,0,44,44A44.05,44.05,0,0,0,128,88Zm0,72a28,28,0,1,1,28-28A28,28,0,0,1,128,160Z"/></svg></span><span>Screenshots: tray, before and after</span></div>
+        <div class="v-row"><span class="v-ic self"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M208,56H180.28L166.65,35.56A8,8,0,0,0,160,32H96a8,8,0,0,0-6.65,3.56L75.71,56H48A24,24,0,0,0,24,80V192a24,24,0,0,0,24,24H208a24,24,0,0,0,24-24V80A24,24,0,0,0,208,56Zm8,136a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V80a8,8,0,0,1,8-8H80a8,8,0,0,0,6.66-3.56L100.28,48h55.43l13.63,20.44A8,8,0,0,0,176,72h32a8,8,0,0,1,8,8ZM128,88a44,44,0,1,0,44,44A44.05,44.05,0,0,0,128,88Zm0,72a28,28,0,1,1,28-28A28,28,0,0,1,128,160Z"/></svg></span><span>Screenshots: MCP servers panel, before and after</span></div>
         <div class="shots">
           <div class="shot" tabindex="0">
             <div class="shot-frame">
               <div class="shot-bar"><i></i><i></i><i></i><span class="url"></span></div>
               <div class="shot-body">
-                <div class="ph hi" style="left:0;top:0;right:0;height:16%;"></div>
-                <div class="ph txt" style="top:5%;right:6%;width:3.6%;height:6%;"></div>
-                <div class="ph txt" style="top:5%;right:12.5%;width:3.6%;height:6%;"></div>
-                <div class="ph" style="top:4%;right:22%;width:4.6%;height:7.5%;border-radius:50%;background:var(--surface-4);"></div>
-                <div class="ph" style="left:6%;top:26%;width:88%;height:66%;background:var(--surface-3);"></div>
-                <div class="ph hi" style="left:10%;top:40%;width:80%;height:8%;"></div>
-                <div class="ph hi" style="left:10%;top:56%;width:80%;height:8%;"></div>
-                <div class="ph hi" style="left:10%;top:72%;width:52%;height:8%;"></div>
+                <div class="ph" style="left:0;top:0;bottom:0;width:22%;background:var(--surface-3);"></div>
+                <div class="ph txt" style="left:4%;top:8%;width:12%;height:6%;"></div>
+                <div class="ph hi" style="left:4%;top:22%;width:14%;height:8%;"></div>
+                <div class="ph txt" style="left:4%;top:38%;width:10%;height:5%;"></div>
+                <div class="ph txt" style="left:28%;top:8%;width:30%;height:7%;"></div>
+                <div class="ph hi" style="left:28%;top:24%;width:66%;height:14%;"></div>
+                <div class="ph bad" style="left:31%;top:29%;width:2.6%;height:4.2%;border-radius:50%;"></div>
+                <div class="ph txt" style="left:37%;top:28.5%;width:22%;height:5%;"></div>
+                <div class="ph hi" style="left:28%;top:44%;width:66%;height:14%;"></div>
+                <div class="ph acc" style="left:31%;top:49%;width:2.6%;height:4.2%;border-radius:50%;"></div>
+                <div class="ph txt" style="left:37%;top:48.5%;width:18%;height:5%;"></div>
+                <div class="ph hi" style="left:28%;top:64%;width:66%;height:14%;"></div>
+                <div class="ph acc" style="left:31%;top:69%;width:2.6%;height:4.2%;border-radius:50%;"></div>
+                <div class="ph txt" style="left:37%;top:68.5%;width:26%;height:5%;"></div>
               </div>
             </div>
-            <div class="shot-cap"><b>Before</b><span>main</span></div>
+            <div class="shot-cap"><b>Before</b><span>main · 287a4a6</span></div>
           </div>
           <div class="shot" tabindex="0">
             <div class="shot-frame">
               <div class="shot-bar"><i></i><i></i><i></i><span class="url"></span></div>
               <div class="shot-body">
-                <div class="ph hi" style="left:0;top:0;right:0;height:16%;"></div>
-                <div class="ph txt" style="top:5%;right:6%;width:3.6%;height:6%;"></div>
-                <div class="ph txt" style="top:5%;right:12.5%;width:3.6%;height:6%;"></div>
-                <div class="ph" style="top:4%;right:22%;width:4.6%;height:7.5%;border-radius:50%;background:var(--surface-4);"></div>
-                <div class="ph acc" style="top:2.5%;right:21.4%;width:2.4%;height:4%;border-radius:50%;"></div>
-                <div class="ph" style="left:6%;top:26%;width:88%;height:66%;background:var(--surface-3);"></div>
-                <div class="ph hi" style="left:10%;top:40%;width:80%;height:8%;"></div>
-                <div class="ph acc" style="left:10%;top:41.5%;width:1.2%;height:5%;border-radius:1px;"></div>
-                <div class="ph hi" style="left:10%;top:56%;width:80%;height:8%;"></div>
-                <div class="ph hi" style="left:10%;top:72%;width:52%;height:8%;"></div>
+                <div class="ph" style="left:0;top:0;bottom:0;width:22%;background:var(--surface-3);"></div>
+                <div class="ph txt" style="left:4%;top:8%;width:12%;height:6%;"></div>
+                <div class="ph hi" style="left:4%;top:22%;width:14%;height:8%;"></div>
+                <div class="ph txt" style="left:4%;top:38%;width:10%;height:5%;"></div>
+                <div class="ph txt" style="left:28%;top:8%;width:30%;height:7%;"></div>
+                <div class="ph hi" style="left:28%;top:24%;width:66%;height:14%;"></div>
+                <div class="ph acc" style="left:31%;top:29%;width:2.6%;height:4.2%;border-radius:50%;"></div>
+                <div class="ph txt" style="left:37%;top:28.5%;width:22%;height:5%;"></div>
+                <div class="ph hi" style="left:28%;top:44%;width:66%;height:14%;"></div>
+                <div class="ph acc" style="left:31%;top:49%;width:2.6%;height:4.2%;border-radius:50%;"></div>
+                <div class="ph txt" style="left:37%;top:48.5%;width:18%;height:5%;"></div>
+                <div class="ph hi" style="left:28%;top:64%;width:66%;height:14%;"></div>
+                <div class="ph acc" style="left:31%;top:69%;width:2.6%;height:4.2%;border-radius:50%;"></div>
+                <div class="ph txt" style="left:37%;top:68.5%;width:26%;height:5%;"></div>
               </div>
             </div>
-            <div class="shot-cap"><b>After</b><span>issue-85</span></div>
+            <div class="shot-cap"><b>After</b><span>issue-94</span></div>
           </div>
         </div>
         <div class="shot-prov"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M208,56H180.28L166.65,35.56A8,8,0,0,0,160,32H96a8,8,0,0,0-6.65,3.56L75.71,56H48A24,24,0,0,0,24,80V192a24,24,0,0,0,24,24H208a24,24,0,0,0,24-24V80A24,24,0,0,0,208,56Zm8,136a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V80a8,8,0,0,1,8-8H80a8,8,0,0,0,6.66-3.56L100.28,48h55.43l13.63,20.44A8,8,0,0,0,176,72h32a8,8,0,0,1,8,8ZM128,88a44,44,0,1,0,44,44A44.05,44.05,0,0,0,128,88Zm0,72a28,28,0,1,1,28-28A28,28,0,0,1,128,160Z"/></svg><span>Captured by the daemon with the repo's Playwright · 1280×800 · against base <span class="mono">287a4a6</span></span></div>
@@ -1273,23 +1350,27 @@ gh pr create --fill --base main</div>
           <div class="shot-frame">
             <div class="shot-bar"><i></i><i></i><i></i><span class="url"></span></div>
             <div class="shot-body">
-              <div class="ph hi" style="left:0;top:0;right:0;height:14%;"></div>
-              <div class="ph txt" style="top:4.5%;right:5%;width:2.8%;height:5%;"></div>
-              <div class="ph txt" style="top:4.5%;right:10%;width:2.8%;height:5%;"></div>
-              <div class="ph txt" style="top:4.5%;right:15%;width:2.8%;height:5%;"></div>
-              <div class="ph" style="top:3.5%;right:21%;width:3.6%;height:6.4%;border-radius:50%;background:var(--surface-4);"></div>
-              <div class="ph acc" style="top:2.5%;right:20.4%;width:1.8%;height:3.2%;border-radius:50%;"></div>
-              <div class="ph txt" style="top:5%;left:3%;width:12%;height:4%;"></div>
-              <div class="ph" style="left:5%;top:22%;width:90%;height:72%;background:var(--surface-3);"></div>
-              <div class="ph txt" style="left:9%;top:29%;width:26%;height:4%;"></div>
-              <div class="ph hi" style="left:9%;top:40%;width:82%;height:7%;"></div>
-              <div class="ph acc" style="left:9%;top:41.2%;width:1%;height:4.6%;border-radius:1px;"></div>
-              <div class="ph hi" style="left:9%;top:52%;width:82%;height:7%;"></div>
-              <div class="ph hi" style="left:9%;top:64%;width:82%;height:7%;"></div>
-              <div class="ph hi" style="left:9%;top:76%;width:48%;height:7%;"></div>
+              <div class="ph" style="left:0;top:0;bottom:0;width:22%;background:var(--surface-3);"></div>
+              <div class="ph txt" style="left:4%;top:8%;width:12%;height:4%;"></div>
+              <div class="ph hi" style="left:4%;top:18%;width:14%;height:6%;"></div>
+              <div class="ph txt" style="left:4%;top:30%;width:10%;height:3.5%;"></div>
+              <div class="ph txt" style="left:4%;top:38%;width:11%;height:3.5%;"></div>
+              <div class="ph txt" style="left:28%;top:8%;width:30%;height:5%;"></div>
+              <div class="ph hi" style="left:28%;top:20%;width:66%;height:14%;"></div>
+              <div class="ph acc" style="left:31%;top:25%;width:2.2%;height:3.6%;border-radius:50%;"></div>
+              <div class="ph txt" style="left:36%;top:24.5%;width:22%;height:4%;"></div>
+              <div class="ph txt" style="left:36%;top:30%;width:34%;height:2.5%;"></div>
+              <div class="ph hi" style="left:28%;top:38%;width:66%;height:14%;"></div>
+              <div class="ph acc" style="left:31%;top:43%;width:2.2%;height:3.6%;border-radius:50%;"></div>
+              <div class="ph txt" style="left:36%;top:42.5%;width:18%;height:4%;"></div>
+              <div class="ph txt" style="left:36%;top:48%;width:28%;height:2.5%;"></div>
+              <div class="ph hi" style="left:28%;top:56%;width:66%;height:14%;"></div>
+              <div class="ph acc" style="left:31%;top:61%;width:2.2%;height:3.6%;border-radius:50%;"></div>
+              <div class="ph txt" style="left:36%;top:60.5%;width:26%;height:4%;"></div>
+              <div class="ph txt" style="left:36%;top:66%;width:40%;height:2.5%;"></div>
             </div>
           </div>
-          <div class="shot-cap"><b>After · tray</b><span>issue-85 · 1280×800 · 14:06</span></div>
+          <div class="shot-cap"><b>After · MCP servers panel</b><span>issue-94 · 1280×800 · 14:06</span></div>
         </div>
         <div class="anatomy" style="grid-template-columns:repeat(2, minmax(0, 1fr));">
           <div><b>1 · frame</b>surface-4, 16:10, radius r-sm (r when expanded)</div>
@@ -1369,6 +1450,49 @@ gh pr create --fill --base main</div>
       <div><b>steer ≠ respec</b>one instruction into the live session; the spec and the acceptance criteria are unchanged, and the turn is recorded on the ticket</div>
       <div><b>stop confirms</b>the only destructive-sounding control here, so it takes a second click and spends that click explaining what is kept</div>
       <div><b>amber, not red</b>a stopped run is a human decision with a clean outcome, not a failure; the card that results is a parked ticket, not an error</div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Plan-review gate — Refine stops for a human before Implement starts, and the spec is what gets approved</h2>
+    <p class="sec-note">Near-term post-MVP. Refine is read-only by construction, so when it finishes there is a spec and nothing else: no worktree, no branch, no run spent. This gate makes that pause explicit rather than passive — a blocking card at the Refine step, not a line in the stream. It reuses the stack-approval anatomy exactly, because it is the same kind of decision at the same point in the run: head, what it is, the evidence, a reason field, then the actions. The four things it shows are the four things Refine emits — acceptance criteria in EARS notation, an explicit out-of-scope list, files likely touched, and the diff-size estimate — and the estimate matters twice, because it is also what the diff-scope gate measures the real diff against at Review. <b style="color:var(--text-soft);">The published label set does not name this state yet</b>, so the ticket parks under <span class="mono">pipenzo:needs-human</span> rather than inventing a label an older build on the same repo would not understand.</p>
+    <div class="stage">
+      <div class="dialog" style="width:560px;">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div class="hi-ic" style="background:var(--warn);color:var(--warn-fg);"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,128a8,8,0,0,1-8,8H128a8,8,0,0,1,0-16h88A8,8,0,0,1,224,128ZM128,72h88a8,8,0,0,0,0-16H128a8,8,0,0,0,0,16Zm88,112H128a8,8,0,0,0,0,16h88a8,8,0,0,0,0-16ZM82.34,42.34,56,68.69,45.66,58.34A8,8,0,0,0,34.34,69.66l16,16a8,8,0,0,0,11.32,0l32-32A8,8,0,0,0,82.34,42.34Zm0,64L56,132.69,45.66,122.34a8,8,0,0,0-11.32,11.32l16,16a8,8,0,0,0,11.32,0l32-32a8,8,0,0,0-11.32-11.32Zm0,64L56,196.69,45.66,186.34a8,8,0,0,0-11.32,11.32l16,16a8,8,0,0,0,11.32,0l32-32a8,8,0,0,0-11.32-11.32Z"/></svg></div>
+          <div style="flex:1;min-width:0;"><div style="font-size:16px;font-weight:700;line-height:1.3;">Plan review — approve the spec before Implement starts</div><div class="mono" style="font-size:12px;color:var(--text-faint);margin-top:4px;">pipenzo:needs-human · refine finished 10:24 · no worktree, no branch</div></div>
+          <span class="chip chip-warn">blocks the run</span>
+        </div>
+        <div style="font-size:13px;color:var(--text-soft);line-height:1.45;">Nothing has been implemented and no run has been spent. Implement is seeded with this spec and nothing else, which is exactly why it is worth a look before it goes.</div>
+        <div class="split">
+          <span class="split-head" style="color:var(--text-soft);">Acceptance criteria · EARS notation</span>
+          <span class="split-row"><span class="split-n">1</span>When a poll for a repo's issues completes, the reconciler shall store the response ETag under that (repo, resource) key.</span>
+          <span class="split-row"><span class="split-n">2</span>When a poll is issued for a key that has a stored ETag, the client shall send it as If-None-Match.</span>
+          <span class="split-row"><span class="split-n">3</span>When GitHub answers 304, the reconciler shall reuse the cached tickets and shall not spend rate limit.</span>
+        </div>
+        <div class="split">
+          <span class="split-head quiet">Out of scope · written down so it cannot drift</span>
+          <span class="split-row"><span class="split-n">—</span>Secondary-limit and Retry-After handling — the throttling plugin's job, not this ticket's.</span>
+          <span class="split-row"><span class="split-n">—</span>The poll interval and the "syncing slowly" degradation.</span>
+        </div>
+        <div class="split">
+          <span class="split-head quiet">Files likely touched · 2 · est. +38 −6</span>
+          <span class="split-row"><span class="split-n">1</span>apps/daemon/src/github-reconciler.ts<span class="mono">≈ +26 −4</span></span>
+          <span class="split-row"><span class="split-n">2</span>apps/daemon/src/ticket-store.ts<span class="mono">≈ +12 −2</span></span>
+        </div>
+        <div>
+          <label class="f-lbl">Reason, if rejecting or asking for changes<span class="req">required on both</span></label>
+          <textarea class="field" rows="2" placeholder="Fed into a fresh Refine. Nothing is implemented against a spec you have not accepted."></textarea>
+        </div>
+        <div class="row-gap" style="flex-wrap:nowrap;"><button class="btn danger" style="flex:1;">Reject</button><button class="btn" style="flex:1;">Request changes</button><button class="btn primary" style="flex:1.4;"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg>Approve &amp; start</button></div>
+        <div class="hi-foot"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,71.1a8,8,0,0,1-10.78-3.42,94.13,94.13,0,0,0-33.46-36.91,8,8,0,1,1,8.54-13.54,111.46,111.46,0,0,1,39.12,43.09A8,8,0,0,1,224,71.1ZM35.71,72a8,8,0,0,0,7.1-4.32A94.13,94.13,0,0,1,76.27,30.77a8,8,0,1,0-8.54-13.54A111.46,111.46,0,0,0,28.61,60.32,8,8,0,0,0,35.71,72Zm186.1,103.94A16,16,0,0,1,208,200H167.2a40,40,0,0,1-78.4,0H48a16,16,0,0,1-13.79-24.06C43.22,160.39,48,138.28,48,112a80,80,0,0,1,160,0C208,138.27,212.78,160.38,221.81,175.94ZM150.62,200H105.38a24,24,0,0,0,45.24,0ZM208,184c-10.64-18.27-16-42.49-16-72a64,64,0,0,0-128,0c0,29.52-5.38,53.74-16,72Z"/></svg><span>OS notification sent 10:24 · a run that will not start until a person answers is "awaiting input"</span></div>
+      </div>
+    </div>
+    <div class="anatomy">
+      <div><b>blocking, not passive</b>the Refine step is in its await state on the stepper, amber and pulsing — the same treatment the publish gate gets, because the run is equally stopped</div>
+      <div><b>three ways out</b>Reject ends it, Request changes runs a fresh read-only Refine with your note, Approve creates the worktree and starts Implement. All three need a reason except Approve</div>
+      <div><b>the estimate is a commitment</b>approving it is what the diff-scope gate measures the real diff against at Review; a miss over 50% comes back as awaiting-stack-approval with both numbers</div>
+      <div><b>cheap to say no</b>no worktree, no branch and no implement run exist yet, which is the whole argument for putting the gate here rather than after the code is written</div>
     </div>
   </section>
 
@@ -1483,7 +1607,7 @@ gh pr create --fill --base main</div>
         <span class="card-title">Replace the JSON file store with SQLite across daemon and desktop</span>
         <div class="split">
           <span class="split-head quiet"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm88,104a87.56,87.56,0,0,1-20.41,56.28L71.72,60.4A88,88,0,0,1,216,128ZM40,128A87.56,87.56,0,0,1,60.41,71.72L184.28,195.6A88,88,0,0,1,40,128Z"/></svg>Declined at Refine · nothing written</span>
-          <span class="split-kv"><span>est. <b>+1,340 −410</b></span><span><b>31</b> files</span><span>tripped <b>&gt; 500 additions</b>, <b>&gt; 20 files</b></span></span>
+          <span class="split-kv"><span>est. <b>+1,340 −410</b></span><span><b>31</b> files</span><span>tripped <b>&gt; 400 changed lines</b>, <b>&gt; 20 files</b></span></span>
           <span class="split-row"><span class="split-n">1</span>Storage interface in front of the JSON store</span>
           <span class="split-row"><span class="split-n">2</span>SQLite adapter behind that interface</span>
           <span class="split-row"><span class="split-n">3</span>Migrate daemon reads, then desktop reads</span>
@@ -1536,7 +1660,7 @@ gh pr create --fill --base main</div>
           <span class="s-ctl"><button class="icon-btn"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,117.66a8,8,0,0,1-11.32,0L136,59.31V216a8,8,0,0,1-16,0V59.31L61.66,117.66a8,8,0,0,1-11.32-11.32l72-72a8,8,0,0,1,11.32,0l72,72A8,8,0,0,1,205.66,117.66Z"/></svg></button><button class="icon-btn"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,149.66l-72,72a8,8,0,0,1-11.32,0l-72-72a8,8,0,0,1,11.32-11.32L120,196.69V40a8,8,0,0,1,16,0V196.69l58.34-58.35a8,8,0,0,1,11.32,11.32Z"/></svg></button></span>
         </div>
         <div class="kids">
-          <div class="kid"><span class="kid-ic run"><svg class="icon-xs" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"/></svg></span><span class="n">1/3</span><span class="t">Extract a ProviderCapabilities interface</span><span class="id">#117 · waiting for a slot</span><span class="ext" tabindex="0"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z"/></svg></span></div>
+          <div class="kid"><span class="kid-ic run"><svg class="icon-xs" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"/></svg></span><span class="n">1/3</span><span class="t">Extract a ProviderCapabilities interface</span><span class="id">#122 · waiting for a slot</span><span class="ext" tabindex="0"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z"/></svg></span></div>
         </div>
         <span style="font-size:12px;color:var(--text-faint);line-height:1.45;">After accept, rows become read-only <span class="mono">kid</span> rows that link out. Restack, rebase and the PR-to-PR view live on GitHub — pipenzo never builds its own restacker.</span>
       </div>
@@ -1559,18 +1683,43 @@ gh pr create --fill --base main</div>
         </div>
       </div>
       <div class="prim-card" style="grid-column:span 2;">
-        <span class="lbl">PR-event reactions · ci-failed and merge-conflict, and why they land in different lanes</span>
+        <span class="lbl">PR-event reactions · ci-failed and merge-conflict, why they land in different lanes, and the third one that has no design yet</span>
         <span style="font-size:13px;color:var(--text-soft);line-height:1.5;">Both are things GitHub tells pipenzo about an open PR after the push gate, and both come back to a person. They part company on whether there is already something to look at. <b style="color:var(--text);">ci-failed</b> runs one classifiable fix attempt as a <span class="mono">session.fork</span>, so a fix commit is already sitting on the branch waiting on the push gate — that card belongs in <b style="color:var(--text);">Ready for review</b>. <b style="color:var(--text);">merge-conflict</b> has no fix yet and pipenzo will not invent one, because a rebase is a decision: the card parks in <b style="color:var(--text);">Needs human</b> with the conflicting files named and one primary action.</span>
         <div class="row-gap"><span class="chip chip-ci">ci-failed</span><span style="font-size:12px;color:var(--text-faint);">Ready for review · a fix commit is already waiting on you</span></div>
         <div class="row-gap"><span class="chip chip-warn">merge-conflict</span><span style="font-size:12px;color:var(--text-faint);">Needs human · nothing has been attempted yet</span></div>
+        <div class="row-gap"><span class="chip chip-neutral">review comments</span><span style="font-size:12px;color:var(--text-faint);">not designed yet — no card, no lane, no chip in the product</span></div>
         <span style="font-size:12px;color:var(--text-faint);line-height:1.45;">Red is reserved for something that failed or is blocking. A branch that went stale while it waited is neither, so merge-conflict reads amber — the same register as <span class="mono">pipenzo:interrupted</span> and "syncing slowly". The rebased branch is never force-pushed on its own; it re-enters the same human push gate, exactly like the ci-failed fix.</span>
+        <span style="font-size:12px;color:var(--text-faint);line-height:1.45;"><b style="color:var(--text-soft);">The third reaction has no UI, and this section is two of three rather than a complete set.</b> The remaining PR-event reactions are merge conflict and review comments; the first is above, the second is not designed. It is left out rather than sketched because the open question is a product decision this canvas has not made — whether a human's review comment on an open PR should fork one fix attempt the way <span class="mono">ci-failed</span> does, park the ticket the way <span class="mono">merge-conflict</span> does, or do nothing at all and stay a GitHub conversation. A card drawn before that is answered would be inventing the answer.</span>
+      </div>
+    </div>
+    <!-- Claim conflict — the sixth Needs-human card variant, and the loser of the best-effort assignment race in README "Team usage".
+         The only card in the lane with no action, because the thing to do about someone else's claim is nothing. -->
+    <div class="card-grid" style="margin-top:2px;">
+      <div class="card" tabindex="0">
+        <div class="card-top"><span class="card-id">#89</span><span class="chip chip-warn">pipenzo:needs-human</span></div>
+        <span class="card-title">Widen the poll interval when the rate limit drops below 15%</span>
+        <div class="conflict">
+          <span class="conflict-head"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M230.92,212c-15.23-26.33-38.7-45.21-66.09-54.16a72,72,0,1,0-73.66,0C63.78,166.78,40.31,185.66,25.08,212a8,8,0,1,0,13.85,8c18.84-32.56,52.14-52,89.07-52s70.23,19.44,89.07,52a8,8,0,1,0,13.85-8ZM72,96a56,56,0,1,1,56,56A56.06,56.06,0,0,1,72,96Z"/></svg>claimed by @someone-else</span>
+          <span class="conflict-why"><b>Nothing here is yours to resolve.</b> The uncached re-check immediately before dispatch found the issue already assigned, so this instance refused to start rather than opening a second worktree on one ticket. The claim is GitHub issue assignment — best-effort, not a mutex. The card clears on the poll after they unassign.</span>
+        </div>
+        <div class="card-foot">
+          <span class="card-meta"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm64-88a8,8,0,0,1-8,8H128a8,8,0,0,1-8-8V72a8,8,0,0,1,16,0v48h48A8,8,0,0,1,192,128Z"/></svg>claimed 8m</span>
+        </div>
+      </div>
+      <div class="prim-card" style="grid-column:span 2;">
+        <span class="lbl">claim conflict · the one Needs-human card with no button, and why that is the right answer</span>
+        <span style="font-size:13px;color:var(--text-soft);line-height:1.5;">Two teammates can press Implement inside the same poll window. The claim that stops them is <b style="color:var(--text);">GitHub issue assignment</b> — the one piece of per-issue state GitHub already arbitrates — and Implement re-checks it uncached immediately before dispatch, which closes the window from tens of seconds down to a round trip. That kills the realistic race. It does not kill the theoretical one: <b style="color:var(--text);">GitHub offers no compare-and-swap on assignees</b>, so two clients reading "unassigned" in the same few hundred milliseconds can both write. This card is what losing looks like — bounded and visible, rather than two worktrees and two subscriptions quietly burning on one issue.</span>
+        <div class="row-gap"><span class="chip chip-warn">claim conflict</span><span style="font-size:12px;color:var(--text-faint);">Needs human · informational · no action, because the claim is not yours to release</span></div>
+        <span style="font-size:12px;color:var(--text-faint);line-height:1.45;">Amber, not red — nothing failed and nothing is lost; another person is simply already on it. It reuses the <span class="mono">.conflict</span> block rather than inventing a family, because it is the same shape of message as <span class="mono">merge-conflict</span>: a named cause, a plain sentence about why pipenzo stopped, and no invitation to force it. The <span class="mono">card-foot</span> deliberately carries the age and nothing beside it — every other card in this lane ends in a button, and the missing one here is the content.</span>
       </div>
     </div>
     <div class="stat-grid" style="margin-top:2px;">
       <div class="stat"><span class="stat-k">PRs opened · 30d<svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M104,64A32,32,0,1,0,64,95v66a32,32,0,1,0,16,0V95A32.06,32.06,0,0,0,104,64ZM56,64A16,16,0,1,1,72,80,16,16,0,0,1,56,64ZM88,192a16,16,0,1,1-16-16A16,16,0,0,1,88,192Zm120-31V110.63a23.85,23.85,0,0,0-7-17L163.31,56H192a8,8,0,0,0,0-16H144a8,8,0,0,0-8,8V96a8,8,0,0,0,16,0V67.31L189.66,105a8,8,0,0,1,2.34,5.66V161a32,32,0,1,0,16,0Zm-8,47a16,16,0,1,1,16-16A16,16,0,0,1,200,208Z"/></svg></span><span class="stat-v">23</span><span class="stat-d up"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M213.66,165.66a8,8,0,0,1-11.32,0L128,91.31,53.66,165.66a8,8,0,0,1-11.32-11.32l80-80a8,8,0,0,1,11.32,0l80,80A8,8,0,0,1,213.66,165.66Z"/></svg>+6 vs previous 30d</span></div>
       <div class="stat"><span class="stat-k">Median diff<svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M69.12,94.15,28.5,128l40.62,33.85a8,8,0,1,1-10.24,12.29l-48-40a8,8,0,0,1,0-12.29l48-40a8,8,0,0,1,10.24,12.3Zm176,27.7-48-40a8,8,0,1,0-10.24,12.3L227.5,128l-40.62,33.85a8,8,0,1,0,10.24,12.29l48-40a8,8,0,0,0,0-12.29ZM162.73,32.48a8,8,0,0,0-10.25,4.79l-64,176a8,8,0,0,0,4.79,10.26A8.14,8.14,0,0,0,96,224a8,8,0,0,0,7.52-5.27l64-176A8,8,0,0,0,162.73,32.48Z"/></svg></span><span class="stat-v">+41 <span style="color:var(--text-faint);">−9</span></span><span class="stat-d">across 2.1 files</span></div>
       <div class="stat"><span class="stat-k">Gates first-pass<svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M208,40H48A16,16,0,0,0,32,56v56c0,52.72,25.52,84.67,46.93,102.19,23.06,18.86,46,25.26,47,25.53a8,8,0,0,0,4.2,0c1-.27,23.91-6.67,47-25.53C198.48,196.67,224,164.72,224,112V56A16,16,0,0,0,208,40Zm0,72c0,37.07-13.66,67.16-40.6,89.42A129.3,129.3,0,0,1,128,223.62a128.25,128.25,0,0,1-38.92-21.81C61.82,179.51,48,149.3,48,112l0-56,160,0ZM82.34,141.66a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35a8,8,0,0,1,11.32,11.32l-56,56a8,8,0,0,1-11.32,0Z"/></svg></span><span class="stat-v">87%</span><span class="stat-d down"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z"/></svg>−4 pts · 3 tickets parked</span></div>
-      <div class="stat"><span class="stat-k">Headroom · 5h window<svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M200,75.64V40a16,16,0,0,0-16-16H72A16,16,0,0,0,56,40V76a16.07,16.07,0,0,0,6.4,12.8L114.67,128,62.4,167.2A16.07,16.07,0,0,0,56,180v36a16,16,0,0,0,16,16H184a16,16,0,0,0,16-16V180.36a16.09,16.09,0,0,0-6.35-12.77L141.27,128l52.38-39.6A16.05,16.05,0,0,0,200,75.64ZM72,40H184V75.64L178.23,80H77.33L72,76Zm56,78L98.67,96h58.4Zm56,98H72V180l48-36v24a8,8,0,0,0,16,0V144.08l48,36.28Z"/></svg></span><span class="stat-v">38%</span><div class="bar"><div class="bar-fill" style="width:38%;"></div></div><span class="stat-d">resets in 2h 14m</span></div>
+      <!-- Headroom is an estimate, and the stat card has to say so. Neither provider hands the daemon a quota number, so there is no
+           percentage to fill a bar with and no reset to count down to — only the two things this machine can actually count. -->
+      <div class="stat"><span class="stat-k"><span style="display:inline-flex;align-items:center;">Headroom · this window<span class="self-tag">estimate</span></span><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M200,75.64V40a16,16,0,0,0-16-16H72A16,16,0,0,0,56,40V76a16.07,16.07,0,0,0,6.4,12.8L114.67,128,62.4,167.2A16.07,16.07,0,0,0,56,180v36a16,16,0,0,0,16,16H184a16,16,0,0,0,16-16V180.36a16.09,16.09,0,0,0-6.35-12.77L141.27,128l52.38-39.6A16.05,16.05,0,0,0,200,75.64ZM72,40H184V75.64L178.23,80H77.33L72,76Zm56,78L98.67,96h58.4Zm56,98H72V180l48-36v24a8,8,0,0,0,16,0V144.08l48,36.28Z"/></svg></span><span class="stat-v">7 <span style="font-size:13px;font-weight:400;color:var(--text-faint);">sessions</span></span><span class="stat-d">~412k tokens · no provider reports a quota</span></div>
     </div>
   </section>
 

@@ -463,7 +463,7 @@
     </div>
     <div class="nav-group">
       <span class="nav-title">Work</span>
-      <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M216,48H40a8,8,0,0,0-8,8V208a16,16,0,0,0,16,16H88a16,16,0,0,0,16-16V160h48v16a16,16,0,0,0,16,16h40a16,16,0,0,0,16-16V56A8,8,0,0,0,216,48ZM88,208H48V128H88Zm0-96H48V64H88Zm64,32H104V64h48Zm56,32H168V128h40Zm0-64H168V64h40Z"/></svg><span class="nav-lbl">Board</span><span class="nav-count">13</span></div>
+      <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M216,48H40a8,8,0,0,0-8,8V208a16,16,0,0,0,16,16H88a16,16,0,0,0,16-16V160h48v16a16,16,0,0,0,16,16h40a16,16,0,0,0,16-16V56A8,8,0,0,0,216,48ZM88,208H48V128H88Zm0-96H48V64H88Zm64,32H104V64h48Zm56,32H168V128h40Zm0-64H168V64h40Z"/></svg><span class="nav-lbl">Board</span><span class="nav-count">14</span></div>
       <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M188,88a27.75,27.75,0,0,0-12,2.71V60a28,28,0,0,0-41.36-24.6A28,28,0,0,0,80,44v6.71A27.75,27.75,0,0,0,68,48,28,28,0,0,0,40,76v76a88,88,0,0,0,176,0V116A28,28,0,0,0,188,88Zm12,64a72,72,0,0,1-144,0V76a12,12,0,0,1,24,0v44a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v68a8,8,0,0,0,16,0V60a12,12,0,0,1,24,0v68.67A48.08,48.08,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V116a12,12,0,0,1,24,0Z"/></svg><span class="nav-lbl">Needs me</span><span class="nav-count hot">6</span></div>
       <div class="nav-item active" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M136,80v43.47l36.12,21.67a8,8,0,0,1-8.24,13.72l-40-24A8,8,0,0,1,120,128V80a8,8,0,0,1,16,0Zm-8-48A95.44,95.44,0,0,0,60.08,60.15C52.81,67.51,46.35,74.59,40,82V64a8,8,0,0,0-16,0v40a8,8,0,0,0,8,8H72a8,8,0,0,0,0-16H49c7.15-8.42,14.27-16.35,22.39-24.57a80,80,0,1,1,1.66,114.75,8,8,0,1,0-11,11.64A96,96,0,1,0,128,32Z"/></svg><span class="nav-lbl">Activity</span></div>
     </div>
@@ -584,7 +584,7 @@ class Component extends DCLogic {
       { time: '11:04', num: 85, group: 'publish', icon: 'fail', icCls: 'bad',
         title: 'Batch tray badge updates to one repaint per tick',
         chipLabel: 'pipenzo:ci-failed', chipCls: 'chip-ci',
-        detail: 'build (ubuntu-latest) failed on PR #115 after the merge request. One session.fork fix attempt keeps the spec lineage; the fix commit goes back through the same human push gate rather than being resubmitted automatically.',
+        detail: 'typecheck failed on PR #115 after the merge request. One session.fork fix attempt keeps the spec lineage; the fix commit goes back through the same human push gate rather than being resubmitted automatically.',
         meta: 'PR #115 · fork of session 4c1f · one attempt only' },
       { time: '10:32', num: 113, group: 'gate', icon: 'hold', icCls: '',
         title: 'Replace the JSON file store with SQLite across daemon and desktop',
@@ -609,7 +609,7 @@ class Component extends DCLogic {
       { time: '08:12', num: 90, group: 'gate', icon: 'gate', icCls: 'ok',
         title: 'Log session.failed events server-side in the daemon',
         chipLabel: '5/5 gates passed', chipCls: 'chip-ok',
-        detail: 'Build and typecheck, spec-generated tests, eslint, gitleaks and semgrep p/ci, and the diff-scope check all passed, and the adversarial verifier sustained 0 critical findings. Waiting on the human push gate since — nothing is pushed without one.',
+        detail: 'Build and typecheck, spec-generated tests, gitleaks, semgrep p/ci and the diff-scope check all passed, and the adversarial verifier sustained 0 critical findings. Waiting on the human push gate since — nothing is pushed without one.',
         meta: '+34 −6 · 2 files · within the ≤ 40 line estimate · opus · codex verified' },
     ];
 

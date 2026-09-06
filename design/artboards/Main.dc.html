@@ -486,7 +486,7 @@
     </div>
     <div class="nav-group">
       <span class="nav-title">Work</span>
-      <div class="nav-item active" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M216,48H40a8,8,0,0,0-8,8V208a16,16,0,0,0,16,16H88a16,16,0,0,0,16-16V160h48v16a16,16,0,0,0,16,16h40a16,16,0,0,0,16-16V56A8,8,0,0,0,216,48ZM88,208H48V128H88Zm0-96H48V64H88Zm64,32H104V64h48Zm56,32H168V128h40Zm0-64H168V64h40Z"/></svg><span class="nav-lbl">Board</span><span class="nav-count">13</span></div>
+      <div class="nav-item active" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M216,48H40a8,8,0,0,0-8,8V208a16,16,0,0,0,16,16H88a16,16,0,0,0,16-16V160h48v16a16,16,0,0,0,16,16h40a16,16,0,0,0,16-16V56A8,8,0,0,0,216,48ZM88,208H48V128H88Zm0-96H48V64H88Zm64,32H104V64h48Zm56,32H168V128h40Zm0-64H168V64h40Z"/></svg><span class="nav-lbl">Board</span><span class="nav-count">14</span></div>
       <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M188,88a27.75,27.75,0,0,0-12,2.71V60a28,28,0,0,0-41.36-24.6A28,28,0,0,0,80,44v6.71A27.75,27.75,0,0,0,68,48,28,28,0,0,0,40,76v76a88,88,0,0,0,176,0V116A28,28,0,0,0,188,88Zm12,64a72,72,0,0,1-144,0V76a12,12,0,0,1,24,0v44a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v68a8,8,0,0,0,16,0V60a12,12,0,0,1,24,0v68.67A48.08,48.08,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V116a12,12,0,0,1,24,0Z"/></svg><span class="nav-lbl">Needs me</span><span class="nav-count hot">6</span></div>
       <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M136,80v43.47l36.12,21.67a8,8,0,0,1-8.24,13.72l-40-24A8,8,0,0,1,120,128V80a8,8,0,0,1,16,0Zm-8-48A95.44,95.44,0,0,0,60.08,60.15C52.81,67.51,46.35,74.59,40,82V64a8,8,0,0,0-16,0v40a8,8,0,0,0,8,8H72a8,8,0,0,0,0-16H49c7.15-8.42,14.27-16.35,22.39-24.57a80,80,0,1,1,1.66,114.75,8,8,0,1,0-11,11.64A96,96,0,1,0,128,32Z"/></svg><span class="nav-lbl">Activity</span></div>
     </div>
@@ -611,7 +611,7 @@
               <sc-if value="{{t.isRefusal}}" hint-placeholder-val="{{false}}">
                 <div class="split">
                   <span class="split-head quiet"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm88,104a87.56,87.56,0,0,1-20.41,56.28L71.72,60.4A88,88,0,0,1,216,128ZM40,128A87.56,87.56,0,0,1,60.41,71.72L184.28,195.6A88,88,0,0,1,40,128Z"/></svg>Declined at Refine · nothing written</span>
-                  <span class="split-kv"><span>est. <b>+1,340 −410</b></span><span><b>31</b> files</span><span>tripped <b>&gt; 500 additions</b>, <b>&gt; 20 files</b></span></span>
+                  <span class="split-kv"><span>est. <b>+1,340 −410</b></span><span><b>31</b> files</span><span>tripped <b>&gt; 400 changed lines</b>, <b>&gt; 20 files</b></span></span>
                   <span class="split-row"><span class="split-n">1</span>Storage interface in front of the JSON store</span>
                   <span class="split-row"><span class="split-n">2</span>SQLite adapter behind that interface</span>
                   <span class="split-row"><span class="split-n">3</span>Migrate daemon reads, then desktop reads</span>
@@ -630,6 +630,15 @@
                     <span class="conflict-file"><span class="p">worktree-manager.ts</span><span class="h">1 hunk</span></span>
                   </div>
                   <span class="conflict-why"><b>Nothing failed and no commit is lost.</b> #105 landed on main while this branch sat at the push gate. Rebase re-runs the same five gates in the worktree, and the rebased branch comes back to the same push gate — it is never force-pushed on its own.</span>
+                </div>
+              </sc-if>
+              <!-- Claim conflict — the loser of the best-effort assignment race in README "Team usage". The pre-flight re-check found the issue
+                   already assigned, so this instance refused to start. There is no action here on purpose: the claim belongs to someone else, and
+                   nothing this user can press resolves it. -->
+              <sc-if value="{{t.isClaimed}}" hint-placeholder-val="{{false}}">
+                <div class="conflict">
+                  <span class="conflict-head"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M230.92,212c-15.23-26.33-38.7-45.21-66.09-54.16a72,72,0,1,0-73.66,0C63.78,166.78,40.31,185.66,25.08,212a8,8,0,1,0,13.85,8c18.84-32.56,52.14-52,89.07-52s70.23,19.44,89.07,52a8,8,0,1,0,13.85-8ZM72,96a56,56,0,1,1,56,56A56.06,56.06,0,0,1,72,96Z"/></svg>claimed by @someone-else</span>
+                  <span class="conflict-why"><b>Nothing here is yours to resolve.</b> The uncached re-check immediately before dispatch found the issue already assigned, so this instance refused to start rather than opening a second worktree and spending a second subscription on one ticket. The claim is GitHub issue assignment — best-effort, not a mutex, because GitHub offers no compare-and-swap on assignees. The card clears on the poll after they unassign.</span>
                 </div>
               </sc-if>
               <sc-if value="{{t.isInterrupted}}" hint-placeholder-val="{{false}}">
@@ -729,7 +738,7 @@
           </sc-for>
           <div class="pop-sep"></div>
           <div class="ws-menu-item foot" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm88-29.84q.06-2.16,0-4.32l14.92-18.64a8,8,0,0,0,1.48-7.06,107.21,107.21,0,0,0-10.88-26.25,8,8,0,0,0-6-3.93l-23.72-2.64q-1.48-1.56-3-3L186,40.54a8,8,0,0,0-3.94-6,107.71,107.71,0,0,0-26.25-10.87,8,8,0,0,0-7.06,1.49L130.16,40Q128,40,125.84,40L107.2,25.11a8,8,0,0,0-7.06-1.48A107.6,107.6,0,0,0,73.89,34.51a8,8,0,0,0-3.93,6L67.32,64.27q-1.56,1.49-3,3L40.54,70a8,8,0,0,0-6,3.94,107.71,107.71,0,0,0-10.87,26.25,8,8,0,0,0,1.49,7.06L40,125.84Q40,128,40,130.16L25.11,148.8a8,8,0,0,0-1.48,7.06,107.21,107.21,0,0,0,10.88,26.25,8,8,0,0,0,6,3.93l23.72,2.64q1.49,1.56,3,3L70,215.46a8,8,0,0,0,3.94,6,107.71,107.71,0,0,0,26.25,10.87,8,8,0,0,0,7.06-1.49L125.84,216q2.16.06,4.32,0l18.64,14.92a8,8,0,0,0,7.06,1.48,107.21,107.21,0,0,0,26.25-10.88,8,8,0,0,0,3.93-6l2.64-23.72q1.56-1.48,3-3L215.46,186a8,8,0,0,0,6-3.94,107.71,107.71,0,0,0,10.87-26.25,8,8,0,0,0-1.49-7.06Zm-16.1-6.5a73.93,73.93,0,0,1,0,8.68,8,8,0,0,0,1.74,5.48l14.19,17.73a91.57,91.57,0,0,1-6.23,15L187,173.11a8,8,0,0,0-5.1,2.64,74.11,74.11,0,0,1-6.14,6.14,8,8,0,0,0-2.64,5.1l-2.51,22.58a91.32,91.32,0,0,1-15,6.23l-17.74-14.19a8,8,0,0,0-5-1.75h-.48a73.93,73.93,0,0,1-8.68,0,8,8,0,0,0-5.48,1.74L100.45,215.8a91.57,91.57,0,0,1-15-6.23L82.89,187a8,8,0,0,0-2.64-5.1,74.11,74.11,0,0,1-6.14-6.14,8,8,0,0,0-5.1-2.64L46.43,170.6a91.32,91.32,0,0,1-6.23-15l14.19-17.74a8,8,0,0,0,1.74-5.48,73.93,73.93,0,0,1,0-8.68,8,8,0,0,0-1.74-5.48L40.2,100.45a91.57,91.57,0,0,1,6.23-15L69,82.89a8,8,0,0,0,5.1-2.64,74.11,74.11,0,0,1,6.14-6.14A8,8,0,0,0,82.89,69L85.4,46.43a91.32,91.32,0,0,1,15-6.23l17.74,14.19a8,8,0,0,0,5.48,1.74,73.93,73.93,0,0,1,8.68,0,8,8,0,0,0,5.48-1.74L155.55,40.2a91.57,91.57,0,0,1,15,6.23L173.11,69a8,8,0,0,0,2.64,5.1,74.11,74.11,0,0,1,6.14,6.14,8,8,0,0,0,5.1,2.64l22.58,2.51a91.32,91.32,0,0,1,6.23,15l-14.19,17.74A8,8,0,0,0,199.87,123.66Z"/></svg>Manage repos…</div>
-          <div class="pop-foot"><span class="grow">Only these three are polled. Adding or removing one opens the same searchable picker as first-run, in Settings — never from this menu.</span></div>
+          <div class="pop-foot"><span class="grow">Only these three are polled. Switching is free and happens here; <b style="color:var(--text-soft);">Manage repos…</b> opens the same searchable picker as first-run — add or remove from Settings.</span></div>
         </div>
       </div>
     </div>
@@ -764,7 +773,7 @@
       <div class="dialog" style="width:480px;">
         <div>
           <div class="dialog-title">Implement #{{activeTicket.num}} — {{activeTicket.title}}</div>
-          <div class="dialog-sub mono">{{activeTicket.repo}} · est. {{activeTicket.chipLabel}}</div>
+          <div class="dialog-sub mono">{{activeTicket.repo}} · pipenzo:queued · est. {{activeTicket.chipLabel}}</div>
         </div>
         <div>
           <label class="f-lbl">Extra instructions (optional)</label>
@@ -831,7 +840,10 @@ class Component extends DCLogic {
       // PR-event reaction, post-MVP: GitHub reports the open PR unmergeable, so the ticket comes back to Needs human as pipenzo:merge-conflict.
       // It lands here rather than in Ready for review because, unlike ci-failed, there is no fix commit waiting on the push gate yet — a person has to ask for the rebase.
       { kind: 'conflict', num: 101, title: 'Serialise worktree provisioning and retry on worktree_busy', chipLabel: 'pipenzo:merge-conflict', chipClass: 'chip-warn', since: 'conflicted 26m', cta: 'Rebase and retry', ctaCls: 'primary', pr: 121 },
-    ].map((t) => ({ ...t, isStack: t.kind === 'stack', isRefusal: t.kind === 'refusal', isFailed: t.kind === 'failed', isInterrupted: t.kind === 'interrupted', isConflict: t.kind === 'conflict', ctaHide: t.cta ? '' : 'hide' }));
+      // Claim conflict: the sixth Needs-human variant, and the one with no action. A teammate's instance assigned the issue first,
+      // so this one parked rather than racing it. Nothing this user can press changes another person's claim.
+      { kind: 'claimed', num: 89, title: 'Widen the poll interval when the rate limit drops below 15%', chipLabel: 'pipenzo:needs-human', chipClass: 'chip-warn', since: 'claimed 8m', cta: '', ctaCls: '' },
+    ].map((t) => ({ ...t, isStack: t.kind === 'stack', isRefusal: t.kind === 'refusal', isFailed: t.kind === 'failed', isInterrupted: t.kind === 'interrupted', isConflict: t.kind === 'conflict', isClaimed: t.kind === 'claimed', ctaHide: t.cta ? '' : 'hide' }));
     const activeTicket = queuedRaw.find((t) => t.num === this.state.activeId) ?? queuedRaw[0];
 
     // ---- ⌘K palette: results grouped by type. Tickets read from the ticket store, repos from the workspace connected-repos list, then the four navigations the sidebar offers.
