@@ -267,11 +267,67 @@
     .btn:hover,.btn.primary:hover,.btn:active,.btn.primary:active,.icon-btn:active{transform:none !important;}
     .step.await{box-shadow:0 0 0 2px var(--warn-fg);}
     .evt-ic.live{box-shadow:0 0 0 2px var(--accent-fg);}
+    /* loading: the shimmer flattens to a still block and the spinner to a still notch — the shape still reads as a placeholder */
+    .sk{animation:none !important;background-image:none !important;background-color:var(--surface-2);}
+    .sk.strong{background-color:var(--surface-3);}
+    .spin{animation:none !important;}
   }
   /* --- sync status: board header polling indicator, GitHub state polls every 30–60s, not push --- */
   .sync-status{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 4px 0 10px;border-radius:var(--pill);background:var(--surface-2);color:var(--text-faint);font-size:12px;line-height:1;white-space:nowrap;}
   .sync-status .icon-sm{color:var(--text-faint);flex-shrink:0;}
   .sync-status .icon-btn{width:24px;height:24px;flex-shrink:0;}
+  /* degraded sync: below ~15% remaining GitHub rate limit the poll interval widens and the board says "syncing slowly" — amber, still working, never a failure */
+  .sync-status.slow{background:var(--warn-fg);color:var(--warn);}
+  .sync-status.slow .icon-sm,.sync-status.slow .icon-btn.ghost{color:var(--warn);}
+  .sync-status.slow .icon-btn.ghost:hover{background:var(--warn);color:var(--warn-fg);}
+  /* --- loading: one shimmer primitive. .sk is a placeholder block sized inline, .spin turns any icon into a spinner; both are flattened by the reduced-motion rule above --- */
+  .sk{display:block;border-radius:var(--r-sm);background-color:var(--surface-2);background-image:linear-gradient(90deg,var(--surface-2) 0%,var(--surface-3) 50%,var(--surface-2) 100%);background-size:180% 100%;background-repeat:no-repeat;animation:sk-shimmer 1.4s linear infinite;}
+  @keyframes sk-shimmer{from{background-position:180% 0;}to{background-position:-80% 0;}}
+  .sk.strong{background-color:var(--surface-3);background-image:linear-gradient(90deg,var(--surface-3) 0%,var(--surface-4) 50%,var(--surface-3) 100%);}
+  .sk.pill{border-radius:var(--pill);} .sk.dot{border-radius:50%;}
+  .sk-card{display:flex;flex-direction:column;gap:12px;padding:16px;border-radius:var(--r);background:var(--surface);}
+  .sk-row{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+  .sk-evt{display:grid;grid-template-columns:28px minmax(0,1fr);gap:12px;padding-bottom:20px;}
+  .sk-evt-body{display:flex;flex-direction:column;gap:8px;padding-top:6px;}
+  .sk-board{display:grid;grid-template-columns:repeat(4, minmax(0, 1fr));gap:8px;}
+  .sk-lane{display:flex;flex-direction:column;gap:4px;min-width:0;}
+  .spin{animation:spin 0.9s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .btn.pending{cursor:default;} .btn.pending:hover,.btn.pending:active{filter:none;transform:none;}
+  .btn:disabled{color:var(--text-faint);cursor:default;} .btn:disabled:hover,.btn:disabled:active{filter:none;transform:none;}
+  .load-line{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-faint);line-height:1.3;}
+  .load-line .icon-sm{color:var(--text-faint);flex-shrink:0;}
+  /* --- banner, degraded vs hard: .retrying keeps the plain container because the app still works, .blocking tints it because nothing behind it does --- */
+  .banner.retrying .b-ic{background:var(--warn);color:var(--warn-fg);}
+  .banner .b-count{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-faint);flex-shrink:0;}
+  .banner.blocking{background:var(--danger-fg);color:var(--danger-text);}
+  .banner.blocking b{color:var(--text);}
+  .banner.blocking .b-count{color:var(--danger-text);}
+  /* --- pipenzo:interrupted — the daemon died mid-run. Last completed phase and the worktree path, then resume (offered only when a providerSessionId and a continuationScope both exist) or discard and restart. It never auto-resumes --- */
+  .resume{display:flex;flex-direction:column;gap:8px;background:var(--surface-2);border-radius:var(--r-sm);padding:10px 12px;}
+  .resume-head{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--warn);line-height:1;}
+  .resume-head .icon-sm{flex-shrink:0;}
+  .resume-kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 10px;font-family:'IBM Plex Mono',monospace;font-size:11px;line-height:1.4;}
+  .resume-kv b{color:var(--text-faint);font-weight:400;white-space:nowrap;}
+  .resume-kv span{color:var(--text-soft);min-width:0;overflow-wrap:anywhere;}
+  .resume-why{font-size:12px;color:var(--text-soft);line-height:1.4;}
+  .resume-why b{color:var(--text);font-weight:700;}
+  .resume-acts{display:flex;gap:6px;flex-wrap:wrap;}
+  /* --- quiet notice: an outcome worth recording that needs no action now, such as a refused worktree cleanup --- */
+  .notice.quiet{background:var(--surface-2);padding:10px 12px 10px 14px;font-size:12px;}
+  .notice.quiet .n-ic{width:16px;height:16px;background:transparent;color:var(--text-faint);margin-top:1px;}
+  .notice.quiet .n-title{font-size:12px;color:var(--text-soft);}
+  .notice.quiet .n-act{margin-top:4px;gap:10px;}
+  .notice.quiet .n-act span{font-size:12px;color:var(--text-soft);}
+  /* --- empty: a whole board on first run, or one lane with nothing in it. Not a failure, so it carries the way forward instead of an apology --- */
+  .empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;padding:32px 24px;border-radius:var(--r);background:var(--surface);}
+  .empty .e-ic{width:40px;height:40px;border-radius:50%;background:var(--surface-2);color:var(--text-soft);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .empty .e-title{font-size:14px;font-weight:700;line-height:1.3;text-wrap:balance;}
+  .empty .e-sub{font-size:12px;color:var(--text-faint);line-height:1.45;max-width:46ch;}
+  .empty .e-act{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:2px;}
+  .empty.lane{background:transparent;padding:20px 12px;gap:6px;}
+  .empty.lane .e-title{font-size:12px;color:var(--text-soft);}
+  .empty.lane .e-sub{font-size:11px;}
   /* ===== screen ===== */
   .shell{height:900px;}
   .header{padding:0 24px 16px;display:flex;flex-direction:column;gap:12px;flex-shrink:0;background:var(--bg);}
@@ -401,8 +457,8 @@
     </div>
     <div class="nav-group">
       <span class="nav-title">Work</span>
-      <div class="nav-item active" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M216,48H40a8,8,0,0,0-8,8V208a16,16,0,0,0,16,16H88a16,16,0,0,0,16-16V160h48v16a16,16,0,0,0,16,16h40a16,16,0,0,0,16-16V56A8,8,0,0,0,216,48ZM88,208H48V128H88Zm0-96H48V64H88Zm64,32H104V64h48Zm56,32H168V128h40Zm0-64H168V64h40Z"/></svg><span class="nav-lbl">Board</span><span class="nav-count">11</span></div>
-      <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M188,88a27.75,27.75,0,0,0-12,2.71V60a28,28,0,0,0-41.36-24.6A28,28,0,0,0,80,44v6.71A27.75,27.75,0,0,0,68,48,28,28,0,0,0,40,76v76a88,88,0,0,0,176,0V116A28,28,0,0,0,188,88Zm12,64a72,72,0,0,1-144,0V76a12,12,0,0,1,24,0v44a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v68a8,8,0,0,0,16,0V60a12,12,0,0,1,24,0v68.67A48.08,48.08,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V116a12,12,0,0,1,24,0Z"/></svg><span class="nav-lbl">Needs me</span><span class="nav-count hot">4</span></div>
+      <div class="nav-item active" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M216,48H40a8,8,0,0,0-8,8V208a16,16,0,0,0,16,16H88a16,16,0,0,0,16-16V160h48v16a16,16,0,0,0,16,16h40a16,16,0,0,0,16-16V56A8,8,0,0,0,216,48ZM88,208H48V128H88Zm0-96H48V64H88Zm64,32H104V64h48Zm56,32H168V128h40Zm0-64H168V64h40Z"/></svg><span class="nav-lbl">Board</span><span class="nav-count">12</span></div>
+      <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M188,88a27.75,27.75,0,0,0-12,2.71V60a28,28,0,0,0-41.36-24.6A28,28,0,0,0,80,44v6.71A27.75,27.75,0,0,0,68,48,28,28,0,0,0,40,76v76a88,88,0,0,0,176,0V116A28,28,0,0,0,188,88Zm12,64a72,72,0,0,1-144,0V76a12,12,0,0,1,24,0v44a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v68a8,8,0,0,0,16,0V60a12,12,0,0,1,24,0v68.67A48.08,48.08,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V116a12,12,0,0,1,24,0Z"/></svg><span class="nav-lbl">Needs me</span><span class="nav-count hot">5</span></div>
       <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M136,80v43.47l36.12,21.67a8,8,0,0,1-8.24,13.72l-40-24A8,8,0,0,1,120,128V80a8,8,0,0,1,16,0Zm-8-48A95.44,95.44,0,0,0,60.08,60.15C52.81,67.51,46.35,74.59,40,82V64a8,8,0,0,0-16,0v40a8,8,0,0,0,8,8H72a8,8,0,0,0,0-16H49c7.15-8.42,14.27-16.35,22.39-24.57a80,80,0,1,1,1.66,114.75,8,8,0,1,0-11,11.64A96,96,0,1,0,128,32Z"/></svg><span class="nav-lbl">Activity</span></div>
     </div>
     <div class="nav-group">
@@ -514,6 +570,23 @@
             </div>
           </div>
         </sc-for>
+
+        <sc-if value="{{showStreamLoading}}" hint-placeholder-val="{{false}}">
+          <div class="load-line" style="padding:2px 0 16px;">
+            <svg class="icon-sm spin" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232,128a104,104,0,0,1-208,0c0-41,23.81-78.36,60.66-95.27a8,8,0,0,1,6.68,14.54C60.15,61.59,40,93.27,40,128a88,88,0,0,0,176,0c0-34.73-20.15-66.41-51.34-80.73a8,8,0,0,1,6.68-14.54C208.19,49.64,232,87,232,128Z"/></svg>
+            <span>Replaying the activity stream — 3 attempts in <span class="mono">attempts[]</span>, 214 events in the session log</span>
+          </div>
+          <sc-for list="{{skRows}}" as="r" hint-placeholder-count="4">
+            <div class="sk-evt">
+              <span class="sk dot" style="width:28px;height:28px;"></span>
+              <div class="sk-evt-body">
+                <div style="display:flex;gap:8px;"><span class="sk" style="width:{{r.tool}}px;height:10px;"></span><span class="sk" style="width:{{r.meta}}px;height:10px;"></span></div>
+                <span class="sk strong" style="width:{{r.a}}%;height:12px;"></span>
+                <span class="sk strong" style="width:{{r.b}}%;height:12px;"></span>
+              </div>
+            </div>
+          </sc-for>
+        </sc-if>
 
         <sc-if value="{{showMediumPending}}" hint-placeholder-val="{{false}}">
           <div class="evt">
@@ -737,15 +810,19 @@ class Component extends DCLogic {
     const stackDecision = this.state.stackDecision ?? null;
     const highDecision = this.state.highDecision ?? null;
 
-    // ---- the four tickets this artboard can show: in-flight, stack approval, refusal, ci-failed ----
+    // ---- the five tickets this artboard can show: in-flight, stack approval, refusal, ci-failed, and one still loading its stream ----
     const TICKETS = {
       94: { num: 94, id: '#94 · issue-94 · .worktrees/issue-94', title: 'Sanitize environment for MCP stdio server subprocesses' },
       108: { num: 108, id: '#108 · pipenzo:awaiting-stack-approval · no worktree yet', title: 'Rework provider capability negotiation across all transports' },
       113: { num: 113, id: '#113 · pipenzo:needs-pre-scoping · no worktree', title: 'Replace the JSON file store with SQLite across daemon and desktop' },
       85: { num: 85, id: '#85 · issue-85 · PR #115 · ci-failed', title: 'Batch tray badge updates to one repaint per tick' },
+      87: { num: 87, id: '#87 · issue-87 · pipenzo:needs-human · 3 attempts', title: 'Migrate tray notifications to native OS toasts' },
     };
     const t = TICKETS[ticket];
-    const tickets = [94, 108, 113, 85].map((n) => ({ num: n, cls: n === ticket ? 'active' : '', select: () => this.setState({ ticket: n, medium: null, stackDecision: null, highDecision: null }) }));
+    const tickets = [94, 108, 113, 85, 87].map((n) => ({ num: n, cls: n === ticket ? 'active' : '', select: () => this.setState({ ticket: n, medium: null, stackDecision: null, highDecision: null }) }));
+    // #87 is the loading state: id, title, stepper and rail come from the ticket store and render at once; the stream replays
+    // three attempts out of the session log, so it is the one part that arrives late and the one part that gets skeletons.
+    const skRows = [{ tool: 76, meta: 52, a: 100, b: 54 }, { tool: 62, meta: 44, a: 88, b: 38 }, { tool: 84, meta: 48, a: 96, b: 62 }, { tool: 58, meta: 56, a: 72, b: 44 }];
 
     // ---- stepper ----
     const BASE = [
@@ -768,9 +845,12 @@ class Component extends DCLogic {
     } else if (ticket === 113) {
       phases = BASE.map((p, i) => ({ ...p, n: i + 1, cls: i === 0 ? 'done' : '', isDone: i === 0, isAwait: false, isFail: false, showNum: i !== 0, select: () => {} }));
       showHint = true; hintText = 'Declined at Refine · finished outcome · notified 11:58'; hintCls = 'quiet';
-    } else {
+    } else if (ticket === 85) {
       phases = [...BASE, { id: 'ci', label: 'CI', fail: true }].map((p, i) => ({ ...p, n: i + 1, cls: p.fail ? 'fail' : 'done', isDone: !p.fail, isAwait: false, isFail: !!p.fail, showNum: false, select: () => {} }));
       showHint = true; hintText = 'Fix ready · at the push gate · notified 11:20';
+    } else {
+      phases = BASE.map((p, i) => ({ ...p, n: i + 1, cls: i === 0 ? 'done' : i === 1 ? 'fail' : '', isDone: i === 0, isAwait: false, isFail: i === 1, showNum: i > 1, select: () => {} }));
+      showHint = true; hintText = 'Parked after 3 failures · notified 11:07';
     }
 
     // ---- events ----
@@ -839,8 +919,8 @@ class Component extends DCLogic {
       { kind: 'publish', tool: 'publish', risk: 'HIGH', title: 'Pushed issue-85 and opened PR #115 — approved by you at 11:02', meta: '11:02', pc: pcPublish },
       { kind: 'ci', tool: 'ci · post-MVP', title: 'GitHub check failed on PR #115 → ci-failed. One classifiable fix attempt, forked from the original session', meta: '11:14 → 11:19', ci: true },
     ];
-    const raw = ticket === 94 ? (byPhase94[phase] ?? []) : ticket === 108 ? events108 : ticket === 113 ? events113 : events85;
-    const streamEndsInCard = ticket !== 94 || phase === 'awaiting_approval' || phase === 'implementing';
+    const raw = ticket === 94 ? (byPhase94[phase] ?? []) : ticket === 108 ? events108 : ticket === 113 ? events113 : ticket === 85 ? events85 : [];
+    const streamEndsInCard = (ticket !== 94 && ticket !== 87) || phase === 'awaiting_approval' || phase === 'implementing';
     const events = raw.map((e, i) => {
       const subOpen = !!(e.sub && openSubs[e.sub.id]);
       const pc = e.pc;
@@ -934,12 +1014,18 @@ class Component extends DCLogic {
         { k: 'Label', v: 'pipenzo:needs-pre-scoping' }, { k: 'Est. diff', v: '+1,340 −410 · 31 files', cls: 'danger' }, { k: 'Tripped', v: '> 500 adds · > 20 files' }, { k: 'Runs spent', v: '0 · none will be', cls: 'faint' },
       ];
       risk = { filled: 0, level: 'Calm', text: 'read-only; no actions were taken on this ticket', count: '0 / 12' };
-    } else {
+    } else if (ticket === 85) {
       statusLabel = 'ci-failed'; statusBadgeCls = 'chip-ci';
       railRows = [
         { k: 'State', v: 'ci-failed', cls: 'danger' }, { k: 'PR', v: '#115 · typecheck ✗' }, { k: 'Fix attempt', v: '1 of 1 · session.fork' }, { k: 'Lineage', v: 'run 2 ← run 1 (a3f9c2)', cls: 'faint' },
       ];
       risk = { filled: 6, level: 'Moderate', text: '5 low-risk actions and 1 mispredicted publish (CI failed) since your last look', count: '6 / 12' };
+    } else {
+      statusLabel = '3 failed'; statusBadgeCls = 'chip-danger';
+      railRows = [
+        { k: 'Label', v: 'pipenzo:needs-human', cls: 'danger' }, { k: 'Attempts', v: '3 of 3 · parked', cls: 'danger' }, { k: 'Last failure', v: 'vitest timeout · 120s' }, { k: 'Tiers tried', v: 'sonnet → sonnet → opus', cls: 'faint' },
+      ];
+      risk = { filled: 4, level: 'Moderate', text: '4 low-risk actions since your last look; the failures were gate results, not actions', count: '4 / 12' };
     }
     const riskSegs = Array.from({ length: 12 }, (_, i) => ({ cls: i < risk.filled ? 'on ' + (i < 4 ? '' : i < 8 ? 'warm' : 'hot') : '' }));
 
@@ -947,6 +1033,7 @@ class Component extends DCLogic {
       tNum: t.num, tId: t.id, tTitle: t.title, tickets,
       phases, showHint, hintText, hintCls, hintBellHide: hintBell ? '' : 'hide',
       events,
+      showStreamLoading: ticket === 87, skRows,
       showMediumPending: ticket === 94 && phase === 'implementing' && medium === null,
       showMediumAllowed: ticket === 94 && phase === 'implementing' && medium === 'allowed',
       showMediumRejected: ticket === 94 && phase === 'implementing' && medium === 'rejected',

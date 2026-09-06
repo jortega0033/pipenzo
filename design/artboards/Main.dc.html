@@ -267,11 +267,67 @@
     .btn:hover,.btn.primary:hover,.btn:active,.btn.primary:active,.icon-btn:active{transform:none !important;}
     .step.await{box-shadow:0 0 0 2px var(--warn-fg);}
     .evt-ic.live{box-shadow:0 0 0 2px var(--accent-fg);}
+    /* loading: the shimmer flattens to a still block and the spinner to a still notch — the shape still reads as a placeholder */
+    .sk{animation:none !important;background-image:none !important;background-color:var(--surface-2);}
+    .sk.strong{background-color:var(--surface-3);}
+    .spin{animation:none !important;}
   }
   /* --- sync status: board header polling indicator, GitHub state polls every 30–60s, not push --- */
   .sync-status{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 4px 0 10px;border-radius:var(--pill);background:var(--surface-2);color:var(--text-faint);font-size:12px;line-height:1;white-space:nowrap;}
   .sync-status .icon-sm{color:var(--text-faint);flex-shrink:0;}
   .sync-status .icon-btn{width:24px;height:24px;flex-shrink:0;}
+  /* degraded sync: below ~15% remaining GitHub rate limit the poll interval widens and the board says "syncing slowly" — amber, still working, never a failure */
+  .sync-status.slow{background:var(--warn-fg);color:var(--warn);}
+  .sync-status.slow .icon-sm,.sync-status.slow .icon-btn.ghost{color:var(--warn);}
+  .sync-status.slow .icon-btn.ghost:hover{background:var(--warn);color:var(--warn-fg);}
+  /* --- loading: one shimmer primitive. .sk is a placeholder block sized inline, .spin turns any icon into a spinner; both are flattened by the reduced-motion rule above --- */
+  .sk{display:block;border-radius:var(--r-sm);background-color:var(--surface-2);background-image:linear-gradient(90deg,var(--surface-2) 0%,var(--surface-3) 50%,var(--surface-2) 100%);background-size:180% 100%;background-repeat:no-repeat;animation:sk-shimmer 1.4s linear infinite;}
+  @keyframes sk-shimmer{from{background-position:180% 0;}to{background-position:-80% 0;}}
+  .sk.strong{background-color:var(--surface-3);background-image:linear-gradient(90deg,var(--surface-3) 0%,var(--surface-4) 50%,var(--surface-3) 100%);}
+  .sk.pill{border-radius:var(--pill);} .sk.dot{border-radius:50%;}
+  .sk-card{display:flex;flex-direction:column;gap:12px;padding:16px;border-radius:var(--r);background:var(--surface);}
+  .sk-row{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+  .sk-evt{display:grid;grid-template-columns:28px minmax(0,1fr);gap:12px;padding-bottom:20px;}
+  .sk-evt-body{display:flex;flex-direction:column;gap:8px;padding-top:6px;}
+  .sk-board{display:grid;grid-template-columns:repeat(4, minmax(0, 1fr));gap:8px;}
+  .sk-lane{display:flex;flex-direction:column;gap:4px;min-width:0;}
+  .spin{animation:spin 0.9s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .btn.pending{cursor:default;} .btn.pending:hover,.btn.pending:active{filter:none;transform:none;}
+  .btn:disabled{color:var(--text-faint);cursor:default;} .btn:disabled:hover,.btn:disabled:active{filter:none;transform:none;}
+  .load-line{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-faint);line-height:1.3;}
+  .load-line .icon-sm{color:var(--text-faint);flex-shrink:0;}
+  /* --- banner, degraded vs hard: .retrying keeps the plain container because the app still works, .blocking tints it because nothing behind it does --- */
+  .banner.retrying .b-ic{background:var(--warn);color:var(--warn-fg);}
+  .banner .b-count{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-faint);flex-shrink:0;}
+  .banner.blocking{background:var(--danger-fg);color:var(--danger-text);}
+  .banner.blocking b{color:var(--text);}
+  .banner.blocking .b-count{color:var(--danger-text);}
+  /* --- pipenzo:interrupted — the daemon died mid-run. Last completed phase and the worktree path, then resume (offered only when a providerSessionId and a continuationScope both exist) or discard and restart. It never auto-resumes --- */
+  .resume{display:flex;flex-direction:column;gap:8px;background:var(--surface-2);border-radius:var(--r-sm);padding:10px 12px;}
+  .resume-head{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--warn);line-height:1;}
+  .resume-head .icon-sm{flex-shrink:0;}
+  .resume-kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 10px;font-family:'IBM Plex Mono',monospace;font-size:11px;line-height:1.4;}
+  .resume-kv b{color:var(--text-faint);font-weight:400;white-space:nowrap;}
+  .resume-kv span{color:var(--text-soft);min-width:0;overflow-wrap:anywhere;}
+  .resume-why{font-size:12px;color:var(--text-soft);line-height:1.4;}
+  .resume-why b{color:var(--text);font-weight:700;}
+  .resume-acts{display:flex;gap:6px;flex-wrap:wrap;}
+  /* --- quiet notice: an outcome worth recording that needs no action now, such as a refused worktree cleanup --- */
+  .notice.quiet{background:var(--surface-2);padding:10px 12px 10px 14px;font-size:12px;}
+  .notice.quiet .n-ic{width:16px;height:16px;background:transparent;color:var(--text-faint);margin-top:1px;}
+  .notice.quiet .n-title{font-size:12px;color:var(--text-soft);}
+  .notice.quiet .n-act{margin-top:4px;gap:10px;}
+  .notice.quiet .n-act span{font-size:12px;color:var(--text-soft);}
+  /* --- empty: a whole board on first run, or one lane with nothing in it. Not a failure, so it carries the way forward instead of an apology --- */
+  .empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;padding:32px 24px;border-radius:var(--r);background:var(--surface);}
+  .empty .e-ic{width:40px;height:40px;border-radius:50%;background:var(--surface-2);color:var(--text-soft);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .empty .e-title{font-size:14px;font-weight:700;line-height:1.3;text-wrap:balance;}
+  .empty .e-sub{font-size:12px;color:var(--text-faint);line-height:1.45;max-width:46ch;}
+  .empty .e-act{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:2px;}
+  .empty.lane{background:transparent;padding:20px 12px;gap:6px;}
+  .empty.lane .e-title{font-size:12px;color:var(--text-soft);}
+  .empty.lane .e-sub{font-size:11px;}
   /* ===== screen ===== */
   .shell{height:900px;}
   .board{flex:1;display:grid;grid-template-columns:repeat(4, minmax(0, 1fr));gap:8px;overflow:hidden;background:var(--bg);padding:8px 16px 16px;}
@@ -329,8 +385,8 @@
     </div>
     <div class="nav-group">
       <span class="nav-title">Work</span>
-      <div class="nav-item active" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M216,48H40a8,8,0,0,0-8,8V208a16,16,0,0,0,16,16H88a16,16,0,0,0,16-16V160h48v16a16,16,0,0,0,16,16h40a16,16,0,0,0,16-16V56A8,8,0,0,0,216,48ZM88,208H48V128H88Zm0-96H48V64H88Zm64,32H104V64h48Zm56,32H168V128h40Zm0-64H168V64h40Z"/></svg><span class="nav-lbl">Board</span><span class="nav-count">11</span></div>
-      <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M188,88a27.75,27.75,0,0,0-12,2.71V60a28,28,0,0,0-41.36-24.6A28,28,0,0,0,80,44v6.71A27.75,27.75,0,0,0,68,48,28,28,0,0,0,40,76v76a88,88,0,0,0,176,0V116A28,28,0,0,0,188,88Zm12,64a72,72,0,0,1-144,0V76a12,12,0,0,1,24,0v44a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v68a8,8,0,0,0,16,0V60a12,12,0,0,1,24,0v68.67A48.08,48.08,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V116a12,12,0,0,1,24,0Z"/></svg><span class="nav-lbl">Needs me</span><span class="nav-count hot">4</span></div>
+      <div class="nav-item active" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M216,48H40a8,8,0,0,0-8,8V208a16,16,0,0,0,16,16H88a16,16,0,0,0,16-16V160h48v16a16,16,0,0,0,16,16h40a16,16,0,0,0,16-16V56A8,8,0,0,0,216,48ZM88,208H48V128H88Zm0-96H48V64H88Zm64,32H104V64h48Zm56,32H168V128h40Zm0-64H168V64h40Z"/></svg><span class="nav-lbl">Board</span><span class="nav-count">12</span></div>
+      <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M188,88a27.75,27.75,0,0,0-12,2.71V60a28,28,0,0,0-41.36-24.6A28,28,0,0,0,80,44v6.71A27.75,27.75,0,0,0,68,48,28,28,0,0,0,40,76v76a88,88,0,0,0,176,0V116A28,28,0,0,0,188,88Zm12,64a72,72,0,0,1-144,0V76a12,12,0,0,1,24,0v44a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v68a8,8,0,0,0,16,0V60a12,12,0,0,1,24,0v68.67A48.08,48.08,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V116a12,12,0,0,1,24,0Z"/></svg><span class="nav-lbl">Needs me</span><span class="nav-count hot">5</span></div>
       <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M136,80v43.47l36.12,21.67a8,8,0,0,1-8.24,13.72l-40-24A8,8,0,0,1,120,128V80a8,8,0,0,1,16,0Zm-8-48A95.44,95.44,0,0,0,60.08,60.15C52.81,67.51,46.35,74.59,40,82V64a8,8,0,0,0-16,0v40a8,8,0,0,0,8,8H72a8,8,0,0,0,0-16H49c7.15-8.42,14.27-16.35,22.39-24.57a80,80,0,1,1,1.66,114.75,8,8,0,1,0-11,11.64A96,96,0,1,0,128,32Z"/></svg><span class="nav-lbl">Activity</span></div>
     </div>
     <div class="nav-group">
@@ -349,10 +405,12 @@
     <div class="main-head">
       <div class="crumbs"><span class="mono">jortega0033/agentdock</span><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"/></svg><span class="cur">Board</span></div>
       <div class="main-head-r">
-        <span class="sync-status" title="Ticket state syncs from GitHub on a poll, not push — see README">
-          <svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm64-88a8,8,0,0,1-8,8H128a8,8,0,0,1-8-8V72a8,8,0,0,1,16,0v48h48A8,8,0,0,1,192,128Z"/></svg>
-          Synced {{syncedAgo}}
-          <button class="icon-btn ghost" tabindex="0" title="Refresh now" aria-label="Refresh now" onClick="{{refreshSync}}"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M240,56v48a8,8,0,0,1-8,8H184a8,8,0,0,1,0-16H211.4L184.81,71.64l-.25-.24a80,80,0,1,0-1.67,114.78,8,8,0,0,1,11,11.63A95.44,95.44,0,0,1,128,224h-1.32A96,96,0,1,1,195.75,60L224,85.8V56a8,8,0,1,1,16,0Z"/></svg></button>
+        <span class="sync-status {{syncCls}}" title="{{syncTitle}}">
+          <svg class="icon-sm {{syncClockHide}}" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm64-88a8,8,0,0,1-8,8H128a8,8,0,0,1-8-8V72a8,8,0,0,1,16,0v48h48A8,8,0,0,1,192,128Z"/></svg>
+          <svg class="icon-sm spin {{syncSpinHide}}" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232,128a104,104,0,0,1-208,0c0-41,23.81-78.36,60.66-95.27a8,8,0,0,1,6.68,14.54C60.15,61.59,40,93.27,40,128a88,88,0,0,0,176,0c0-34.73-20.15-66.41-51.34-80.73a8,8,0,0,1,6.68-14.54C208.19,49.64,232,87,232,128Z"/></svg>
+          <svg class="icon-sm {{syncSlowHide}}" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M200,75.64V40a16,16,0,0,0-16-16H72A16,16,0,0,0,56,40V76a16.07,16.07,0,0,0,6.4,12.8L114.67,128,62.4,167.2A16.07,16.07,0,0,0,56,180v36a16,16,0,0,0,16,16H184a16,16,0,0,0,16-16V180.36a16.09,16.09,0,0,0-6.35-12.77L141.27,128l52.38-39.6A16.05,16.05,0,0,0,200,75.64ZM72,40H184V75.64L178.23,80H77.33L72,76Zm56,78L98.67,96h58.4Zm56,98H72V180l48-36v24a8,8,0,0,0,16,0V144.08l48,36.28Z"/></svg>
+          {{syncText}}
+          <button class="icon-btn ghost" tabindex="0" title="{{syncBtnTitle}}" aria-label="Refresh now" onClick="{{refreshSync}}"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M240,56v48a8,8,0,0,1-8,8H184a8,8,0,0,1,0-16H211.4L184.81,71.64l-.25-.24a80,80,0,1,0-1.67,114.78,8,8,0,0,1,11,11.63A95.44,95.44,0,0,1,128,224h-1.32A96,96,0,1,1,195.75,60L224,85.8V56a8,8,0,1,1,16,0Z"/></svg></button>
         </span>
         <div class="cmdk" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,218.34l-50.07-50.06a88.11,88.11,0,1,0-11.31,11.31l50.06,50.07a8,8,0,0,0,11.32-11.32ZM40,112a72,72,0,1,1,72,72A72.08,72.08,0,0,1,40,112Z"/></svg><span>Jump to ticket, repo, action…</span><span class="kbd">⌘K</span></div>
         <button class="btn primary" onClick="{{openPlan}}"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M176,232a8,8,0,0,1-8,8H88a8,8,0,0,1,0-16h80A8,8,0,0,1,176,232Zm40-128a87.55,87.55,0,0,1-33.64,69.21A16.24,16.24,0,0,0,176,186v6a16,16,0,0,1-16,16H96a16,16,0,0,1-16-16v-6a16,16,0,0,0-6.23-12.66A87.59,87.59,0,0,1,40,104.49C39.74,56.83,78.26,17.14,125.88,16A88,88,0,0,1,216,104Zm-16,0a72,72,0,0,0-73.74-72c-39,.92-70.47,33.39-70.26,72.39a71.65,71.65,0,0,0,27.64,56.3A32,32,0,0,1,96,186v6h64v-6a32.15,32.15,0,0,1,12.47-25.35A71.65,71.65,0,0,0,200,104Zm-16.11-9.34a57.6,57.6,0,0,0-46.56-46.55,8,8,0,0,0-2.66,15.78c16.57,2.79,30.63,16.85,33.44,33.45A8,8,0,0,0,176,104a9,9,0,0,0,1.35-.11A8,8,0,0,0,183.89,94.66Z"/></svg>New from idea</button>
@@ -462,9 +520,24 @@
               <sc-if value="{{t.isFailed}}" hint-placeholder-val="{{false}}">
                 <div class="fail-note"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg><span>{{t.reason}}</span></div>
               </sc-if>
+              <sc-if value="{{t.isInterrupted}}" hint-placeholder-val="{{false}}">
+                <div class="resume">
+                  <span class="resume-head"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg>Daemon restarted mid-implement</span>
+                  <div class="resume-kv">
+                    <b>last phase</b><span>{{t.lastPhase}}</span>
+                    <b>worktree</b><span>{{t.worktree}}</span>
+                    <b>session</b><span>{{t.session}}</span>
+                  </div>
+                  <span class="resume-why"><b>Nothing was resumed on its own.</b> A MEDIUM or HIGH action can be mid-approval when the daemon dies, and resuming into it would re-run something you were about to deny.</span>
+                  <div class="resume-acts">
+                    <button class="btn sm primary"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"/></svg>Resume</button>
+                    <button class="btn sm"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,128a96,96,0,0,1-94.71,96H128A95.38,95.38,0,0,1,62.1,197.8a8,8,0,0,1,11-11.63A80,80,0,1,0,71.43,71.39a3.07,3.07,0,0,1-.26.25L44.59,96H72a8,8,0,0,1,0,16H24a8,8,0,0,1-8-8V56a8,8,0,0,1,16,0V85.8L60.25,60A96,96,0,0,1,224,128Z"/></svg>Discard and restart</button>
+                  </div>
+                </div>
+              </sc-if>
               <div class="card-foot">
                 <span class="card-meta"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm64-88a8,8,0,0,1-8,8H128a8,8,0,0,1-8-8V72a8,8,0,0,1,16,0v48h48A8,8,0,0,1,192,128Z"/></svg>{{t.since}}</span>
-                <button class="btn sm {{t.ctaCls}}"><sc-if value="{{t.isFailed}}" hint-placeholder-val="{{false}}"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,128a96,96,0,0,1-94.71,96H128A95.38,95.38,0,0,1,62.1,197.8a8,8,0,0,1,11-11.63A80,80,0,1,0,71.43,71.39a3.07,3.07,0,0,1-.26.25L44.59,96H72a8,8,0,0,1,0,16H24a8,8,0,0,1-8-8V56a8,8,0,0,1,16,0V85.8L60.25,60A96,96,0,0,1,224,128Z"/></svg></sc-if><sc-if value="{{t.isRefusal}}" hint-placeholder-val="{{false}}"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z"/></svg></sc-if><sc-if value="{{t.isStack}}" hint-placeholder-val="{{true}}"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M230.91,172A8,8,0,0,1,228,182.91l-96,56a8,8,0,0,1-8.06,0l-96-56A8,8,0,0,1,36,169.09l92,53.65,92-53.65A8,8,0,0,1,230.91,172ZM220,121.09l-92,53.65L36,121.09A8,8,0,0,0,28,134.91l96,56a8,8,0,0,0,8.06,0l96-56A8,8,0,1,0,220,121.09ZM24,80a8,8,0,0,1,4-6.91l96-56a8,8,0,0,1,8.06,0l96,56a8,8,0,0,1,0,13.82l-96,56a8,8,0,0,1-8.06,0l-96-56A8,8,0,0,1,24,80Zm23.88,0L128,126.74,208.12,80,128,33.26Z"/></svg></sc-if>{{t.cta}}</button>
+                <button class="btn sm {{t.ctaCls}} {{t.ctaHide}}"><sc-if value="{{t.isFailed}}" hint-placeholder-val="{{false}}"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,128a96,96,0,0,1-94.71,96H128A95.38,95.38,0,0,1,62.1,197.8a8,8,0,0,1,11-11.63A80,80,0,1,0,71.43,71.39a3.07,3.07,0,0,1-.26.25L44.59,96H72a8,8,0,0,1,0,16H24a8,8,0,0,1-8-8V56a8,8,0,0,1,16,0V85.8L60.25,60A96,96,0,0,1,224,128Z"/></svg></sc-if><sc-if value="{{t.isRefusal}}" hint-placeholder-val="{{false}}"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z"/></svg></sc-if><sc-if value="{{t.isStack}}" hint-placeholder-val="{{true}}"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M230.91,172A8,8,0,0,1,228,182.91l-96,56a8,8,0,0,1-8.06,0l-96-56A8,8,0,0,1,36,169.09l92,53.65,92-53.65A8,8,0,0,1,230.91,172ZM220,121.09l-92,53.65L36,121.09A8,8,0,0,0,28,134.91l96,56a8,8,0,0,0,8.06,0l96-56A8,8,0,1,0,220,121.09ZM24,80a8,8,0,0,1,4-6.91l96-56a8,8,0,0,1,8.06,0l96,56a8,8,0,0,1,0,13.82l-96,56a8,8,0,0,1-8.06,0l-96-56A8,8,0,0,1,24,80Zm23.88,0L128,126.74,208.12,80,128,33.26Z"/></svg></sc-if>{{t.cta}}</button>
               </div>
             </div>
           </sc-for>
@@ -563,8 +636,26 @@ class Component extends DCLogic {
       { kind: 'stack', num: 108, title: 'Rework provider capability negotiation across all transports', chipLabel: 'pipenzo:awaiting-stack-approval', chipClass: 'chip-warn', since: 'waiting 4h', cta: 'Review stack', ctaCls: 'primary' },
       { kind: 'refusal', num: 113, title: 'Replace the JSON file store with SQLite across daemon and desktop', chipLabel: 'pipenzo:needs-pre-scoping', chipClass: 'chip-neutral', since: 'declined 2h · comment posted', cta: 'Open on GitHub', ctaCls: '' },
       { kind: 'failed', num: 87, title: 'Migrate tray notifications to native OS toasts', chipLabel: '3 failed', chipClass: 'chip-danger', reason: 'Last attempt: vitest timed out in tray.test.ts after 120 s. Parked until someone looks — no more runs will be spent.', since: 'parked 3h', cta: 'Retry with note', ctaCls: '' },
-    ].map((t) => ({ ...t, isStack: t.kind === 'stack', isRefusal: t.kind === 'refusal', isFailed: t.kind === 'failed' }));
+      // Crash recovery: on daemon start the recovery report's interrupted session ids are mapped to their tickets and each one lands here as pipenzo:interrupted — last completed phase, worktree path, resume or discard. Never auto-resumed.
+      { kind: 'interrupted', num: 92, title: 'Surface the discarded Codex rate-limit event in the headroom rail', chipLabel: 'pipenzo:interrupted', chipClass: 'chip-warn', since: 'interrupted 12m', cta: '', ctaCls: '',
+        lastPhase: 'Refine — spec approved, 2 criteria, 1 file in scope', worktree: '.worktrees/issue-92 · branch issue-92 · dirty', session: 'providerSessionId and continuationScope both present' },
+    ].map((t) => ({ ...t, isStack: t.kind === 'stack', isRefusal: t.kind === 'refusal', isFailed: t.kind === 'failed', isInterrupted: t.kind === 'interrupted', ctaHide: t.cta ? '' : 'hide' }));
     const activeTicket = queuedRaw.find((t) => t.num === this.state.activeId) ?? queuedRaw[0];
+
+    // ---- sync-status pill: synced · syncing · syncing slowly (rate limit below ~15% remaining, poll interval widened) ----
+    const SYNC = [
+      { cls: '', icon: 'clock', syncText: 'Synced 38s ago', syncTitle: 'Ticket state syncs from GitHub on a poll, not push — see README', syncBtnTitle: 'Refresh now' },
+      { cls: '', icon: 'spin', syncText: 'Syncing…', syncTitle: 'A poll is in flight', syncBtnTitle: 'Refresh now' },
+      { cls: 'slow', icon: 'slow', syncText: 'Syncing slowly · next poll in 4m', syncTitle: 'GitHub rate limit below ~15% remaining — poll intervals widened rather than failing, see the README Stack table', syncBtnTitle: 'Refresh now' },
+    ];
+    const syncStep = this.state.syncStep ?? 0;
+    const s = SYNC[syncStep];
+    const sync = {
+      syncCls: s.cls, syncText: s.syncText, syncTitle: s.syncTitle, syncBtnTitle: s.syncBtnTitle,
+      syncClockHide: s.icon === 'clock' ? '' : 'hide',
+      syncSpinHide: s.icon === 'spin' ? '' : 'hide',
+      syncSlowHide: s.icon === 'slow' ? '' : 'hide',
+    };
     return {
       queued, working, ready, parked,
       queuedCount: queued.length, workingCount: working.length, readyCount: ready.length, parkedCount: parked.length,
@@ -576,8 +667,10 @@ class Component extends DCLogic {
       sidebarCls: this.state.collapsed ? 'collapsed' : '',
       toggleSidebar: () => this.setState({ collapsed: !this.state.collapsed }),
       // Polling, not push — see README "Team usage". Refresh just re-runs the poll early.
-      syncedAgo: this.state.syncedAgo ?? '38s ago',
-      refreshSync: () => this.setState({ syncedAgo: 'just now' }),
+      // Three renderings of one pill. In the product, "syncing slowly" is set by the rate-limit check on each poll
+      // (below ~15% remaining the interval widens); here the refresh control steps through all three so each is reachable.
+      ...sync,
+      refreshSync: () => this.setState({ syncStep: (syncStep + 1) % SYNC.length }),
     };
   }
 }

@@ -267,11 +267,67 @@
     .btn:hover,.btn.primary:hover,.btn:active,.btn.primary:active,.icon-btn:active{transform:none !important;}
     .step.await{box-shadow:0 0 0 2px var(--warn-fg);}
     .evt-ic.live{box-shadow:0 0 0 2px var(--accent-fg);}
+    /* loading: the shimmer flattens to a still block and the spinner to a still notch — the shape still reads as a placeholder */
+    .sk{animation:none !important;background-image:none !important;background-color:var(--surface-2);}
+    .sk.strong{background-color:var(--surface-3);}
+    .spin{animation:none !important;}
   }
   /* --- sync status: board header polling indicator, GitHub state polls every 30–60s, not push --- */
   .sync-status{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 4px 0 10px;border-radius:var(--pill);background:var(--surface-2);color:var(--text-faint);font-size:12px;line-height:1;white-space:nowrap;}
   .sync-status .icon-sm{color:var(--text-faint);flex-shrink:0;}
   .sync-status .icon-btn{width:24px;height:24px;flex-shrink:0;}
+  /* degraded sync: below ~15% remaining GitHub rate limit the poll interval widens and the board says "syncing slowly" — amber, still working, never a failure */
+  .sync-status.slow{background:var(--warn-fg);color:var(--warn);}
+  .sync-status.slow .icon-sm,.sync-status.slow .icon-btn.ghost{color:var(--warn);}
+  .sync-status.slow .icon-btn.ghost:hover{background:var(--warn);color:var(--warn-fg);}
+  /* --- loading: one shimmer primitive. .sk is a placeholder block sized inline, .spin turns any icon into a spinner; both are flattened by the reduced-motion rule above --- */
+  .sk{display:block;border-radius:var(--r-sm);background-color:var(--surface-2);background-image:linear-gradient(90deg,var(--surface-2) 0%,var(--surface-3) 50%,var(--surface-2) 100%);background-size:180% 100%;background-repeat:no-repeat;animation:sk-shimmer 1.4s linear infinite;}
+  @keyframes sk-shimmer{from{background-position:180% 0;}to{background-position:-80% 0;}}
+  .sk.strong{background-color:var(--surface-3);background-image:linear-gradient(90deg,var(--surface-3) 0%,var(--surface-4) 50%,var(--surface-3) 100%);}
+  .sk.pill{border-radius:var(--pill);} .sk.dot{border-radius:50%;}
+  .sk-card{display:flex;flex-direction:column;gap:12px;padding:16px;border-radius:var(--r);background:var(--surface);}
+  .sk-row{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+  .sk-evt{display:grid;grid-template-columns:28px minmax(0,1fr);gap:12px;padding-bottom:20px;}
+  .sk-evt-body{display:flex;flex-direction:column;gap:8px;padding-top:6px;}
+  .sk-board{display:grid;grid-template-columns:repeat(4, minmax(0, 1fr));gap:8px;}
+  .sk-lane{display:flex;flex-direction:column;gap:4px;min-width:0;}
+  .spin{animation:spin 0.9s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .btn.pending{cursor:default;} .btn.pending:hover,.btn.pending:active{filter:none;transform:none;}
+  .btn:disabled{color:var(--text-faint);cursor:default;} .btn:disabled:hover,.btn:disabled:active{filter:none;transform:none;}
+  .load-line{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-faint);line-height:1.3;}
+  .load-line .icon-sm{color:var(--text-faint);flex-shrink:0;}
+  /* --- banner, degraded vs hard: .retrying keeps the plain container because the app still works, .blocking tints it because nothing behind it does --- */
+  .banner.retrying .b-ic{background:var(--warn);color:var(--warn-fg);}
+  .banner .b-count{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-faint);flex-shrink:0;}
+  .banner.blocking{background:var(--danger-fg);color:var(--danger-text);}
+  .banner.blocking b{color:var(--text);}
+  .banner.blocking .b-count{color:var(--danger-text);}
+  /* --- pipenzo:interrupted — the daemon died mid-run. Last completed phase and the worktree path, then resume (offered only when a providerSessionId and a continuationScope both exist) or discard and restart. It never auto-resumes --- */
+  .resume{display:flex;flex-direction:column;gap:8px;background:var(--surface-2);border-radius:var(--r-sm);padding:10px 12px;}
+  .resume-head{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--warn);line-height:1;}
+  .resume-head .icon-sm{flex-shrink:0;}
+  .resume-kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 10px;font-family:'IBM Plex Mono',monospace;font-size:11px;line-height:1.4;}
+  .resume-kv b{color:var(--text-faint);font-weight:400;white-space:nowrap;}
+  .resume-kv span{color:var(--text-soft);min-width:0;overflow-wrap:anywhere;}
+  .resume-why{font-size:12px;color:var(--text-soft);line-height:1.4;}
+  .resume-why b{color:var(--text);font-weight:700;}
+  .resume-acts{display:flex;gap:6px;flex-wrap:wrap;}
+  /* --- quiet notice: an outcome worth recording that needs no action now, such as a refused worktree cleanup --- */
+  .notice.quiet{background:var(--surface-2);padding:10px 12px 10px 14px;font-size:12px;}
+  .notice.quiet .n-ic{width:16px;height:16px;background:transparent;color:var(--text-faint);margin-top:1px;}
+  .notice.quiet .n-title{font-size:12px;color:var(--text-soft);}
+  .notice.quiet .n-act{margin-top:4px;gap:10px;}
+  .notice.quiet .n-act span{font-size:12px;color:var(--text-soft);}
+  /* --- empty: a whole board on first run, or one lane with nothing in it. Not a failure, so it carries the way forward instead of an apology --- */
+  .empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;padding:32px 24px;border-radius:var(--r);background:var(--surface);}
+  .empty .e-ic{width:40px;height:40px;border-radius:50%;background:var(--surface-2);color:var(--text-soft);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .empty .e-title{font-size:14px;font-weight:700;line-height:1.3;text-wrap:balance;}
+  .empty .e-sub{font-size:12px;color:var(--text-faint);line-height:1.45;max-width:46ch;}
+  .empty .e-act{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:2px;}
+  .empty.lane{background:transparent;padding:20px 12px;gap:6px;}
+  .empty.lane .e-title{font-size:12px;color:var(--text-soft);}
+  .empty.lane .e-sub{font-size:11px;}
   /* ===== screen ===== */
   .page{padding:40px 48px 48px;display:flex;flex-direction:column;gap:40px;width:1040px;}
   h1{font-size:28px;font-weight:700;margin:0;letter-spacing:-0.02em;line-height:1.15;text-wrap:balance;}
@@ -557,6 +613,20 @@
           </span>
         </div>
         <span style="font-size:12px;color:var(--text-faint);line-height:1.45;">Default 30–60s poll interval while the app is open, plus this manual refresh. No push channel between two people's desktop apps — see the README's "Team usage" section for why.</span>
+        <span class="lbl" style="margin-top:4px;">the same pill, mid-poll and degraded — "syncing slowly" is the board's rate-limit state, not an error</span>
+        <div class="row-gap">
+          <span class="sync-status" title="A poll is in flight">
+            <svg class="icon-sm spin" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232,128a104,104,0,0,1-208,0c0-41,23.81-78.36,60.66-95.27a8,8,0,0,1,6.68,14.54C60.15,61.59,40,93.27,40,128a88,88,0,0,0,176,0c0-34.73-20.15-66.41-51.34-80.73a8,8,0,0,1,6.68-14.54C208.19,49.64,232,87,232,128Z"/></svg>
+            Syncing…
+            <button class="icon-btn ghost" tabindex="0" disabled title="Refresh now" aria-label="Refresh now"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M240,56v48a8,8,0,0,1-8,8H184a8,8,0,0,1,0-16H211.4L184.81,71.64l-.25-.24a80,80,0,1,0-1.67,114.78,8,8,0,0,1,11,11.63A95.44,95.44,0,0,1,128,224h-1.32A96,96,0,1,1,195.75,60L224,85.8V56a8,8,0,1,1,16,0Z"/></svg></button>
+          </span>
+          <span class="sync-status slow" title="GitHub rate limit below ~15% remaining — poll intervals widened, see the README's Stack table">
+            <svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M200,75.64V40a16,16,0,0,0-16-16H72A16,16,0,0,0,56,40V76a16.07,16.07,0,0,0,6.4,12.8L114.67,128,62.4,167.2A16.07,16.07,0,0,0,56,180v36a16,16,0,0,0,16,16H184a16,16,0,0,0,16-16V180.36a16.09,16.09,0,0,0-6.35-12.77L141.27,128l52.38-39.6A16.05,16.05,0,0,0,200,75.64ZM72,40H184V75.64L178.23,80H77.33L72,76Zm56,78L98.67,96h58.4Zm56,98H72V180l48-36v24a8,8,0,0,0,16,0V144.08l48,36.28Z"/></svg>
+            Syncing slowly · next poll in 4m
+            <button class="icon-btn ghost" tabindex="0" title="Refresh now" aria-label="Refresh now"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M240,56v48a8,8,0,0,1-8,8H184a8,8,0,0,1,0-16H211.4L184.81,71.64l-.25-.24a80,80,0,1,0-1.67,114.78,8,8,0,0,1,11,11.63A95.44,95.44,0,0,1,128,224h-1.32A96,96,0,1,1,195.75,60L224,85.8V56a8,8,0,1,1,16,0Z"/></svg></button>
+          </span>
+        </div>
+        <span style="font-size:12px;color:var(--text-faint);line-height:1.45;">Three renderings of one control: <b style="color:var(--text-soft);">synced</b> (neutral), <b style="color:var(--text-soft);">syncing</b> (the notch spins, refresh is disabled while the poll is in flight), <b style="color:var(--text-soft);">syncing slowly</b> (amber). The third is a degradation, not a failure — every ticket still runs, the board is just further behind. Below ~15% remaining rate limit the poll interval widens and the board shows "syncing slowly"; <span class="mono">@octokit/plugin-throttling</span> honours <span class="mono">Retry-After</span> instead of hammering, and a <span class="mono">304</span> on a conditional request costs no quota at all. Set by the rate-limit check on each poll, never by a click. Live on the Board artboard.</span>
       </div>
     </div>
   </section>
@@ -642,6 +712,201 @@
         <div class="toast ok"><span class="t-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span class="t-body"><span class="t-title">Branch pushed</span><span class="t-sub">issue-94 → origin · 2 files</span></span><button class="btn sm">View on GitHub</button></div>
         <div class="toast"><span class="t-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M104,64A32,32,0,1,0,64,95v66a32,32,0,1,0,16,0V95A32.06,32.06,0,0,0,104,64ZM56,64A16,16,0,1,1,72,80,16,16,0,0,1,56,64ZM88,192a16,16,0,1,1-16-16A16,16,0,0,1,88,192Zm120-31V110.63a23.85,23.85,0,0,0-7-17L163.31,56H192a8,8,0,0,0,0-16H144a8,8,0,0,0-8,8V96a8,8,0,0,0,16,0V67.31L189.66,105a8,8,0,0,1,2.34,5.66V161a32,32,0,1,0,16,0Zm-8,47a16,16,0,1,1,16-16A16,16,0,0,1,200,208Z"/></svg></span><span class="t-body"><span class="t-title">PR #112 opened</span><span class="t-sub">Sanitize environment for MCP stdio server subprocesses</span></span><button class="btn sm">Open</button></div>
         <div class="toast warn"><span class="t-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M188,88a27.75,27.75,0,0,0-12,2.71V60a28,28,0,0,0-41.36-24.6A28,28,0,0,0,80,44v6.71A27.75,27.75,0,0,0,68,48,28,28,0,0,0,40,76v76a88,88,0,0,0,176,0V116A28,28,0,0,0,188,88Zm12,64a72,72,0,0,1-144,0V76a12,12,0,0,1,24,0v44a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v68a8,8,0,0,0,16,0V60a12,12,0,0,1,24,0v68.67A48.08,48.08,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V116a12,12,0,0,1,24,0Z"/></svg></span><span class="t-body"><span class="t-title">#87 moved to Needs human</span><span class="t-sub">3 failed attempts · vitest timeout in tray.test.ts</span></span><button class="btn sm">Retry with note</button></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Loading, error and empty — the three states every screen above this line skips, because they all show data that already arrived</h2>
+    <p class="sec-note">One shimmer primitive does every skeleton (<span class="mono">.sk</span>, sized inline so it matches the shape it stands in for) and one class turns any Phosphor icon into a spinner (<span class="mono">.spin</span>); the existing reduced-motion rule flattens both to still blocks. Errors extend the banner, notice and toast rather than adding a fourth altitude: a degraded state keeps the plain container because the app still works, a blocking one tints it because nothing behind it does. Empty is a first-run state, not a failure, so it carries the way forward instead of an apology.</p>
+
+    <div class="spec">
+      <span class="lbl">loading · a skeleton matches the shape of the thing that replaces it — never a spinner over a blank panel</span>
+      <div class="prim-grid">
+        <div class="prim-card">
+          <span class="lbl">kanban card · id and chip row, two title lines, foot</span>
+          <div class="sk-card">
+            <div class="sk-row"><span class="sk" style="width:32px;height:12px;"></span><span class="sk pill" style="width:76px;height:18px;"></span></div>
+            <span class="sk strong" style="width:100%;height:14px;"></span>
+            <span class="sk strong" style="width:62%;height:14px;"></span>
+            <div class="sk-row"><span class="sk" style="width:52px;height:12px;"></span><span class="sk pill" style="width:88px;height:28px;"></span></div>
+          </div>
+          <span style="font-size:12px;color:var(--text-faint);line-height:1.45;">Same 16 px padding, same 12 px gaps and the same foot as the real card, so nothing jumps when the poll returns. Never focusable and never announced as a card.</span>
+        </div>
+        <div class="prim-card">
+          <span class="lbl">activity-stream row · 28 px icon well, head line, title</span>
+          <div class="sk-evt">
+            <span class="sk dot" style="width:28px;height:28px;"></span>
+            <div class="sk-evt-body">
+              <div style="display:flex;gap:8px;"><span class="sk" style="width:76px;height:10px;"></span><span class="sk" style="width:52px;height:10px;"></span></div>
+              <span class="sk strong" style="width:100%;height:12px;"></span>
+              <span class="sk strong" style="width:54%;height:12px;"></span>
+            </div>
+          </div>
+          <div class="sk-evt" style="padding-bottom:0;">
+            <span class="sk dot" style="width:28px;height:28px;"></span>
+            <div class="sk-evt-body">
+              <div style="display:flex;gap:8px;"><span class="sk" style="width:64px;height:10px;"></span><span class="sk" style="width:44px;height:10px;"></span></div>
+              <span class="sk strong" style="width:82%;height:12px;"></span>
+            </div>
+          </div>
+          <span style="font-size:12px;color:var(--text-faint);line-height:1.45;">Three or four of these at most. The stream replays from the ticket store and the session log, so a long ticket fills in from the top rather than all at once.</span>
+        </div>
+        <div class="prim-card">
+          <span class="lbl">button · pending — the spinner takes the icon's place, the label says what is happening</span>
+          <div class="row-gap">
+            <button class="btn primary pending" aria-busy="true"><svg class="icon spin" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232,128a104,104,0,0,1-208,0c0-41,23.81-78.36,60.66-95.27a8,8,0,0,1,6.68,14.54C60.15,61.59,40,93.27,40,128a88,88,0,0,0,176,0c0-34.73-20.15-66.41-51.34-80.73a8,8,0,0,1,6.68-14.54C208.19,49.64,232,87,232,128Z"/></svg>Starting…</button>
+            <button class="btn primary"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"/></svg>Start</button>
+          </div>
+          <div class="row-gap">
+            <button class="btn pending" aria-busy="true"><svg class="icon spin" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232,128a104,104,0,0,1-208,0c0-41,23.81-78.36,60.66-95.27a8,8,0,0,1,6.68,14.54C60.15,61.59,40,93.27,40,128a88,88,0,0,0,176,0c0-34.73-20.15-66.41-51.34-80.73a8,8,0,0,1,6.68-14.54C208.19,49.64,232,87,232,128Z"/></svg>Pushing…</button>
+            <button class="btn sm pending" aria-busy="true"><svg class="icon-sm spin" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232,128a104,104,0,0,1-208,0c0-41,23.81-78.36,60.66-95.27a8,8,0,0,1,6.68,14.54C60.15,61.59,40,93.27,40,128a88,88,0,0,0,176,0c0-34.73-20.15-66.41-51.34-80.73a8,8,0,0,1,6.68-14.54C208.19,49.64,232,87,232,128Z"/></svg>Retrying…</button>
+            <button class="btn sm" disabled>Resume</button>
+          </div>
+          <span style="font-size:12px;color:var(--text-faint);line-height:1.45;">The Implement dialog's <b style="color:var(--text-soft);">Start</b> holds this state from the click until the daemon has a worktree and a session — a second or two, not instant. Width is allowed to change with the label; the button never collapses to a bare spinner. <span class="mono">aria-busy</span> on the button, and a disabled control keeps text-faint rather than dropping opacity.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="spec" style="margin-top:24px;">
+      <span class="lbl">loading · page level — the board before the first poll returns. Lane headers are real, the cards are not</span>
+      <div style="background:var(--bg);border-radius:var(--r);padding:12px 12px 16px;display:flex;flex-direction:column;gap:12px;">
+        <div class="load-line" style="padding:0 4px;">
+          <svg class="icon-sm spin" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232,128a104,104,0,0,1-208,0c0-41,23.81-78.36,60.66-95.27a8,8,0,0,1,6.68,14.54C60.15,61.59,40,93.27,40,128a88,88,0,0,0,176,0c0-34.73-20.15-66.41-51.34-80.73a8,8,0,0,1,6.68-14.54C208.19,49.64,232,87,232,128Z"/></svg>
+          <span>Reading open issues from <span class="mono">jortega0033/agentdock</span> — first poll of this session</span>
+        </div>
+        <div class="sk-board">
+          <sc-for list="{{skLanes}}" as="l" hint-placeholder-count="4">
+            <div class="sk-lane">
+              <div class="sk-row" style="height:40px;padding:0 12px;">
+                <span class="label" style="display:flex;align-items:center;gap:8px;color:var(--text-soft);"><span style="width:8px;height:8px;border-radius:50%;display:inline-block;background:{{l.dot}};"></span>{{l.name}}</span>
+                <span class="sk" style="width:14px;height:10px;"></span>
+              </div>
+              <div class="sk-card">
+                <div class="sk-row"><span class="sk" style="width:28px;height:11px;"></span><span class="sk pill" style="width:62px;height:16px;"></span></div>
+                <span class="sk strong" style="width:100%;height:12px;"></span>
+                <span class="sk strong" style="width:{{l.w}}%;height:12px;"></span>
+              </div>
+              <div class="sk-card">
+                <div class="sk-row"><span class="sk" style="width:28px;height:11px;"></span><span class="sk pill" style="width:54px;height:16px;"></span></div>
+                <span class="sk strong" style="width:88%;height:12px;"></span>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      <span style="font-size:12px;color:var(--text-faint);line-height:1.45;">The four lanes are fixed by the label set, so they render immediately with their names and dots; only the card counts and the cards themselves wait. Roughly the first second of a cold start. After that first poll the board comes from the ticket store and re-renders in place, so this state is not seen again in a session.</span>
+    </div>
+
+    <div class="spec" style="margin-top:24px;">
+      <span class="lbl">error · banner — degraded keeps the plain container, blocking tints it. Same 24 px tone circle, same one-action rule</span>
+      <div class="stack">
+        <div class="banner retrying"><span class="b-ic"><svg class="icon-sm spin" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232,128a104,104,0,0,1-208,0c0-41,23.81-78.36,60.66-95.27a8,8,0,0,1,6.68,14.54C60.15,61.59,40,93.27,40,128a88,88,0,0,0,176,0c0-34.73-20.15-66.41-51.34-80.73a8,8,0,0,1,6.68-14.54C208.19,49.64,232,87,232,128Z"/></svg></span><span class="b-text">Can't reach GitHub — retrying in <b>18s</b>. The board is showing the last state that polled cleanly, at 14:02.</span><span class="b-count mono">attempt 2 of 5</span><span class="b-act"><button class="btn sm ghost">Retry now</button></span></div>
+        <div class="banner danger blocking"><span class="b-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></span><span class="b-text"><b>GitHub is unreachable.</b> 5 polls failed since 14:02. Labels are the state model, so nothing can start, change lane or push until it is back — running agents keep working in their worktrees.</span><span class="b-count mono">backoff 8m</span><span class="b-act"><button class="btn sm">Retry now</button></span></div>
+        <div class="banner danger blocking"><span class="b-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg></span><span class="b-text"><b>Your GitHub sign-in expired.</b> pipenzo signs in with device flow and holds the token in the Electron-main vault; it was revoked or timed out. Reading issues, writing labels and opening pull requests all need it back.</span><span class="b-act"><button class="btn sm primary">Re-authenticate</button></span></div>
+        <div class="banner warn"><span class="b-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm16-40a8,8,0,0,1-8,8,16,16,0,0,1-16-16V128a8,8,0,0,1,0-16,16,16,0,0,1,16,16v40A8,8,0,0,1,144,176ZM112,84a12,12,0,1,1,12,12A12,12,0,0,1,112,84Z"/></svg></span><span class="b-text">Signed in again as <b>jortega0033</b> · 3 repos reconnected. The two tickets that parked while the token was gone are back in Queued.</span><span class="b-act"><button class="icon-btn ghost" style="width:28px;height:28px;"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></button></span></div>
+      </div>
+      <div class="anatomy">
+        <div><b>1 · degraded</b>plain container, warn circle, a countdown in mono. It says what it is doing next, not just that it broke</div>
+        <div><b>2 · blocking</b>container drops to danger-fg — the one place a notice tints, because the screen behind it is stale</div>
+        <div><b>3 · re-authenticate</b>blocking, and the action is the primary button: there is no read-only mode without a token</div>
+        <div><b>4 · recovery</b>the same banner slot says it came back. A blocking state that vanishes silently is its own bug report</div>
+      </div>
+    </div>
+
+    <div class="spec" style="margin-top:24px;">
+      <span class="lbl">error · pipenzo:interrupted — the daemon died mid-run. Same card family as needs-pre-scoping and awaiting-stack-approval, in the same Needs-human lane</span>
+      <div class="card-grid">
+        <div class="card" tabindex="0">
+          <div class="card-top"><span class="card-id">#94</span><span class="chip chip-warn">pipenzo:interrupted</span></div>
+          <span class="card-title">Sanitize environment for MCP stdio server subprocesses</span>
+          <div class="resume">
+            <span class="resume-head"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg>Daemon restarted mid-implement</span>
+            <div class="resume-kv">
+              <b>last phase</b><span>Refine — spec approved, 3 criteria, 2 files in scope</span>
+              <b>worktree</b><span>.worktrees/issue-94 · branch issue-94 · dirty</span>
+              <b>session</b><span>providerSessionId and continuationScope both present</span>
+            </div>
+            <span class="resume-why"><b>Nothing was resumed on its own.</b> A MEDIUM or HIGH action can be mid-approval when the daemon dies, and resuming into it would re-run something you were about to deny.</span>
+            <div class="resume-acts">
+              <button class="btn sm primary"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"/></svg>Resume</button>
+              <button class="btn sm"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,128a96,96,0,0,1-94.71,96H128A95.38,95.38,0,0,1,62.1,197.8a8,8,0,0,1,11-11.63A80,80,0,1,0,71.43,71.39a3.07,3.07,0,0,1-.26.25L44.59,96H72a8,8,0,0,1,0,16H24a8,8,0,0,1-8-8V56a8,8,0,0,1,16,0V85.8L60.25,60A96,96,0,0,1,224,128Z"/></svg>Discard and restart</button>
+            </div>
+          </div>
+          <div class="card-foot">
+            <span class="card-meta"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm64-88a8,8,0,0,1-8,8H128a8,8,0,0,1-8-8V72a8,8,0,0,1,16,0v48h48A8,8,0,0,1,192,128Z"/></svg>interrupted 12m</span>
+          </div>
+        </div>
+        <div class="card" tabindex="0">
+          <div class="card-top"><span class="card-id">#97</span><span class="chip chip-warn">pipenzo:interrupted</span></div>
+          <span class="card-title">Retry the MCP stdio handshake once on EPIPE</span>
+          <div class="resume">
+            <span class="resume-head"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg>Daemon restarted mid-implement</span>
+            <div class="resume-kv">
+              <b>last phase</b><span>Implement — 2 edits committed, gates never ran</span>
+              <b>worktree</b><span>.worktrees/issue-97 · branch issue-97 · dirty</span>
+              <b>session</b><span>continuationScope missing — resume would be rejected</span>
+            </div>
+            <span class="resume-why"><b>Resume is not offered here.</b> It appears only when a providerSessionId and a continuationScope both exist, so the button is never a guess that fails after you press it. Discarding removes the worktree and starts a fresh session from the same spec; the commits on issue-97 are kept.</span>
+            <div class="resume-acts">
+              <button class="btn sm" disabled title="No continuationScope — the provider thread cannot be continued"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"/></svg>Resume</button>
+              <button class="btn sm primary"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,128a96,96,0,0,1-94.71,96H128A95.38,95.38,0,0,1,62.1,197.8a8,8,0,0,1,11-11.63A80,80,0,1,0,71.43,71.39a3.07,3.07,0,0,1-.26.25L44.59,96H72a8,8,0,0,1,0,16H24a8,8,0,0,1-8-8V56a8,8,0,0,1,16,0V85.8L60.25,60A96,96,0,0,1,224,128Z"/></svg>Discard and restart</button>
+            </div>
+          </div>
+          <div class="card-foot">
+            <span class="card-meta"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm64-88a8,8,0,0,1-8,8H128a8,8,0,0,1-8-8V72a8,8,0,0,1,16,0v48h48A8,8,0,0,1,192,128Z"/></svg>interrupted 12m</span>
+          </div>
+        </div>
+        <div class="prim-card">
+          <span class="lbl">the smaller failures · a refused cleanup is a note, a failed action is a toast</span>
+          <div class="notice quiet"><span class="n-ic"><svg class="icon-xs" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm16-40a8,8,0,0,1-8,8,16,16,0,0,1-16-16V128a8,8,0,0,1,0-16,16,16,0,0,1,16,16v40A8,8,0,0,1,144,176ZM112,84a12,12,0,1,1,12,12A12,12,0,0,1,112,84Z"/></svg></span><span class="n-body"><span class="n-title">Worktree retained — uncommitted or untracked files</span><span><span class="mono">.worktrees/issue-90</span> still holds files <span class="mono">git status --untracked-files=all</span> can see, usually build output rather than source. PR #116 merged and the branch was deleted; the disk was not reclaimed.</span><span class="n-act"><span>Show the path</span><span style="color:var(--text-faint);">Remove it anyway</span></span></span></div>
+          <div class="toast danger" style="width:100%;"><span class="t-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></span><span class="t-body"><span class="t-title">Couldn't start #88 — GitHub is unreachable</span><span class="t-sub">The assignment pre-flight timed out. No worktree, no branch, no run.</span></span><button class="btn sm">Retry</button></div>
+          <span style="font-size:12px;color:var(--text-faint);line-height:1.45;">The cleanup note is low-emphasis on purpose: nothing is broken and nothing is waiting on you, but the disk was not reclaimed and pretending otherwise is how a worktree leak hides. The toast is the standard danger variant with one action; it does not auto-dismiss, because it carries one.</span>
+        </div>
+      </div>
+      <div class="anatomy">
+        <div><b>1 · same family</b>chip-warn label chip, then one tinted block inside the card — the shape needs-pre-scoping and awaiting-stack-approval already use</div>
+        <div><b>2 · what survived</b>last completed phase and worktree path in mono, because both are what a person needs before choosing</div>
+        <div><b>3 · why it waited</b>the run never auto-resumes; the card says so rather than leaving it to be inferred</div>
+        <div><b>4 · two actions only</b>Resume, enabled only when it can succeed, and Discard and restart</div>
+      </div>
+    </div>
+
+    <div class="spec" style="margin-top:24px;">
+      <span class="lbl">empty · first run — no repo connected, so there is nothing to poll and every lane is empty at once</span>
+      <div style="background:var(--bg);border-radius:var(--r);padding:12px;">
+        <div class="empty">
+          <span class="e-ic"><svg class="icon-lg" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M216,48H40a8,8,0,0,0-8,8V208a16,16,0,0,0,16,16H88a16,16,0,0,0,16-16V160h48v16a16,16,0,0,0,16,16h40a16,16,0,0,0,16-16V56A8,8,0,0,0,216,48ZM88,208H48V128H88Zm0-96H48V64H88Zm64,32H104V64h48Zm56,32H168V128h40Zm0-64H168V64h40Z"/></svg></span>
+          <span class="e-title">No repo connected yet</span>
+          <span class="e-sub">Connect a repo and pipenzo reads its open issues into Queued. Nothing starts on connect — every ticket still needs an explicit Implement, and nothing is ever pushed without you. No issue for the thing you have in mind? Describe it and pipenzo drafts one.</span>
+          <span class="e-act">
+            <button class="btn primary"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M104,64A32,32,0,1,0,64,95v66a32,32,0,1,0,16,0V95A32.06,32.06,0,0,0,104,64ZM56,64A16,16,0,1,1,72,80,16,16,0,0,1,56,64ZM88,192a16,16,0,1,1-16-16A16,16,0,0,1,88,192Zm120-31V110.63a23.85,23.85,0,0,0-7-17L163.31,56H192a8,8,0,0,0,0-16H144a8,8,0,0,0-8,8V96a8,8,0,0,0,16,0V67.31L189.66,105a8,8,0,0,1,2.34,5.66V161a32,32,0,1,0,16,0Zm-8,47a16,16,0,1,1,16-16A16,16,0,0,1,200,208Z"/></svg>Connect a repo</button>
+            <button class="btn"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M176,232a8,8,0,0,1-8,8H88a8,8,0,0,1,0-16h80A8,8,0,0,1,176,232Zm40-128a87.55,87.55,0,0,1-33.64,69.21A16.24,16.24,0,0,0,176,186v6a16,16,0,0,1-16,16H96a16,16,0,0,1-16-16v-6a16,16,0,0,0-6.23-12.66A87.59,87.59,0,0,1,40,104.49C39.74,56.83,78.26,17.14,125.88,16A88,88,0,0,1,216,104Zm-16,0a72,72,0,0,0-73.74-72c-39,.92-70.47,33.39-70.26,72.39a71.65,71.65,0,0,0,27.64,56.3A32,32,0,0,1,96,186v6h64v-6a32.15,32.15,0,0,1,12.47-25.35A71.65,71.65,0,0,0,200,104Zm-16.11-9.34a57.6,57.6,0,0,0-46.56-46.55,8,8,0,0,0-2.66,15.78c16.57,2.79,30.63,16.85,33.44,33.45A8,8,0,0,0,176,104a9,9,0,0,0,1.35-.11A8,8,0,0,0,183.89,94.66Z"/></svg>New from idea</button>
+          </span>
+        </div>
+      </div>
+      <span class="lbl" style="margin-top:16px;">empty · per lane — a connected repo whose lanes have run dry. The header count stays, so zero reads as a number rather than a missing section</span>
+      <div style="background:var(--bg);border-radius:var(--r);padding:12px 12px 16px;">
+        <div class="sk-board">
+          <sc-for list="{{emptyLanes}}" as="l" hint-placeholder-count="4">
+            <div class="sk-lane">
+              <div class="sk-row" style="height:40px;padding:0 12px;">
+                <span class="label" style="display:flex;align-items:center;gap:8px;color:var(--text-soft);"><span style="width:8px;height:8px;border-radius:50%;display:inline-block;background:{{l.dot}};"></span>{{l.name}}</span>
+                <span class="mono" style="font-size:12px;color:var(--text-faint);line-height:1;">0</span>
+              </div>
+              <div class="empty lane">
+                <span class="e-title">{{l.title}}</span>
+                <span class="e-sub">{{l.sub}}</span>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      <div class="anatomy">
+        <div><b>1 · no icon in a lane</b>four illustrated empties side by side is noise; the hero empty gets the one icon</div>
+        <div><b>2 · says why, not sorry</b>an empty Needs-human lane is the goal state, and reads as one</div>
+        <div><b>3 · one way forward</b>only the first-run empty carries buttons — a dry lane is not a call to action</div>
+        <div><b>4 · counts stay</b><span class="mono">0</span> in the lane header, so an empty lane is never mistaken for a lane that failed to load</div>
       </div>
     </div>
   </section>
@@ -1048,8 +1313,23 @@ gh pr create --fill --base main</div>
 <script data-dc-script>
 class Component extends DCLogic {
   renderVals() {
+    // The four lanes are fixed by the label set, so a cold start renders their names and dots immediately and only the cards are skeletons.
+    const LANES = [
+      { name: 'Queued', dot: 'var(--text-faint)', w: 58 },
+      { name: 'Working', dot: 'var(--warn)', w: 74 },
+      { name: 'Ready for review', dot: 'var(--ok)', w: 46 },
+      { name: 'Needs human', dot: 'var(--danger)', w: 66 },
+    ];
+    const EMPTY = [
+      { title: 'Nothing queued', sub: 'Open issues without a pipenzo label land here.' },
+      { title: 'Nothing running', sub: '2 slots free. Press Implement on a queued ticket.' },
+      { title: 'Nothing to review', sub: 'Branches waiting on your push gate appear here.' },
+      { title: 'Nothing needs you', sub: 'The one lane that is good to find empty.' },
+    ];
     return {
       spaces: [2, 4, 6, 8, 10, 12, 16, 20, 24, 32, 40].map((px) => ({ px })),
+      skLanes: LANES,
+      emptyLanes: LANES.map((l, i) => ({ ...l, ...EMPTY[i] })),
     };
   }
 }

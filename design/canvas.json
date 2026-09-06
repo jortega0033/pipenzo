@@ -1,6 +1,6 @@
 {
   "artboards": [
-    { "file": "Foundations.dc.html", "x": 0, "y": 0, "w": 1040, "h": 8900 },
+    { "file": "Foundations.dc.html", "x": 0, "y": 0, "w": 1040, "h": 11800 },
     { "file": "Main.dc.html", "x": 1160, "y": 0, "w": 1360, "h": 900, "is_interactive": true },
     { "file": "TicketDetail.dc.html", "x": 2600, "y": 0, "w": 1320, "h": 900, "is_interactive": true },
     { "file": "ApprovalPrompt.dc.html", "x": 4000, "y": 0, "w": 480, "h": 660, "is_interactive": true },
@@ -10,8 +10,9 @@
   "annotations": [
     { "id": "flow-note", "x": 1160, "y": -120, "w": 320, "text": "Flow: Board (kanban + New from idea) -> live progress -> approve the publish -> diff review -> Push & open PR.\nSimpleMode is the tray-badge ticket drafted in New from idea, seen by the non-developer who filed it — deliberately no sidebar." },
     { "id": "risk-note", "x": 4000, "y": -120, "w": 480, "text": "ApprovalPrompt = the HIGH-risk treatment only (publish gate; always an OS notification, mandatory reject reason, no Undo, no auto-allow).\nMEDIUM is the compact inline card and LOW the passive line — both in TicketDetail's stream. The cumulative-risk strip in TicketDetail's rail promotes the next MEDIUM to HIGH." },
-    { "id": "ticket-note", "x": 2600, "y": -120, "w": 320, "text": "TicketDetail: use the \"Needs you\" switch to see #94 (in flight, click the stepper for phases), #108 pipenzo:awaiting-stack-approval, #113 pipenzo:needs-pre-scoping, #85 ci-failed." },
-    { "id": "board-note", "x": 1500, "y": -120, "w": 320, "text": "Board: Working shows bounded concurrency (2 of 2 running, a held card with the file overlap, an approved stack as a container card). Both diff-gate outcomes land in Needs human. ci-failed sits in Ready for review because the fix re-enters the push gate." }
+    { "id": "ticket-note", "x": 2600, "y": -120, "w": 320, "text": "TicketDetail: use the \"Needs you\" switch to see #94 (in flight, click the stepper for phases), #108 pipenzo:awaiting-stack-approval, #113 pipenzo:needs-pre-scoping, #85 ci-failed, #87 with its activity stream still loading (id, stepper and rail come from the ticket store and render at once; only the stream replay is late)." },
+    { "id": "board-note", "x": 1500, "y": -120, "w": 320, "text": "Board: Working shows bounded concurrency (2 of 2 running, a held card with the file overlap, an approved stack as a container card). Both diff-gate outcomes land in Needs human, next to #92 pipenzo:interrupted — the crash-recovery state, with last phase, worktree path and resume / discard. The sync pill's refresh steps through its three renderings: synced, syncing, syncing slowly." },
+    { "id": "states-note", "x": 0, "y": -160, "w": 400, "text": "Foundations: \"Loading, error and empty\" is the section that covers what every other artboard skips — skeletons (one .sk shimmer primitive, flattened by the existing reduced-motion rule), pending buttons, the retrying vs blocking banner split, pipenzo:interrupted in both its resumable and non-resumable forms, the refused worktree cleanup, and the first-run and per-lane empties." }
   ],
   "launch": { "view": "canvas" }
 }
