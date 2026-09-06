@@ -3324,6 +3324,19 @@
     color: var(--color-text-soft);
   }
 
+  /* Non-passed gate tones (issue #109) -- `.v-ic` alone stays the canvas's original green
+     check well; a real ReviewReportV1 can carry a skipped or failed deterministic gate, which
+     must never render with that same green check. */
+  .v-row .v-ic.warn {
+    background: var(--color-warn);
+    color: var(--color-warn-fg);
+  }
+
+  .v-row .v-ic.danger {
+    background: var(--color-danger);
+    color: var(--color-danger-fg);
+  }
+
   .v-row .m {
     font-family: var(--font-mono);
     font-size: 12px;

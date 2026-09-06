@@ -37,4 +37,30 @@ describe('VerificationBlock', () => {
     expect(screen.getByText('self-reported — not verified by a human')).toBeInTheDocument();
     expect(container.querySelectorAll('.v-ic.self')).toHaveLength(2);
   });
+
+  it('defaults to the plain green check well when no tone is given', () => {
+    const { container } = render(<VRow>Build passed</VRow>);
+    expect(container.querySelector('.v-ic')?.className).toBe('v-ic');
+  });
+
+  it('renders warn and danger tones for a gate that was skipped or failed, never the green check well', () => {
+    const { container } = render(
+      <>
+        <VRow tone="warn">gitleaks skipped -- not installed</VRow>
+        <VRow tone="danger">Build failed</VRow>
+      </>,
+    );
+    const rows = container.querySelectorAll('.v-ic');
+    expect(rows[0]?.className).toBe('v-ic warn');
+    expect(rows[1]?.className).toBe('v-ic danger');
+  });
+
+  it('renders the self-reported grey check even when a tone is also given -- self always wins', () => {
+    const { container } = render(
+      <VRow self tone="danger">
+        Self-reported claim
+      </VRow>,
+    );
+    expect(container.querySelector('.v-ic')?.className).toBe('v-ic self');
+  });
 });
