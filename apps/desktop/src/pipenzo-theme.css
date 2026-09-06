@@ -207,6 +207,7 @@
   .cmdk:focus-visible,
   .notice .n-x:focus-visible,
   .notice .n-act span:focus-visible,
+  .notice .n-act button:focus-visible,
   .pc-toggle:focus-visible,
   .ai-undo:focus-visible,
   .kid .ext:focus-visible,
@@ -1462,6 +1463,146 @@
 
   .banner.blocking .b-count {
     color: var(--color-danger-text);
+  }
+
+  /* Inline notice — ported verbatim from Foundations.dc.html's "Notices" section. The in-context,
+     dismissible altitude: lives inside a card, dialog or form (Connect, Models, Settings), not
+     under the header like Banner. Same four tones as Banner (color in the 20px .n-ic circle
+     only), plus an inline-link action row (.n-act) for cases like "See proposed split" /
+     "Reject the split" that need two short text actions rather than one pill button. `.n-act`'s
+     items are real <button>s rather than the canvas's plain `<span>`s -- CSS below extends the
+     shared `.notice .n-act span` rule to match `button` too so both stay visually identical, but
+     a keyboard/screen-reader user gets a real interactive element instead of a span with a
+     cursor: pointer. */
+  .notice {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px 12px 12px 16px;
+    border-radius: var(--radius-pipenzo);
+    background: var(--color-surface-3);
+    font-size: 13px;
+    color: var(--color-text-soft);
+    line-height: 1.45;
+  }
+
+  .notice .n-ic {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--color-surface-4);
+    color: var(--color-text);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  .notice.ok .n-ic {
+    background: var(--color-ok);
+    color: var(--color-ok-fg);
+  }
+
+  .notice.warn .n-ic {
+    background: var(--color-warn);
+    color: var(--color-warn-fg);
+  }
+
+  .notice.danger .n-ic {
+    background: var(--color-danger);
+    color: var(--color-danger-fg);
+  }
+
+  .notice .n-body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .notice .n-title {
+    font-weight: 700;
+    color: var(--color-text);
+    line-height: 1.3;
+  }
+
+  .notice .n-act {
+    display: flex;
+    gap: 12px;
+    margin-top: 6px;
+  }
+
+  .notice .n-act span,
+  .notice .n-act button {
+    font-weight: 700;
+    color: var(--color-text);
+    cursor: pointer;
+    display: inline-flex;
+    min-height: 24px;
+    align-items: center;
+    border: none;
+    background: transparent;
+    padding: 0;
+    font-family: var(--font-sans);
+    font-size: 13px;
+  }
+
+  .notice .n-x {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: none;
+    background: transparent;
+    color: var(--color-text-faint);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    margin: -2px -2px 0 0;
+    transition:
+      background-color var(--ease-pipenzo),
+      color var(--ease-pipenzo);
+  }
+
+  .notice .n-x:hover {
+    background: var(--color-surface-4);
+    color: var(--color-text);
+  }
+
+  /* Quiet notice: an outcome worth recording that needs no action now, e.g. a refused worktree
+     cleanup -- smaller, no filled icon background, and no bold title. */
+  .notice.quiet {
+    background: var(--color-surface-2);
+    padding: 10px 12px 10px 14px;
+    font-size: 12px;
+  }
+
+  .notice.quiet .n-ic {
+    width: 16px;
+    height: 16px;
+    background: transparent;
+    color: var(--color-text-faint);
+    margin-top: 1px;
+  }
+
+  .notice.quiet .n-title {
+    font-size: 12px;
+    color: var(--color-text-soft);
+  }
+
+  .notice.quiet .n-act {
+    margin-top: 4px;
+    gap: 10px;
+  }
+
+  .notice.quiet .n-act span,
+  .notice.quiet .n-act button {
+    font-size: 12px;
+    color: var(--color-text-soft);
+    font-weight: 700;
   }
 }
 
