@@ -43,7 +43,7 @@ This gate runs at Refine, before any code is written.
 ## Feature plan (from the research report)
 
 **MVP**
-- Kanban home: Queued / Working / Ready-for-review / Needs-human lanes, backed by GitHub labels as the state model (survives app restart, no separate source of truth)
+- Kanban home: Queued / Working / Ready-for-review / Needs-human lanes, backed by GitHub labels as the state model (survives app restart, no separate source of truth). **Cross-device/cross-teammate sync is polling, not push** — see *Team usage* below.
 - Implement dialog with optional prompt + branch override — never a bare button
 - Plan phase / "New from idea" conversational issue creation
 - Agent-state enum with an OS notification exactly on "awaiting input" — which now means a HIGH-risk approval, a refusal, or a stack awaiting sign-off, never a routine MEDIUM card that resolves in a few seconds
@@ -59,11 +59,14 @@ This gate runs at Refine, before any code is written.
 - Park after 3 consecutive failures → the Needs-human lane
 - Diff-size gate at refine, with refusal and stack approval as real ticket states (see above)
 - Simple mode by default, expert mode persisted per user
+- **Worktree cleanup on every terminal state** (PR merged, PR closed without merge, ticket abandoned, stack child superseded) — calls agentdock's existing `worktrees.cleanup(id)` / `POST /v2/worktrees/cleanup`, already built and already exposed, just never wired to anything Pipenzo-specific yet. One worktree per ticket without a teardown path is an unbounded disk leak by construction; this closes it from day one rather than as later polish.
 
 **Near-term post-MVP** — committed, with the trigger that unblocks each
 - **Bounded concurrency** *(trigger: build step 5, the queue)* — a configurable execution limit, default 2, hard cap 4, one worktree per ticket. Two tickets whose Refine-phase "files likely touched" lists overlap are serialised rather than run together, which is a decomposition Pipenzo already has for free and Devin's sandbox model doesn't.
 - **`gh stack` publishing** *(trigger: after the publish service ships, build step 4)* — upgrades approved stacks from sequential PRs to real GitHub-native stacked PRs
 - **CI-failure auto-fix** *(trigger: after the publish gate and one real PR-open flow work end to end)* — a failing check moves the ticket to a `ci-failed` state; the fix runs as a `session.fork` of the original implement session to keep spec lineage; one attempt only, only for failures the deterministic gate set can classify (build/typecheck/test/lint), everything else parks to Needs-human. The fix commit goes back through the same human push gate — unlike Jules, it is never resubmitted automatically
+- **GitLab as a second code host** *(trigger: after the GitHub loop — Refine through Review through publish — is proven end to end)* — GitLab's issues/MRs/labels map closely enough onto Pipenzo's existing GitHub model (issue → label-state → MR in place of PR) that this is a second adapter behind the same `GitHubClient`-shaped interface, not a redesign. OAuth device flow is analogous. No `gh stack`-equivalent exists yet, so GitLab tickets fall back to the sequential-PR stack path permanently, not just until a native feature ships.
+- **Jira as a ticket source, not a second code host** *(trigger: same as GitLab)* — Jira has no git hosting of its own; teams that file work in Jira still ship code through GitHub or GitLab. So this is a narrower adapter than GitLab: read/write Jira issue status to mirror Pipenzo's label-state model, keep the actual branch/PR/MR flow on whichever code host the repo already uses. Scoping it as "GitHub or GitLab, optionally mirrored to Jira" instead of "replace GitHub with Jira" avoids inventing a git-hosting story Jira doesn't have.
 - Reviewer-grade diff layout with a findings sidebar by severity
 - Plan-review gate before implementation starts
 - Steer mid-run; Stop preserves commits
@@ -90,6 +93,16 @@ Nine items came out of it. All nine are now decided and folded into the feature 
 
 **The Kiro reconciliation is a docs fix, and this is it.** Pipenzo does not claim EARS-notation spec-driven refinement as a differentiator — Kiro has shipped requirements/design/tasks specs with property-based verification as a GA AWS product since May 2026, and the Refine step is a subset of that, not an advance on it. What is actually additive here is narrower and worth stating plainly: the refine subagent is **read-only by construction** (`Read`/`Grep`/`Glob`, no write tool exists in its definition, so it cannot start implementing while it is still deciding whether the ticket is even sane), and it emits a **numeric diff-size estimate that a refusal policy is enforced against**. Those two things, not the notation.
 
+## Team usage — three questions, resolved
+
+Pipenzo is one desktop app per developer, not a shared server — these three came up as "what happens when more than one person touches the same repo" and needed real answers before the plan could call itself team-ready.
+
+**Does moving a ticket sync across teammates' boards?** Eventually, not instantly. The state model is GitHub labels — a real shared resource on GitHub's servers, not a local file — so if Jake moves `ticket-123` from Queued to Working, that's a label change on the actual GitHub issue. John's Pipenzo instance sees it the next time it polls the GitHub API for that repo's issues, not immediately: there's no daemon-to-daemon channel between two people's desktop apps, and building a push path (webhooks into a listener, or a hosted relay) is server infrastructure this single-machine, no-backend design deliberately doesn't have. This is eventual consistency on a shared source of truth, not real-time collaboration — closer to two people refreshing the same GitHub issues page than to Figma-style live cursors. Worth being explicit about since it reads like a gap only if you expected the other thing.
+
+**What happens on disk with two tickets running at once?** Always two fully separate worktrees and branches — never one branch shared by two tickets, which would defeat the isolation the whole design depends on. `ticket-123` and `ticket-456` running together means branches `issue-123` and `issue-456`, each in its own worktree under agentdock's existing `OwnedWorktreeManager`, exactly as the Working-lane mockup already shows. The gap this question actually surfaced was cleanup: one worktree per ticket, running for months, with no teardown, is a disk leak by construction. agentdock already has the fix built — `worktrees.cleanup(id)` behind `POST /v2/worktrees/cleanup` — it just wasn't wired to any Pipenzo-specific lifecycle event yet. It is now, in the MVP feature list above: fired on every ticket terminal state (PR merged, PR closed unmerged, ticket abandoned, a stack child superseded by a rebase).
+
+**What about Jira and GitLab?** MVP stays GitHub-only, on purpose — the stack decisions already committed (`@octokit/core`, `gh stack`, device-flow OAuth, labels-as-state) are GitHub-native by design, and generalizing the core loop before it's proven once would dilute all of them at once. Both are real near-term additions, not permanently declined, and they're different shapes of addition: GitLab is a second **code host** (issues/MRs/labels are close enough to GitHub's model to sit behind the same client interface), Jira is a **ticket source** layered on top of whichever code host the repo already uses, since Jira has no git hosting of its own to replace GitHub or GitLab with. See the Near-term post-MVP list above for both.
+
 ## Stack
 
 | Concern | Choice | Why |
@@ -111,7 +124,7 @@ Full rationale for each choice is in the research report.
 
 A clickable Claude Design canvas covers the product's key screens: kanban home (sidebar + main-content admin layout), live ticket progress with phase stepper and model-routing/budget rail, inline approval, a reviewer-grade diff view, and a plain-language "Simple mode" view for non-developer users. Dark-mode only for now — light mode is a stated roadmap item, not built yet.
 
-The canvas was seeded before the decisions above and does not yet show risk grading, pre-commitment pairs, the two-zone evidence block, the refusal/stack-approval states, or screenshot evidence. Updating it is the next pass; the feature plan above is the brief for it.
+The canvas has been updated to match the decisions above — risk grading, pre-commitment pairs, the two-zone evidence block, the refusal/stack-approval states, and screenshot evidence are all in it, plus a WCAG AA contrast/focus-state pass. It does not yet reflect the three team-usage decisions in the section above (worktree cleanup and multi-provider support have no UI surface of their own to add yet; the sync behavior is a backend property, not a screen).
 
 - [`design/pipenzo-prototype.html`](design/pipenzo-prototype.html) — the full seeded canvas, open directly in a browser
 - [`design/artboards/`](design/artboards/) — the individual screens as editable `.dc.html` source (`Foundations` = design-system/primitives reference; `Main`, `TicketDetail`, `ApprovalPrompt`, `DiffReview`, `SimpleMode` = product screens)
@@ -126,7 +139,7 @@ The canvas was seeded before the decisions above and does not yet show risk grad
 3. Ticket store + phase machine — JSON-file persistence, crash recovery, phase-change SSE, a real ticket detail view.
 4. GitHub & the size gate, properly — device-flow OAuth in Electron main, token vault, real issue list, the diff-size/split gate enforced at refine, a test asserting the token never reaches a provider subprocess.
 5. Queue + dual-audience mode — dnd-kit kanban, simple/expert toggle with a persisted default, one worktree per ticket, and bounded concurrency (default 2, cap 4) with overlapping-file tickets serialised.
-6. Polish — native "awaiting approval" notification on HIGH-risk cards only, rejection loop that forks implementation again, dirty-worktree discard path, an audit entry for every publish and review-gate result.
+6. Polish — native "awaiting approval" notification on HIGH-risk cards only, rejection loop that forks implementation again, dirty-worktree discard path, terminal-state worktree cleanup wired to agentdock's existing `worktrees.cleanup(id)`, an audit entry for every publish and review-gate result.
 7. First post-MVP milestone — `gh stack` publishing for approved stacks, then CI-failure auto-fix routed back through the same human push gate.
 
 **Biggest risk called out in the research:** the temptation in step 2 to let the agent shell out to `gh` directly. Publishing stays outside the agent loop from the first commit — retrofitting that boundary later breaks the safety property the whole design depends on.
