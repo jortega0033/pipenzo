@@ -1,6 +1,18 @@
 @import 'tailwindcss';
 
 /*
+ * Self-hosted IBM Plex Sans/Mono, weights 400 and 700 only (matching Foundations.dc.html's
+ * "Two weights only: 400 and 700" type scale note). Self-hosted rather than the Google Fonts
+ * <link> the design canvas uses in its <helmet> preview -- this is a packaged Electron app with
+ * a `default-src 'self'` CSP and no guaranteed network access at runtime, so the font files are
+ * bundled as local assets via @fontsource instead of fetched from fonts.googleapis.com.
+ */
+@import '@fontsource/ibm-plex-sans/400.css';
+@import '@fontsource/ibm-plex-sans/700.css';
+@import '@fontsource/ibm-plex-mono/400.css';
+@import '@fontsource/ibm-plex-mono/700.css';
+
+/*
  * Pipenzo design tokens — dark-only, matching design/artboards/Foundations.dc.html's
  * shared base block exactly. Do not hand-tune values here without also updating the
  * canvas (or vice versa) — they're required to agree; see docs/agentdock-upstream-README.md
@@ -56,6 +68,64 @@
   --spacing-0\.5: 2px;
   --spacing-1\.5: 6px;
   --spacing-2\.5: 10px;
+
+  /* Fonts — IBM Plex Sans for UI, IBM Plex Mono for code/ids/data. Two weights only: 400
+     and 700 (see the @fontsource imports above). Overrides Tailwind's default font-sans/
+     font-mono stacks rather than adding new token names, so plain `font-sans`/`font-mono`
+     utilities already match the canvas. */
+  --font-sans: 'IBM Plex Sans', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace;
+
+  /* Type scale — 14 named steps, display down to mono-xs and mono-stat, matching
+     Foundations.dc.html's "Type scale" section exactly (size / line-height / letter-spacing).
+     Weight is not part of the token (still only 400 or 700 -- apply font-normal/font-bold
+     alongside the text-* utility) except where the canvas ties a step to one specific weight
+     (label is always caps + 700, applied via the .label utility class below instead of a bare
+     text-label class, since text-transform/letter-spacing-as-tracking-wide aren't part of the
+     Tailwind font-size token shape). */
+  --text-display: 28px;
+  --text-display--line-height: 1.15;
+  --text-display--letter-spacing: -0.02em;
+
+  --text-h1: 24px;
+  --text-h1--line-height: 1.2;
+  --text-h1--letter-spacing: -0.02em;
+
+  --text-page-title: 20px;
+  --text-page-title--line-height: 1.25;
+  --text-page-title--letter-spacing: -0.01em;
+
+  --text-dialog-title: 16px;
+  --text-dialog-title--line-height: 1.3;
+
+  --text-card-title: 14px;
+  --text-card-title--line-height: 1.35;
+
+  --text-body: 14px;
+  --text-body--line-height: 1.45;
+
+  --text-body-sm: 13px;
+  --text-body-sm--line-height: 1.45;
+
+  --text-caption: 12px;
+  --text-caption--line-height: 1.4;
+
+  --text-label: 11px;
+  --text-label--line-height: 1;
+  --text-label--letter-spacing: 0.08em;
+
+  --text-lead: 16px;
+  --text-lead--line-height: 1.6;
+
+  --text-mono: 12px;
+  --text-mono--line-height: 1.4;
+
+  --text-mono-xs: 11px;
+  --text-mono-xs--line-height: 1.4;
+
+  --text-mono-stat: 24px;
+  --text-mono-stat--line-height: 1;
+  --text-mono-stat--letter-spacing: -0.02em;
 }
 
 @layer base {
@@ -67,7 +137,7 @@
     margin: 0;
     background: var(--color-bg);
     color: var(--color-text);
-    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-family: var(--font-sans);
     font-size: 14px;
     line-height: 1.45;
     -webkit-font-smoothing: antialiased;
@@ -75,6 +145,44 @@
 
   * {
     box-sizing: border-box;
+  }
+}
+
+@layer components {
+  /* .mono: the canvas's own class name for "switch to the mono face", kept as-is (rather than
+     only exposing Tailwind's generated font-mono utility) so markup lifted straight from a
+     .dc.html artboard -- class="mono" on an id, path or timing value -- works unmodified. */
+  .mono {
+    font-family: var(--font-mono);
+  }
+
+  /* .label: 11px caps eyebrow/status text -- text-label alone only sets size/line-height/
+     tracking, so the weight and case live here instead of being repeated at every call site. */
+  .label {
+    font-size: var(--text-label);
+    line-height: var(--text-label--line-height);
+    letter-spacing: var(--text-label--letter-spacing);
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--color-text-faint);
+  }
+
+  /* .codeblock: the mono/12/20px-line treatment for a fenced command block, with .k marking a
+     leading keyword (git, gh, ...) in the accent color -- see the "code block" type sample. */
+  .codeblock {
+    margin: 0;
+    padding: 12px 16px;
+    border-radius: var(--radius-pipenzo-sm);
+    background: var(--color-surface-3);
+    color: var(--color-text-soft);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 20px;
+    white-space: pre;
+  }
+
+  .codeblock .k {
+    color: var(--color-accent);
   }
 }
 
