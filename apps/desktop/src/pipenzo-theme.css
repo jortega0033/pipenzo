@@ -1968,6 +1968,50 @@
   .card.held:hover {
     background: var(--color-surface);
   }
+
+  /* Card note blocks — ported verbatim from Foundations.dc.html's "Cards" and "Bounded
+     concurrency" sections. Same anatomy, different tone: a fail-note's icon is danger-text (a
+     ticket parked after repeated failures), a wait-note's is warn (held by a bounded-concurrency
+     file overlap) with a bold lead-in for the naming clause. See CardNote.tsx. */
+  .fail-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--color-text-soft);
+    line-height: 1.4;
+    background: var(--color-surface-2);
+    padding: 8px 10px;
+    border-radius: var(--radius-pipenzo-sm);
+  }
+
+  .fail-note .icon-sm {
+    color: var(--color-danger-text);
+    margin-top: 1px;
+  }
+
+  .wait-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--color-text-soft);
+    line-height: 1.4;
+    background: var(--color-surface-2);
+    padding: 8px 10px;
+    border-radius: var(--radius-pipenzo-sm);
+  }
+
+  .wait-note .icon-sm {
+    color: var(--color-warn);
+    margin-top: 1px;
+    flex-shrink: 0;
+  }
+
+  .wait-note b {
+    color: var(--color-text);
+    font-weight: 700;
+  }
 }
 
 @keyframes sk-shimmer {
