@@ -2841,6 +2841,65 @@
     height: 28px;
     background: var(--color-surface-4);
   }
+
+  /* Stat card — ported verbatim from Foundations.dc.html's stat-grid sample. See StatCard.tsx. */
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 2px;
+  }
+
+  .stat {
+    background: var(--color-surface);
+    border-radius: var(--radius-pipenzo);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .stat-k {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--color-text-soft);
+    line-height: 1;
+  }
+
+  .stat-k .icon {
+    color: var(--color-text-faint);
+  }
+
+  .stat-v {
+    font-family: var(--font-mono);
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1;
+  }
+
+  .stat-d {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--color-text-faint);
+    line-height: 1;
+  }
+
+  .stat-d.up {
+    color: var(--color-ok);
+  }
+
+  .stat-d.down {
+    color: var(--color-danger);
+  }
+
+  .stat .bar {
+    margin-top: 2px;
+  }
 }
 
 @keyframes pulse-warn {
