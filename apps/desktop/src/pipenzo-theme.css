@@ -270,6 +270,55 @@
     animation: spin 0.9s linear infinite;
   }
 
+  /* Composed skeleton shapes — ported verbatim from Foundations.dc.html's "Loading, error and
+     empty" section. Each one matches the real padding/gaps of the component it stands in for
+     exactly (16px card padding, 12px card gaps, the 28px activity-icon well, ...) so nothing
+     jumps in layout once real data replaces it -- see Skeleton.tsx's SkeletonCard/SkeletonEvent/
+     SkeletonBoard, which compose these classes with the base .sk primitive rather than
+     reinventing per-shape placeholder markup. */
+  .sk-card {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px;
+    border-radius: var(--radius-pipenzo);
+    background: var(--color-surface);
+  }
+
+  .sk-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .sk-evt {
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr);
+    gap: 12px;
+    padding-bottom: 20px;
+  }
+
+  .sk-evt-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-top: 6px;
+  }
+
+  .sk-board {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .sk-lane {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+  }
+
   /* Button family — ported verbatim from Foundations.dc.html's "Primitives" section. .btn is the
      pill button (default/primary/ghost/danger x sm/default/lg); .icon-btn is the circular
      icon-only button (default/ghost, one size). React owns variant/size/pending selection
