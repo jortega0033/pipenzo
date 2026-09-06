@@ -3324,6 +3324,201 @@
     background: var(--color-surface);
     box-shadow: inset 0 0 0 2px var(--color-surface-2);
   }
+
+  /* Screenshot thumbnail, provenance and lightbox — ported verbatim from Foundations.dc.html's
+     screenshot-evidence sample and DiffReview.dc.html's shot-open lightbox state. See
+     Screenshot.tsx. */
+  .shots {
+    display: flex;
+    gap: 8px;
+  }
+
+  .shot {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    cursor: pointer;
+  }
+
+  .shot-frame {
+    border-radius: var(--radius-pipenzo-sm);
+    overflow: hidden;
+    background: var(--color-surface-4);
+    aspect-ratio: 16 / 10;
+    display: flex;
+    flex-direction: column;
+    transition: filter var(--ease-pipenzo);
+  }
+
+  .shot:hover .shot-frame {
+    filter: brightness(1.15);
+  }
+
+  .shot-bar {
+    height: 10px;
+    background: var(--color-surface-3);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 4px;
+    flex-shrink: 0;
+  }
+
+  .shot-bar i {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--color-text-faint);
+    display: block;
+  }
+
+  .shot-bar .url {
+    flex: 1;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--color-surface-4);
+    margin-left: 3px;
+  }
+
+  .shot-body {
+    flex: 1;
+    position: relative;
+    background: var(--color-surface-2);
+    overflow: hidden;
+  }
+
+  .shot-body img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .ph {
+    position: absolute;
+    background: var(--color-surface-3);
+    border-radius: 2px;
+  }
+
+  .ph.hi {
+    background: var(--color-surface-4);
+  }
+
+  .ph.acc {
+    background: var(--color-accent);
+  }
+
+  .ph.bad {
+    background: var(--color-danger);
+  }
+
+  .ph.txt {
+    background: var(--color-text-faint);
+    opacity: 0.85;
+  }
+
+  .shot-cap {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--color-text-faint);
+    line-height: 1;
+  }
+
+  .shot-cap b {
+    color: var(--color-text-soft);
+    font-weight: 700;
+    font-family: var(--font-sans);
+  }
+
+  .shot.lg {
+    cursor: default;
+  }
+
+  .shot.lg .shot-frame {
+    border-radius: var(--radius-pipenzo);
+  }
+
+  .shot.lg .shot-bar {
+    height: 20px;
+    padding: 0 8px;
+    gap: 6px;
+  }
+
+  .shot.lg .shot-bar i {
+    width: 8px;
+    height: 8px;
+  }
+
+  .shot.lg .shot-bar .url {
+    height: 7px;
+    margin-left: 6px;
+  }
+
+  .shot.lg:hover .shot-frame {
+    filter: none;
+  }
+
+  .shot-prov {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--color-text-faint);
+    line-height: 1.3;
+  }
+
+  .shot-prov .icon-sm {
+    flex-shrink: 0;
+  }
+
+  .shot-prov .self-tag {
+    margin-left: 0;
+  }
+
+  .lightbox {
+    width: 760px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .lb-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .lb-title {
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.3;
+    text-wrap: balance;
+  }
+
+  .lb-sub {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--color-text-faint);
+    line-height: 1;
+    margin-top: 6px;
+  }
+
+  .lb-nav {
+    display: flex;
+    gap: 4px;
+  }
+
+  .lightbox .shot-frame {
+    box-shadow: var(--shadow-pipenzo);
+  }
 }
 
 @keyframes pulse-warn {
