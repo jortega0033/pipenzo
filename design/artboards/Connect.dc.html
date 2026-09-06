@@ -1,3 +1,14 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;700&family=IBM+Plex+Mono:wght@400;700&display=swap">
+<style>
   /* ===== pipenzo base (identical in every artboard) ===== */
   :root{
     --bg:#121212; --surface:#181818; --surface-2:#1f1f1f; --surface-3:#282828; --surface-4:#333333;
@@ -414,3 +425,171 @@
   .r-link:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:var(--r-sm);}
   .r-link.faint{color:var(--text-faint);font-weight:400;}
   .hide{display:none !important;}
+  /* ===== screen ===== */
+  /* pre-app: no sidebar and no workspace row, for the same reason SimpleMode has none — there is no workspace yet to put in them */
+  .app{height:980px;display:flex;flex-direction:column;}
+  .center{flex:1;display:flex;align-items:center;justify-content:center;padding:8px 48px 40px;background:var(--bg);overflow:hidden;}
+  .pane{width:620px;display:flex;flex-direction:column;gap:20px;}
+  .pane-title{font-size:28px;font-weight:700;margin:0;letter-spacing:-0.02em;line-height:1.15;text-wrap:balance;}
+  .pane-sub{margin:0;font-size:14px;color:var(--text-soft);line-height:1.6;text-wrap:pretty;}
+  .pane-sub b{color:var(--text);font-weight:700;}
+  /* the device code is the one thing on this screen the user has to read out to another surface, so it is the largest type in the canvas */
+  .code-box{background:var(--surface);border-radius:var(--r);padding:24px;display:flex;flex-direction:column;gap:14px;align-items:center;}
+  .code{font-family:'IBM Plex Mono',monospace;font-size:44px;font-weight:700;letter-spacing:0.18em;line-height:1;padding-left:0.18em;}
+  .code-meta{display:flex;align-items:center;gap:8px;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-faint);line-height:1;}
+  .code-meta .icon-sm{color:var(--text-faint);}
+  .pane-acts{display:flex;gap:8px;}
+  .why{display:flex;flex-direction:column;gap:2px;}
+  .why-row{display:grid;grid-template-columns:20px minmax(0,1fr);gap:12px;padding:10px 14px;background:var(--surface-2);font-size:12px;color:var(--text-soft);line-height:1.45;}
+  .why-row:first-child{border-radius:var(--r) var(--r) 0 0;}
+  .why-row:last-child{border-radius:0 0 var(--r) var(--r);}
+  .why-row .n{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);line-height:1.6;}
+  .why-row b{color:var(--text);font-weight:700;}
+  /* repo picker: the same rows as the workspace switcher, with the check on the leading edge because here they are chosen, not switched to */
+  .pick-search{display:flex;align-items:center;gap:10px;background:var(--surface);border-radius:var(--r);padding:8px;}
+  .pick-search > .icon{color:var(--text-faint);flex-shrink:0;margin-left:4px;}
+  .pick-search .field{background:var(--surface-3);}
+  .picker{display:flex;flex-direction:column;gap:2px;background:var(--surface);border-radius:var(--r);padding:6px;}
+  .picker .ws-menu-item{min-height:56px;margin:0;gap:12px;}
+  .picker .ws-menu-item .ws-ic{width:28px;height:28px;font-size:12px;}
+  .picker .ws-menu-item.on .ws-ic{background:var(--accent);color:var(--accent-fg);}
+  .picker .ws-menu-item.off{cursor:default;opacity:0.55;}
+  .picker .ws-menu-item.off:hover{background:transparent;}
+  .pick-note{font-size:11px;color:var(--text-faint);line-height:1.3;white-space:nowrap;flex-shrink:0;}
+  .sel-bar{display:flex;align-items:center;justify-content:space-between;gap:16px;}
+  .sel-count{font-size:13px;color:var(--text-soft);line-height:1.3;}
+  .sel-count b{color:var(--text);font-weight:700;}
+</style>
+</helmet>
+<div class="app">
+  <div class="topbar">
+    <div class="brand"><div class="logo-mark">p</div><span class="wordmark">pipenzo</span></div>
+    <div class="seg">
+      <button class="{{authCls}}" onClick="{{goAuth}}">1 · Device code</button>
+      <button class="{{reposCls}}" onClick="{{goRepos}}">2 · Choose repos</button>
+    </div>
+  </div>
+
+  <div class="center">
+    <sc-if value="{{isAuth}}" hint-placeholder-val="{{true}}">
+      <div class="pane">
+        <div>
+          <h1 class="pane-title">Connect GitHub</h1>
+          <p class="pane-sub" style="margin-top:8px;">Enter this code on github.com so Pipenzo can read issues, write its own <span class="mono">pipenzo:</span> labels and open pull requests as you. No browser is embedded and nothing redirects back into the app — the whole exchange happens on github.com, in your own browser.</p>
+        </div>
+
+        <div class="code-box">
+          <span class="label">Your device code</span>
+          <span class="code">WDJB-MJHT</span>
+          <span class="code-meta"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm64-88a8,8,0,0,1-8,8H128a8,8,0,0,1-8-8V72a8,8,0,0,1,16,0v48h48A8,8,0,0,1,192,128Z"/></svg>expires in 14:38 · single use</span>
+        </div>
+
+        <div class="pane-acts">
+          <button class="btn primary lg" onClick="{{goRepos}}"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z"/></svg>Verify at github.com/login/device</button>
+          <button class="btn lg"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M69.12,94.15,28.5,128l40.62,33.85a8,8,0,1,1-10.24,12.29l-48-40a8,8,0,0,1,0-12.29l48-40a8,8,0,0,1,10.24,12.3Zm176,27.7-48-40a8,8,0,1,0-10.24,12.3L227.5,128l-40.62,33.85a8,8,0,1,0,10.24,12.29l48-40a8,8,0,0,0,0-12.29ZM162.73,32.48a8,8,0,0,0-10.25,4.79l-64,176a8,8,0,0,0,4.79,10.26A8.14,8.14,0,0,0,96,224a8,8,0,0,0,7.52-5.27l64-176A8,8,0,0,0,162.73,32.48Z"/></svg>Copy code</button>
+        </div>
+
+        <span class="load-line"><svg class="icon-sm spin" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232,128a104,104,0,0,1-208,0c0-41,23.81-78.36,60.66-95.27a8,8,0,0,1,6.68,14.54C60.15,61.59,40,93.27,40,128a88,88,0,0,0,176,0c0-34.73-20.15-66.41-51.34-80.73a8,8,0,0,1,6.68-14.54C208.19,49.64,232,87,232,128Z"/></svg>Waiting for you to authorize on GitHub…</span>
+
+        <div class="notice">
+          <span class="n-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M208,40H48A16,16,0,0,0,32,56v56c0,52.72,25.52,84.67,46.93,102.19,23.06,18.86,46,25.26,47,25.53a8,8,0,0,0,4.2,0c1-.27,23.91-6.67,47-25.53C198.48,196.67,224,164.72,224,112V56A16,16,0,0,0,208,40Zm0,72c0,37.07-13.66,67.16-40.6,89.42A129.3,129.3,0,0,1,128,223.62a128.25,128.25,0,0,1-38.92-21.81C61.82,179.51,48,149.3,48,112l0-56,160,0ZM82.34,141.66a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35a8,8,0,0,1,11.32,11.32l-56,56a8,8,0,0,1-11.32,0Z"/></svg></span>
+          <span class="n-body">
+            <span class="n-title">Pipenzo asks for the <span class="mono">repo</span> scope on private repositories</span>
+            <span>Creating labels and opening pull requests both need write access, and there is no narrower scope that grants one without the other. The token can write to any repo you can write to — which is why it is written to the Electron-main token vault and never handed to a provider subprocess.</span>
+          </span>
+        </div>
+
+        <div class="why">
+          <div class="why-row"><span class="n">1</span><span><b>You authorize on github.com.</b> Pipenzo polls GitHub for completion — the device flow's own polling, unrelated to the 30–60s ticket sync everywhere else in the app.</span></div>
+          <div class="why-row"><span class="n">2</span><span><b>The token goes to the Electron-main token vault.</b> Publishing is a daemon-side service the agent cannot call, so no provider subprocess ever sees it.</span></div>
+          <div class="why-row"><span class="n">3</span><span><b>You pick the repos Pipenzo manages.</b> A token with no selected repo is not yet useful, so the app moves straight to repo selection rather than dropping you on an empty board.</span></div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{isRepos}}" hint-placeholder-val="{{false}}">
+      <div class="pane">
+        <div>
+          <h1 class="pane-title">Choose the repos Pipenzo manages</h1>
+          <p class="pane-sub" style="margin-top:8px;">Signed in as <b>jortega0033</b>. Pipenzo authenticates as <i>you</i>, not as an installed GitHub App — so there is no org-install step for an admin to grant, and it can reach exactly what your own account already can. Org-level access control stays GitHub's own permission model.</p>
+        </div>
+
+        <div class="pick-search">
+          <svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,218.34l-50.07-50.06a88.11,88.11,0,1,0-11.31,11.31l50.06,50.07a8,8,0,0,0,11.32-11.32ZM40,112a72,72,0,1,1,72,72A72.08,72.08,0,0,1,40,112Z"/></svg>
+          <input class="field" value="" placeholder="Filter 24 accessible repositories…" />
+        </div>
+
+        <div class="picker">
+          <sc-for list="{{repos}}" as="r" hint-placeholder-count="6">
+            <div class="ws-menu-item {{r.rowCls}}" tabindex="0" onClick="{{r.toggle}}">
+              <span class="check"><span class="box {{r.boxCls}}"><svg class="icon-sm {{r.checkHide}}" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span></span>
+              <span class="ws-ic">{{r.ic}}</span>
+              <span class="wm-text"><span class="wm-name">{{r.name}}</span><span class="wm-sub">{{r.sub}}</span></span>
+              <span class="pick-note">{{r.note}}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <div class="sel-bar">
+          <span class="sel-count"><b>{{selText}}</b> · 24 accessible</span>
+          <button class="btn primary lg"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg>{{ctaText}}</button>
+        </div>
+
+        <div class="notice quiet">
+          <span class="n-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm16-40a8,8,0,0,1-8,8,16,16,0,0,1-16-16V128a8,8,0,0,1,0-16,16,16,0,0,1,16,16v40A8,8,0,0,1,144,176ZM112,84a12,12,0,1,1,12,12A12,12,0,0,1,112,84Z"/></svg></span>
+          <span class="n-body">
+            <span class="n-title">This list, and only this list, is what the polling reconciler iterates over</span>
+            <span>Selecting a repo adds it to the workspace-level connected-repos list the sidebar's workspace switcher and its "N repos connected" line read from. Repos can be added or removed later from this same picker, reachable from the switcher and from Settings.</span>
+          </span>
+        </div>
+      </div>
+    </sc-if>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    // Two steps of one device flow, per README "Connecting GitHub": the code, then the picker.
+    // Verifying on github.com is what advances it in the product (Pipenzo polls for completion);
+    // here the verify button and the step switch both do it, so both states are reachable.
+    const step = this.state.step ?? 'auth';
+
+    // Repo selection reads GET /user/repos. Archived repos are listed but never selectable —
+    // no PR can be opened against one, and Pipenzo needs write access to manage a repo at all.
+    const SEL = this.state.sel ?? { ad: true, pz: true, ov: true, ab: false, df: false };
+    const REPOS = [
+      { key: 'ad', ic: 'ad', name: 'jortega0033/agentdock', sub: 'main · TypeScript · 12 open issues', note: 'updated 2h ago' },
+      { key: 'pz', ic: 'pz', name: 'jortega0033/pipenzo', sub: 'main · TypeScript · 3 open issues', note: 'updated 1d ago' },
+      { key: 'ov', ic: 'ov', name: 'jortega0033/open-vacancy-radar', sub: 'master · TypeScript · 5 open issues', note: 'updated 3d ago' },
+      { key: 'ab', ic: 'ab', name: 'jortega0033/agent-browser', sub: 'main · TypeScript · 1 open issue', note: 'updated 6d ago' },
+      { key: 'df', ic: 'df', name: 'jortega0033/dotfiles', sub: 'main · Shell · no open issues', note: 'updated 3w ago' },
+      { key: 'tb', ic: 'tb', name: 'jortega0033/tray-badge-poc', sub: 'archived on GitHub — no PR can be opened against it', note: 'read-only', off: true },
+    ].map((r) => {
+      const on = !r.off && !!SEL[r.key];
+      return {
+        ...r,
+        rowCls: r.off ? 'off' : (on ? 'on' : ''),
+        boxCls: on ? 'on' : '',
+        checkHide: on ? '' : 'hide',
+        toggle: r.off ? () => {} : () => this.setState({ sel: { ...SEL, [r.key]: !SEL[r.key] } }),
+      };
+    });
+    const count = REPOS.filter((r) => !r.off && SEL[r.key]).length;
+
+    return {
+      repos: REPOS,
+      isAuth: step === 'auth',
+      isRepos: step === 'repos',
+      authCls: step === 'auth' ? 'active' : '',
+      reposCls: step === 'repos' ? 'active' : '',
+      goAuth: () => this.setState({ step: 'auth' }),
+      goRepos: () => this.setState({ step: 'repos' }),
+      selText: count === 1 ? '1 repo selected' : count + ' repos selected',
+      ctaText: count === 1 ? 'Connect 1 repo' : 'Connect ' + count + ' repos',
+    };
+  }
+}
+</script>
+</body>
+</html>

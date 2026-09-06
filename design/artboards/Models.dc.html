@@ -1,3 +1,14 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;700&family=IBM+Plex+Mono:wght@400;700&display=swap">
+<style>
   /* ===== pipenzo base (identical in every artboard) ===== */
   :root{
     --bg:#121212; --surface:#181818; --surface-2:#1f1f1f; --surface-3:#282828; --surface-4:#333333;
@@ -414,3 +425,266 @@
   .r-link:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:var(--r-sm);}
   .r-link.faint{color:var(--text-faint);font-weight:400;}
   .hide{display:none !important;}
+  /* ===== screen ===== */
+  .shell{height:1880px;}
+  .page{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:28px;background:var(--bg);padding:0 24px 24px;}
+  section{display:flex;flex-direction:column;}
+  h2{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-faint);margin:0 0 8px;line-height:1;}
+  .sec-note{font-size:12px;color:var(--text-faint);margin:0 0 16px;line-height:1.5;max-width:104ch;text-wrap:pretty;}
+  .sec-note b{color:var(--text-soft);font-weight:700;}
+  /* form panels, as documented in Foundations */
+  .form-panel{background:var(--surface-2);border-radius:var(--r);padding:20px;display:flex;flex-direction:column;gap:16px;}
+  .form-panel .field{background:var(--surface-3);}
+  .fieldset{display:flex;flex-direction:column;gap:10px;}
+  .fieldset .f-lbl{margin-bottom:0;}
+  .two-col{display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:16px;align-items:start;}
+  .col{display:flex;flex-direction:column;gap:16px;}
+  /* routing table: a routing class is a phase of work, a model tier is a model's strength, and the kanban lanes are a third, unrelated thing */
+  .rt{display:flex;flex-direction:column;gap:2px;}
+  .rt-head,.rt-row{display:grid;grid-template-columns:186px 104px 196px minmax(0,1fr);gap:16px;align-items:center;padding:12px 16px;}
+  .rt-head{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-faint);line-height:1;padding-top:0;padding-bottom:2px;}
+  .rt-row{background:var(--surface-2);min-height:60px;}
+  .rt-row:first-of-type{border-radius:var(--r) var(--r) 0 0;}
+  .rt-row:last-of-type{border-radius:0 0 var(--r) var(--r);}
+  .rt-class{font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:700;line-height:1.3;}
+  .rt-why{font-size:12px;color:var(--text-soft);line-height:1.45;text-wrap:pretty;}
+  .rt-why b{color:var(--text);font-weight:700;}
+  .rt-row .select-wrap .field{height:32px;padding:6px 32px 6px 12px;font-size:12px;line-height:20px;background:var(--surface-3);}
+  /* a tier is not an agent state, so it never takes a filled status chip — mono pill, one weight, the word carries it */
+  .tier{display:inline-flex;align-items:center;height:20px;padding:0 10px;border-radius:var(--pill);background:var(--surface-3);font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-soft);line-height:1;white-space:nowrap;}
+  /* the one row that is not a control: the verifier tier is the gate, so it is rendered as a fixed value rather than a select you cannot use */
+  .rt-fixed{display:flex;align-items:center;height:32px;padding:6px 12px;border-radius:var(--r-sm);background:var(--surface);font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-soft);line-height:20px;}
+  .rt-lock{display:inline-flex;align-items:center;gap:6px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--warn);line-height:1.3;margin-top:6px;}
+  .rt-lock .icon-xs{flex-shrink:0;}
+  /* deterministic overrides: they force the frontier tier before the estimate is even consulted */
+  .ov{display:flex;flex-direction:column;gap:2px;}
+  .ov-row{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:var(--surface-3);font-size:12px;color:var(--text-soft);line-height:1.45;}
+  .ov-row:first-child{border-radius:var(--r-sm) var(--r-sm) 0 0;}
+  .ov-row:last-child{border-radius:0 0 var(--r-sm) var(--r-sm);}
+  .ov-row .icon-sm{color:var(--warn);flex-shrink:0;margin-top:1px;}
+  .ov-row b{color:var(--text);font-weight:700;}
+  /* gates: five switches you can read but not move. The word beside each one is what makes that legible without relying on the disabled look */
+  .gate-row{display:flex;align-items:flex-start;gap:12px;}
+  .gate-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;}
+  .gate-name{font-size:13px;line-height:1.3;}
+  .gate-sub{font-size:12px;color:var(--text-faint);line-height:1.45;text-wrap:pretty;}
+  .gate-sub b{color:var(--text);font-weight:700;}
+  .gate-ctl{display:flex;align-items:center;gap:8px;flex-shrink:0;padding-top:1px;}
+  .gate-lock{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);line-height:1;white-space:nowrap;}
+  .toggle.locked{cursor:default;}
+  .cap{display:flex;align-items:center;gap:6px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);line-height:1.4;margin-top:2px;}
+  .cap .icon-sm{flex-shrink:0;}
+  .cap.on .icon-sm{color:var(--ok);}
+</style>
+</helmet>
+<div class="shell">
+  <div class="sidebar">
+    <div class="brand"><div class="logo-mark">p</div><span class="wordmark">pipenzo</span></div>
+    <div class="ws" tabindex="0">
+      <span class="ws-ic">JO</span>
+      <span class="ws-text"><span class="ws-name">jortega0033/agentdock</span><span class="ws-sub">main · 3 repos connected</span></span>
+      <svg class="icon ws-caret" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M181.66,170.34a8,8,0,0,1,0,11.32l-48,48a8,8,0,0,1-11.32,0l-48-48a8,8,0,0,1,11.32-11.32L128,212.69l42.34-42.35A8,8,0,0,1,181.66,170.34Zm-96-84.68L128,43.31l42.34,42.35a8,8,0,0,0,11.32-11.32l-48-48a8,8,0,0,0-11.32,0l-48,48A8,8,0,0,0,85.66,85.66Z"/></svg>
+    </div>
+    <div class="nav-group">
+      <span class="nav-title">Work</span>
+      <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M216,48H40a8,8,0,0,0-8,8V208a16,16,0,0,0,16,16H88a16,16,0,0,0,16-16V160h48v16a16,16,0,0,0,16,16h40a16,16,0,0,0,16-16V56A8,8,0,0,0,216,48ZM88,208H48V128H88Zm0-96H48V64H88Zm64,32H104V64h48Zm56,32H168V128h40Zm0-64H168V64h40Z"/></svg><span class="nav-lbl">Board</span><span class="nav-count">13</span></div>
+      <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M188,88a27.75,27.75,0,0,0-12,2.71V60a28,28,0,0,0-41.36-24.6A28,28,0,0,0,80,44v6.71A27.75,27.75,0,0,0,68,48,28,28,0,0,0,40,76v76a88,88,0,0,0,176,0V116A28,28,0,0,0,188,88Zm12,64a72,72,0,0,1-144,0V76a12,12,0,0,1,24,0v44a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v68a8,8,0,0,0,16,0V60a12,12,0,0,1,24,0v68.67A48.08,48.08,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V116a12,12,0,0,1,24,0Z"/></svg><span class="nav-lbl">Needs me</span><span class="nav-count hot">6</span></div>
+      <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M136,80v43.47l36.12,21.67a8,8,0,0,1-8.24,13.72l-40-24A8,8,0,0,1,120,128V80a8,8,0,0,1,16,0Zm-8-48A95.44,95.44,0,0,0,60.08,60.15C52.81,67.51,46.35,74.59,40,82V64a8,8,0,0,0-16,0v40a8,8,0,0,0,8,8H72a8,8,0,0,0,0-16H49c7.15-8.42,14.27-16.35,22.39-24.57a80,80,0,1,1,1.66,114.75,8,8,0,1,0-11,11.64A96,96,0,1,0,128,32Z"/></svg><span class="nav-lbl">Activity</span></div>
+    </div>
+    <div class="nav-group">
+      <span class="nav-title">Repo</span>
+      <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M104,64A32,32,0,1,0,64,95v66a32,32,0,1,0,16,0V95A32.06,32.06,0,0,0,104,64ZM56,64A16,16,0,1,1,72,80,16,16,0,0,1,56,64ZM88,192a16,16,0,1,1-16-16A16,16,0,0,1,88,192Zm120-31V110.63a23.85,23.85,0,0,0-7-17L163.31,56H192a8,8,0,0,0,0-16H144a8,8,0,0,0-8,8V96a8,8,0,0,0,16,0V67.31L189.66,105a8,8,0,0,1,2.34,5.66V161a32,32,0,1,0,16,0Zm-8,47a16,16,0,1,1,16-16A16,16,0,0,1,200,208Z"/></svg><span class="nav-lbl">Open PRs</span><span class="nav-count">4</span></div>
+      <div class="nav-item active" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M152,96H104a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8h48a8,8,0,0,0,8-8V104A8,8,0,0,0,152,96Zm-8,48H112V112h32Zm88,0H216V112h16a8,8,0,0,0,0-16H216V56a16,16,0,0,0-16-16H160V24a8,8,0,0,0-16,0V40H112V24a8,8,0,0,0-16,0V40H56A16,16,0,0,0,40,56V96H24a8,8,0,0,0,0,16H40v32H24a8,8,0,0,0,0,16H40v40a16,16,0,0,0,16,16H96v16a8,8,0,0,0,16,0V216h32v16a8,8,0,0,0,16,0V216h40a16,16,0,0,0,16-16V160h16a8,8,0,0,0,0-16Zm-32,56H56V56H200v95.87s0,.09,0,.13,0,.09,0,.13V200Z"/></svg><span class="nav-lbl">Models &amp; gates</span></div>
+      <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm88-29.84q.06-2.16,0-4.32l14.92-18.64a8,8,0,0,0,1.48-7.06,107.21,107.21,0,0,0-10.88-26.25,8,8,0,0,0-6-3.93l-23.72-2.64q-1.48-1.56-3-3L186,40.54a8,8,0,0,0-3.94-6,107.71,107.71,0,0,0-26.25-10.87,8,8,0,0,0-7.06,1.49L130.16,40Q128,40,125.84,40L107.2,25.11a8,8,0,0,0-7.06-1.48A107.6,107.6,0,0,0,73.89,34.51a8,8,0,0,0-3.93,6L67.32,64.27q-1.56,1.49-3,3L40.54,70a8,8,0,0,0-6,3.94,107.71,107.71,0,0,0-10.87,26.25,8,8,0,0,0,1.49,7.06L40,125.84Q40,128,40,130.16L25.11,148.8a8,8,0,0,0-1.48,7.06,107.21,107.21,0,0,0,10.88,26.25,8,8,0,0,0,6,3.93l23.72,2.64q1.49,1.56,3,3L70,215.46a8,8,0,0,0,3.94,6,107.71,107.71,0,0,0,26.25,10.87,8,8,0,0,0,7.06-1.49L125.84,216q2.16.06,4.32,0l18.64,14.92a8,8,0,0,0,7.06,1.48,107.21,107.21,0,0,0,26.25-10.88,8,8,0,0,0,3.93-6l2.64-23.72q1.56-1.48,3-3L215.46,186a8,8,0,0,0,6-3.94,107.71,107.71,0,0,0,10.87-26.25,8,8,0,0,0-1.49-7.06Zm-16.1-6.5a73.93,73.93,0,0,1,0,8.68,8,8,0,0,0,1.74,5.48l14.19,17.73a91.57,91.57,0,0,1-6.23,15L187,173.11a8,8,0,0,0-5.1,2.64,74.11,74.11,0,0,1-6.14,6.14,8,8,0,0,0-2.64,5.1l-2.51,22.58a91.32,91.32,0,0,1-15,6.23l-17.74-14.19a8,8,0,0,0-5-1.75h-.48a73.93,73.93,0,0,1-8.68,0,8,8,0,0,0-5.48,1.74L100.45,215.8a91.57,91.57,0,0,1-15-6.23L82.89,187a8,8,0,0,0-2.64-5.1,74.11,74.11,0,0,1-6.14-6.14,8,8,0,0,0-5.1-2.64L46.43,170.6a91.32,91.32,0,0,1-6.23-15l14.19-17.74a8,8,0,0,0,1.74-5.48,73.93,73.93,0,0,1,0-8.68,8,8,0,0,0-1.74-5.48L40.2,100.45a91.57,91.57,0,0,1,6.23-15L69,82.89a8,8,0,0,0,5.1-2.64,74.11,74.11,0,0,1,6.14-6.14A8,8,0,0,0,82.89,69L85.4,46.43a91.32,91.32,0,0,1,15-6.23l17.74,14.19a8,8,0,0,0,5.48,1.74,73.93,73.93,0,0,1,8.68,0,8,8,0,0,0,5.48-1.74L155.55,40.2a91.57,91.57,0,0,1,15,6.23L173.11,69a8,8,0,0,0,2.64,5.1,74.11,74.11,0,0,1,6.14,6.14,8,8,0,0,0,5.1,2.64l22.58,2.51a91.32,91.32,0,0,1,6.23,15l-14.19,17.74A8,8,0,0,0,199.87,123.66Z"/></svg><span class="nav-lbl">Settings</span></div>
+    </div>
+    <div class="sb-foot">
+      <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40ZM40,56H80V200H40ZM216,200H96V56H216V200Z"/></svg><span class="nav-lbl">Collapse</span><span class="nav-count kbd">[</span></div>
+      <div class="sb-user" tabindex="0"><div class="avatar">JO</div><span class="sb-user-text"><span class="sb-user-name">Jake Ortega</span><span class="sb-user-sub">Expert mode</span></span></div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="main-head">
+      <div class="crumbs"><span class="mono">jortega0033/agentdock</span><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"/></svg><span class="cur">Models &amp; gates</span></div>
+      <div class="main-head-r">
+        <div class="cmdk" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,218.34l-50.07-50.06a88.11,88.11,0,1,0-11.31,11.31l50.06,50.07a8,8,0,0,0,11.32-11.32ZM40,112a72,72,0,1,1,72,72A72.08,72.08,0,0,1,40,112Z"/></svg><span>Jump to ticket, repo, action…</span><span class="kbd">⌘K</span></div>
+        <div class="avatar">JO</div>
+      </div>
+    </div>
+
+    <div class="page">
+      <section>
+        <h2>Model routing — a routing class picks a model tier</h2>
+        <p class="sec-note">A <b>routing class</b> is a phase of work. A <b>model tier</b> is a model's strength, cheap through frontier. The kanban lanes are a third, unrelated thing. Pipenzo brings no models and no inference credits: it runs whatever agentdock has authenticated, as local subprocesses under your own login. So the tier a class picks is the setting on this page — which model a tier resolves to is the provider's.</p>
+        <div class="rt">
+          <div class="rt-head"><span>Routing class</span><span>Model tier</span><span>Model</span><span>Why this rung</span></div>
+          <sc-for list="{{rows}}" as="r" hint-placeholder-count="6">
+            <div class="rt-row">
+              <span class="rt-class">{{r.cls}}</span>
+              <span><span class="tier">{{r.tier}}</span></span>
+              <span>
+                <sc-if value="{{r.open}}" hint-placeholder-val="{{true}}">
+                  <span class="select-wrap">
+                    <select class="field mono"><option>{{r.model}}</option><option>sonnet</option><option>opus</option><option>opus · codex</option></select>
+                    <svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z"/></svg>
+                  </span>
+                </sc-if>
+                <sc-if value="{{r.locked}}" hint-placeholder-val="{{false}}">
+                  <span class="rt-fixed">{{r.model}}</span>
+                  <span class="rt-lock"><svg class="icon-xs" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm88,104a87.56,87.56,0,0,1-20.41,56.28L71.72,60.4A88,88,0,0,1,216,128ZM40,128A87.56,87.56,0,0,1,60.41,71.72L184.28,195.6A88,88,0,0,1,40,128Z"/></svg>never below the implementer</span>
+                </sc-if>
+              </span>
+              <span class="rt-why"><sc-if value="{{r.hasLead}}" hint-placeholder-val="{{false}}"><b>{{r.lead}}</b> </sc-if>{{r.why}}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <div class="two-col" style="margin-top:16px;">
+          <div class="notice ok">
+            <span class="n-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span>
+            <span class="n-body">
+              <span class="n-title">Vendor diversity is available on this install</span>
+              <span>Claude Code CLI and Codex CLI are both authenticated, so the adversarial verifier can be cross-vendor. <b>With only one vendor authenticated the tiebreak degrades to same-vendor, same-tier — and says so:</b> the run records that vendor diversity was unavailable, because a verifier that could not be cross-vendor is a weaker check than one that could, and the evidence block should not imply otherwise.</span>
+            </span>
+          </div>
+          <div class="notice">
+            <span class="n-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm16-40a8,8,0,0,1-8,8,16,16,0,0,1-16-16V128a8,8,0,0,1,0-16,16,16,0,0,1,16,16v40A8,8,0,0,1,144,176ZM112,84a12,12,0,1,1,12,12A12,12,0,0,1,112,84Z"/></svg></span>
+            <span class="n-body">
+              <span class="n-title">Cheap and mid both land on sonnet here</span>
+              <span>That is what two authenticated providers spread over three tiers gives you on this machine, not a misconfiguration. Authenticate a third model and the two rungs separate on their own — nothing in the table above has to change.</span>
+            </span>
+          </div>
+        </div>
+
+        <div class="two-col" style="margin-top:16px;">
+          <div class="form-panel">
+            <div class="fieldset">
+              <span class="f-lbl">Deterministic overrides — force the frontier tier</span>
+              <span class="gate-sub">Checked before the size estimate is consulted, so a ticket the estimate calls small still goes frontier when one of these matches.</span>
+              <div class="ov">
+                <div class="ov-row"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg><span><b>Any prior failed attempt</b> on this ticket</span></div>
+                <div class="ov-row"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg><span>Paths matching the <b>security / auth / migration</b> globs</span></div>
+                <div class="ov-row"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg><span>A <span class="mono">priority:high</span> or <span class="mono">breaking</span> label</span></div>
+                <div class="ov-row"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg><span>More than <b>8 files</b> touched <b>and</b> more than <b>100 changed lines</b></span></div>
+              </div>
+              <span class="f-help">The file-count half is conjunctive on purpose. A bare "more than 8 files" override would contradict the ≤ 10 files single-PR allowance and force the frontier tier on tickets the size gate calls small.</span>
+            </div>
+          </div>
+          <div class="form-panel">
+            <div class="fieldset">
+              <span class="f-lbl">Retries escalate the tier before they escalate to a human</span>
+              <span class="gate-sub">Capped attempts throughout — no unbounded retry loop, and a denied approval is never auto-retried at all.</span>
+              <div class="ov">
+                <div class="ov-row"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,64a32,32,0,1,0-40,31v17a8,8,0,0,1-8,8H80a8,8,0,0,1-8-8V95a32,32,0,1,0-16,0v17a24,24,0,0,0,24,24h40v25a32,32,0,1,0,16,0V136h40a24,24,0,0,0,24-24V95A32.06,32.06,0,0,0,224,64ZM48,64A16,16,0,1,1,64,80,16,16,0,0,1,48,64Zm96,128a16,16,0,1,1-16-16A16,16,0,0,1,144,192ZM192,80a16,16,0,1,1,16-16A16,16,0,0,1,192,80Z"/></svg><span><b>Same tier is a session.fork.</b> Spec context, provider-native continuity and audit lineage all survive it.</span></div>
+                <div class="ov-row"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232,64a32,32,0,1,0-40,31v17a8,8,0,0,1-8,8H96a23.84,23.84,0,0,0-8,1.38V95a32,32,0,1,0-16,0v66a32,32,0,1,0,16,0V144a8,8,0,0,1,8-8h88a24,24,0,0,0,24-24V95A32.06,32.06,0,0,0,232,64ZM64,64A16,16,0,1,1,80,80,16,16,0,0,1,64,64ZM96,192a16,16,0,1,1-16-16A16,16,0,0,1,96,192ZM200,80a16,16,0,1,1,16-16A16,16,0,0,1,200,80Z"/></svg><span><b>An escalated tier is a fresh session.</b> A fork's model is frozen, so a fork cannot change tier. The new session is seeded with the spec, the prior attempt's diff and the failing gate output.</span></div>
+              </div>
+              <span class="f-help">Provider-native context is lost at that rung — stated plainly rather than papered over. Lineage is carried by the ticket store's <span class="mono">attempts[]</span> list instead of the provider thread.</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Deterministic gates — the hard, non-negotiable set</h2>
+        <p class="sec-note">These five run first, on this machine, and either pass or block the ticket. Only after all five pass does the LLM review pass run, in a fresh session seeing just the spec and the diff, followed by the separate adversarial verifier. There is no configuration that turns one off — which is why they render as switches you can read but not move.</p>
+        <div class="two-col">
+          <div class="form-panel">
+            <div class="fieldset">
+              <span class="f-lbl">Machine-verified</span>
+              <sc-for list="{{gates}}" as="g" hint-placeholder-count="5">
+                <div class="gate-row">
+                  <span class="gate-text"><span class="gate-name">{{g.name}}</span><span class="gate-sub">{{g.sub}}</span></span>
+                  <span class="gate-ctl"><span class="gate-lock">always on</span><button class="toggle on locked" disabled aria-label="Always on — not configurable"></button></span>
+                </div>
+              </sc-for>
+            </div>
+            <span class="f-help">In the diff view these render as the <b>Machine-verified</b> block, where gitleaks and Semgrep report on one line and the repo's own lint sits alongside them — the same set, grouped for reading rather than for configuring.</span>
+          </div>
+
+          <div class="col">
+            <div class="form-panel">
+              <div class="fieldset">
+                <span class="f-lbl">Two rules that keep the test gate honest</span>
+                <span class="gate-sub"><b>A failing spec-generated test is not automatically the code's fault.</b> It is adjudicated once, by the verifier tier, into <span class="mono">test-wrong</span> or <span class="mono">code-wrong</span>. A test ruled invalid is dropped with the ruling recorded in the evidence block, never silently deleted, and the drop is visible in the PR body.</span>
+                <span class="gate-sub"><b>The diff-scope check measures implementation files only.</b> Generated tests are counted and reported separately, so a large generated test file can never blow a ticket's size estimate on its own.</span>
+              </div>
+            </div>
+            <div class="form-panel">
+              <div class="fieldset">
+                <span class="f-lbl">Agent-captured evidence<span class="self-tag">never satisfies a gate</span></span>
+                <div class="gate-row">
+                  <span class="gate-text">
+                    <span class="gate-name">Screenshot verification</span>
+                    <span class="gate-sub">The repo's own Playwright, driven by the daemon from a schema-validated capture manifest. No agent-generated JavaScript ever runs inside the process holding the token vault.</span>
+                    <span class="cap on"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg>detected in jortega0033/agentdock</span>
+                  </span>
+                  <span class="gate-ctl"><button class="toggle {{shotCls}}" onClick="{{toggleShot}}" aria-label="Screenshot verification"></button></span>
+                </div>
+                <div class="gate-row">
+                  <span class="gate-text">
+                    <span class="gate-name">pipenzo.verify.screenshot escape hatch</span>
+                    <span class="gate-sub">A free-form command for repos without Playwright — a different trust class, because it is repo-authored and human-committed, so a person has already reviewed it.</span>
+                  </span>
+                  <span class="gate-ctl"><button class="toggle {{hatchCls}}" onClick="{{toggleHatch}}" aria-label="Screenshot escape hatch"></button></span>
+                </div>
+                <div class="gate-row">
+                  <span class="gate-text">
+                    <span class="gate-name">Symbol-graph MCP server</span>
+                    <span class="gate-sub">Inherited from agentdock's runtime like any other stdio server. Pipenzo ships none of its own and adds no MCP UI.</span>
+                    <span class="cap"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm88,104a87.56,87.56,0,0,1-20.41,56.28L71.72,60.4A88,88,0,0,1,216,128ZM40,128A87.56,87.56,0,0,1,60.41,71.72L184.28,195.6A88,88,0,0,1,40,128Z"/></svg>not configured — Implement falls back to Grep/Glob</span>
+                  </span>
+                  <span class="gate-ctl"><span class="gate-lock">runtime</span></span>
+                </div>
+              </div>
+              <span class="f-help">Shown in its own zone in the diff view, carrying a fixed provenance line, and never merged into the machine-verified list.</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    // README "Model routing": routing classes map to model tiers, and the tier is what this page sets.
+    // sonnet / opus / codex are the models this install has, through agentdock's provider detection.
+    const rows = [
+      { cls: 'refine', tier: 'cheap', model: 'sonnet', locked: false, lead: '',
+        why: 'A read-only subagent — Read, Grep and Glob, with no write tool in its definition. A weak model here costs a re-run, not a bad commit.' },
+      { cls: 'implement-small', tier: 'cheap', model: 'sonnet', locked: false, lead: '',
+        why: 'The one-PR rung: 100 changed lines or fewer and 10 files or fewer.' },
+      { cls: 'implement-standard', tier: 'mid', model: 'sonnet', locked: false, lead: '',
+        why: 'The default rung, and where most tickets land once Refine has scoped them.' },
+      { cls: 'implement-hard', tier: 'frontier', model: 'opus', locked: false, lead: '',
+        why: 'Reached by a deterministic override, or by an escalated retry after a failed attempt.' },
+      { cls: 'review', tier: 'mid', model: 'sonnet', locked: false, lead: 'Advisory, so it may run below the implementer.',
+        why: 'Its findings feed the implement retry; they are not a gate, and a same-or-higher verifier adjudicates them afterwards.' },
+      { cls: 'verify', tier: 'frontier', model: 'opus · codex', locked: true, lead: 'The gate, so it never may.',
+        why: 'Never a weaker model tier than the implementer it is checking. Cross-vendor review is used only as a tiebreak among equal tiers.' },
+    ].map((r) => ({ ...r, open: !r.locked, hasLead: !!r.lead }));
+
+    // README "Review": build/typecheck, spec-generated tests, gitleaks, Semgrep, a diff-scope check.
+    const gates = [
+      { name: 'Build and typecheck', sub: 'pnpm build, inside the ticket worktree' },
+      { name: 'Spec-generated tests', sub: 'Written from the spec, never by the implementer that has to pass them' },
+      { name: 'gitleaks', sub: 'Committed secrets' },
+      { name: 'Semgrep', sub: 'The p/ci ruleset' },
+      { name: 'Diff-scope check', sub: 'The real diff against the Refine estimate. A miss over 50% moves the ticket to pipenzo:awaiting-stack-approval with the real numbers against the predicted ones' },
+    ];
+
+    const shotOn = this.state.shotOn ?? true;
+    const hatchOn = this.state.hatchOn ?? false;
+    return {
+      rows, gates,
+      shotCls: shotOn ? 'on' : '',
+      hatchCls: hatchOn ? 'on' : '',
+      toggleShot: () => this.setState({ shotOn: !shotOn }),
+      toggleHatch: () => this.setState({ hatchOn: !hatchOn }),
+    };
+  }
+}
+</script>
+</body>
+</html>

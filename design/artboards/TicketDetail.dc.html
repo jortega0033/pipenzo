@@ -267,6 +267,7 @@
     .btn:hover,.btn.primary:hover,.btn:active,.btn.primary:active,.icon-btn:active{transform:none !important;}
     .step.await{box-shadow:0 0 0 2px var(--warn-fg);}
     .evt-ic.live{box-shadow:0 0 0 2px var(--accent-fg);}
+    .run-dot{box-shadow:0 0 0 2px var(--accent-fg);}
     /* loading: the shimmer flattens to a still block and the spinner to a still notch — the shape still reads as a placeholder */
     .sk{animation:none !important;background-image:none !important;background-color:var(--surface-2);}
     .sk.strong{background-color:var(--surface-3);}
@@ -328,6 +329,102 @@
   .empty.lane{background:transparent;padding:20px 12px;gap:6px;}
   .empty.lane .e-title{font-size:12px;color:var(--text-soft);}
   .empty.lane .e-sub{font-size:11px;}
+  /* --- popover: one floating layer under every menu and palette. Same surface and shadow as .dialog, but it hangs off a control instead of covering the screen --- */
+  .pop{background:var(--surface-3);border-radius:var(--r);box-shadow:var(--shadow);display:flex;flex-direction:column;overflow:hidden;}
+  .pop-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-faint);line-height:1;padding:12px 12px 8px;}
+  .pop-sep{height:2px;background:var(--surface-2);flex-shrink:0;}
+  .pop-foot{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--surface-2);font-size:11px;color:var(--text-faint);line-height:1.35;}
+  .pop-foot .grow{flex:1;min-width:0;}
+  /* --- command palette (⌘K): a search field over results grouped by type — tickets, repos, then actions. It only navigates and drafts; nothing in it starts or approves a run --- */
+  .cmdk.open{background:var(--surface-3);color:var(--text-soft);}
+  .cmdk-panel{width:560px;max-height:560px;}
+  .cmdk-search{display:flex;align-items:center;gap:10px;padding:12px;flex-shrink:0;}
+  .cmdk-search > .icon{color:var(--text-faint);flex-shrink:0;}
+  .cmdk-search .field{background:var(--surface-4);}
+  .cmdk-results{overflow-y:auto;padding:2px 4px 6px;display:flex;flex-direction:column;}
+  .cmdk-group{display:flex;flex-direction:column;gap:2px;}
+  .cmdk-group-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-faint);line-height:1;padding:10px 10px 6px;}
+  .cmdk-item{display:flex;align-items:center;gap:10px;min-height:36px;padding:6px 10px;border-radius:var(--r-sm);font-size:13px;color:var(--text-soft);cursor:pointer;transition:background-color var(--ease),color var(--ease);}
+  .cmdk-item:hover{background:var(--surface-4);color:var(--text);}
+  .cmdk-item.active{background:var(--surface-4);color:var(--text);box-shadow:inset 2px 0 0 var(--accent);}
+  .cmdk-item:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;}
+  .cmdk-item > .icon{color:var(--text-faint);flex-shrink:0;}
+  .cmdk-item:hover > .icon,.cmdk-item.active > .icon{color:var(--text);}
+  .cmdk-id{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-faint);flex-shrink:0;}
+  .cmdk-lbl{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .cmdk-item .chip{flex-shrink:0;height:18px;padding:0 6px;}
+  .cmdk-item .kbd{flex-shrink:0;}
+  /* --- workspace switcher menu: the workspace-level connected-repos list the polling reconciler iterates over. Switching is free; adding or removing a repo is Settings' job, not this menu's --- */
+  .ws-menu{width:280px;}
+  .ws-menu-item{display:flex;align-items:center;gap:10px;min-height:44px;padding:6px 10px;margin:0 4px;border-radius:var(--r-sm);cursor:pointer;transition:background-color var(--ease);}
+  .ws-menu-item:hover{background:var(--surface-4);}
+  .ws-menu-item:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;}
+  .ws-menu-item .ws-ic{width:24px;height:24px;font-size:11px;background:var(--surface-4);}
+  .ws-menu-item.active .ws-ic{background:var(--accent);color:var(--accent-fg);}
+  .wm-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;}
+  .wm-name{font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:700;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .wm-sub{font-size:11px;color:var(--text-faint);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .wm-check{color:var(--accent);flex-shrink:0;}
+  .ws-menu-item.foot{min-height:36px;margin-bottom:4px;font-size:13px;font-weight:700;color:var(--text-soft);}
+  .ws-menu-item.foot:hover{color:var(--text);}
+  .ws-menu-item.foot .icon{color:var(--text-faint);flex-shrink:0;}
+  /* --- live run controls: Steer drops one instruction into the session that is already running; Stop asks first and says plainly that the commits already made stay --- */
+  .run-controls{display:flex;flex-direction:column;gap:10px;background:var(--surface-2);border-radius:var(--r);padding:10px 12px;}
+  .run-row{display:flex;align-items:center;gap:12px;}
+  .run-live{display:flex;align-items:center;gap:8px;flex:1;min-width:0;font-size:12px;color:var(--text-soft);line-height:1.3;}
+  .run-live b{color:var(--text);font-weight:700;}
+  .run-live .mono{font-size:11px;color:var(--text-faint);}
+  .run-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);flex-shrink:0;animation:pulse-run 1.6s ease-out infinite;}
+  @keyframes pulse-run{0%{box-shadow:0 0 0 0 rgba(63,185,80,0.45);}100%{box-shadow:0 0 0 8px rgba(63,185,80,0);}}
+  .run-acts{display:flex;gap:6px;flex-shrink:0;}
+  .run-panel{display:flex;flex-direction:column;gap:8px;}
+  .run-panel .field{background:var(--surface-3);}
+  .run-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;}
+  .run-foot .run-note{flex:1;}
+  .run-note{display:flex;align-items:flex-start;gap:8px;font-size:12px;color:var(--text-soft);line-height:1.4;min-width:0;}
+  .run-note .icon-sm{flex-shrink:0;margin-top:1px;color:var(--text-faint);}
+  .run-note.warn .icon-sm{color:var(--warn);}
+  .run-note b{color:var(--text);font-weight:700;}
+  /* --- reviewer findings, by severity: advisory output read next to the diff. Critical / warning / info reuse the state chips; a finding is never a gate — the machine-verified list is --- */
+  .findings{display:flex;flex-direction:column;gap:2px;}
+  .finding{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 8px;padding:10px;border-radius:var(--r-sm);background:var(--surface-3);cursor:pointer;transition:background-color var(--ease);}
+  .finding:hover{background:var(--surface-4);}
+  .finding:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+  .finding.active{background:var(--surface-4);box-shadow:inset 2px 0 0 var(--accent);}
+  .finding .chip{align-self:start;}
+  .f-txt{grid-column:2;font-size:12px;color:var(--text-soft);line-height:1.45;}
+  .f-loc{grid-column:2;display:inline-flex;align-items:center;gap:4px;min-width:0;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);line-height:1.35;}
+  .f-loc .icon-xs{flex-shrink:0;}
+  .f-loc span{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .finding:hover .f-loc,.finding.active .f-loc{color:var(--text-soft);}
+  .f-count{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--text-faint);line-height:1.35;}
+  .f-count b{color:var(--text-soft);font-weight:700;}
+  /* --- lesson memory: local, human-gated, offered once when a ticket resolves. Never written on its own, never sent to a provider, and skipping it is the default --- */
+  .lesson{display:flex;flex-direction:column;gap:10px;background:var(--surface-2);border-radius:var(--r);padding:12px;}
+  .lesson-head{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;line-height:1.3;}
+  .lesson-head .icon-sm{color:var(--warn);flex-shrink:0;}
+  .lesson-head .grow{flex:1;min-width:0;}
+  .lesson-head .mono{font-weight:400;font-size:11px;color:var(--text-faint);flex-shrink:0;}
+  .lesson .field{background:var(--surface-3);}
+  .lesson-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;}
+  .lesson-note{display:flex;align-items:center;gap:6px;min-width:0;font-size:11px;color:var(--text-faint);line-height:1.35;}
+  .lesson-note .icon-sm{flex-shrink:0;}
+  /* --- pipenzo:merge-conflict — the branch stopped being mergeable while it waited. Nothing failed, so it is amber, not red: the fix is a rebase, and the rebased branch re-enters the same human push gate --- */
+  .conflict{display:flex;flex-direction:column;gap:8px;background:var(--surface-2);border-radius:var(--r-sm);padding:10px 12px;}
+  .conflict-head{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--warn);line-height:1;}
+  .conflict-head .icon-sm{flex-shrink:0;}
+  .conflict-files{display:flex;flex-direction:column;gap:4px;}
+  .conflict-file{display:flex;align-items:center;gap:8px;min-width:0;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-soft);line-height:1.4;}
+  .conflict-file .p{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .conflict-file .h{color:var(--text-faint);flex-shrink:0;}
+  .conflict-why{font-size:12px;color:var(--text-soft);line-height:1.4;}
+  .conflict-why b{color:var(--text);font-weight:700;}
+  /* --- quiet inline link: a reset, a "back to", a secondary out — text weight, never a button, always at least 24px tall to stay tappable --- */
+  .r-link{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:700;color:var(--text-soft);cursor:pointer;transition:color var(--ease);min-height:24px;}
+  .r-link:hover{color:var(--text);}
+  .r-link:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:var(--r-sm);}
+  .r-link.faint{color:var(--text-faint);font-weight:400;}
+  .hide{display:none !important;}
   /* ===== screen ===== */
   .shell{height:900px;}
   .header{padding:0 24px 16px;display:flex;flex-direction:column;gap:12px;flex-shrink:0;background:var(--bg);}
@@ -439,12 +536,10 @@
   .split-row{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-soft);line-height:1.3;}
   .split-row .mono{margin-left:auto;font-size:11px;color:var(--text-faint);flex-shrink:0;}
   .split-n{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);flex-shrink:0;}
-  .r-link{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:700;color:var(--text-soft);cursor:pointer;transition:color var(--ease);min-height:24px;}
-  .r-link:hover{color:var(--text);}
-  .r-link:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:var(--r-sm);}
-  .r-link.faint{color:var(--text-faint);font-weight:400;}
-  .hide{display:none !important;}
   .pc-toggle.pinned{cursor:default;color:var(--danger-text);}
+  /* run controls and the lesson prompt both sit in the run's own column: the stream gutter is 28px + a 12px gap */
+  .header .run-controls{margin-top:4px;}
+  .stream > .lesson{margin-left:40px;}
 </style>
 </helmet>
 <div class="shell">
@@ -457,8 +552,8 @@
     </div>
     <div class="nav-group">
       <span class="nav-title">Work</span>
-      <div class="nav-item active" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M216,48H40a8,8,0,0,0-8,8V208a16,16,0,0,0,16,16H88a16,16,0,0,0,16-16V160h48v16a16,16,0,0,0,16,16h40a16,16,0,0,0,16-16V56A8,8,0,0,0,216,48ZM88,208H48V128H88Zm0-96H48V64H88Zm64,32H104V64h48Zm56,32H168V128h40Zm0-64H168V64h40Z"/></svg><span class="nav-lbl">Board</span><span class="nav-count">12</span></div>
-      <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M188,88a27.75,27.75,0,0,0-12,2.71V60a28,28,0,0,0-41.36-24.6A28,28,0,0,0,80,44v6.71A27.75,27.75,0,0,0,68,48,28,28,0,0,0,40,76v76a88,88,0,0,0,176,0V116A28,28,0,0,0,188,88Zm12,64a72,72,0,0,1-144,0V76a12,12,0,0,1,24,0v44a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v68a8,8,0,0,0,16,0V60a12,12,0,0,1,24,0v68.67A48.08,48.08,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V116a12,12,0,0,1,24,0Z"/></svg><span class="nav-lbl">Needs me</span><span class="nav-count hot">5</span></div>
+      <div class="nav-item active" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M216,48H40a8,8,0,0,0-8,8V208a16,16,0,0,0,16,16H88a16,16,0,0,0,16-16V160h48v16a16,16,0,0,0,16,16h40a16,16,0,0,0,16-16V56A8,8,0,0,0,216,48ZM88,208H48V128H88Zm0-96H48V64H88Zm64,32H104V64h48Zm56,32H168V128h40Zm0-64H168V64h40Z"/></svg><span class="nav-lbl">Board</span><span class="nav-count">13</span></div>
+      <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M188,88a27.75,27.75,0,0,0-12,2.71V60a28,28,0,0,0-41.36-24.6A28,28,0,0,0,80,44v6.71A27.75,27.75,0,0,0,68,48,28,28,0,0,0,40,76v76a88,88,0,0,0,176,0V116A28,28,0,0,0,188,88Zm12,64a72,72,0,0,1-144,0V76a12,12,0,0,1,24,0v44a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v68a8,8,0,0,0,16,0V60a12,12,0,0,1,24,0v68.67A48.08,48.08,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V116a12,12,0,0,1,24,0Z"/></svg><span class="nav-lbl">Needs me</span><span class="nav-count hot">6</span></div>
       <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M136,80v43.47l36.12,21.67a8,8,0,0,1-8.24,13.72l-40-24A8,8,0,0,1,120,128V80a8,8,0,0,1,16,0Zm-8-48A95.44,95.44,0,0,0,60.08,60.15C52.81,67.51,46.35,74.59,40,82V64a8,8,0,0,0-16,0v40a8,8,0,0,0,8,8H72a8,8,0,0,0,0-16H49c7.15-8.42,14.27-16.35,22.39-24.57a80,80,0,1,1,1.66,114.75,8,8,0,1,0-11,11.64A96,96,0,1,0,128,32Z"/></svg><span class="nav-lbl">Activity</span></div>
     </div>
     <div class="nav-group">
@@ -512,6 +607,53 @@
           </div>
         </div>
       </div>
+      <!-- Steer mid-run / Stop preserves commits (README, Near-term post-MVP). The controls sit under the stepper, on the run they act on, and only while a phase is actually running.
+           Steer delivers one instruction into the session that is already going; Stop asks first, and the confirmation is where the "commits so far are preserved" promise is spelled out. -->
+      <sc-if value="{{showRun}}" hint-placeholder-val="{{false}}">
+        <div class="run-controls">
+          <sc-if value="{{runIdle}}" hint-placeholder-val="{{true}}">
+            <div class="run-row">
+              <span class="run-live"><span class="run-dot"></span><span><b>{{runPhase}} is running</b> — {{runMeta}}</span></span>
+              <span class="run-acts">
+                <button class="btn sm" onClick="{{openSteer}}"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,0,0,36.18,176.88L24.83,210.93a16,16,0,0,0,20.24,20.24l34.05-11.35A104,104,0,1,0,128,24Zm0,192a87.87,87.87,0,0,1-44.06-11.81,8,8,0,0,0-6.54-.67L40,216,52.47,178.6a8,8,0,0,0-.66-6.54A88,88,0,1,1,128,216Z"/></svg>Steer</button>
+                <button class="btn sm danger" onClick="{{openStop}}"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M188,88a27.75,27.75,0,0,0-12,2.71V60a28,28,0,0,0-41.36-24.6A28,28,0,0,0,80,44v6.71A27.75,27.75,0,0,0,68,48,28,28,0,0,0,40,76v76a88,88,0,0,0,176,0V116A28,28,0,0,0,188,88Zm12,64a72,72,0,0,1-144,0V76a12,12,0,0,1,24,0v44a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v68a8,8,0,0,0,16,0V60a12,12,0,0,1,24,0v68.67A48.08,48.08,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V116a12,12,0,0,1,24,0Z"/></svg>Stop</button>
+              </span>
+            </div>
+          </sc-if>
+          <sc-if value="{{runSteering}}" hint-placeholder-val="{{false}}">
+            <div class="run-panel">
+              <div class="run-row"><span class="run-live"><span class="run-dot"></span><span><b>Steer the run</b> — one instruction, delivered at the next tool boundary</span></span></div>
+              <textarea class="field" rows="2" placeholder="e.g. leave the legacy fixture alone for now">leave the legacy fixture alone — keep it until #97 lands, just finish the PATH assertion</textarea>
+              <div class="run-foot">
+                <span class="run-note"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm16-40a8,8,0,0,1-8,8,16,16,0,0,1-16-16V128a8,8,0,0,1,0-16,16,16,0,0,1,16,16v40A8,8,0,0,1,144,176ZM112,84a12,12,0,1,1,12,12A12,12,0,0,1,112,84Z"/></svg><span>The session keeps its context and its spec. Steering is recorded on the ticket and appears in the stream as a human turn — it never rewrites the approved spec or the acceptance criteria.</span></span>
+                <span class="run-acts"><button class="btn sm ghost" onClick="{{resetRun}}">Cancel</button><button class="btn sm primary" onClick="{{sendSteer}}"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg>Send</button></span>
+              </div>
+            </div>
+          </sc-if>
+          <sc-if value="{{runStopping}}" hint-placeholder-val="{{false}}">
+            <div class="run-panel">
+              <div class="run-row"><span class="run-live"><svg class="icon-sm" style="color:var(--warn);" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg><span><b>Stop this run?</b></span></span></div>
+              <span class="run-note warn"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg><span><b>Stop preserves commits.</b> The 2 commits already on <span class="mono">issue-94</span> stay exactly where they are, and the worktree at <span class="mono">.worktrees/issue-94</span> is kept. Only the in-flight tool call is abandoned.</span></span>
+              <div class="run-foot">
+                <span class="run-note"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm16-40a8,8,0,0,1-8,8,16,16,0,0,1-16-16V128a8,8,0,0,1,0-16,16,16,0,0,1,16,16v40A8,8,0,0,1,144,176ZM112,84a12,12,0,1,1,12,12A12,12,0,0,1,112,84Z"/></svg><span>Nothing is pushed and the branch is not deleted. #94 moves to Needs human at the phase it reached; picking it up again is a fresh Implement seeded with the same spec, not a continuation.</span></span>
+                <span class="run-acts"><button class="btn sm ghost" onClick="{{resetRun}}">Keep running</button><button class="btn sm danger" onClick="{{confirmStop}}"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M188,88a27.75,27.75,0,0,0-12,2.71V60a28,28,0,0,0-41.36-24.6A28,28,0,0,0,80,44v6.71A27.75,27.75,0,0,0,68,48,28,28,0,0,0,40,76v76a88,88,0,0,0,176,0V116A28,28,0,0,0,188,88Zm12,64a72,72,0,0,1-144,0V76a12,12,0,0,1,24,0v44a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v68a8,8,0,0,0,16,0V60a12,12,0,0,1,24,0v68.67A48.08,48.08,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V116a12,12,0,0,1,24,0Z"/></svg>Stop and keep commits</button></span>
+              </div>
+            </div>
+          </sc-if>
+          <sc-if value="{{runSteered}}" hint-placeholder-val="{{false}}">
+            <div class="run-row">
+              <span class="run-live"><span class="run-dot"></span><span><b>Steered at 14:11.</b> "leave the legacy fixture alone — keep it until #97 lands" went in at the next tool boundary and is on the ticket. <span class="mono">implement · sonnet · still running</span></span></span>
+              <span class="run-acts"><span class="r-link faint" tabindex="0" onClick="{{resetRun}}">Back to the controls</span></span>
+            </div>
+          </sc-if>
+          <sc-if value="{{runStopped}}" hint-placeholder-val="{{false}}">
+            <div class="run-row">
+              <span class="run-live"><svg class="icon-sm" style="color:var(--warn);" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M188,88a27.75,27.75,0,0,0-12,2.71V60a28,28,0,0,0-41.36-24.6A28,28,0,0,0,80,44v6.71A27.75,27.75,0,0,0,68,48,28,28,0,0,0,40,76v76a88,88,0,0,0,176,0V116A28,28,0,0,0,188,88Zm12,64a72,72,0,0,1-144,0V76a12,12,0,0,1,24,0v44a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v68a8,8,0,0,0,16,0V60a12,12,0,0,1,24,0v68.67A48.08,48.08,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V116a12,12,0,0,1,24,0Z"/></svg><span><b>Stopped at 14:11 — 2 commits kept on issue-94.</b> Worktree <span class="mono">.worktrees/issue-94</span> retained, nothing pushed. #94 sits in Needs human at Implement. <span class="mono">pipenzo:needs-human</span></span></span>
+              <span class="run-acts"><span class="r-link faint" tabindex="0" onClick="{{resetRun}}">Back to the controls</span></span>
+            </div>
+          </sc-if>
+        </div>
+      </sc-if>
     </div>
 
     <div class="body">
@@ -746,6 +888,28 @@
             <div class="ai-done"><span class="d-ic"><svg class="icon-xs" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span class="grow"><b>Approved</b> — {{hiCmd}} runs now. There is no Undo at HIGH; the outcome is appended to the pre-commitment when it lands.</span></div>
           </div>
         </sc-if>
+
+        <!-- Local, human-gated lesson memory (README, Near-term post-MVP) — the deliberate small substitute for the repo knowledge base that is out of scope.
+             It is offered once, at the moment the ticket resolves, pre-filled from the mismatch this run actually hit. Nothing is written unless a person saves it. -->
+        <sc-if value="{{showLesson}}" hint-placeholder-val="{{false}}">
+          <div class="lesson">
+            <div class="lesson-head"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M176,232a8,8,0,0,1-8,8H88a8,8,0,0,1,0-16h80A8,8,0,0,1,176,232Zm40-128a87.55,87.55,0,0,1-33.64,69.21A16.24,16.24,0,0,0,176,186v6a16,16,0,0,1-16,16H96a16,16,0,0,1-16-16v-6a16,16,0,0,0-6.23-12.66A87.59,87.59,0,0,1,40,104.49C39.74,56.83,78.26,17.14,125.88,16A88,88,0,0,1,216,104Zm-16,0a72,72,0,0,0-73.74-72c-39,.92-70.47,33.39-70.26,72.39a71.65,71.65,0,0,0,27.64,56.3A32,32,0,0,1,96,186v6h64v-6a32.15,32.15,0,0,1,12.47-25.35A71.65,71.65,0,0,0,200,104Zm-16.11-9.34a57.6,57.6,0,0,0-46.56-46.55,8,8,0,0,0-2.66,15.78c16.57,2.79,30.63,16.85,33.44,33.45A8,8,0,0,0,176,104a9,9,0,0,0,1.35-.11A8,8,0,0,0,183.89,94.66Z"/></svg><span class="grow">Worth remembering for next time?</span><span class="mono">optional · you decide</span></div>
+            <input class="field" value="On Windows the host sets Path, not PATH — the sanitized env floor has to carry both spellings." placeholder="One line, in your words. Drawn from this run's one mispredicted step." />
+            <div class="lesson-foot">
+              <span class="lesson-note"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm16-40a8,8,0,0,1-8,8,16,16,0,0,1-16-16V128a8,8,0,0,1,0-16,16,16,0,0,1,16,16v40A8,8,0,0,1,144,176ZM112,84a12,12,0,1,1,12,12A12,12,0,0,1,112,84Z"/></svg><span>Stays in this repo's local ticket store. Nothing is written unless you save it, and no lesson is ever generated on its own.</span></span>
+              <span class="run-acts"><button class="btn sm ghost" onClick="{{skipLesson}}">Skip</button><button class="btn sm" onClick="{{saveLesson}}"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg>Save lesson</button></span>
+            </div>
+          </div>
+        </sc-if>
+        <sc-if value="{{showLessonSaved}}" hint-placeholder-val="{{false}}">
+          <div class="lesson">
+            <div class="lesson-head"><svg class="icon-sm" style="color:var(--ok);" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg><span class="grow">Saved locally — 1 lesson on jortega0033/agentdock</span><span class="mono">human-gated</span></div>
+            <div class="lesson-foot">
+              <span class="lesson-note"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm16-40a8,8,0,0,1-8,8,16,16,0,0,1-16-16V128a8,8,0,0,1,0-16,16,16,0,0,1,16,16v40A8,8,0,0,1,144,176ZM112,84a12,12,0,1,1,12,12A12,12,0,0,1,112,84Z"/></svg><span>Handed to the next Refine on this repo as context, never as an instruction, and reviewable and deletable in Settings. It is not an index and it never goes stale silently — a person wrote it and a person removes it.</span></span>
+              <span class="run-acts"><span class="r-link faint" tabindex="0" onClick="{{resetLesson}}">Undo</span></span>
+            </div>
+          </div>
+        </sc-if>
         <sc-if value="{{showApprovalRejected}}" hint-placeholder-val="{{false}}">
           <div class="approval-card">
             <div class="approval-head">
@@ -809,6 +973,8 @@ class Component extends DCLogic {
     const medium = this.state.medium ?? null;
     const stackDecision = this.state.stackDecision ?? null;
     const highDecision = this.state.highDecision ?? null;
+    const run = this.state.run ?? null;
+    const lesson = this.state.lesson ?? null;
 
     // ---- the five tickets this artboard can show: in-flight, stack approval, refusal, ci-failed, and one still loading its stream ----
     const TICKETS = {
@@ -819,7 +985,7 @@ class Component extends DCLogic {
       87: { num: 87, id: '#87 · issue-87 · pipenzo:needs-human · 3 attempts', title: 'Migrate tray notifications to native OS toasts' },
     };
     const t = TICKETS[ticket];
-    const tickets = [94, 108, 113, 85, 87].map((n) => ({ num: n, cls: n === ticket ? 'active' : '', select: () => this.setState({ ticket: n, medium: null, stackDecision: null, highDecision: null }) }));
+    const tickets = [94, 108, 113, 85, 87].map((n) => ({ num: n, cls: n === ticket ? 'active' : '', select: () => this.setState({ ticket: n, medium: null, stackDecision: null, highDecision: null, run: null, lesson: null }) }));
     // #87 is the loading state: id, title, stepper and rail come from the ticket store and render at once; the stream replays
     // three attempts out of the session log, so it is the one part that arrives late and the one part that gets skeletons.
     const skRows = [{ tool: 76, meta: 52, a: 100, b: 54 }, { tool: 62, meta: 44, a: 88, b: 38 }, { tool: 84, meta: 48, a: 96, b: 62 }, { tool: 58, meta: 56, a: 72, b: 44 }];
@@ -836,7 +1002,7 @@ class Component extends DCLogic {
       const activeIdx = BASE.findIndex((p) => p.id === phase);
       phases = BASE.map((p, i) => {
         const isDone = i < activeIdx, isActive = i === activeIdx, isAwait = isActive && !!p.awaits;
-        return { ...p, n: i + 1, cls: isAwait ? 'await' : isActive ? 'active' : isDone ? 'done' : '', isDone, isAwait, isFail: false, showNum: !isDone && !isAwait, select: () => this.setState({ phase: p.id, medium: null, highDecision: null }) };
+        return { ...p, n: i + 1, cls: isAwait ? 'await' : isActive ? 'active' : isDone ? 'done' : '', isDone, isAwait, isFail: false, showNum: !isDone && !isAwait, select: () => this.setState({ phase: p.id, medium: null, highDecision: null, run: null, lesson: null }) };
       });
       showHint = phase === 'awaiting_approval'; hintText = 'Waiting on you · notified 14:02';
     } else if (ticket === 108) {
@@ -889,7 +1055,7 @@ class Component extends DCLogic {
         { kind: 'low', title: 'Removed legacy-env-server.js after your Allow · +0 −38', meta: '14:10' },
         { kind: 'gates', tool: 'gates', title: 'pnpm build, typecheck, vitest — 21 passed, 0 failed', meta: 'deterministic · 9s' },
         { kind: 'gates', tool: 'gates', title: 'gitleaks and semgrep p/ci — no findings', meta: 'deterministic · 4s' },
-        { kind: 'review', tool: 'review', title: 'Reviewer found no issues; adversarial verifier (opus · codex) still reading the test', meta: 'running', live: true },
+        { kind: 'review', tool: 'review', title: 'Reviewer left 3 advisory findings, none blocking; adversarial verifier (opus · codex) still reading the test', meta: 'running', live: true },
       ],
       awaiting_approval: [
         ack,
@@ -897,7 +1063,7 @@ class Component extends DCLogic {
         { kind: 'implement', tool: 'implement', risk: 'MEDIUM', title: 'Re-ran the suite after the fallback', meta: 'sonnet · 9s', pc: pcMatch },
         { kind: 'implement', tool: 'implement', title: 'Regression test added: a secret set on the host env must not reach the spawned server', meta: 'sonnet · 1m 40s', sub: testSub },
         { kind: 'gates', tool: 'gates', title: 'Build, typecheck, tests, gitleaks, semgrep — 5/5 passed', meta: 'deterministic · 13s' },
-        { kind: 'review', tool: 'review', title: 'Adversarial verifier sustained 0 findings after one round', meta: 'opus · codex · 2m 05s' },
+        { kind: 'review', tool: 'review', title: 'Adversarial verifier sustained 0 critical findings after one round — 3 advisory reviewer notes stand, listed by severity in the diff view', meta: 'opus · codex · 2m 05s' },
         { kind: 'implement', tool: 'implement', title: 'Committed to issue-94 — 2 files, +52 −6. Local branch only, nothing pushed', meta: 'sonnet' },
       ],
     };
@@ -1029,6 +1195,11 @@ class Component extends DCLogic {
     }
     const riskSegs = Array.from({ length: 12 }, (_, i) => ({ cls: i < risk.filled ? 'on ' + (i < 4 ? '' : i < 8 ? 'warm' : 'hot') : '' }));
 
+    // ---- live run controls: only while a phase is actually running. At awaiting_approval the run has already stopped on its own,
+    // and on 108 / 113 / 85 / 87 there is nothing in flight to steer, so the controls are absent rather than disabled.
+    const RUN_PHASE = { refining: { label: 'Refine', meta: 'sonnet · 41s · read-only subagent, nothing written yet' }, implementing: { label: 'Implement', meta: 'sonnet · 4m 12s · 2 commits on issue-94, nothing pushed' }, reviewing: { label: 'Review', meta: 'opus · codex · 2m 05s · adversarial verifier, first round' } };
+    const runPhase = ticket === 94 ? RUN_PHASE[phase] : null;
+
     return {
       tNum: t.num, tId: t.id, tTitle: t.title, tickets,
       phases, showHint, hintText, hintCls, hintBellHide: hintBell ? '' : 'hide',
@@ -1057,9 +1228,24 @@ class Component extends DCLogic {
       hiTitle: HI.title, hiSub: HI.sub, hiText: HI.text, hiCmd: HI.cmd, hiAction: HI.action, hiExpect: HI.expect, hiIfWrong: HI.ifWrong, hiNotified: HI.notified,
       statusLabel, statusBadgeCls, railRows,
       riskSegs, riskLevel: risk.level, riskText: risk.text, riskCount: risk.count, riskPromoted: !!risk.promo, riskPromoText: risk.promo ?? '',
+      showRun: !!runPhase,
+      runPhase: runPhase ? runPhase.label : '', runMeta: runPhase ? runPhase.meta : '',
+      runIdle: run === null, runSteering: run === 'steering', runStopping: run === 'stopping',
+      runSteered: run === 'steered', runStopped: run === 'stopped',
+      openSteer: () => this.setState({ run: 'steering' }),
+      openStop: () => this.setState({ run: 'stopping' }),
+      sendSteer: () => this.setState({ run: 'steered' }),
+      confirmStop: () => this.setState({ run: 'stopped' }),
+      resetRun: () => this.setState({ run: null }),
+      // The lesson prompt only exists once the ticket has actually resolved — here, the moment the publish gate is approved.
+      showLesson: ticket === 94 && phase === 'awaiting_approval' && highDecision === 'allowed' && lesson === null,
+      showLessonSaved: ticket === 94 && phase === 'awaiting_approval' && highDecision === 'allowed' && lesson === 'saved',
+      saveLesson: () => this.setState({ lesson: 'saved' }),
+      skipLesson: () => this.setState({ lesson: 'skipped' }),
+      resetLesson: () => this.setState({ lesson: null }),
       sidebarCls: this.state.collapsed ? 'collapsed' : '',
       toggleSidebar: () => this.setState({ collapsed: !this.state.collapsed }),
-      retryPhase: () => this.setState({ medium: null, highDecision: null, stackDecision: null }),
+      retryPhase: () => this.setState({ medium: null, highDecision: null, stackDecision: null, run: null, lesson: null }),
     };
   }
 }

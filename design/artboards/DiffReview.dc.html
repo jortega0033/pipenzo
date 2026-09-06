@@ -267,6 +267,7 @@
     .btn:hover,.btn.primary:hover,.btn:active,.btn.primary:active,.icon-btn:active{transform:none !important;}
     .step.await{box-shadow:0 0 0 2px var(--warn-fg);}
     .evt-ic.live{box-shadow:0 0 0 2px var(--accent-fg);}
+    .run-dot{box-shadow:0 0 0 2px var(--accent-fg);}
     /* loading: the shimmer flattens to a still block and the spinner to a still notch — the shape still reads as a placeholder */
     .sk{animation:none !important;background-image:none !important;background-color:var(--surface-2);}
     .sk.strong{background-color:var(--surface-3);}
@@ -328,6 +329,102 @@
   .empty.lane{background:transparent;padding:20px 12px;gap:6px;}
   .empty.lane .e-title{font-size:12px;color:var(--text-soft);}
   .empty.lane .e-sub{font-size:11px;}
+  /* --- popover: one floating layer under every menu and palette. Same surface and shadow as .dialog, but it hangs off a control instead of covering the screen --- */
+  .pop{background:var(--surface-3);border-radius:var(--r);box-shadow:var(--shadow);display:flex;flex-direction:column;overflow:hidden;}
+  .pop-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-faint);line-height:1;padding:12px 12px 8px;}
+  .pop-sep{height:2px;background:var(--surface-2);flex-shrink:0;}
+  .pop-foot{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--surface-2);font-size:11px;color:var(--text-faint);line-height:1.35;}
+  .pop-foot .grow{flex:1;min-width:0;}
+  /* --- command palette (⌘K): a search field over results grouped by type — tickets, repos, then actions. It only navigates and drafts; nothing in it starts or approves a run --- */
+  .cmdk.open{background:var(--surface-3);color:var(--text-soft);}
+  .cmdk-panel{width:560px;max-height:560px;}
+  .cmdk-search{display:flex;align-items:center;gap:10px;padding:12px;flex-shrink:0;}
+  .cmdk-search > .icon{color:var(--text-faint);flex-shrink:0;}
+  .cmdk-search .field{background:var(--surface-4);}
+  .cmdk-results{overflow-y:auto;padding:2px 4px 6px;display:flex;flex-direction:column;}
+  .cmdk-group{display:flex;flex-direction:column;gap:2px;}
+  .cmdk-group-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-faint);line-height:1;padding:10px 10px 6px;}
+  .cmdk-item{display:flex;align-items:center;gap:10px;min-height:36px;padding:6px 10px;border-radius:var(--r-sm);font-size:13px;color:var(--text-soft);cursor:pointer;transition:background-color var(--ease),color var(--ease);}
+  .cmdk-item:hover{background:var(--surface-4);color:var(--text);}
+  .cmdk-item.active{background:var(--surface-4);color:var(--text);box-shadow:inset 2px 0 0 var(--accent);}
+  .cmdk-item:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;}
+  .cmdk-item > .icon{color:var(--text-faint);flex-shrink:0;}
+  .cmdk-item:hover > .icon,.cmdk-item.active > .icon{color:var(--text);}
+  .cmdk-id{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-faint);flex-shrink:0;}
+  .cmdk-lbl{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .cmdk-item .chip{flex-shrink:0;height:18px;padding:0 6px;}
+  .cmdk-item .kbd{flex-shrink:0;}
+  /* --- workspace switcher menu: the workspace-level connected-repos list the polling reconciler iterates over. Switching is free; adding or removing a repo is Settings' job, not this menu's --- */
+  .ws-menu{width:280px;}
+  .ws-menu-item{display:flex;align-items:center;gap:10px;min-height:44px;padding:6px 10px;margin:0 4px;border-radius:var(--r-sm);cursor:pointer;transition:background-color var(--ease);}
+  .ws-menu-item:hover{background:var(--surface-4);}
+  .ws-menu-item:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;}
+  .ws-menu-item .ws-ic{width:24px;height:24px;font-size:11px;background:var(--surface-4);}
+  .ws-menu-item.active .ws-ic{background:var(--accent);color:var(--accent-fg);}
+  .wm-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;}
+  .wm-name{font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:700;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .wm-sub{font-size:11px;color:var(--text-faint);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .wm-check{color:var(--accent);flex-shrink:0;}
+  .ws-menu-item.foot{min-height:36px;margin-bottom:4px;font-size:13px;font-weight:700;color:var(--text-soft);}
+  .ws-menu-item.foot:hover{color:var(--text);}
+  .ws-menu-item.foot .icon{color:var(--text-faint);flex-shrink:0;}
+  /* --- live run controls: Steer drops one instruction into the session that is already running; Stop asks first and says plainly that the commits already made stay --- */
+  .run-controls{display:flex;flex-direction:column;gap:10px;background:var(--surface-2);border-radius:var(--r);padding:10px 12px;}
+  .run-row{display:flex;align-items:center;gap:12px;}
+  .run-live{display:flex;align-items:center;gap:8px;flex:1;min-width:0;font-size:12px;color:var(--text-soft);line-height:1.3;}
+  .run-live b{color:var(--text);font-weight:700;}
+  .run-live .mono{font-size:11px;color:var(--text-faint);}
+  .run-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);flex-shrink:0;animation:pulse-run 1.6s ease-out infinite;}
+  @keyframes pulse-run{0%{box-shadow:0 0 0 0 rgba(63,185,80,0.45);}100%{box-shadow:0 0 0 8px rgba(63,185,80,0);}}
+  .run-acts{display:flex;gap:6px;flex-shrink:0;}
+  .run-panel{display:flex;flex-direction:column;gap:8px;}
+  .run-panel .field{background:var(--surface-3);}
+  .run-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;}
+  .run-foot .run-note{flex:1;}
+  .run-note{display:flex;align-items:flex-start;gap:8px;font-size:12px;color:var(--text-soft);line-height:1.4;min-width:0;}
+  .run-note .icon-sm{flex-shrink:0;margin-top:1px;color:var(--text-faint);}
+  .run-note.warn .icon-sm{color:var(--warn);}
+  .run-note b{color:var(--text);font-weight:700;}
+  /* --- reviewer findings, by severity: advisory output read next to the diff. Critical / warning / info reuse the state chips; a finding is never a gate — the machine-verified list is --- */
+  .findings{display:flex;flex-direction:column;gap:2px;}
+  .finding{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 8px;padding:10px;border-radius:var(--r-sm);background:var(--surface-3);cursor:pointer;transition:background-color var(--ease);}
+  .finding:hover{background:var(--surface-4);}
+  .finding:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+  .finding.active{background:var(--surface-4);box-shadow:inset 2px 0 0 var(--accent);}
+  .finding .chip{align-self:start;}
+  .f-txt{grid-column:2;font-size:12px;color:var(--text-soft);line-height:1.45;}
+  .f-loc{grid-column:2;display:inline-flex;align-items:center;gap:4px;min-width:0;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);line-height:1.35;}
+  .f-loc .icon-xs{flex-shrink:0;}
+  .f-loc span{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .finding:hover .f-loc,.finding.active .f-loc{color:var(--text-soft);}
+  .f-count{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--text-faint);line-height:1.35;}
+  .f-count b{color:var(--text-soft);font-weight:700;}
+  /* --- lesson memory: local, human-gated, offered once when a ticket resolves. Never written on its own, never sent to a provider, and skipping it is the default --- */
+  .lesson{display:flex;flex-direction:column;gap:10px;background:var(--surface-2);border-radius:var(--r);padding:12px;}
+  .lesson-head{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;line-height:1.3;}
+  .lesson-head .icon-sm{color:var(--warn);flex-shrink:0;}
+  .lesson-head .grow{flex:1;min-width:0;}
+  .lesson-head .mono{font-weight:400;font-size:11px;color:var(--text-faint);flex-shrink:0;}
+  .lesson .field{background:var(--surface-3);}
+  .lesson-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;}
+  .lesson-note{display:flex;align-items:center;gap:6px;min-width:0;font-size:11px;color:var(--text-faint);line-height:1.35;}
+  .lesson-note .icon-sm{flex-shrink:0;}
+  /* --- pipenzo:merge-conflict — the branch stopped being mergeable while it waited. Nothing failed, so it is amber, not red: the fix is a rebase, and the rebased branch re-enters the same human push gate --- */
+  .conflict{display:flex;flex-direction:column;gap:8px;background:var(--surface-2);border-radius:var(--r-sm);padding:10px 12px;}
+  .conflict-head{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--warn);line-height:1;}
+  .conflict-head .icon-sm{flex-shrink:0;}
+  .conflict-files{display:flex;flex-direction:column;gap:4px;}
+  .conflict-file{display:flex;align-items:center;gap:8px;min-width:0;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-soft);line-height:1.4;}
+  .conflict-file .p{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .conflict-file .h{color:var(--text-faint);flex-shrink:0;}
+  .conflict-why{font-size:12px;color:var(--text-soft);line-height:1.4;}
+  .conflict-why b{color:var(--text);font-weight:700;}
+  /* --- quiet inline link: a reset, a "back to", a secondary out — text weight, never a button, always at least 24px tall to stay tappable --- */
+  .r-link{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:700;color:var(--text-soft);cursor:pointer;transition:color var(--ease);min-height:24px;}
+  .r-link:hover{color:var(--text);}
+  .r-link:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:var(--r-sm);}
+  .r-link.faint{color:var(--text-faint);font-weight:400;}
+  .hide{display:none !important;}
   /* ===== screen ===== */
   .shell{height:900px;}
   .head{padding:0 24px 16px;display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-shrink:0;background:var(--bg);}
@@ -358,6 +455,9 @@
   tr.del td.code{background:#402625;color:var(--text);}
   tr.del td.sign{background:#402625;color:var(--danger-text);}
   tr.del td.ln{background:#602e2c;color:#f1b7b3;}
+  /* a finding in the rail points at one line: selecting it marks the row's gutter rather than scrolling it out from under you */
+  tr.hit td.ln{background:var(--accent);color:var(--accent-fg);}
+  tr.hit td.code{box-shadow:inset 0 0 0 2px var(--accent);}
   .rail{padding:8px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;background:var(--surface);border-radius:var(--r);}
   .v-block{background:var(--surface-2);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:12px;}
   .v-head{display:flex;flex-direction:column;gap:6px;}
@@ -396,8 +496,8 @@
     </div>
     <div class="nav-group">
       <span class="nav-title">Work</span>
-      <div class="nav-item active" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M216,48H40a8,8,0,0,0-8,8V208a16,16,0,0,0,16,16H88a16,16,0,0,0,16-16V160h48v16a16,16,0,0,0,16,16h40a16,16,0,0,0,16-16V56A8,8,0,0,0,216,48ZM88,208H48V128H88Zm0-96H48V64H88Zm64,32H104V64h48Zm56,32H168V128h40Zm0-64H168V64h40Z"/></svg><span class="nav-lbl">Board</span><span class="nav-count">12</span></div>
-      <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M188,88a27.75,27.75,0,0,0-12,2.71V60a28,28,0,0,0-41.36-24.6A28,28,0,0,0,80,44v6.71A27.75,27.75,0,0,0,68,48,28,28,0,0,0,40,76v76a88,88,0,0,0,176,0V116A28,28,0,0,0,188,88Zm12,64a72,72,0,0,1-144,0V76a12,12,0,0,1,24,0v44a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v68a8,8,0,0,0,16,0V60a12,12,0,0,1,24,0v68.67A48.08,48.08,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V116a12,12,0,0,1,24,0Z"/></svg><span class="nav-lbl">Needs me</span><span class="nav-count hot">5</span></div>
+      <div class="nav-item active" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M216,48H40a8,8,0,0,0-8,8V208a16,16,0,0,0,16,16H88a16,16,0,0,0,16-16V160h48v16a16,16,0,0,0,16,16h40a16,16,0,0,0,16-16V56A8,8,0,0,0,216,48ZM88,208H48V128H88Zm0-96H48V64H88Zm64,32H104V64h48Zm56,32H168V128h40Zm0-64H168V64h40Z"/></svg><span class="nav-lbl">Board</span><span class="nav-count">13</span></div>
+      <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M188,88a27.75,27.75,0,0,0-12,2.71V60a28,28,0,0,0-41.36-24.6A28,28,0,0,0,80,44v6.71A27.75,27.75,0,0,0,68,48,28,28,0,0,0,40,76v76a88,88,0,0,0,176,0V116A28,28,0,0,0,188,88Zm12,64a72,72,0,0,1-144,0V76a12,12,0,0,1,24,0v44a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v68a8,8,0,0,0,16,0V60a12,12,0,0,1,24,0v68.67A48.08,48.08,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V116a12,12,0,0,1,24,0Z"/></svg><span class="nav-lbl">Needs me</span><span class="nav-count hot">6</span></div>
       <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M136,80v43.47l36.12,21.67a8,8,0,0,1-8.24,13.72l-40-24A8,8,0,0,1,120,128V80a8,8,0,0,1,16,0Zm-8-48A95.44,95.44,0,0,0,60.08,60.15C52.81,67.51,46.35,74.59,40,82V64a8,8,0,0,0-16,0v40a8,8,0,0,0,8,8H72a8,8,0,0,0,0-16H49c7.15-8.42,14.27-16.35,22.39-24.57a80,80,0,1,1,1.66,114.75,8,8,0,1,0-11,11.64A96,96,0,1,0,128,32Z"/></svg><span class="nav-lbl">Activity</span></div>
     </div>
     <div class="nav-group">
@@ -459,7 +559,7 @@
             <tr class="del"><td class="ln">73</td><td class="ln"></td><td class="sign">−</td><td class="code">      env: spawnConfig.env ? { ...process.env, ...spawnConfig.env } : undefined,</td></tr>
             <tr class="add"><td class="ln"></td><td class="ln">74</td><td class="sign">+</td><td class="code">      // Never inherit the host env wholesale: an MCP server gets PATH, HOME and</td></tr>
             <tr class="add"><td class="ln"></td><td class="ln">75</td><td class="sign">+</td><td class="code">      // locale from the sanitized floor, plus whatever the config adds on top.</td></tr>
-            <tr class="add"><td class="ln"></td><td class="ln">76</td><td class="sign">+</td><td class="code">      env: { ...buildBaseProcessEnvironment(), ...(spawnConfig.env ?? {}) },</td></tr>
+            <tr class="add {{hit76}}"><td class="ln"></td><td class="ln">76</td><td class="sign">+</td><td class="code">      env: { ...buildBaseProcessEnvironment(), ...(spawnConfig.env ?? {}) },</td></tr>
             <tr class="ctx"><td class="ln">74</td><td class="ln">77</td><td class="sign"></td><td class="code">    });</td></tr>
           </table>
         </div>
@@ -474,11 +574,11 @@
             <tr class="add"><td class="ln"></td><td class="ln">139</td><td class="sign">+</td><td class="code"></td></tr>
             <tr class="add"><td class="ln"></td><td class="ln">140</td><td class="sign">+</td><td class="code">  it('does not leak the host process env to a spawned MCP server', async () =&gt; {</td></tr>
             <tr class="add"><td class="ln"></td><td class="ln">141</td><td class="sign">+</td><td class="code">    const secretName = `AGENTDOCK_TEST_SECRET_${process.pid}`;</td></tr>
-            <tr class="add"><td class="ln"></td><td class="ln">142</td><td class="sign">+</td><td class="code">    process.env[secretName] = 'should-never-reach-the-child';</td></tr>
+            <tr class="add {{hit142}}"><td class="ln"></td><td class="ln">142</td><td class="sign">+</td><td class="code">    process.env[secretName] = 'should-never-reach-the-child';</td></tr>
             <tr class="add"><td class="ln"></td><td class="ln">143</td><td class="sign">+</td><td class="code">    const connection = await connectToFixture('env-probe-server.js');</td></tr>
             <tr class="add"><td class="ln"></td><td class="ln">144</td><td class="sign">+</td><td class="code">    const leaked = await connection.callTool('env_probe', { name: secretName });</td></tr>
             <tr class="add"><td class="ln"></td><td class="ln">145</td><td class="sign">+</td><td class="code">    expect(leaked.output.value).toBeNull();</td></tr>
-            <tr class="add"><td class="ln"></td><td class="ln">146</td><td class="sign">+</td><td class="code">    expect(leaked.output.path).toBeTruthy(); // the sanitized floor still carries PATH</td></tr>
+            <tr class="add {{hit146}}"><td class="ln"></td><td class="ln">146</td><td class="sign">+</td><td class="code">    expect(leaked.output.path).toBeTruthy(); // the sanitized floor still carries PATH</td></tr>
             <tr class="add"><td class="ln"></td><td class="ln">147</td><td class="sign">+</td><td class="code">  });</td></tr>
             <tr class="ctx"><td class="ln">139</td><td class="ln">148</td><td class="sign"></td><td class="code">});</td></tr>
           </table>
@@ -526,10 +626,26 @@
           </div>
           <div class="shot-prov"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M208,56H180.28L166.65,35.56A8,8,0,0,0,160,32H96a8,8,0,0,0-6.65,3.56L75.71,56H48A24,24,0,0,0,24,80V192a24,24,0,0,0,24,24H208a24,24,0,0,0,24-24V80A24,24,0,0,0,208,56Zm8,136a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V80a8,8,0,0,1,8-8H80a8,8,0,0,0,6.66-3.56L100.28,48h55.43l13.63,20.44A8,8,0,0,0,176,72h32a8,8,0,0,1,8,8ZM128,88a44,44,0,1,0,44,44A44.05,44.05,0,0,0,128,88Zm0,72a28,28,0,1,1,28-28A28,28,0,0,1,128,160Z"/></svg><span>Captured by the daemon with the repo's Playwright · 1280×800 · against base <span class="mono">287a4a6</span></span></div>
         </div>
+        <!-- Reviewer-grade findings sidebar, by severity (README, Near-term post-MVP). Advisory by construction: reviewer findings feed the implement retry,
+             they are not a gate — the machine-verified block at the top of this rail is. Critical is the one severity that holds the push gate closed.
+             Each row names a file:line in the diff to the left and marks that row when it is selected. -->
+        <div class="v-block">
+          <div class="v-head"><span class="label">Findings · by severity</span><span class="sub">What the reviewer and the adversarial verifier wrote about this diff. None of these blocked the ticket; a critical one would.</span></div>
+          <div class="f-count"><span><b>0</b> critical</span><span><b>2</b> warning</span><span><b>1</b> info</span></div>
+          <div class="findings">
+            <sc-for list="{{findings}}" as="f" hint-placeholder-count="3">
+              <div class="finding {{f.cls}}" tabindex="0" onClick="{{f.open}}">
+                <span class="chip {{f.sevCls}}">{{f.sev}}</span>
+                <span class="f-txt">{{f.text}}</span>
+                <span class="f-loc"><svg class="icon-xs" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M213.66,82.34l-56-56A8,8,0,0,0,152,24H56A16,16,0,0,0,40,40V216a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V88A8,8,0,0,0,213.66,82.34ZM160,51.31,188.69,80H160ZM200,216H56V40h88V88a8,8,0,0,0,8,8h48V216Z"/></svg><span>{{f.loc}}</span><svg class="icon-xs" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"/></svg></span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
         <div class="v-block">
           <span class="label">Review</span>
-          <div class="v-row"><span class="v-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span>Reviewer (sonnet): no issues</span></div>
-          <div class="v-row"><span class="v-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span>Verifier (opus · codex): 0 findings sustained after 1 round</span></div>
+          <div class="v-row"><span class="v-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span>Reviewer (sonnet): 3 advisory findings, none blocking <span class="m">may run below the implementer's tier</span></span></div>
+          <div class="v-row"><span class="v-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span>Verifier (opus · codex): 0 critical sustained after 1 round <span class="m">never below the implementer's tier</span></span></div>
         </div>
         <div class="v-block">
           <span class="label">Commit</span>
@@ -592,8 +708,25 @@ class Component extends DCLogic {
     const cur = this.state.shot ?? null;
     const shots = SHOTS.map((s) => ({ ...s, open: () => this.setState({ shot: s.i }) }));
     const activeShot = SHOTS[cur ?? 0];
+
+    // ---- reviewer findings, ordered by severity then by position in the diff ----
+    // Advisory only: the reviewer may sit below the implementer's tier precisely because its findings feed the retry rather than gate the push.
+    // A critical finding is the exception — it holds the push gate closed — and this run produced none, which is why the gate list above still reads 5/5.
+    const FINDINGS = [
+      { id: '76', sev: 'warning', text: 'The sanitized floor is spread first, so an env key in the MCP server config can still put a host value back into the child. Deliberate — config beats the floor — but it belongs in the config docs.', loc: 'stdio-mcp-connection.ts:76' },
+      { id: '146', sev: 'warning', text: 'The PATH casing was found by a failed run, not by a test: only the Windows spelling is asserted, so a host that sets a third casing regresses silently. This is the one pre-commitment mismatch on this run.', loc: 'mcp-stdio-client.test.ts:146' },
+      { id: '142', sev: 'info', text: 'The probe variable is written to process.env and never deleted, so it outlives this test file. Harmless here; noise if another suite reads the host env.', loc: 'mcp-stdio-client.test.ts:142' },
+    ];
+    const SEV = { critical: 'chip-danger', warning: 'chip-warn', info: 'chip-neutral' };
+    const hit = this.state.finding ?? null;
+    const findings = FINDINGS.map((f) => ({
+      ...f, sevCls: SEV[f.sev], cls: hit === f.id ? 'active' : '',
+      open: () => this.setState({ finding: hit === f.id ? null : f.id }),
+    }));
     return {
       shots, activeShot,
+      findings,
+      hit76: hit === '76' ? 'hit' : '', hit142: hit === '142' ? 'hit' : '', hit146: hit === '146' ? 'hit' : '',
       shotOpen: cur !== null,
       closeShot: () => this.setState({ shot: null }),
       prevShot: () => this.setState({ shot: (cur + SHOTS.length - 1) % SHOTS.length }),

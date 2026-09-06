@@ -1,3 +1,14 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;700&family=IBM+Plex+Mono:wght@400;700&display=swap">
+<style>
   /* ===== pipenzo base (identical in every artboard) ===== */
   :root{
     --bg:#121212; --surface:#181818; --surface-2:#1f1f1f; --surface-3:#282828; --surface-4:#333333;
@@ -414,3 +425,275 @@
   .r-link:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:var(--r-sm);}
   .r-link.faint{color:var(--text-faint);font-weight:400;}
   .hide{display:none !important;}
+  /* ===== screen ===== */
+  .shell{height:1180px;}
+  .page{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:16px;background:var(--bg);padding:0 24px 24px;}
+  .sec-note{font-size:12px;color:var(--text-faint);margin:0;line-height:1.5;max-width:104ch;text-wrap:pretty;}
+  .sec-note b{color:var(--text-soft);font-weight:700;}
+  /* form panels, as documented in Foundations */
+  .form-panel{background:var(--surface-2);border-radius:var(--r);padding:20px;display:flex;flex-direction:column;gap:16px;}
+  .form-panel .field{background:var(--surface-3);}
+  .fieldset{display:flex;flex-direction:column;gap:10px;}
+  .fieldset .f-lbl{margin-bottom:0;}
+  .cols{display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:16px;align-items:start;}
+  .col{display:flex;flex-direction:column;gap:16px;}
+  /* connected repos: the same rows the workspace switcher shows, with the destructive control the switcher deliberately does not carry */
+  .repo-list{display:flex;flex-direction:column;gap:2px;background:var(--surface);border-radius:var(--r);padding:6px;}
+  .repo-list .ws-menu-item{min-height:52px;margin:0;}
+  .repo-list .ws-menu-item .icon-btn{width:28px;height:28px;background:transparent;color:var(--text-faint);flex-shrink:0;}
+  .repo-list .ws-menu-item .icon-btn:hover{background:var(--danger);color:var(--danger-fg);}
+  .repo-list .ws-menu-item.foot{min-height:40px;color:var(--text-soft);}
+  /* a settings row: label and description on the left, the control hard right */
+  .set-row{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;}
+  .set-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;}
+  .set-name{font-size:13px;line-height:1.3;}
+  .set-sub{font-size:12px;color:var(--text-faint);line-height:1.45;text-wrap:pretty;}
+  .set-sub b{color:var(--text);font-weight:700;}
+  .set-ctl{display:flex;align-items:center;gap:8px;flex-shrink:0;padding-top:1px;}
+  /* a row whose control is a read-out rather than an input reads better stacked than squeezed into a column */
+  .set-stack{display:flex;flex-direction:column;gap:8px;}
+  .set-stack .set-ctl{padding-top:0;}
+  .set-lock{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);line-height:1;white-space:nowrap;}
+  .toggle.locked{cursor:default;}
+  /* account identity block */
+  .ident{display:flex;align-items:center;gap:12px;background:var(--surface-3);border-radius:var(--r-sm);padding:12px;}
+  .ident-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;}
+  .ident-name{font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:700;line-height:1.2;}
+  .ident-sub{font-size:12px;color:var(--text-faint);line-height:1.3;}
+  .prov{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--text-soft);line-height:1.3;}
+  .prov .p-ic{width:20px;height:20px;border-radius:50%;background:var(--ok);color:var(--ok-fg);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .prov .grow{flex:1;min-width:0;}
+  .prov .mono{font-size:11px;color:var(--text-faint);}
+  .acct-v{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-soft);line-height:1.3;text-align:right;white-space:nowrap;}
+  .danger-row{display:flex;align-items:center;justify-content:space-between;gap:16px;}
+</style>
+</helmet>
+<div class="shell">
+  <div class="sidebar">
+    <div class="brand"><div class="logo-mark">p</div><span class="wordmark">pipenzo</span></div>
+    <div class="ws" tabindex="0">
+      <span class="ws-ic">JO</span>
+      <span class="ws-text"><span class="ws-name">jortega0033/agentdock</span><span class="ws-sub">main · 3 repos connected</span></span>
+      <svg class="icon ws-caret" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M181.66,170.34a8,8,0,0,1,0,11.32l-48,48a8,8,0,0,1-11.32,0l-48-48a8,8,0,0,1,11.32-11.32L128,212.69l42.34-42.35A8,8,0,0,1,181.66,170.34Zm-96-84.68L128,43.31l42.34,42.35a8,8,0,0,0,11.32-11.32l-48-48a8,8,0,0,0-11.32,0l-48,48A8,8,0,0,0,85.66,85.66Z"/></svg>
+    </div>
+    <div class="nav-group">
+      <span class="nav-title">Work</span>
+      <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M216,48H40a8,8,0,0,0-8,8V208a16,16,0,0,0,16,16H88a16,16,0,0,0,16-16V160h48v16a16,16,0,0,0,16,16h40a16,16,0,0,0,16-16V56A8,8,0,0,0,216,48ZM88,208H48V128H88Zm0-96H48V64H88Zm64,32H104V64h48Zm56,32H168V128h40Zm0-64H168V64h40Z"/></svg><span class="nav-lbl">Board</span><span class="nav-count">13</span></div>
+      <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M188,88a27.75,27.75,0,0,0-12,2.71V60a28,28,0,0,0-41.36-24.6A28,28,0,0,0,80,44v6.71A27.75,27.75,0,0,0,68,48,28,28,0,0,0,40,76v76a88,88,0,0,0,176,0V116A28,28,0,0,0,188,88Zm12,64a72,72,0,0,1-144,0V76a12,12,0,0,1,24,0v44a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v68a8,8,0,0,0,16,0V60a12,12,0,0,1,24,0v68.67A48.08,48.08,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V116a12,12,0,0,1,24,0Z"/></svg><span class="nav-lbl">Needs me</span><span class="nav-count hot">6</span></div>
+      <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M136,80v43.47l36.12,21.67a8,8,0,0,1-8.24,13.72l-40-24A8,8,0,0,1,120,128V80a8,8,0,0,1,16,0Zm-8-48A95.44,95.44,0,0,0,60.08,60.15C52.81,67.51,46.35,74.59,40,82V64a8,8,0,0,0-16,0v40a8,8,0,0,0,8,8H72a8,8,0,0,0,0-16H49c7.15-8.42,14.27-16.35,22.39-24.57a80,80,0,1,1,1.66,114.75,8,8,0,1,0-11,11.64A96,96,0,1,0,128,32Z"/></svg><span class="nav-lbl">Activity</span></div>
+    </div>
+    <div class="nav-group">
+      <span class="nav-title">Repo</span>
+      <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M104,64A32,32,0,1,0,64,95v66a32,32,0,1,0,16,0V95A32.06,32.06,0,0,0,104,64ZM56,64A16,16,0,1,1,72,80,16,16,0,0,1,56,64ZM88,192a16,16,0,1,1-16-16A16,16,0,0,1,88,192Zm120-31V110.63a23.85,23.85,0,0,0-7-17L163.31,56H192a8,8,0,0,0,0-16H144a8,8,0,0,0-8,8V96a8,8,0,0,0,16,0V67.31L189.66,105a8,8,0,0,1,2.34,5.66V161a32,32,0,1,0,16,0Zm-8,47a16,16,0,1,1,16-16A16,16,0,0,1,200,208Z"/></svg><span class="nav-lbl">Open PRs</span><span class="nav-count">4</span></div>
+      <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M152,96H104a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8h48a8,8,0,0,0,8-8V104A8,8,0,0,0,152,96Zm-8,48H112V112h32Zm88,0H216V112h16a8,8,0,0,0,0-16H216V56a16,16,0,0,0-16-16H160V24a8,8,0,0,0-16,0V40H112V24a8,8,0,0,0-16,0V40H56A16,16,0,0,0,40,56V96H24a8,8,0,0,0,0,16H40v32H24a8,8,0,0,0,0,16H40v40a16,16,0,0,0,16,16H96v16a8,8,0,0,0,16,0V216h32v16a8,8,0,0,0,16,0V216h40a16,16,0,0,0,16-16V160h16a8,8,0,0,0,0-16Zm-32,56H56V56H200v95.87s0,.09,0,.13,0,.09,0,.13V200Z"/></svg><span class="nav-lbl">Models &amp; gates</span></div>
+      <div class="nav-item active" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm88-29.84q.06-2.16,0-4.32l14.92-18.64a8,8,0,0,0,1.48-7.06,107.21,107.21,0,0,0-10.88-26.25,8,8,0,0,0-6-3.93l-23.72-2.64q-1.48-1.56-3-3L186,40.54a8,8,0,0,0-3.94-6,107.71,107.71,0,0,0-26.25-10.87,8,8,0,0,0-7.06,1.49L130.16,40Q128,40,125.84,40L107.2,25.11a8,8,0,0,0-7.06-1.48A107.6,107.6,0,0,0,73.89,34.51a8,8,0,0,0-3.93,6L67.32,64.27q-1.56,1.49-3,3L40.54,70a8,8,0,0,0-6,3.94,107.71,107.71,0,0,0-10.87,26.25,8,8,0,0,0,1.49,7.06L40,125.84Q40,128,40,130.16L25.11,148.8a8,8,0,0,0-1.48,7.06,107.21,107.21,0,0,0,10.88,26.25,8,8,0,0,0,6,3.93l23.72,2.64q1.49,1.56,3,3L70,215.46a8,8,0,0,0,3.94,6,107.71,107.71,0,0,0,26.25,10.87,8,8,0,0,0,7.06-1.49L125.84,216q2.16.06,4.32,0l18.64,14.92a8,8,0,0,0,7.06,1.48,107.21,107.21,0,0,0,26.25-10.88,8,8,0,0,0,3.93-6l2.64-23.72q1.56-1.48,3-3L215.46,186a8,8,0,0,0,6-3.94,107.71,107.71,0,0,0,10.87-26.25,8,8,0,0,0-1.49-7.06Zm-16.1-6.5a73.93,73.93,0,0,1,0,8.68,8,8,0,0,0,1.74,5.48l14.19,17.73a91.57,91.57,0,0,1-6.23,15L187,173.11a8,8,0,0,0-5.1,2.64,74.11,74.11,0,0,1-6.14,6.14,8,8,0,0,0-2.64,5.1l-2.51,22.58a91.32,91.32,0,0,1-15,6.23l-17.74-14.19a8,8,0,0,0-5-1.75h-.48a73.93,73.93,0,0,1-8.68,0,8,8,0,0,0-5.48,1.74L100.45,215.8a91.57,91.57,0,0,1-15-6.23L82.89,187a8,8,0,0,0-2.64-5.1,74.11,74.11,0,0,1-6.14-6.14,8,8,0,0,0-5.1-2.64L46.43,170.6a91.32,91.32,0,0,1-6.23-15l14.19-17.74a8,8,0,0,0,1.74-5.48,73.93,73.93,0,0,1,0-8.68,8,8,0,0,0-1.74-5.48L40.2,100.45a91.57,91.57,0,0,1,6.23-15L69,82.89a8,8,0,0,0,5.1-2.64,74.11,74.11,0,0,1,6.14-6.14A8,8,0,0,0,82.89,69L85.4,46.43a91.32,91.32,0,0,1,15-6.23l17.74,14.19a8,8,0,0,0,5.48,1.74,73.93,73.93,0,0,1,8.68,0,8,8,0,0,0,5.48-1.74L155.55,40.2a91.57,91.57,0,0,1,15,6.23L173.11,69a8,8,0,0,0,2.64,5.1,74.11,74.11,0,0,1,6.14,6.14,8,8,0,0,0,5.1,2.64l22.58,2.51a91.32,91.32,0,0,1,6.23,15l-14.19,17.74A8,8,0,0,0,199.87,123.66Z"/></svg><span class="nav-lbl">Settings</span></div>
+    </div>
+    <div class="sb-foot">
+      <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40ZM40,56H80V200H40ZM216,200H96V56H216V200Z"/></svg><span class="nav-lbl">Collapse</span><span class="nav-count kbd">[</span></div>
+      <div class="sb-user" tabindex="0"><div class="avatar">JO</div><span class="sb-user-text"><span class="sb-user-name">Jake Ortega</span><span class="sb-user-sub">Expert mode</span></span></div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="main-head">
+      <div class="crumbs"><span class="mono">jortega0033/agentdock</span><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"/></svg><span class="cur">Settings</span></div>
+      <div class="main-head-r">
+        <div class="cmdk" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,218.34l-50.07-50.06a88.11,88.11,0,1,0-11.31,11.31l50.06,50.07a8,8,0,0,0,11.32-11.32ZM40,112a72,72,0,1,1,72,72A72.08,72.08,0,0,1,40,112Z"/></svg><span>Jump to ticket, repo, action…</span><span class="kbd">⌘K</span></div>
+        <div class="avatar">JO</div>
+      </div>
+    </div>
+
+    <div class="page">
+      <p class="sec-note">Everything here is per-machine. Pipenzo is one desktop app per developer, not a shared server — the shared state is on GitHub, in labels and issue assignment, and none of it is changed by anything on this page.</p>
+
+      <div class="cols">
+        <div class="col">
+          <div class="form-panel">
+            <div class="fieldset">
+              <span class="f-lbl">Connected repos</span>
+              <span class="set-sub">This list, and only this list, is what the polling reconciler iterates over. It is workspace-level, not per-ticket, and it is what the sidebar's switcher and its "N repos connected" line read from.</span>
+              <div class="repo-list">
+                <sc-for list="{{repos}}" as="r" hint-placeholder-count="3">
+                  <div class="ws-menu-item {{r.cls}}" tabindex="0">
+                    <span class="ws-ic">{{r.ic}}</span>
+                    <span class="wm-text"><span class="wm-name">{{r.name}}</span><span class="wm-sub">{{r.sub}}</span></span>
+                    <button class="icon-btn ghost" title="Remove from this workspace" aria-label="Remove from this workspace"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></button>
+                  </div>
+                </sc-for>
+                <div class="ws-menu-item foot" tabindex="0">
+                  <svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z"/></svg>
+                  <span class="wm-text"><span class="wm-name">Add a repo…</span><span class="wm-sub">opens the same searchable picker as first-run</span></span>
+                </div>
+              </div>
+              <span class="f-help">Removing a repo stops its polls and hides its tickets. It touches nothing on GitHub: labels, branches, PRs and the <span class="mono">pipenzo:schema-v1</span> markers all stay exactly where they are.</span>
+            </div>
+          </div>
+
+          <div class="form-panel">
+            <div class="fieldset">
+              <span class="f-lbl">Concurrency</span>
+              <div class="set-row">
+                <span class="set-text">
+                  <span class="set-name">Execution limit</span>
+                  <span class="set-sub">One worktree and one branch per running ticket, never shared — <span class="mono">issue-94</span> and <span class="mono">issue-97</span> are two checkouts, not one.</span>
+                </span>
+                <span class="set-ctl">
+                  <span class="numctl">
+                    <sc-if value="{{canDec}}" hint-placeholder-val="{{true}}"><button aria-label="One fewer" onClick="{{dec}}"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,128a8,8,0,0,1-8,8H40a8,8,0,0,1,0-16H216A8,8,0,0,1,224,128Z"/></svg></button></sc-if>
+                    <sc-if value="{{atMin}}" hint-placeholder-val="{{false}}"><button aria-label="One fewer" disabled><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,128a8,8,0,0,1-8,8H40a8,8,0,0,1,0-16H216A8,8,0,0,1,224,128Z"/></svg></button></sc-if>
+                    <span class="val">{{conc}} <small>/ 4</small></span>
+                    <sc-if value="{{canInc}}" hint-placeholder-val="{{true}}"><button aria-label="One more" onClick="{{inc}}"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z"/></svg></button></sc-if>
+                    <sc-if value="{{atMax}}" hint-placeholder-val="{{false}}"><button aria-label="One more" disabled><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z"/></svg></button></sc-if>
+                  </span>
+                </span>
+              </div>
+              <span class="f-help" style="margin-top:-4px;">Default 2, hard cap 4. Bounded local concurrency is the honest ceiling for one machine sharing one subscription's rate limit — cloud sandbox fleets are a funded-product feature, not a missing one.</span>
+              <div class="set-stack">
+                <span class="set-text">
+                  <span class="set-name">Overlapping tickets are serialised</span>
+                  <span class="set-sub">Two tickets whose Refine "files likely touched" lists overlap are held rather than run together. Not configurable — it is what keeps two worktrees from fighting over one file.</span>
+                </span>
+                <span class="set-ctl">
+                  <span class="lane-cap {{capCls}}"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"/></svg>{{capText}}</span>
+                  <span class="lane-cap"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M200,32H160a16,16,0,0,0-16,16V208a16,16,0,0,0,16,16h40a16,16,0,0,0,16-16V48A16,16,0,0,0,200,32Zm0,176H160V48h40ZM96,32H56A16,16,0,0,0,40,48V208a16,16,0,0,0,16,16H96a16,16,0,0,0,16-16V48A16,16,0,0,0,96,32Zm0,176H56V48H96Z"/></svg>1 held</span>
+                </span>
+              </div>
+              <div>
+                <label class="f-lbl">Workspace default run budget</label>
+                <span class="select-wrap"><select class="field mono"><option>Unlimited</option><option>1 run</option><option>3 runs</option><option>Cap at 200k tokens</option></select><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z"/></svg></span>
+                <span class="f-help">Per-ticket budgets set in the Implement dialog override this. When a budget runs out the ticket parks in Needs human instead of retrying.</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-panel">
+            <div class="fieldset">
+              <span class="f-lbl">Default mode</span>
+              <div class="set-row">
+                <span class="set-text">
+                  <span class="set-name">Which view a ticket opens in</span>
+                  <span class="set-sub">Simple shows the outcome and the before/after evidence. Expert shows the activity stream, the gates and the diff.</span>
+                </span>
+                <span class="set-ctl">
+                  <span class="seg">
+                    <button class="{{simpleCls}}" onClick="{{pickSimple}}">Simple</button>
+                    <button class="{{expertCls}}" onClick="{{pickExpert}}">Expert</button>
+                  </span>
+                </span>
+              </div>
+              <span class="f-help" style="margin-top:-4px;">Simple mode is the default on a new install; your choice is persisted per user. The switch stays in the corner of every ticket either way — this only sets which side it starts on.</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="col">
+          <div class="form-panel">
+            <div class="fieldset">
+              <span class="f-lbl">Notifications</span>
+              <span class="set-sub">Notification is risk-graded, not uniform. What follows is the configurable part; the two lines under it are the part that is not.</span>
+              <sc-for list="{{notifs}}" as="n" hint-placeholder-count="5">
+                <div class="set-row">
+                  <span class="set-text"><span class="set-name">{{n.name}}</span><span class="set-sub">{{n.sub}}</span></span>
+                  <span class="set-ctl">
+                    <sc-if value="{{n.locked}}" hint-placeholder-val="{{false}}"><span class="set-lock">always on</span><button class="toggle on locked" disabled aria-label="Always on — not configurable"></button></sc-if>
+                    <sc-if value="{{n.open}}" hint-placeholder-val="{{true}}"><button class="toggle {{n.cls}}" onClick="{{n.toggle}}" aria-label="{{n.name}}"></button></sc-if>
+                  </span>
+                </div>
+              </sc-for>
+            </div>
+            <div class="notice quiet">
+              <span class="n-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm16-40a8,8,0,0,1-8,8,16,16,0,0,1-16-16V128a8,8,0,0,1,0-16,16,16,0,0,1,16,16v40A8,8,0,0,1,144,176ZM112,84a12,12,0,1,1,12,12A12,12,0,0,1,112,84Z"/></svg></span>
+              <span class="n-body">
+                <span class="n-title">Two things here are not settings</span>
+                <span>LOW actions never notify: they auto-proceed inside the owned worktree and are logged as a passive line. And nothing that leaves the machine can be auto-allowed at any risk level — publishing is permanently a HIGH action, which is why the row above it has no switch.</span>
+              </span>
+            </div>
+          </div>
+
+          <div class="form-panel">
+            <div class="fieldset">
+              <span class="f-lbl">Account</span>
+              <div class="ident">
+                <span class="avatar">JO</span>
+                <span class="ident-text"><span class="ident-name">jortega0033</span><span class="ident-sub">Jake Ortega · signed in via device flow, 12 Aug 2026</span></span>
+                <span class="chip chip-ok">connected</span>
+              </div>
+              <div class="fieldset">
+                <div class="f-row"><span class="set-sub">OAuth scope</span><span class="acct-v">repo</span></div>
+                <div class="f-row"><span class="set-sub">Token location</span><span class="acct-v">Electron-main vault</span></div>
+                <div class="f-row"><span class="set-sub">gh CLI</span><span class="acct-v">detected · gh stack only</span></div>
+              </div>
+              <span class="f-help" style="margin-top:-4px;">The <span class="mono">repo</span> scope is what creating labels and opening pull requests need, and no narrower scope grants one without the other. The token never leaves the Electron main process — no provider subprocess receives it.</span>
+            </div>
+            <div class="fieldset">
+              <span class="f-lbl">Providers <span class="self-tag">brought by you, not by Pipenzo</span></span>
+              <div class="prov"><span class="p-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span class="grow">Claude Code CLI</span><span class="mono">authenticated · Max</span></div>
+              <div class="prov"><span class="p-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span class="grow">Codex CLI</span><span class="mono">authenticated · Pro</span></div>
+              <span class="f-help">Pipenzo never sees or stores these credentials — agentdock's provider detection does, exactly as it does for its own sessions. Two vendors is also what lets the adversarial verifier be cross-vendor.</span>
+            </div>
+            <div class="danger-row">
+              <span class="set-sub">Clears the token from the vault and stops every poll. Worktrees, branches and the ticket store stay on disk.</span>
+              <button class="btn danger"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm88,104a87.56,87.56,0,0,1-20.41,56.28L71.72,60.4A88,88,0,0,1,216,128ZM40,128A87.56,87.56,0,0,1,60.41,71.72L184.28,195.6A88,88,0,0,1,40,128Z"/></svg>Disconnect GitHub</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    // The workspace-level connected-repos list from README "Repo selection" — the same three the
+    // sidebar's switcher shows, plus the add and remove controls the switcher deliberately does not carry.
+    const repos = [
+      { ic: 'ad', name: 'jortega0033/agentdock', sub: 'main · 12 open · 2 running', cls: 'active' },
+      { ic: 'pz', name: 'jortega0033/pipenzo', sub: 'main · 3 open · idle', cls: '' },
+      { ic: 'ov', name: 'jortega0033/open-vacancy-radar', sub: 'master · 5 open · 1 needs you', cls: '' },
+    ];
+
+    // Bounded concurrency: default 2, hard cap 4 (README, near-term post-MVP).
+    const conc = this.state.conc ?? 2;
+    const clamp = (n) => Math.max(1, Math.min(4, n));
+
+    // Risk-graded notification, per the MVP feature list. HIGH is not a setting: an OS notification
+    // on a HIGH approval is what "awaiting input" means, and there is no auto-allow for it to become.
+    const on = this.state.notif ?? { refusal: true, medium: true, badge: true, sound: false };
+    const NOTIFS = [
+      { key: 'high', locked: true, name: 'HIGH-risk approvals',
+        sub: 'The publish gate, and anything else irreversible or off-machine. Always an OS notification, always a mandatory reject reason, never an auto-allow.' },
+      { key: 'refusal', locked: false, name: 'A refusal, or a stack awaiting sign-off',
+        sub: 'Both count as awaiting input: nothing is running and nothing will run until a person answers.' },
+      { key: 'medium', locked: false, name: 'A MEDIUM still blocking after 60 seconds',
+        sub: 'A MEDIUM that resolves quickly stays quiet. One that silently halts a whole run for an hour is the failure mode notification exists for.' },
+      { key: 'badge', locked: false, name: 'Tray badge when a ticket needs me',
+        sub: 'A count on the dock or tray icon, batched to one repaint per tick.' },
+      { key: 'sound', locked: false, name: 'Sound', sub: '' },
+    ].map((n) => ({
+      ...n,
+      open: !n.locked,
+      cls: on[n.key] ? 'on' : '',
+      toggle: n.locked ? () => {} : () => this.setState({ notif: { ...on, [n.key]: !on[n.key] } }),
+    }));
+
+    const mode = this.state.mode ?? 'expert';
+    return {
+      repos, notifs: NOTIFS,
+      conc,
+      atMin: conc <= 1, atMax: conc >= 4,
+      canDec: conc > 1, canInc: conc < 4,
+      dec: () => this.setState({ conc: clamp(conc - 1) }),
+      inc: () => this.setState({ conc: clamp(conc + 1) }),
+      capText: '2 of ' + conc + ' running',
+      capCls: conc <= 2 ? 'full' : '',
+      simpleCls: mode === 'simple' ? 'active' : '',
+      expertCls: mode === 'expert' ? 'active' : '',
+      pickSimple: () => this.setState({ mode: 'simple' }),
+      pickExpert: () => this.setState({ mode: 'expert' }),
+    };
+  }
+}
+</script>
+</body>
+</html>

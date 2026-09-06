@@ -267,6 +267,7 @@
     .btn:hover,.btn.primary:hover,.btn:active,.btn.primary:active,.icon-btn:active{transform:none !important;}
     .step.await{box-shadow:0 0 0 2px var(--warn-fg);}
     .evt-ic.live{box-shadow:0 0 0 2px var(--accent-fg);}
+    .run-dot{box-shadow:0 0 0 2px var(--accent-fg);}
     /* loading: the shimmer flattens to a still block and the spinner to a still notch — the shape still reads as a placeholder */
     .sk{animation:none !important;background-image:none !important;background-color:var(--surface-2);}
     .sk.strong{background-color:var(--surface-3);}
@@ -328,6 +329,102 @@
   .empty.lane{background:transparent;padding:20px 12px;gap:6px;}
   .empty.lane .e-title{font-size:12px;color:var(--text-soft);}
   .empty.lane .e-sub{font-size:11px;}
+  /* --- popover: one floating layer under every menu and palette. Same surface and shadow as .dialog, but it hangs off a control instead of covering the screen --- */
+  .pop{background:var(--surface-3);border-radius:var(--r);box-shadow:var(--shadow);display:flex;flex-direction:column;overflow:hidden;}
+  .pop-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-faint);line-height:1;padding:12px 12px 8px;}
+  .pop-sep{height:2px;background:var(--surface-2);flex-shrink:0;}
+  .pop-foot{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--surface-2);font-size:11px;color:var(--text-faint);line-height:1.35;}
+  .pop-foot .grow{flex:1;min-width:0;}
+  /* --- command palette (⌘K): a search field over results grouped by type — tickets, repos, then actions. It only navigates and drafts; nothing in it starts or approves a run --- */
+  .cmdk.open{background:var(--surface-3);color:var(--text-soft);}
+  .cmdk-panel{width:560px;max-height:560px;}
+  .cmdk-search{display:flex;align-items:center;gap:10px;padding:12px;flex-shrink:0;}
+  .cmdk-search > .icon{color:var(--text-faint);flex-shrink:0;}
+  .cmdk-search .field{background:var(--surface-4);}
+  .cmdk-results{overflow-y:auto;padding:2px 4px 6px;display:flex;flex-direction:column;}
+  .cmdk-group{display:flex;flex-direction:column;gap:2px;}
+  .cmdk-group-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-faint);line-height:1;padding:10px 10px 6px;}
+  .cmdk-item{display:flex;align-items:center;gap:10px;min-height:36px;padding:6px 10px;border-radius:var(--r-sm);font-size:13px;color:var(--text-soft);cursor:pointer;transition:background-color var(--ease),color var(--ease);}
+  .cmdk-item:hover{background:var(--surface-4);color:var(--text);}
+  .cmdk-item.active{background:var(--surface-4);color:var(--text);box-shadow:inset 2px 0 0 var(--accent);}
+  .cmdk-item:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;}
+  .cmdk-item > .icon{color:var(--text-faint);flex-shrink:0;}
+  .cmdk-item:hover > .icon,.cmdk-item.active > .icon{color:var(--text);}
+  .cmdk-id{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-faint);flex-shrink:0;}
+  .cmdk-lbl{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .cmdk-item .chip{flex-shrink:0;height:18px;padding:0 6px;}
+  .cmdk-item .kbd{flex-shrink:0;}
+  /* --- workspace switcher menu: the workspace-level connected-repos list the polling reconciler iterates over. Switching is free; adding or removing a repo is Settings' job, not this menu's --- */
+  .ws-menu{width:280px;}
+  .ws-menu-item{display:flex;align-items:center;gap:10px;min-height:44px;padding:6px 10px;margin:0 4px;border-radius:var(--r-sm);cursor:pointer;transition:background-color var(--ease);}
+  .ws-menu-item:hover{background:var(--surface-4);}
+  .ws-menu-item:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;}
+  .ws-menu-item .ws-ic{width:24px;height:24px;font-size:11px;background:var(--surface-4);}
+  .ws-menu-item.active .ws-ic{background:var(--accent);color:var(--accent-fg);}
+  .wm-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;}
+  .wm-name{font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:700;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .wm-sub{font-size:11px;color:var(--text-faint);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .wm-check{color:var(--accent);flex-shrink:0;}
+  .ws-menu-item.foot{min-height:36px;margin-bottom:4px;font-size:13px;font-weight:700;color:var(--text-soft);}
+  .ws-menu-item.foot:hover{color:var(--text);}
+  .ws-menu-item.foot .icon{color:var(--text-faint);flex-shrink:0;}
+  /* --- live run controls: Steer drops one instruction into the session that is already running; Stop asks first and says plainly that the commits already made stay --- */
+  .run-controls{display:flex;flex-direction:column;gap:10px;background:var(--surface-2);border-radius:var(--r);padding:10px 12px;}
+  .run-row{display:flex;align-items:center;gap:12px;}
+  .run-live{display:flex;align-items:center;gap:8px;flex:1;min-width:0;font-size:12px;color:var(--text-soft);line-height:1.3;}
+  .run-live b{color:var(--text);font-weight:700;}
+  .run-live .mono{font-size:11px;color:var(--text-faint);}
+  .run-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);flex-shrink:0;animation:pulse-run 1.6s ease-out infinite;}
+  @keyframes pulse-run{0%{box-shadow:0 0 0 0 rgba(63,185,80,0.45);}100%{box-shadow:0 0 0 8px rgba(63,185,80,0);}}
+  .run-acts{display:flex;gap:6px;flex-shrink:0;}
+  .run-panel{display:flex;flex-direction:column;gap:8px;}
+  .run-panel .field{background:var(--surface-3);}
+  .run-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;}
+  .run-foot .run-note{flex:1;}
+  .run-note{display:flex;align-items:flex-start;gap:8px;font-size:12px;color:var(--text-soft);line-height:1.4;min-width:0;}
+  .run-note .icon-sm{flex-shrink:0;margin-top:1px;color:var(--text-faint);}
+  .run-note.warn .icon-sm{color:var(--warn);}
+  .run-note b{color:var(--text);font-weight:700;}
+  /* --- reviewer findings, by severity: advisory output read next to the diff. Critical / warning / info reuse the state chips; a finding is never a gate — the machine-verified list is --- */
+  .findings{display:flex;flex-direction:column;gap:2px;}
+  .finding{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 8px;padding:10px;border-radius:var(--r-sm);background:var(--surface-3);cursor:pointer;transition:background-color var(--ease);}
+  .finding:hover{background:var(--surface-4);}
+  .finding:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+  .finding.active{background:var(--surface-4);box-shadow:inset 2px 0 0 var(--accent);}
+  .finding .chip{align-self:start;}
+  .f-txt{grid-column:2;font-size:12px;color:var(--text-soft);line-height:1.45;}
+  .f-loc{grid-column:2;display:inline-flex;align-items:center;gap:4px;min-width:0;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);line-height:1.35;}
+  .f-loc .icon-xs{flex-shrink:0;}
+  .f-loc span{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .finding:hover .f-loc,.finding.active .f-loc{color:var(--text-soft);}
+  .f-count{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--text-faint);line-height:1.35;}
+  .f-count b{color:var(--text-soft);font-weight:700;}
+  /* --- lesson memory: local, human-gated, offered once when a ticket resolves. Never written on its own, never sent to a provider, and skipping it is the default --- */
+  .lesson{display:flex;flex-direction:column;gap:10px;background:var(--surface-2);border-radius:var(--r);padding:12px;}
+  .lesson-head{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;line-height:1.3;}
+  .lesson-head .icon-sm{color:var(--warn);flex-shrink:0;}
+  .lesson-head .grow{flex:1;min-width:0;}
+  .lesson-head .mono{font-weight:400;font-size:11px;color:var(--text-faint);flex-shrink:0;}
+  .lesson .field{background:var(--surface-3);}
+  .lesson-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;}
+  .lesson-note{display:flex;align-items:center;gap:6px;min-width:0;font-size:11px;color:var(--text-faint);line-height:1.35;}
+  .lesson-note .icon-sm{flex-shrink:0;}
+  /* --- pipenzo:merge-conflict — the branch stopped being mergeable while it waited. Nothing failed, so it is amber, not red: the fix is a rebase, and the rebased branch re-enters the same human push gate --- */
+  .conflict{display:flex;flex-direction:column;gap:8px;background:var(--surface-2);border-radius:var(--r-sm);padding:10px 12px;}
+  .conflict-head{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--warn);line-height:1;}
+  .conflict-head .icon-sm{flex-shrink:0;}
+  .conflict-files{display:flex;flex-direction:column;gap:4px;}
+  .conflict-file{display:flex;align-items:center;gap:8px;min-width:0;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-soft);line-height:1.4;}
+  .conflict-file .p{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .conflict-file .h{color:var(--text-faint);flex-shrink:0;}
+  .conflict-why{font-size:12px;color:var(--text-soft);line-height:1.4;}
+  .conflict-why b{color:var(--text);font-weight:700;}
+  /* --- quiet inline link: a reset, a "back to", a secondary out — text weight, never a button, always at least 24px tall to stay tappable --- */
+  .r-link{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:700;color:var(--text-soft);cursor:pointer;transition:color var(--ease);min-height:24px;}
+  .r-link:hover{color:var(--text);}
+  .r-link:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:var(--r-sm);}
+  .r-link.faint{color:var(--text-faint);font-weight:400;}
+  .hide{display:none !important;}
   /* ===== screen ===== */
   .page{padding:40px 48px 48px;display:flex;flex-direction:column;gap:40px;width:1040px;}
   h1{font-size:28px;font-weight:700;margin:0;letter-spacing:-0.02em;line-height:1.15;text-wrap:balance;}
@@ -375,6 +472,10 @@
   .fieldset{display:flex;flex-direction:column;gap:10px;}
   .fieldset .f-lbl{margin-bottom:0;}
   .toast-stage{background:var(--bg);border-radius:var(--r);padding:20px;display:flex;flex-direction:column;gap:8px;align-items:flex-end;}
+  /* popovers float, so they get a dark stage of their own rather than sitting on a --surface-2 card */
+  .pop-stage{background:var(--bg);border-radius:var(--r);padding:24px;display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap;}
+  /* run controls and the lesson prompt are --surface-2 themselves, so they need a --bg stage rather than a --surface-2 card to sit on */
+  .stage{background:var(--bg);border-radius:var(--r);padding:20px;display:flex;flex-direction:column;gap:8px;}
   /* cards (ticket card mirrors Main.dc.html) */
   .card-grid{display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:2px;}
   .card{background:var(--surface);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:12px;transition:background-color var(--ease);}
@@ -521,6 +622,7 @@
       <div class="icon-cell"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M69.12,94.15,28.5,128l40.62,33.85a8,8,0,1,1-10.24,12.29l-48-40a8,8,0,0,1,0-12.29l48-40a8,8,0,0,1,10.24,12.3Zm176,27.7-48-40a8,8,0,1,0-10.24,12.3L227.5,128l-40.62,33.85a8,8,0,1,0,10.24,12.29l48-40a8,8,0,0,0,0-12.29ZM162.73,32.48a8,8,0,0,0-10.25,4.79l-64,176a8,8,0,0,0,4.79,10.26A8.14,8.14,0,0,0,96,224a8,8,0,0,0,7.52-5.27l64-176A8,8,0,0,0,162.73,32.48Z"/></svg><span>code</span></div>
       <div class="icon-cell"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm64-88a8,8,0,0,1-8,8H128a8,8,0,0,1-8-8V72a8,8,0,0,1,16,0v48h48A8,8,0,0,1,192,128Z"/></svg><span>clock</span></div>
       <div class="icon-cell"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,128a96,96,0,0,1-94.71,96H128A95.38,95.38,0,0,1,62.1,197.8a8,8,0,0,1,11-11.63A80,80,0,1,0,71.43,71.39a3.07,3.07,0,0,1-.26.25L44.59,96H72a8,8,0,0,1,0,16H24a8,8,0,0,1-8-8V56a8,8,0,0,1,16,0V85.8L60.25,60A96,96,0,0,1,224,128Z"/></svg><span>undo</span></div>
+      <div class="icon-cell"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M240,56v48a8,8,0,0,1-8,8H184a8,8,0,0,1,0-16H211.4L184.81,71.64l-.25-.24a80,80,0,1,0-1.67,114.78,8,8,0,0,1,11,11.63A95.44,95.44,0,0,1,128,224h-1.32A96,96,0,1,1,195.75,60L224,85.8V56a8,8,0,1,1,16,0Z"/></svg><span>refresh · rebase</span></div>
       <div class="icon-cell"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z"/></svg><span>external</span></div>
       <div class="icon-cell"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm88-29.84q.06-2.16,0-4.32l14.92-18.64a8,8,0,0,0,1.48-7.06,107.21,107.21,0,0,0-10.88-26.25,8,8,0,0,0-6-3.93l-23.72-2.64q-1.48-1.56-3-3L186,40.54a8,8,0,0,0-3.94-6,107.71,107.71,0,0,0-26.25-10.87,8,8,0,0,0-7.06,1.49L130.16,40Q128,40,125.84,40L107.2,25.11a8,8,0,0,0-7.06-1.48A107.6,107.6,0,0,0,73.89,34.51a8,8,0,0,0-3.93,6L67.32,64.27q-1.56,1.49-3,3L40.54,70a8,8,0,0,0-6,3.94,107.71,107.71,0,0,0-10.87,26.25,8,8,0,0,0,1.49,7.06L40,125.84Q40,128,40,130.16L25.11,148.8a8,8,0,0,0-1.48,7.06,107.21,107.21,0,0,0,10.88,26.25,8,8,0,0,0,6,3.93l23.72,2.64q1.49,1.56,3,3L70,215.46a8,8,0,0,0,3.94,6,107.71,107.71,0,0,0,26.25,10.87,8,8,0,0,0,7.06-1.49L125.84,216q2.16.06,4.32,0l18.64,14.92a8,8,0,0,0,7.06,1.48,107.21,107.21,0,0,0,26.25-10.88,8,8,0,0,0,3.93-6l2.64-23.72q1.56-1.48,3-3L215.46,186a8,8,0,0,0,6-3.94,107.71,107.71,0,0,0,10.87-26.25,8,8,0,0,0-1.49-7.06Zm-16.1-6.5a73.93,73.93,0,0,1,0,8.68,8,8,0,0,0,1.74,5.48l14.19,17.73a91.57,91.57,0,0,1-6.23,15L187,173.11a8,8,0,0,0-5.1,2.64,74.11,74.11,0,0,1-6.14,6.14,8,8,0,0,0-2.64,5.1l-2.51,22.58a91.32,91.32,0,0,1-15,6.23l-17.74-14.19a8,8,0,0,0-5-1.75h-.48a73.93,73.93,0,0,1-8.68,0,8,8,0,0,0-5.48,1.74L100.45,215.8a91.57,91.57,0,0,1-15-6.23L82.89,187a8,8,0,0,0-2.64-5.1,74.11,74.11,0,0,1-6.14-6.14,8,8,0,0,0-5.1-2.64L46.43,170.6a91.32,91.32,0,0,1-6.23-15l14.19-17.74a8,8,0,0,0,1.74-5.48,73.93,73.93,0,0,1,0-8.68,8,8,0,0,0-1.74-5.48L40.2,100.45a91.57,91.57,0,0,1,6.23-15L69,82.89a8,8,0,0,0,5.1-2.64,74.11,74.11,0,0,1,6.14-6.14A8,8,0,0,0,82.89,69L85.4,46.43a91.32,91.32,0,0,1,15-6.23l17.74,14.19a8,8,0,0,0,5.48,1.74,73.93,73.93,0,0,1,8.68,0,8,8,0,0,0,5.48-1.74L155.55,40.2a91.57,91.57,0,0,1,15,6.23L173.11,69a8,8,0,0,0,2.64,5.1,74.11,74.11,0,0,1,6.14,6.14,8,8,0,0,0,5.1,2.64l22.58,2.51a91.32,91.32,0,0,1,6.23,15l-14.19,17.74A8,8,0,0,0,199.87,123.66Z"/></svg><span>settings</span></div>
       <div class="icon-cell"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M216,48H40a8,8,0,0,0-8,8V208a16,16,0,0,0,16,16H88a16,16,0,0,0,16-16V160h48v16a16,16,0,0,0,16,16h40a16,16,0,0,0,16-16V56A8,8,0,0,0,216,48ZM88,208H48V128H88Zm0-96H48V64H88Zm64,32H104V64h48Zm56,32H168V128h40Zm0-64H168V64h40Z"/></svg><span>board</span></div>
@@ -592,8 +694,9 @@
         <span class="lbl">status chips · one per agent state</span>
         <div class="row-gap"><span class="chip chip-neutral">Queued</span><span class="chip chip-warn">Refining</span><span class="chip chip-warn">Implementing</span></div>
         <div class="row-gap"><span class="chip chip-warn">Reviewing</span><span class="chip chip-danger">Awaiting input</span><span class="chip chip-ok">Ready for review</span></div>
-        <div class="row-gap"><span class="chip chip-danger"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M188,88a27.75,27.75,0,0,0-12,2.71V60a28,28,0,0,0-41.36-24.6A28,28,0,0,0,80,44v6.71A27.75,27.75,0,0,0,68,48,28,28,0,0,0,40,76v76a88,88,0,0,0,176,0V116A28,28,0,0,0,188,88Zm12,64a72,72,0,0,1-144,0V76a12,12,0,0,1,24,0v44a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v68a8,8,0,0,0,16,0V60a12,12,0,0,1,24,0v68.67A48.08,48.08,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V116a12,12,0,0,1,24,0Z"/></svg>Needs human</span><span class="chip chip-ok"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg>Done</span></div>
-        <div class="row-gap"><span class="chip chip-ci">ci-failed</span><span class="chip chip-warn">Awaiting stack approval</span><span class="chip chip-neutral">Declined</span></div>
+        <div class="row-gap"><span class="chip chip-danger"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M188,88a27.75,27.75,0,0,0-12,2.71V60a28,28,0,0,0-41.36-24.6A28,28,0,0,0,80,44v6.71A27.75,27.75,0,0,0,68,48,28,28,0,0,0,40,76v76a88,88,0,0,0,176,0V116A28,28,0,0,0,188,88Zm12,64a72,72,0,0,1-144,0V76a12,12,0,0,1,24,0v44a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v68a8,8,0,0,0,16,0V60a12,12,0,0,1,24,0v68.67A48.08,48.08,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V116a12,12,0,0,1,24,0Z"/></svg>Needs human</span><span class="chip chip-warn">Interrupted</span></div>
+        <div class="row-gap"><span class="chip chip-ci">ci-failed</span><span class="chip chip-warn">merge-conflict</span><span class="chip chip-warn">Awaiting stack approval</span><span class="chip chip-neutral">Declined</span></div>
+        <span style="font-size:12px;color:var(--text-faint);line-height:1.45;">There is deliberately no <b style="color:var(--text-soft);">Done</b> chip here and no Done lane on the board. A merged PR closes its issue on GitHub, the polling reconciler only ever queries <i>open</i> issues, and the card simply stops appearing on the next poll — see the README, "A merged PR needs no label and no lane". The full record stays in the ticket store and is what the Activity view reads; closed off the board, not deleted.</span>
       </div>
       <div class="prim-card">
         <span class="lbl">segmented switch · kbd · avatar</span>
@@ -628,6 +731,63 @@
         </div>
         <span style="font-size:12px;color:var(--text-faint);line-height:1.45;">Three renderings of one control: <b style="color:var(--text-soft);">synced</b> (neutral), <b style="color:var(--text-soft);">syncing</b> (the notch spins, refresh is disabled while the poll is in flight), <b style="color:var(--text-soft);">syncing slowly</b> (amber). The third is a degradation, not a failure — every ticket still runs, the board is just further behind. Below ~15% remaining rate limit the poll interval widens and the board shows "syncing slowly"; <span class="mono">@octokit/plugin-throttling</span> honours <span class="mono">Retry-After</span> instead of hammering, and a <span class="mono">304</span> on a conditional request costs no quota at all. Set by the rate-limit check on each poll, never by a click. Live on the Board artboard.</span>
       </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Popovers — one floating layer, two menus hung off it: the ⌘K command palette and the workspace switcher. Both are live on the Board artboard</h2>
+    <p class="sec-note">Same surface and shadow as a dialog — <span class="mono">--surface-3</span> under <span class="mono">0 8px 24px rgba(0,0,0,.5)</span> — but a popover hangs off the control that opened it instead of covering the screen. <span class="mono">.pop</span> is the shared shell (title, separator, footer); <span class="mono">.cmdk-panel</span> and <span class="mono">.ws-menu</span> are what goes inside it. The palette navigates and drafts; it never approves an action or starts a run, because those decisions belong on the card and in the approval gate where their context is.</p>
+    <div class="pop-stage">
+      <div class="pop cmdk-panel" style="max-height:none;">
+        <div class="cmdk-search">
+          <svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,218.34l-50.07-50.06a88.11,88.11,0,1,0-11.31,11.31l50.06,50.07a8,8,0,0,0,11.32-11.32ZM40,112a72,72,0,1,1,72,72A72.08,72.08,0,0,1,40,112Z"/></svg>
+          <input class="field" placeholder="Jump to ticket, repo, action…" aria-label="Search tickets, repos and actions" />
+          <span class="kbd">esc</span>
+        </div>
+        <div class="pop-sep"></div>
+        <div class="cmdk-results">
+          <div class="cmdk-group">
+            <span class="cmdk-group-title">Tickets · recent</span>
+            <div class="cmdk-item active" tabindex="0"><span class="cmdk-id">#85</span><span class="cmdk-lbl">Batch tray badge updates to one repaint per tick</span><span class="chip chip-ci">ci-failed · fix ready</span></div>
+            <div class="cmdk-item" tabindex="0"><span class="cmdk-id">#94</span><span class="cmdk-lbl">Sanitize environment for MCP stdio server subprocesses</span><span class="chip chip-warn">implementing</span></div>
+          </div>
+          <div class="cmdk-group">
+            <span class="cmdk-group-title">Repos</span>
+            <div class="cmdk-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232,64a32,32,0,1,0-40,31v17a8,8,0,0,1-8,8H96a23.84,23.84,0,0,0-8,1.38V95a32,32,0,1,0-16,0v66a32,32,0,1,0,16,0V144a8,8,0,0,1,8-8h88a24,24,0,0,0,24-24V95A32.06,32.06,0,0,0,232,64ZM64,64A16,16,0,1,1,80,80,16,16,0,0,1,64,64ZM96,192a16,16,0,1,1-16-16A16,16,0,0,1,96,192ZM200,80a16,16,0,1,1,16-16A16,16,0,0,1,200,80Z"/></svg><span class="cmdk-lbl mono">jortega0033/agentdock</span><span class="cmdk-id">12 open</span></div>
+          </div>
+          <div class="cmdk-group">
+            <span class="cmdk-group-title">Actions</span>
+            <div class="cmdk-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M176,232a8,8,0,0,1-8,8H88a8,8,0,0,1,0-16h80A8,8,0,0,1,176,232Zm40-128a87.55,87.55,0,0,1-33.64,69.21A16.24,16.24,0,0,0,176,186v6a16,16,0,0,1-16,16H96a16,16,0,0,1-16-16v-6a16,16,0,0,0-6.23-12.66A87.59,87.59,0,0,1,40,104.49C39.74,56.83,78.26,17.14,125.88,16A88,88,0,0,1,216,104Zm-16,0a72,72,0,0,0-73.74-72c-39,.92-70.47,33.39-70.26,72.39a71.65,71.65,0,0,0,27.64,56.3A32,32,0,0,1,96,186v6h64v-6a32.15,32.15,0,0,1,12.47-25.35A71.65,71.65,0,0,0,200,104Zm-16.11-9.34a57.6,57.6,0,0,0-46.56-46.55,8,8,0,0,0-2.66,15.78c16.57,2.79,30.63,16.85,33.44,33.45A8,8,0,0,0,176,104a9,9,0,0,0,1.35-.11A8,8,0,0,0,183.89,94.66Z"/></svg><span class="cmdk-lbl">New from idea</span><span class="kbd">N</span></div>
+            <div class="cmdk-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M136,80v43.47l36.12,21.67a8,8,0,0,1-8.24,13.72l-40-24A8,8,0,0,1,120,128V80a8,8,0,0,1,16,0Zm-8-48A95.44,95.44,0,0,0,60.08,60.15C52.81,67.51,46.35,74.59,40,82V64a8,8,0,0,0-16,0v40a8,8,0,0,0,8,8H72a8,8,0,0,0,0-16H49c7.15-8.42,14.27-16.35,22.39-24.57a80,80,0,1,1,1.66,114.75,8,8,0,1,0-11,11.64A96,96,0,1,0,128,32Z"/></svg><span class="cmdk-lbl">Open Activity</span><span class="kbd">A</span></div>
+          </div>
+        </div>
+        <div class="pop-foot"><span class="kbd">↑↓</span><span class="kbd">↵</span><span class="grow">Results come from the ticket store, so the palette finds a ticket the board is still waiting on a poll to show.</span></div>
+      </div>
+      <div class="pop ws-menu">
+        <span class="pop-title">Connected repos · 3</span>
+        <div class="ws-menu-item active" tabindex="0">
+          <span class="ws-ic">ad</span>
+          <span class="wm-text"><span class="wm-name">jortega0033/agentdock</span><span class="wm-sub">main · 12 open · 2 running</span></span>
+          <svg class="icon-sm wm-check" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg>
+        </div>
+        <div class="ws-menu-item" tabindex="0">
+          <span class="ws-ic">pz</span>
+          <span class="wm-text"><span class="wm-name">jortega0033/pipenzo</span><span class="wm-sub">main · 3 open · idle</span></span>
+        </div>
+        <div class="ws-menu-item" tabindex="0">
+          <span class="ws-ic">ov</span>
+          <span class="wm-text"><span class="wm-name">jortega0033/open-vacancy-radar</span><span class="wm-sub">master · 5 open · 1 needs you</span></span>
+        </div>
+        <div class="pop-sep"></div>
+        <div class="ws-menu-item foot" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm88-29.84q.06-2.16,0-4.32l14.92-18.64a8,8,0,0,0,1.48-7.06,107.21,107.21,0,0,0-10.88-26.25,8,8,0,0,0-6-3.93l-23.72-2.64q-1.48-1.56-3-3L186,40.54a8,8,0,0,0-3.94-6,107.71,107.71,0,0,0-26.25-10.87,8,8,0,0,0-7.06,1.49L130.16,40Q128,40,125.84,40L107.2,25.11a8,8,0,0,0-7.06-1.48A107.6,107.6,0,0,0,73.89,34.51a8,8,0,0,0-3.93,6L67.32,64.27q-1.56,1.49-3,3L40.54,70a8,8,0,0,0-6,3.94,107.71,107.71,0,0,0-10.87,26.25,8,8,0,0,0,1.49,7.06L40,125.84Q40,128,40,130.16L25.11,148.8a8,8,0,0,0-1.48,7.06,107.21,107.21,0,0,0,10.88,26.25,8,8,0,0,0,6,3.93l23.72,2.64q1.49,1.56,3,3L70,215.46a8,8,0,0,0,3.94,6,107.71,107.71,0,0,0,26.25,10.87,8,8,0,0,0,7.06-1.49L125.84,216q2.16.06,4.32,0l18.64,14.92a8,8,0,0,0,7.06,1.48,107.21,107.21,0,0,0,26.25-10.88,8,8,0,0,0,3.93-6l2.64-23.72q1.56-1.48,3-3L215.46,186a8,8,0,0,0,6-3.94,107.71,107.71,0,0,0,10.87-26.25,8,8,0,0,0-1.49-7.06Zm-16.1-6.5a73.93,73.93,0,0,1,0,8.68,8,8,0,0,0,1.74,5.48l14.19,17.73a91.57,91.57,0,0,1-6.23,15L187,173.11a8,8,0,0,0-5.1,2.64,74.11,74.11,0,0,1-6.14,6.14,8,8,0,0,0-2.64,5.1l-2.51,22.58a91.32,91.32,0,0,1-15,6.23l-17.74-14.19a8,8,0,0,0-5-1.75h-.48a73.93,73.93,0,0,1-8.68,0,8,8,0,0,0-5.48,1.74L100.45,215.8a91.57,91.57,0,0,1-15-6.23L82.89,187a8,8,0,0,0-2.64-5.1,74.11,74.11,0,0,1-6.14-6.14,8,8,0,0,0-5.1-2.64L46.43,170.6a91.32,91.32,0,0,1-6.23-15l14.19-17.74a8,8,0,0,0,1.74-5.48,73.93,73.93,0,0,1,0-8.68,8,8,0,0,0-1.74-5.48L40.2,100.45a91.57,91.57,0,0,1,6.23-15L69,82.89a8,8,0,0,0,5.1-2.64,74.11,74.11,0,0,1,6.14-6.14A8,8,0,0,0,82.89,69L85.4,46.43a91.32,91.32,0,0,1,15-6.23l17.74,14.19a8,8,0,0,0,5.48,1.74,73.93,73.93,0,0,1,8.68,0,8,8,0,0,0,5.48-1.74L155.55,40.2a91.57,91.57,0,0,1,15,6.23L173.11,69a8,8,0,0,0,2.64,5.1,74.11,74.11,0,0,1,6.14,6.14,8,8,0,0,0,5.1,2.64l22.58,2.51a91.32,91.32,0,0,1,6.23,15l-14.19,17.74A8,8,0,0,0,199.87,123.66Z"/></svg>Manage repos…</div>
+        <div class="pop-foot"><span class="grow">Only these three are polled. Adding or removing one opens the same searchable picker as first-run, in Settings.</span></div>
+      </div>
+    </div>
+    <div class="anatomy">
+      <div><b>.pop</b>the floating shell — surface, radius, shadow, clipped corners. Everything else is what hangs inside it</div>
+      <div><b>grouped, not ranked</b>the palette groups by type and keeps the order fixed, so the same key sequence always lands on the same row</div>
+      <div><b>.cmdk-item.active</b>one keyboard highlight at a time, marked by the accent rail on its left edge so it survives a mouse hovering somewhere else</div>
+      <div><b>read, not write</b>the switcher switches; adding or removing a connected repo is Settings' job, and the menu says so instead of hiding it</div>
     </div>
   </section>
 
@@ -1166,7 +1326,115 @@ gh pr create --fill --base main</div>
   </section>
 
   <section>
-    <h2>Cards — ticket card (board) in every state incl. the two diff-gate outcomes, a stack container, ci-failed and held; stat card (activity). Surface on bg, hover steps one surface up, no border</h2>
+    <h2>Live run controls — Steer drops one instruction into the session already running; Stop asks first, and the confirmation is where "commits so far are preserved" is actually said</h2>
+    <p class="sec-note">Near-term post-MVP. They sit under the phase stepper on the ticket, and only while a phase is genuinely running — at the publish gate the run has already stopped on its own, so the controls are absent there rather than disabled. Steering never rewrites the approved spec: the instruction is recorded on the ticket and reads in the stream as a human turn, which keeps the spec the one thing the implementer was seeded with. Stopping is not a failure state and not a rollback — it keeps the branch, the commits and the worktree, and parks the ticket at the phase it reached.</p>
+    <div class="stage">
+      <div class="run-controls">
+        <div class="run-row">
+          <span class="run-live"><span class="run-dot"></span><span><b>Implement is running</b> — sonnet · 4m 12s · 2 commits on issue-94, nothing pushed</span></span>
+          <span class="run-acts">
+            <button class="btn sm"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,0,0,36.18,176.88L24.83,210.93a16,16,0,0,0,20.24,20.24l34.05-11.35A104,104,0,1,0,128,24Zm0,192a87.87,87.87,0,0,1-44.06-11.81,8,8,0,0,0-6.54-.67L40,216,52.47,178.6a8,8,0,0,0-.66-6.54A88,88,0,1,1,128,216Z"/></svg>Steer</button>
+            <button class="btn sm danger"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M188,88a27.75,27.75,0,0,0-12,2.71V60a28,28,0,0,0-41.36-24.6A28,28,0,0,0,80,44v6.71A27.75,27.75,0,0,0,68,48,28,28,0,0,0,40,76v76a88,88,0,0,0,176,0V116A28,28,0,0,0,188,88Zm12,64a72,72,0,0,1-144,0V76a12,12,0,0,1,24,0v44a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v68a8,8,0,0,0,16,0V60a12,12,0,0,1,24,0v68.67A48.08,48.08,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V116a12,12,0,0,1,24,0Z"/></svg>Stop</button>
+          </span>
+        </div>
+      </div>
+      <div class="run-controls">
+        <div class="run-panel">
+          <div class="run-row"><span class="run-live"><span class="run-dot"></span><span><b>Steer the run</b> — one instruction, delivered at the next tool boundary</span></span></div>
+          <textarea class="field" rows="2" placeholder="e.g. leave the legacy fixture alone for now">leave the legacy fixture alone — keep it until #97 lands, just finish the PATH assertion</textarea>
+          <div class="run-foot">
+            <span class="run-note"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm16-40a8,8,0,0,1-8,8,16,16,0,0,1-16-16V128a8,8,0,0,1,0-16,16,16,0,0,1,16,16v40A8,8,0,0,1,144,176ZM112,84a12,12,0,1,1,12,12A12,12,0,0,1,112,84Z"/></svg><span>The session keeps its context and its spec. Steering is recorded on the ticket and appears in the stream as a human turn — it never rewrites the approved spec or the acceptance criteria.</span></span>
+            <span class="run-acts"><button class="btn sm ghost">Cancel</button><button class="btn sm primary"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg>Send</button></span>
+          </div>
+        </div>
+      </div>
+      <div class="run-controls">
+        <div class="run-panel">
+          <div class="run-row"><span class="run-live"><svg class="icon-sm" style="color:var(--warn);" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg><span><b>Stop this run?</b></span></span></div>
+          <span class="run-note warn"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg><span><b>Stop preserves commits.</b> The 2 commits already on <span class="mono">issue-94</span> stay exactly where they are, and the worktree at <span class="mono">.worktrees/issue-94</span> is kept. Only the in-flight tool call is abandoned.</span></span>
+          <div class="run-foot">
+            <span class="run-note"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm16-40a8,8,0,0,1-8,8,16,16,0,0,1-16-16V128a8,8,0,0,1,0-16,16,16,0,0,1,16,16v40A8,8,0,0,1,144,176ZM112,84a12,12,0,1,1,12,12A12,12,0,0,1,112,84Z"/></svg><span>Nothing is pushed and the branch is not deleted. Picking the ticket up again is a fresh Implement seeded with the same spec, not a continuation.</span></span>
+            <span class="run-acts"><button class="btn sm ghost">Keep running</button><button class="btn sm danger"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M188,88a27.75,27.75,0,0,0-12,2.71V60a28,28,0,0,0-41.36-24.6A28,28,0,0,0,80,44v6.71A27.75,27.75,0,0,0,68,48,28,28,0,0,0,40,76v76a88,88,0,0,0,176,0V116A28,28,0,0,0,188,88Zm12,64a72,72,0,0,1-144,0V76a12,12,0,0,1,24,0v44a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v68a8,8,0,0,0,16,0V60a12,12,0,0,1,24,0v68.67A48.08,48.08,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V116a12,12,0,0,1,24,0Z"/></svg>Stop and keep commits</button></span>
+          </div>
+        </div>
+      </div>
+      <div class="run-controls">
+        <div class="run-row">
+          <span class="run-live"><svg class="icon-sm" style="color:var(--warn);" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M188,88a27.75,27.75,0,0,0-12,2.71V60a28,28,0,0,0-41.36-24.6A28,28,0,0,0,80,44v6.71A27.75,27.75,0,0,0,68,48,28,28,0,0,0,40,76v76a88,88,0,0,0,176,0V116A28,28,0,0,0,188,88Zm12,64a72,72,0,0,1-144,0V76a12,12,0,0,1,24,0v44a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v68a8,8,0,0,0,16,0V60a12,12,0,0,1,24,0v68.67A48.08,48.08,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V116a12,12,0,0,1,24,0Z"/></svg><span><b>Stopped at 14:11 — 2 commits kept on issue-94.</b> Worktree <span class="mono">.worktrees/issue-94</span> retained, nothing pushed. <span class="mono">pipenzo:needs-human</span></span></span>
+        </div>
+      </div>
+    </div>
+    <div class="anatomy">
+      <div><b>only while running</b>absent at the publish gate and on a parked ticket, because there is no session to steer or stop — a disabled control would imply one exists</div>
+      <div><b>steer ≠ respec</b>one instruction into the live session; the spec and the acceptance criteria are unchanged, and the turn is recorded on the ticket</div>
+      <div><b>stop confirms</b>the only destructive-sounding control here, so it takes a second click and spends that click explaining what is kept</div>
+      <div><b>amber, not red</b>a stopped run is a human decision with a clean outcome, not a failure; the card that results is a parked ticket, not an error</div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Reviewer findings, by severity — advisory notes beside the diff. Critical is the only severity that holds the push gate closed</h2>
+    <p class="sec-note">Near-term post-MVP, and it is what makes the reviewer's tier exemption safe to state out loud: the reviewer may run below the implementer's tier precisely because its findings feed the next implement attempt rather than gate the push, while the adversarial verifier — which does gate — never may. Findings sit in the diff view's right rail, under the machine-verified and agent-captured zones, so the ordering on screen matches the ordering in authority: gates, then evidence, then opinion.</p>
+    <div class="prim-grid two">
+      <div class="prim-card">
+        <span class="lbl">findings list · one row per finding, file:line selects that row in the diff</span>
+        <div class="f-count"><span><b>1</b> critical</span><span><b>1</b> warning</span><span><b>1</b> info</span></div>
+        <div class="findings">
+          <div class="finding active" tabindex="0">
+            <span class="chip chip-danger">critical</span>
+            <span class="f-txt">The token vault is read on a path the agent process can reach. This one blocks the push gate until it is answered.</span>
+            <span class="f-loc"><svg class="icon-xs" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M213.66,82.34l-56-56A8,8,0,0,0,152,24H56A16,16,0,0,0,40,40V216a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V88A8,8,0,0,0,213.66,82.34ZM160,51.31,188.69,80H160ZM200,216H56V40h88V88a8,8,0,0,0,8,8h48V216Z"/></svg><span>publish-service.ts:64</span><svg class="icon-xs" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"/></svg></span>
+          </div>
+          <div class="finding" tabindex="0">
+            <span class="chip chip-warn">warning</span>
+            <span class="f-txt">The sanitized floor is spread first, so an env key in the server config can still put a host value back into the child.</span>
+            <span class="f-loc"><svg class="icon-xs" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M213.66,82.34l-56-56A8,8,0,0,0,152,24H56A16,16,0,0,0,40,40V216a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V88A8,8,0,0,0,213.66,82.34ZM160,51.31,188.69,80H160ZM200,216H56V40h88V88a8,8,0,0,0,8,8h48V216Z"/></svg><span>stdio-mcp-connection.ts:76</span><svg class="icon-xs" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"/></svg></span>
+          </div>
+          <div class="finding" tabindex="0">
+            <span class="chip chip-neutral">info</span>
+            <span class="f-txt">The probe variable is written to process.env and never deleted, so it outlives this test file.</span>
+            <span class="f-loc"><svg class="icon-xs" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M213.66,82.34l-56-56A8,8,0,0,0,152,24H56A16,16,0,0,0,40,40V216a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V88A8,8,0,0,0,213.66,82.34ZM160,51.31,188.69,80H160ZM200,216H56V40h88V88a8,8,0,0,0,8,8h48V216Z"/></svg><span>mcp-stdio-client.test.ts:142</span><svg class="icon-xs" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"/></svg></span>
+          </div>
+        </div>
+        <span style="font-size:12px;color:var(--text-faint);line-height:1.45;">Severity reuses the state chips rather than inventing a fourth scale — <span class="mono">chip-danger</span>, <span class="mono">chip-warn</span>, <span class="mono">chip-neutral</span>. The selected row keeps the accent rail on its left, matching <span class="mono">.cmdk-item.active</span>.</span>
+      </div>
+      <div class="prim-card">
+        <span class="lbl">what each severity actually does — the part a colour alone cannot say</span>
+        <div class="grade-table" style="grid-template-columns:96px 110px minmax(0,1fr);">
+          <div class="gh">severity</div><div class="gh">chip</div><div class="gh">effect on the gate</div>
+          <div><b>critical</b></div><div><span class="chip chip-danger">critical</span></div><div>Holds the push gate closed. It is answered in a new attempt, or dismissed with a written reason that lands in the PR body.</div>
+          <div><b>warning</b></div><div><span class="chip chip-warn">warning</span></div><div>Advisory. Feeds the next implement attempt and is counted on the ticket; never blocks a push on its own.</div>
+          <div><b>info</b></div><div><span class="chip chip-neutral">info</span></div><div class="no">Recorded and shown. No effect on any gate.</div>
+        </div>
+        <span style="font-size:12px;color:var(--text-faint);line-height:1.45;">A finding is not evidence, which is why it lives below both evidence zones and never inside them. The two-zone rule above stays intact: machine-verified is what ran, agent-captured is what the agent says it saw, and findings are what a second model thinks about the result.</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Lesson memory — local, human-gated, offered once when a ticket resolves. Never generated on its own, and never sent to a provider</h2>
+    <p class="sec-note">The deliberate small substitute for the persistent repo knowledge base that is out of scope: a durable index needs invalidation and a staleness story, and its failure mode is an implementer confidently misled by an out-of-date wiki. A one line note a person chose to write, and can delete, has neither problem. Skipping is the default and leaves nothing behind; the field is pre-filled from something the run actually hit — here, its one pre-commitment mismatch — so the human is editing a fact rather than facing a blank box.</p>
+    <div class="stage">
+      <div class="lesson">
+        <div class="lesson-head"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M176,232a8,8,0,0,1-8,8H88a8,8,0,0,1,0-16h80A8,8,0,0,1,176,232Zm40-128a87.55,87.55,0,0,1-33.64,69.21A16.24,16.24,0,0,0,176,186v6a16,16,0,0,1-16,16H96a16,16,0,0,1-16-16v-6a16,16,0,0,0-6.23-12.66A87.59,87.59,0,0,1,40,104.49C39.74,56.83,78.26,17.14,125.88,16A88,88,0,0,1,216,104Zm-16,0a72,72,0,0,0-73.74-72c-39,.92-70.47,33.39-70.26,72.39a71.65,71.65,0,0,0,27.64,56.3A32,32,0,0,1,96,186v6h64v-6a32.15,32.15,0,0,1,12.47-25.35A71.65,71.65,0,0,0,200,104Zm-16.11-9.34a57.6,57.6,0,0,0-46.56-46.55,8,8,0,0,0-2.66,15.78c16.57,2.79,30.63,16.85,33.44,33.45A8,8,0,0,0,176,104a9,9,0,0,0,1.35-.11A8,8,0,0,0,183.89,94.66Z"/></svg><span class="grow">Worth remembering for next time?</span><span class="mono">optional · you decide</span></div>
+        <input class="field" value="On Windows the host sets Path, not PATH — the sanitized env floor has to carry both spellings." placeholder="One line, in your words." />
+        <div class="lesson-foot">
+          <span class="lesson-note"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm16-40a8,8,0,0,1-8,8,16,16,0,0,1-16-16V128a8,8,0,0,1,0-16,16,16,0,0,1,16,16v40A8,8,0,0,1,144,176ZM112,84a12,12,0,1,1,12,12A12,12,0,0,1,112,84Z"/></svg><span>Stays in this repo's local ticket store. Nothing is written unless you save it.</span></span>
+          <span class="run-acts"><button class="btn sm ghost">Skip</button><button class="btn sm"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg>Save lesson</button></span>
+        </div>
+      </div>
+      <div class="lesson">
+        <div class="lesson-head"><svg class="icon-sm" style="color:var(--ok);" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg><span class="grow">Saved locally — 1 lesson on jortega0033/agentdock</span><span class="mono">human-gated</span></div>
+        <div class="lesson-foot">
+          <span class="lesson-note"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm16-40a8,8,0,0,1-8,8,16,16,0,0,1-16-16V128a8,8,0,0,1,0-16,16,16,0,0,1,16,16v40A8,8,0,0,1,144,176ZM112,84a12,12,0,1,1,12,12A12,12,0,0,1,112,84Z"/></svg><span>Handed to the next Refine on this repo as context, never as an instruction, and deletable in Settings.</span></span>
+          <span class="run-acts"><span class="r-link faint" tabindex="0">Undo</span></span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Cards — ticket card (board) in every state incl. the two diff-gate outcomes, a stack container, ci-failed, merge-conflict and held; stat card (activity). Surface on bg, hover steps one surface up, no border</h2>
     <div class="card-grid">
       <div class="card" tabindex="0">
         <div class="card-top"><span class="card-id">#88</span><span class="chip chip-ok">≤ 40 lines</span></div>
@@ -1271,6 +1539,31 @@ gh pr create --fill --base main</div>
           <div class="kid"><span class="kid-ic run"><svg class="icon-xs" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"/></svg></span><span class="n">1/3</span><span class="t">Extract a ProviderCapabilities interface</span><span class="id">#117 · waiting for a slot</span><span class="ext" tabindex="0"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z"/></svg></span></div>
         </div>
         <span style="font-size:12px;color:var(--text-faint);line-height:1.45;">After accept, rows become read-only <span class="mono">kid</span> rows that link out. Restack, rebase and the PR-to-PR view live on GitHub — pipenzo never builds its own restacker.</span>
+      </div>
+    </div>
+    <div class="card-grid" style="margin-top:2px;">
+      <div class="card" tabindex="0">
+        <div class="card-top"><span class="card-id">#101</span><span class="chip chip-warn">pipenzo:merge-conflict</span></div>
+        <span class="card-title">Serialise worktree provisioning and retry on worktree_busy</span>
+        <div class="conflict">
+          <span class="conflict-head"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232,64a32,32,0,1,0-40,31v17a8,8,0,0,1-8,8H96a23.84,23.84,0,0,0-8,1.38V95a32,32,0,1,0-16,0v66a32,32,0,1,0,16,0V144a8,8,0,0,1,8-8h88a24,24,0,0,0,24-24V95A32.06,32.06,0,0,0,232,64ZM64,64A16,16,0,1,1,80,80,16,16,0,0,1,64,64ZM96,192a16,16,0,1,1-16-16A16,16,0,0,1,96,192ZM200,80a16,16,0,1,1,16-16A16,16,0,0,1,200,80Z"/></svg>Conflicts with main · PR #121</span>
+          <div class="conflict-files">
+            <span class="conflict-file"><span class="p">ticket-orchestrator.ts</span><span class="h">2 hunks</span></span>
+            <span class="conflict-file"><span class="p">worktree-manager.ts</span><span class="h">1 hunk</span></span>
+          </div>
+          <span class="conflict-why"><b>Nothing failed and no commit is lost.</b> #105 landed on main while this branch sat at the push gate. Rebase re-runs the same five gates in the worktree, and the rebased branch comes back to the same push gate.</span>
+        </div>
+        <div class="card-foot">
+          <span class="card-meta"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm64-88a8,8,0,0,1-8,8H128a8,8,0,0,1-8-8V72a8,8,0,0,1,16,0v48h48A8,8,0,0,1,192,128Z"/></svg>conflicted 26m</span>
+          <button class="btn sm primary"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M240,56v48a8,8,0,0,1-8,8H184a8,8,0,0,1,0-16H211.4L184.81,71.64l-.25-.24a80,80,0,1,0-1.67,114.78,8,8,0,0,1,11,11.63A95.44,95.44,0,0,1,128,224h-1.32A96,96,0,1,1,195.75,60L224,85.8V56a8,8,0,1,1,16,0Z"/></svg>Rebase and retry</button>
+        </div>
+      </div>
+      <div class="prim-card" style="grid-column:span 2;">
+        <span class="lbl">PR-event reactions · ci-failed and merge-conflict, and why they land in different lanes</span>
+        <span style="font-size:13px;color:var(--text-soft);line-height:1.5;">Both are things GitHub tells pipenzo about an open PR after the push gate, and both come back to a person. They part company on whether there is already something to look at. <b style="color:var(--text);">ci-failed</b> runs one classifiable fix attempt as a <span class="mono">session.fork</span>, so a fix commit is already sitting on the branch waiting on the push gate — that card belongs in <b style="color:var(--text);">Ready for review</b>. <b style="color:var(--text);">merge-conflict</b> has no fix yet and pipenzo will not invent one, because a rebase is a decision: the card parks in <b style="color:var(--text);">Needs human</b> with the conflicting files named and one primary action.</span>
+        <div class="row-gap"><span class="chip chip-ci">ci-failed</span><span style="font-size:12px;color:var(--text-faint);">Ready for review · a fix commit is already waiting on you</span></div>
+        <div class="row-gap"><span class="chip chip-warn">merge-conflict</span><span style="font-size:12px;color:var(--text-faint);">Needs human · nothing has been attempted yet</span></div>
+        <span style="font-size:12px;color:var(--text-faint);line-height:1.45;">Red is reserved for something that failed or is blocking. A branch that went stale while it waited is neither, so merge-conflict reads amber — the same register as <span class="mono">pipenzo:interrupted</span> and "syncing slowly". The rebased branch is never force-pushed on its own; it re-enters the same human push gate, exactly like the ci-failed fix.</span>
       </div>
     </div>
     <div class="stat-grid" style="margin-top:2px;">

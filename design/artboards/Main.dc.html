@@ -267,6 +267,7 @@
     .btn:hover,.btn.primary:hover,.btn:active,.btn.primary:active,.icon-btn:active{transform:none !important;}
     .step.await{box-shadow:0 0 0 2px var(--warn-fg);}
     .evt-ic.live{box-shadow:0 0 0 2px var(--accent-fg);}
+    .run-dot{box-shadow:0 0 0 2px var(--accent-fg);}
     /* loading: the shimmer flattens to a still block and the spinner to a still notch — the shape still reads as a placeholder */
     .sk{animation:none !important;background-image:none !important;background-color:var(--surface-2);}
     .sk.strong{background-color:var(--surface-3);}
@@ -328,6 +329,102 @@
   .empty.lane{background:transparent;padding:20px 12px;gap:6px;}
   .empty.lane .e-title{font-size:12px;color:var(--text-soft);}
   .empty.lane .e-sub{font-size:11px;}
+  /* --- popover: one floating layer under every menu and palette. Same surface and shadow as .dialog, but it hangs off a control instead of covering the screen --- */
+  .pop{background:var(--surface-3);border-radius:var(--r);box-shadow:var(--shadow);display:flex;flex-direction:column;overflow:hidden;}
+  .pop-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-faint);line-height:1;padding:12px 12px 8px;}
+  .pop-sep{height:2px;background:var(--surface-2);flex-shrink:0;}
+  .pop-foot{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--surface-2);font-size:11px;color:var(--text-faint);line-height:1.35;}
+  .pop-foot .grow{flex:1;min-width:0;}
+  /* --- command palette (⌘K): a search field over results grouped by type — tickets, repos, then actions. It only navigates and drafts; nothing in it starts or approves a run --- */
+  .cmdk.open{background:var(--surface-3);color:var(--text-soft);}
+  .cmdk-panel{width:560px;max-height:560px;}
+  .cmdk-search{display:flex;align-items:center;gap:10px;padding:12px;flex-shrink:0;}
+  .cmdk-search > .icon{color:var(--text-faint);flex-shrink:0;}
+  .cmdk-search .field{background:var(--surface-4);}
+  .cmdk-results{overflow-y:auto;padding:2px 4px 6px;display:flex;flex-direction:column;}
+  .cmdk-group{display:flex;flex-direction:column;gap:2px;}
+  .cmdk-group-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-faint);line-height:1;padding:10px 10px 6px;}
+  .cmdk-item{display:flex;align-items:center;gap:10px;min-height:36px;padding:6px 10px;border-radius:var(--r-sm);font-size:13px;color:var(--text-soft);cursor:pointer;transition:background-color var(--ease),color var(--ease);}
+  .cmdk-item:hover{background:var(--surface-4);color:var(--text);}
+  .cmdk-item.active{background:var(--surface-4);color:var(--text);box-shadow:inset 2px 0 0 var(--accent);}
+  .cmdk-item:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;}
+  .cmdk-item > .icon{color:var(--text-faint);flex-shrink:0;}
+  .cmdk-item:hover > .icon,.cmdk-item.active > .icon{color:var(--text);}
+  .cmdk-id{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-faint);flex-shrink:0;}
+  .cmdk-lbl{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .cmdk-item .chip{flex-shrink:0;height:18px;padding:0 6px;}
+  .cmdk-item .kbd{flex-shrink:0;}
+  /* --- workspace switcher menu: the workspace-level connected-repos list the polling reconciler iterates over. Switching is free; adding or removing a repo is Settings' job, not this menu's --- */
+  .ws-menu{width:280px;}
+  .ws-menu-item{display:flex;align-items:center;gap:10px;min-height:44px;padding:6px 10px;margin:0 4px;border-radius:var(--r-sm);cursor:pointer;transition:background-color var(--ease);}
+  .ws-menu-item:hover{background:var(--surface-4);}
+  .ws-menu-item:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;}
+  .ws-menu-item .ws-ic{width:24px;height:24px;font-size:11px;background:var(--surface-4);}
+  .ws-menu-item.active .ws-ic{background:var(--accent);color:var(--accent-fg);}
+  .wm-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;}
+  .wm-name{font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:700;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .wm-sub{font-size:11px;color:var(--text-faint);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .wm-check{color:var(--accent);flex-shrink:0;}
+  .ws-menu-item.foot{min-height:36px;margin-bottom:4px;font-size:13px;font-weight:700;color:var(--text-soft);}
+  .ws-menu-item.foot:hover{color:var(--text);}
+  .ws-menu-item.foot .icon{color:var(--text-faint);flex-shrink:0;}
+  /* --- live run controls: Steer drops one instruction into the session that is already running; Stop asks first and says plainly that the commits already made stay --- */
+  .run-controls{display:flex;flex-direction:column;gap:10px;background:var(--surface-2);border-radius:var(--r);padding:10px 12px;}
+  .run-row{display:flex;align-items:center;gap:12px;}
+  .run-live{display:flex;align-items:center;gap:8px;flex:1;min-width:0;font-size:12px;color:var(--text-soft);line-height:1.3;}
+  .run-live b{color:var(--text);font-weight:700;}
+  .run-live .mono{font-size:11px;color:var(--text-faint);}
+  .run-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);flex-shrink:0;animation:pulse-run 1.6s ease-out infinite;}
+  @keyframes pulse-run{0%{box-shadow:0 0 0 0 rgba(63,185,80,0.45);}100%{box-shadow:0 0 0 8px rgba(63,185,80,0);}}
+  .run-acts{display:flex;gap:6px;flex-shrink:0;}
+  .run-panel{display:flex;flex-direction:column;gap:8px;}
+  .run-panel .field{background:var(--surface-3);}
+  .run-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;}
+  .run-foot .run-note{flex:1;}
+  .run-note{display:flex;align-items:flex-start;gap:8px;font-size:12px;color:var(--text-soft);line-height:1.4;min-width:0;}
+  .run-note .icon-sm{flex-shrink:0;margin-top:1px;color:var(--text-faint);}
+  .run-note.warn .icon-sm{color:var(--warn);}
+  .run-note b{color:var(--text);font-weight:700;}
+  /* --- reviewer findings, by severity: advisory output read next to the diff. Critical / warning / info reuse the state chips; a finding is never a gate — the machine-verified list is --- */
+  .findings{display:flex;flex-direction:column;gap:2px;}
+  .finding{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 8px;padding:10px;border-radius:var(--r-sm);background:var(--surface-3);cursor:pointer;transition:background-color var(--ease);}
+  .finding:hover{background:var(--surface-4);}
+  .finding:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+  .finding.active{background:var(--surface-4);box-shadow:inset 2px 0 0 var(--accent);}
+  .finding .chip{align-self:start;}
+  .f-txt{grid-column:2;font-size:12px;color:var(--text-soft);line-height:1.45;}
+  .f-loc{grid-column:2;display:inline-flex;align-items:center;gap:4px;min-width:0;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);line-height:1.35;}
+  .f-loc .icon-xs{flex-shrink:0;}
+  .f-loc span{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .finding:hover .f-loc,.finding.active .f-loc{color:var(--text-soft);}
+  .f-count{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--text-faint);line-height:1.35;}
+  .f-count b{color:var(--text-soft);font-weight:700;}
+  /* --- lesson memory: local, human-gated, offered once when a ticket resolves. Never written on its own, never sent to a provider, and skipping it is the default --- */
+  .lesson{display:flex;flex-direction:column;gap:10px;background:var(--surface-2);border-radius:var(--r);padding:12px;}
+  .lesson-head{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;line-height:1.3;}
+  .lesson-head .icon-sm{color:var(--warn);flex-shrink:0;}
+  .lesson-head .grow{flex:1;min-width:0;}
+  .lesson-head .mono{font-weight:400;font-size:11px;color:var(--text-faint);flex-shrink:0;}
+  .lesson .field{background:var(--surface-3);}
+  .lesson-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;}
+  .lesson-note{display:flex;align-items:center;gap:6px;min-width:0;font-size:11px;color:var(--text-faint);line-height:1.35;}
+  .lesson-note .icon-sm{flex-shrink:0;}
+  /* --- pipenzo:merge-conflict — the branch stopped being mergeable while it waited. Nothing failed, so it is amber, not red: the fix is a rebase, and the rebased branch re-enters the same human push gate --- */
+  .conflict{display:flex;flex-direction:column;gap:8px;background:var(--surface-2);border-radius:var(--r-sm);padding:10px 12px;}
+  .conflict-head{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--warn);line-height:1;}
+  .conflict-head .icon-sm{flex-shrink:0;}
+  .conflict-files{display:flex;flex-direction:column;gap:4px;}
+  .conflict-file{display:flex;align-items:center;gap:8px;min-width:0;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-soft);line-height:1.4;}
+  .conflict-file .p{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .conflict-file .h{color:var(--text-faint);flex-shrink:0;}
+  .conflict-why{font-size:12px;color:var(--text-soft);line-height:1.4;}
+  .conflict-why b{color:var(--text);font-weight:700;}
+  /* --- quiet inline link: a reset, a "back to", a secondary out — text weight, never a button, always at least 24px tall to stay tappable --- */
+  .r-link{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:700;color:var(--text-soft);cursor:pointer;transition:color var(--ease);min-height:24px;}
+  .r-link:hover{color:var(--text);}
+  .r-link:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:var(--r-sm);}
+  .r-link.faint{color:var(--text-faint);font-weight:400;}
+  .hide{display:none !important;}
   /* ===== screen ===== */
   .shell{height:900px;}
   .board{flex:1;display:grid;grid-template-columns:repeat(4, minmax(0, 1fr));gap:8px;overflow:hidden;background:var(--bg);padding:8px 16px 16px;}
@@ -364,6 +461,11 @@
   .fail-note .icon-sm{color:var(--danger-text);margin-top:1px;flex-shrink:0;}
   .fail-note b{color:var(--text);font-weight:700;}
   .scrim{position:absolute;inset:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:5;}
+  /* the palette hangs from the top rather than centring — it opens over the board, and the board should stay readable behind it */
+  .scrim.top{align-items:flex-start;padding-top:88px;}
+  /* the workspace menu is anchored to the .ws row, so it sits in the shell rather than the sidebar: .sidebar clips its overflow */
+  .scrim.clear{background:transparent;}
+  .ws-anchor{position:absolute;left:12px;top:112px;z-index:6;}
   .dialog-title{font-size:16px;font-weight:700;line-height:1.3;text-wrap:balance;}
   .dialog-sub{font-size:12px;color:var(--text-soft);margin-top:4px;line-height:1.4;}
   .draft{background:var(--surface-2);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:8px;}
@@ -372,21 +474,20 @@
   .dialog-actions{display:flex;justify-content:flex-end;gap:8px;}
   .dialog .select-wrap .field{background:var(--surface-4);}
   .two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
-  .hide{display:none !important;}
 </style>
 </helmet>
 <div class="shell">
   <div class="sidebar {{sidebarCls}}">
     <div class="brand"><div class="logo-mark">p</div><span class="wordmark">pipenzo</span></div>
-    <div class="ws" tabindex="0">
+    <div class="ws" tabindex="0" onClick="{{openWs}}">
       <span class="ws-ic">JO</span>
       <span class="ws-text"><span class="ws-name">jortega0033/agentdock</span><span class="ws-sub">main · 3 repos connected</span></span>
       <svg class="icon ws-caret" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M181.66,170.34a8,8,0,0,1,0,11.32l-48,48a8,8,0,0,1-11.32,0l-48-48a8,8,0,0,1,11.32-11.32L128,212.69l42.34-42.35A8,8,0,0,1,181.66,170.34Zm-96-84.68L128,43.31l42.34,42.35a8,8,0,0,0,11.32-11.32l-48-48a8,8,0,0,0-11.32,0l-48,48A8,8,0,0,0,85.66,85.66Z"/></svg>
     </div>
     <div class="nav-group">
       <span class="nav-title">Work</span>
-      <div class="nav-item active" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M216,48H40a8,8,0,0,0-8,8V208a16,16,0,0,0,16,16H88a16,16,0,0,0,16-16V160h48v16a16,16,0,0,0,16,16h40a16,16,0,0,0,16-16V56A8,8,0,0,0,216,48ZM88,208H48V128H88Zm0-96H48V64H88Zm64,32H104V64h48Zm56,32H168V128h40Zm0-64H168V64h40Z"/></svg><span class="nav-lbl">Board</span><span class="nav-count">12</span></div>
-      <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M188,88a27.75,27.75,0,0,0-12,2.71V60a28,28,0,0,0-41.36-24.6A28,28,0,0,0,80,44v6.71A27.75,27.75,0,0,0,68,48,28,28,0,0,0,40,76v76a88,88,0,0,0,176,0V116A28,28,0,0,0,188,88Zm12,64a72,72,0,0,1-144,0V76a12,12,0,0,1,24,0v44a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v68a8,8,0,0,0,16,0V60a12,12,0,0,1,24,0v68.67A48.08,48.08,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V116a12,12,0,0,1,24,0Z"/></svg><span class="nav-lbl">Needs me</span><span class="nav-count hot">5</span></div>
+      <div class="nav-item active" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M216,48H40a8,8,0,0,0-8,8V208a16,16,0,0,0,16,16H88a16,16,0,0,0,16-16V160h48v16a16,16,0,0,0,16,16h40a16,16,0,0,0,16-16V56A8,8,0,0,0,216,48ZM88,208H48V128H88Zm0-96H48V64H88Zm64,32H104V64h48Zm56,32H168V128h40Zm0-64H168V64h40Z"/></svg><span class="nav-lbl">Board</span><span class="nav-count">13</span></div>
+      <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M188,88a27.75,27.75,0,0,0-12,2.71V60a28,28,0,0,0-41.36-24.6A28,28,0,0,0,80,44v6.71A27.75,27.75,0,0,0,68,48,28,28,0,0,0,40,76v76a88,88,0,0,0,176,0V116A28,28,0,0,0,188,88Zm12,64a72,72,0,0,1-144,0V76a12,12,0,0,1,24,0v44a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v68a8,8,0,0,0,16,0V60a12,12,0,0,1,24,0v68.67A48.08,48.08,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V116a12,12,0,0,1,24,0Z"/></svg><span class="nav-lbl">Needs me</span><span class="nav-count hot">6</span></div>
       <div class="nav-item" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M136,80v43.47l36.12,21.67a8,8,0,0,1-8.24,13.72l-40-24A8,8,0,0,1,120,128V80a8,8,0,0,1,16,0Zm-8-48A95.44,95.44,0,0,0,60.08,60.15C52.81,67.51,46.35,74.59,40,82V64a8,8,0,0,0-16,0v40a8,8,0,0,0,8,8H72a8,8,0,0,0,0-16H49c7.15-8.42,14.27-16.35,22.39-24.57a80,80,0,1,1,1.66,114.75,8,8,0,1,0-11,11.64A96,96,0,1,0,128,32Z"/></svg><span class="nav-lbl">Activity</span></div>
     </div>
     <div class="nav-group">
@@ -412,7 +513,7 @@
           {{syncText}}
           <button class="icon-btn ghost" tabindex="0" title="{{syncBtnTitle}}" aria-label="Refresh now" onClick="{{refreshSync}}"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M240,56v48a8,8,0,0,1-8,8H184a8,8,0,0,1,0-16H211.4L184.81,71.64l-.25-.24a80,80,0,1,0-1.67,114.78,8,8,0,0,1,11,11.63A95.44,95.44,0,0,1,128,224h-1.32A96,96,0,1,1,195.75,60L224,85.8V56a8,8,0,1,1,16,0Z"/></svg></button>
         </span>
-        <div class="cmdk" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,218.34l-50.07-50.06a88.11,88.11,0,1,0-11.31,11.31l50.06,50.07a8,8,0,0,0,11.32-11.32ZM40,112a72,72,0,1,1,72,72A72.08,72.08,0,0,1,40,112Z"/></svg><span>Jump to ticket, repo, action…</span><span class="kbd">⌘K</span></div>
+        <div class="cmdk {{paletteCls}}" tabindex="0" onClick="{{openPalette}}"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,218.34l-50.07-50.06a88.11,88.11,0,1,0-11.31,11.31l50.06,50.07a8,8,0,0,0,11.32-11.32ZM40,112a72,72,0,1,1,72,72A72.08,72.08,0,0,1,40,112Z"/></svg><span>Jump to ticket, repo, action…</span><span class="kbd">⌘K</span></div>
         <button class="btn primary" onClick="{{openPlan}}"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M176,232a8,8,0,0,1-8,8H88a8,8,0,0,1,0-16h80A8,8,0,0,1,176,232Zm40-128a87.55,87.55,0,0,1-33.64,69.21A16.24,16.24,0,0,0,176,186v6a16,16,0,0,1-16,16H96a16,16,0,0,1-16-16v-6a16,16,0,0,0-6.23-12.66A87.59,87.59,0,0,1,40,104.49C39.74,56.83,78.26,17.14,125.88,16A88,88,0,0,1,216,104Zm-16,0a72,72,0,0,0-73.74-72c-39,.92-70.47,33.39-70.26,72.39a71.65,71.65,0,0,0,27.64,56.3A32,32,0,0,1,96,186v6h64v-6a32.15,32.15,0,0,1,12.47-25.35A71.65,71.65,0,0,0,200,104Zm-16.11-9.34a57.6,57.6,0,0,0-46.56-46.55,8,8,0,0,0-2.66,15.78c16.57,2.79,30.63,16.85,33.44,33.45A8,8,0,0,0,176,104a9,9,0,0,0,1.35-.11A8,8,0,0,0,183.89,94.66Z"/></svg>New from idea</button>
         <div class="avatar">JO</div>
       </div>
@@ -520,6 +621,17 @@
               <sc-if value="{{t.isFailed}}" hint-placeholder-val="{{false}}">
                 <div class="fail-note"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg><span>{{t.reason}}</span></div>
               </sc-if>
+              <!-- pipenzo:merge-conflict — the second PR-event reaction after ci-failed. Same shape as the ci-failed treatment, amber instead of red: nothing failed, the branch just stopped being mergeable while it waited. -->
+              <sc-if value="{{t.isConflict}}" hint-placeholder-val="{{false}}">
+                <div class="conflict">
+                  <span class="conflict-head"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232,64a32,32,0,1,0-40,31v17a8,8,0,0,1-8,8H96a23.84,23.84,0,0,0-8,1.38V95a32,32,0,1,0-16,0v66a32,32,0,1,0,16,0V144a8,8,0,0,1,8-8h88a24,24,0,0,0,24-24V95A32.06,32.06,0,0,0,232,64ZM64,64A16,16,0,1,1,80,80,16,16,0,0,1,64,64ZM96,192a16,16,0,1,1-16-16A16,16,0,0,1,96,192ZM200,80a16,16,0,1,1,16-16A16,16,0,0,1,200,80Z"/></svg>Conflicts with main · PR #{{t.pr}}</span>
+                  <div class="conflict-files">
+                    <span class="conflict-file"><span class="p">ticket-orchestrator.ts</span><span class="h">2 hunks</span></span>
+                    <span class="conflict-file"><span class="p">worktree-manager.ts</span><span class="h">1 hunk</span></span>
+                  </div>
+                  <span class="conflict-why"><b>Nothing failed and no commit is lost.</b> #105 landed on main while this branch sat at the push gate. Rebase re-runs the same five gates in the worktree, and the rebased branch comes back to the same push gate — it is never force-pushed on its own.</span>
+                </div>
+              </sc-if>
               <sc-if value="{{t.isInterrupted}}" hint-placeholder-val="{{false}}">
                 <div class="resume">
                   <span class="resume-head"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg>Daemon restarted mid-implement</span>
@@ -537,7 +649,7 @@
               </sc-if>
               <div class="card-foot">
                 <span class="card-meta"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm64-88a8,8,0,0,1-8,8H128a8,8,0,0,1-8-8V72a8,8,0,0,1,16,0v48h48A8,8,0,0,1,192,128Z"/></svg>{{t.since}}</span>
-                <button class="btn sm {{t.ctaCls}} {{t.ctaHide}}"><sc-if value="{{t.isFailed}}" hint-placeholder-val="{{false}}"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,128a96,96,0,0,1-94.71,96H128A95.38,95.38,0,0,1,62.1,197.8a8,8,0,0,1,11-11.63A80,80,0,1,0,71.43,71.39a3.07,3.07,0,0,1-.26.25L44.59,96H72a8,8,0,0,1,0,16H24a8,8,0,0,1-8-8V56a8,8,0,0,1,16,0V85.8L60.25,60A96,96,0,0,1,224,128Z"/></svg></sc-if><sc-if value="{{t.isRefusal}}" hint-placeholder-val="{{false}}"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z"/></svg></sc-if><sc-if value="{{t.isStack}}" hint-placeholder-val="{{true}}"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M230.91,172A8,8,0,0,1,228,182.91l-96,56a8,8,0,0,1-8.06,0l-96-56A8,8,0,0,1,36,169.09l92,53.65,92-53.65A8,8,0,0,1,230.91,172ZM220,121.09l-92,53.65L36,121.09A8,8,0,0,0,28,134.91l96,56a8,8,0,0,0,8.06,0l96-56A8,8,0,1,0,220,121.09ZM24,80a8,8,0,0,1,4-6.91l96-56a8,8,0,0,1,8.06,0l96,56a8,8,0,0,1,0,13.82l-96,56a8,8,0,0,1-8.06,0l-96-56A8,8,0,0,1,24,80Zm23.88,0L128,126.74,208.12,80,128,33.26Z"/></svg></sc-if>{{t.cta}}</button>
+                <button class="btn sm {{t.ctaCls}} {{t.ctaHide}}"><sc-if value="{{t.isFailed}}" hint-placeholder-val="{{false}}"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,128a96,96,0,0,1-94.71,96H128A95.38,95.38,0,0,1,62.1,197.8a8,8,0,0,1,11-11.63A80,80,0,1,0,71.43,71.39a3.07,3.07,0,0,1-.26.25L44.59,96H72a8,8,0,0,1,0,16H24a8,8,0,0,1-8-8V56a8,8,0,0,1,16,0V85.8L60.25,60A96,96,0,0,1,224,128Z"/></svg></sc-if><sc-if value="{{t.isRefusal}}" hint-placeholder-val="{{false}}"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z"/></svg></sc-if><sc-if value="{{t.isStack}}" hint-placeholder-val="{{true}}"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M230.91,172A8,8,0,0,1,228,182.91l-96,56a8,8,0,0,1-8.06,0l-96-56A8,8,0,0,1,36,169.09l92,53.65,92-53.65A8,8,0,0,1,230.91,172ZM220,121.09l-92,53.65L36,121.09A8,8,0,0,0,28,134.91l96,56a8,8,0,0,0,8.06,0l96-56A8,8,0,1,0,220,121.09ZM24,80a8,8,0,0,1,4-6.91l96-56a8,8,0,0,1,8.06,0l96,56a8,8,0,0,1,0,13.82l-96,56a8,8,0,0,1-8.06,0l-96-56A8,8,0,0,1,24,80Zm23.88,0L128,126.74,208.12,80,128,33.26Z"/></svg></sc-if><sc-if value="{{t.isConflict}}" hint-placeholder-val="{{false}}"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M240,56v48a8,8,0,0,1-8,8H184a8,8,0,0,1,0-16H211.4L184.81,71.64l-.25-.24a80,80,0,1,0-1.67,114.78,8,8,0,0,1,11,11.63A95.44,95.44,0,0,1,128,224h-1.32A96,96,0,1,1,195.75,60L224,85.8V56a8,8,0,1,1,16,0Z"/></svg></sc-if>{{t.cta}}</button>
               </div>
             </div>
           </sc-for>
@@ -545,6 +657,83 @@
       </div>
     </div>
   </div>
+
+  <!-- ⌘K palette: navigation only. Tickets, the connected repos, then the four things the sidebar can do. Nothing here approves an action or starts a run — Implement still lives on the card. -->
+  <sc-if value="{{paletteOpen}}" hint-placeholder-val="{{false}}">
+    <div class="scrim top" onClick="{{closePalette}}">
+      <div class="pop cmdk-panel">
+        <div class="cmdk-search">
+          <svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,218.34l-50.07-50.06a88.11,88.11,0,1,0-11.31,11.31l50.06,50.07a8,8,0,0,0,11.32-11.32ZM40,112a72,72,0,1,1,72,72A72.08,72.08,0,0,1,40,112Z"/></svg>
+          <input class="field" placeholder="Jump to ticket, repo, action…" aria-label="Search tickets, repos and actions" />
+          <span class="kbd">esc</span>
+        </div>
+        <div class="pop-sep"></div>
+        <div class="cmdk-results">
+          <div class="cmdk-group">
+            <span class="cmdk-group-title">Tickets · recent</span>
+            <sc-for list="{{palTickets}}" as="p" hint-placeholder-count="3">
+              <div class="cmdk-item {{p.cls}}" tabindex="0">
+                <span class="cmdk-id">#{{p.num}}</span>
+                <span class="cmdk-lbl">{{p.title}}</span>
+                <span class="chip {{p.chipCls}}">{{p.chipLabel}}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div class="cmdk-group">
+            <span class="cmdk-group-title">Repos</span>
+            <sc-for list="{{palRepos}}" as="r" hint-placeholder-count="2">
+              <div class="cmdk-item" tabindex="0">
+                <svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232,64a32,32,0,1,0-40,31v17a8,8,0,0,1-8,8H96a23.84,23.84,0,0,0-8,1.38V95a32,32,0,1,0-16,0v66a32,32,0,1,0,16,0V144a8,8,0,0,1,8-8h88a24,24,0,0,0,24-24V95A32.06,32.06,0,0,0,232,64ZM64,64A16,16,0,1,1,80,80,16,16,0,0,1,64,64ZM96,192a16,16,0,1,1-16-16A16,16,0,0,1,96,192ZM200,80a16,16,0,1,1,16-16A16,16,0,0,1,200,80Z"/></svg>
+                <span class="cmdk-lbl mono">{{r.name}}</span>
+                <span class="cmdk-id">{{r.meta}}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div class="cmdk-group">
+            <span class="cmdk-group-title">Actions</span>
+            <div class="cmdk-item" tabindex="0" onClick="{{paletteToPlan}}">
+              <svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M176,232a8,8,0,0,1-8,8H88a8,8,0,0,1,0-16h80A8,8,0,0,1,176,232Zm40-128a87.55,87.55,0,0,1-33.64,69.21A16.24,16.24,0,0,0,176,186v6a16,16,0,0,1-16,16H96a16,16,0,0,1-16-16v-6a16,16,0,0,0-6.23-12.66A87.59,87.59,0,0,1,40,104.49C39.74,56.83,78.26,17.14,125.88,16A88,88,0,0,1,216,104Zm-16,0a72,72,0,0,0-73.74-72c-39,.92-70.47,33.39-70.26,72.39a71.65,71.65,0,0,0,27.64,56.3A32,32,0,0,1,96,186v6h64v-6a32.15,32.15,0,0,1,12.47-25.35A71.65,71.65,0,0,0,200,104Zm-16.11-9.34a57.6,57.6,0,0,0-46.56-46.55,8,8,0,0,0-2.66,15.78c16.57,2.79,30.63,16.85,33.44,33.45A8,8,0,0,0,176,104a9,9,0,0,0,1.35-.11A8,8,0,0,0,183.89,94.66Z"/></svg>
+              <span class="cmdk-lbl">New from idea</span><span class="kbd">N</span>
+            </div>
+            <div class="cmdk-item" tabindex="0">
+              <svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M216,48H40a8,8,0,0,0-8,8V208a16,16,0,0,0,16,16H88a16,16,0,0,0,16-16V160h48v16a16,16,0,0,0,16,16h40a16,16,0,0,0,16-16V56A8,8,0,0,0,216,48ZM88,208H48V128H88Zm0-96H48V64H88Zm64,32H104V64h48Zm56,32H168V128h40Zm0-64H168V64h40Z"/></svg>
+              <span class="cmdk-lbl">Open Board</span><span class="kbd">B</span>
+            </div>
+            <div class="cmdk-item" tabindex="0">
+              <svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M136,80v43.47l36.12,21.67a8,8,0,0,1-8.24,13.72l-40-24A8,8,0,0,1,120,128V80a8,8,0,0,1,16,0Zm-8-48A95.44,95.44,0,0,0,60.08,60.15C52.81,67.51,46.35,74.59,40,82V64a8,8,0,0,0-16,0v40a8,8,0,0,0,8,8H72a8,8,0,0,0,0-16H49c7.15-8.42,14.27-16.35,22.39-24.57a80,80,0,1,1,1.66,114.75,8,8,0,1,0-11,11.64A96,96,0,1,0,128,32Z"/></svg>
+              <span class="cmdk-lbl">Open Activity</span><span class="kbd">A</span>
+            </div>
+            <div class="cmdk-item" tabindex="0">
+              <svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm88-29.84q.06-2.16,0-4.32l14.92-18.64a8,8,0,0,0,1.48-7.06,107.21,107.21,0,0,0-10.88-26.25,8,8,0,0,0-6-3.93l-23.72-2.64q-1.48-1.56-3-3L186,40.54a8,8,0,0,0-3.94-6,107.71,107.71,0,0,0-26.25-10.87,8,8,0,0,0-7.06,1.49L130.16,40Q128,40,125.84,40L107.2,25.11a8,8,0,0,0-7.06-1.48A107.6,107.6,0,0,0,73.89,34.51a8,8,0,0,0-3.93,6L67.32,64.27q-1.56,1.49-3,3L40.54,70a8,8,0,0,0-6,3.94,107.71,107.71,0,0,0-10.87,26.25,8,8,0,0,0,1.49,7.06L40,125.84Q40,128,40,130.16L25.11,148.8a8,8,0,0,0-1.48,7.06,107.21,107.21,0,0,0,10.88,26.25,8,8,0,0,0,6,3.93l23.72,2.64q1.49,1.56,3,3L70,215.46a8,8,0,0,0,3.94,6,107.71,107.71,0,0,0,26.25,10.87,8,8,0,0,0,7.06-1.49L125.84,216q2.16.06,4.32,0l18.64,14.92a8,8,0,0,0,7.06,1.48,107.21,107.21,0,0,0,26.25-10.88,8,8,0,0,0,3.93-6l2.64-23.72q1.56-1.48,3-3L215.46,186a8,8,0,0,0,6-3.94,107.71,107.71,0,0,0,10.87-26.25,8,8,0,0,0-1.49-7.06Zm-16.1-6.5a73.93,73.93,0,0,1,0,8.68,8,8,0,0,0,1.74,5.48l14.19,17.73a91.57,91.57,0,0,1-6.23,15L187,173.11a8,8,0,0,0-5.1,2.64,74.11,74.11,0,0,1-6.14,6.14,8,8,0,0,0-2.64,5.1l-2.51,22.58a91.32,91.32,0,0,1-15,6.23l-17.74-14.19a8,8,0,0,0-5-1.75h-.48a73.93,73.93,0,0,1-8.68,0,8,8,0,0,0-5.48,1.74L100.45,215.8a91.57,91.57,0,0,1-15-6.23L82.89,187a8,8,0,0,0-2.64-5.1,74.11,74.11,0,0,1-6.14-6.14,8,8,0,0,0-5.1-2.64L46.43,170.6a91.32,91.32,0,0,1-6.23-15l14.19-17.74a8,8,0,0,0,1.74-5.48,73.93,73.93,0,0,1,0-8.68,8,8,0,0,0-1.74-5.48L40.2,100.45a91.57,91.57,0,0,1,6.23-15L69,82.89a8,8,0,0,0,5.1-2.64,74.11,74.11,0,0,1,6.14-6.14A8,8,0,0,0,82.89,69L85.4,46.43a91.32,91.32,0,0,1,15-6.23l17.74,14.19a8,8,0,0,0,5.48,1.74,73.93,73.93,0,0,1,8.68,0,8,8,0,0,0,5.48-1.74L155.55,40.2a91.57,91.57,0,0,1,15,6.23L173.11,69a8,8,0,0,0,2.64,5.1,74.11,74.11,0,0,1,6.14,6.14,8,8,0,0,0,5.1,2.64l22.58,2.51a91.32,91.32,0,0,1,6.23,15l-14.19,17.74A8,8,0,0,0,199.87,123.66Z"/></svg>
+              <span class="cmdk-lbl">Open Settings</span><span class="kbd">,</span>
+            </div>
+          </div>
+        </div>
+        <div class="pop-foot"><span class="kbd">↑↓</span><span class="kbd">↵</span><span class="grow">Tickets come from the ticket store, so the palette finds a ticket the board is still waiting on a poll to show.</span></div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- Workspace switcher: the workspace-level connected-repos list from README "Repo selection" — the same list the polling reconciler iterates over. -->
+  <sc-if value="{{wsOpen}}" hint-placeholder-val="{{false}}">
+    <div class="scrim clear" onClick="{{closeWs}}">
+      <div class="ws-anchor">
+        <div class="pop ws-menu">
+          <span class="pop-title">Connected repos · 3</span>
+          <sc-for list="{{repos}}" as="r" hint-placeholder-count="3">
+            <div class="ws-menu-item {{r.cls}}" tabindex="0">
+              <span class="ws-ic">{{r.ic}}</span>
+              <span class="wm-text"><span class="wm-name">{{r.name}}</span><span class="wm-sub">{{r.sub}}</span></span>
+              <svg class="icon-sm wm-check {{r.checkHide}}" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg>
+            </div>
+          </sc-for>
+          <div class="pop-sep"></div>
+          <div class="ws-menu-item foot" tabindex="0"><svg class="icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm88-29.84q.06-2.16,0-4.32l14.92-18.64a8,8,0,0,0,1.48-7.06,107.21,107.21,0,0,0-10.88-26.25,8,8,0,0,0-6-3.93l-23.72-2.64q-1.48-1.56-3-3L186,40.54a8,8,0,0,0-3.94-6,107.71,107.71,0,0,0-26.25-10.87,8,8,0,0,0-7.06,1.49L130.16,40Q128,40,125.84,40L107.2,25.11a8,8,0,0,0-7.06-1.48A107.6,107.6,0,0,0,73.89,34.51a8,8,0,0,0-3.93,6L67.32,64.27q-1.56,1.49-3,3L40.54,70a8,8,0,0,0-6,3.94,107.71,107.71,0,0,0-10.87,26.25,8,8,0,0,0,1.49,7.06L40,125.84Q40,128,40,130.16L25.11,148.8a8,8,0,0,0-1.48,7.06,107.21,107.21,0,0,0,10.88,26.25,8,8,0,0,0,6,3.93l23.72,2.64q1.49,1.56,3,3L70,215.46a8,8,0,0,0,3.94,6,107.71,107.71,0,0,0,26.25,10.87,8,8,0,0,0,7.06-1.49L125.84,216q2.16.06,4.32,0l18.64,14.92a8,8,0,0,0,7.06,1.48,107.21,107.21,0,0,0,26.25-10.88,8,8,0,0,0,3.93-6l2.64-23.72q1.56-1.48,3-3L215.46,186a8,8,0,0,0,6-3.94,107.71,107.71,0,0,0,10.87-26.25,8,8,0,0,0-1.49-7.06Zm-16.1-6.5a73.93,73.93,0,0,1,0,8.68,8,8,0,0,0,1.74,5.48l14.19,17.73a91.57,91.57,0,0,1-6.23,15L187,173.11a8,8,0,0,0-5.1,2.64,74.11,74.11,0,0,1-6.14,6.14,8,8,0,0,0-2.64,5.1l-2.51,22.58a91.32,91.32,0,0,1-15,6.23l-17.74-14.19a8,8,0,0,0-5-1.75h-.48a73.93,73.93,0,0,1-8.68,0,8,8,0,0,0-5.48,1.74L100.45,215.8a91.57,91.57,0,0,1-15-6.23L82.89,187a8,8,0,0,0-2.64-5.1,74.11,74.11,0,0,1-6.14-6.14,8,8,0,0,0-5.1-2.64L46.43,170.6a91.32,91.32,0,0,1-6.23-15l14.19-17.74a8,8,0,0,0,1.74-5.48,73.93,73.93,0,0,1,0-8.68,8,8,0,0,0-1.74-5.48L40.2,100.45a91.57,91.57,0,0,1,6.23-15L69,82.89a8,8,0,0,0,5.1-2.64,74.11,74.11,0,0,1,6.14-6.14A8,8,0,0,0,82.89,69L85.4,46.43a91.32,91.32,0,0,1,15-6.23l17.74,14.19a8,8,0,0,0,5.48,1.74,73.93,73.93,0,0,1,8.68,0,8,8,0,0,0,5.48-1.74L155.55,40.2a91.57,91.57,0,0,1,15,6.23L173.11,69a8,8,0,0,0,2.64,5.1,74.11,74.11,0,0,1,6.14,6.14,8,8,0,0,0,5.1,2.64l22.58,2.51a91.32,91.32,0,0,1,6.23,15l-14.19,17.74A8,8,0,0,0,199.87,123.66Z"/></svg>Manage repos…</div>
+          <div class="pop-foot"><span class="grow">Only these three are polled. Adding or removing one opens the same searchable picker as first-run, in Settings — never from this menu.</span></div>
+        </div>
+      </div>
+    </div>
+  </sc-if>
 
   <sc-if value="{{planOpen}}" hint-placeholder-val="{{false}}">
     <div class="scrim">
@@ -639,8 +828,29 @@ class Component extends DCLogic {
       // Crash recovery: on daemon start the recovery report's interrupted session ids are mapped to their tickets and each one lands here as pipenzo:interrupted — last completed phase, worktree path, resume or discard. Never auto-resumed.
       { kind: 'interrupted', num: 92, title: 'Surface the discarded Codex rate-limit event in the headroom rail', chipLabel: 'pipenzo:interrupted', chipClass: 'chip-warn', since: 'interrupted 12m', cta: '', ctaCls: '',
         lastPhase: 'Refine — spec approved, 2 criteria, 1 file in scope', worktree: '.worktrees/issue-92 · branch issue-92 · dirty', session: 'providerSessionId and continuationScope both present' },
-    ].map((t) => ({ ...t, isStack: t.kind === 'stack', isRefusal: t.kind === 'refusal', isFailed: t.kind === 'failed', isInterrupted: t.kind === 'interrupted', ctaHide: t.cta ? '' : 'hide' }));
+      // PR-event reaction, post-MVP: GitHub reports the open PR unmergeable, so the ticket comes back to Needs human as pipenzo:merge-conflict.
+      // It lands here rather than in Ready for review because, unlike ci-failed, there is no fix commit waiting on the push gate yet — a person has to ask for the rebase.
+      { kind: 'conflict', num: 101, title: 'Serialise worktree provisioning and retry on worktree_busy', chipLabel: 'pipenzo:merge-conflict', chipClass: 'chip-warn', since: 'conflicted 26m', cta: 'Rebase and retry', ctaCls: 'primary', pr: 121 },
+    ].map((t) => ({ ...t, isStack: t.kind === 'stack', isRefusal: t.kind === 'refusal', isFailed: t.kind === 'failed', isInterrupted: t.kind === 'interrupted', isConflict: t.kind === 'conflict', ctaHide: t.cta ? '' : 'hide' }));
     const activeTicket = queuedRaw.find((t) => t.num === this.state.activeId) ?? queuedRaw[0];
+
+    // ---- ⌘K palette: results grouped by type. Tickets read from the ticket store, repos from the workspace connected-repos list, then the four navigations the sidebar offers.
+    // The keyboard highlight is one .active row; in the product it moves with the arrow keys, here it sits on the first result so the state is visible.
+    const palTickets = [
+      { num: 85, title: 'Batch tray badge updates to one repaint per tick', chipLabel: 'ci-failed · fix ready', chipCls: 'chip-ci', cls: 'active' },
+      { num: 94, title: 'Sanitize environment for MCP stdio server subprocesses', chipLabel: 'implementing', chipCls: 'chip-warn', cls: '' },
+      { num: 108, title: 'Rework provider capability negotiation across all transports', chipLabel: 'awaiting stack approval', chipCls: 'chip-warn', cls: '' },
+    ];
+    const palRepos = [
+      { name: 'jortega0033/agentdock', meta: '12 open' },
+      { name: 'jortega0033/pipenzo', meta: '3 open' },
+    ];
+    // ---- workspace switcher: the connected-repos list from README "Repo selection" — workspace-level, and the only list the polling reconciler iterates over ----
+    const REPOS = [
+      { ic: 'ad', name: 'jortega0033/agentdock', sub: 'main · 12 open · 2 running', on: true },
+      { ic: 'pz', name: 'jortega0033/pipenzo', sub: 'main · 3 open · idle', on: false },
+      { ic: 'ov', name: 'jortega0033/open-vacancy-radar', sub: 'master · 5 open · 1 needs you', on: false },
+    ].map((r) => ({ ...r, cls: r.on ? 'active' : '', checkHide: r.on ? '' : 'hide' }));
 
     // ---- sync-status pill: synced · syncing · syncing slowly (rate limit below ~15% remaining, poll interval widened) ----
     const SYNC = [
@@ -664,6 +874,15 @@ class Component extends DCLogic {
       planOpen: !!this.state.planOpen,
       openPlan: () => this.setState({ planOpen: true }),
       closePlan: () => this.setState({ planOpen: false }),
+      palTickets, palRepos, repos: REPOS,
+      paletteOpen: !!this.state.paletteOpen,
+      paletteCls: this.state.paletteOpen ? 'open' : '',
+      openPalette: () => this.setState({ paletteOpen: true, wsOpen: false }),
+      closePalette: () => this.setState({ paletteOpen: false }),
+      paletteToPlan: () => this.setState({ paletteOpen: false, planOpen: true }),
+      wsOpen: !!this.state.wsOpen,
+      openWs: () => this.setState({ wsOpen: !this.state.wsOpen, paletteOpen: false }),
+      closeWs: () => this.setState({ wsOpen: false }),
       sidebarCls: this.state.collapsed ? 'collapsed' : '',
       toggleSidebar: () => this.setState({ collapsed: !this.state.collapsed }),
       // Polling, not push — see README "Team usage". Refresh just re-runs the poll early.
