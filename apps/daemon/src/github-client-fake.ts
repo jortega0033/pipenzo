@@ -3,6 +3,7 @@ import {
   type GitHubCheckRun,
   type GitHubClient,
   type GitHubIssue,
+  type GitHubIssueDraft,
   type GitHubLabel,
   type GitHubPullRequestDiff,
   type RepoRef,
@@ -28,6 +29,14 @@ export class FakeGitHubClient implements GitHubClient {
   readonly calls: Array<{ method: string; key: string }> = [];
   /** Queued failure per method name, consumed once. Lets a test drive the error paths. */
   readonly #failures = new Map<string, GitHubClientError>();
+  /** Where `createIssue` starts numbering. Seeded issues above it stay addressable. */
+  #nextIssueNumber = 1_000;
+
+  /** Pins the next number `createIssue` will hand out, so a test can assert an exact url. */
+  setNextIssueNumber(next: number): this {
+    this.#nextIssueNumber = next;
+    return this;
+  }
 
   static key(ref: RepoRef, suffix: string | number): string {
     return `${ref.owner}/${ref.repo}#${suffix}`;
@@ -91,6 +100,48 @@ export class FakeGitHubClient implements GitHubClient {
     existing.push(label);
     this.#labels.set(key, existing);
     return label;
+  }
+
+  /**
+   * Adds an assignee, exactly as GitHub's `POST .../assignees` does: additively, and without
+   * refusing when somebody else is already there.
+   *
+   * That last part is what makes this fake useful for the claim race (issue #83). A fake that
+   * threw on a second assignee would let a test pass while the real client happily succeeded and
+   * the caller never re-read the issue — the *re-read* is where the refusal comes from, and this
+   * fake exists to keep that testable rather than to pre-empt it.
+   */
+  async assignIssue(ref: RepoRef, issueNumber: number, assignee: string): Promise<GitHubIssue> {
+    const key = FakeGitHubClient.key(ref, issueNumber);
+    this.#enter('assignIssue', `${key}:${assignee}`);
+    const issue = this.#issues.get(key);
+    if (!issue) throw new GitHubClientError('not_found', `assignIssue ${key}: no such issue`);
+    if (issue.assignees.includes(assignee)) return issue;
+    const updated: GitHubIssue = { ...issue, assignees: [...issue.assignees, assignee] };
+    this.#issues.set(key, updated);
+    return updated;
+  }
+
+  async createIssue(ref: RepoRef, input: GitHubIssueDraft): Promise<GitHubIssue> {
+    const repoKey = `${ref.owner}/${ref.repo}`;
+    this.#enter('createIssue', `${repoKey}:${input.title}`);
+    const number = this.#nextIssueNumber;
+    this.#nextIssueNumber += 1;
+    const issue: GitHubIssue = {
+      owner: ref.owner,
+      repo: ref.repo,
+      number,
+      title: input.title,
+      body: input.body,
+      state: 'open',
+      labels: [...(input.labels ?? [])],
+      assignees: [],
+      htmlUrl: `https://github.com/${repoKey}/issues/${number}`,
+      updatedAt: new Date(0).toISOString(),
+      etag: undefined,
+    };
+    this.#issues.set(FakeGitHubClient.key(ref, number), issue);
+    return issue;
   }
 
   async getPullRequestDiff(ref: RepoRef, pullNumber: number): Promise<GitHubPullRequestDiff> {

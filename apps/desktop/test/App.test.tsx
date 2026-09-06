@@ -156,6 +156,12 @@ function installBridge(overrides: Partial<AgentDockBridge> = {}): {
       createdAt: '2026-01-01T00:00:00.000Z',
     }),
     publishPipenzo: vi.fn(),
+    refinePipenzo: vi.fn(),
+    implementPipenzo: vi.fn(),
+    implementResultPipenzo: vi.fn(),
+    reviewPipenzo: vi.fn(),
+    claimPipenzoIssue: vi.fn(),
+    createPipenzoIssue: vi.fn(),
     selectAndUploadAttachments: vi.fn().mockResolvedValue([]),
     validateStructuredOutput: vi.fn().mockImplementation(async (input) => ({
       valid: true,

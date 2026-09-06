@@ -119,6 +119,37 @@ export interface ImplementRequest {
    * closed: copying a `.env` next to an agent is a decision a human makes, not a default.
    */
   readonly acknowledgeIncludeSecretRisk?: boolean;
+  /**
+   * The operator's own note, from the Implement dialog's "extra instructions" field (issue #83).
+   *
+   * Appended to the spec-derived prompt under its own heading, never merged into it and never
+   * substituted for any part of it — see `appendOperatorInstructions()`. It is the one
+   * caller-authored string that reaches an implementer prompt, and it is a *human's* string: the
+   * raw issue body still has no route here.
+   */
+  readonly extraInstructions?: string;
+}
+
+/** What `start()` returns: everything the route needs, plus the path only the daemon may hold. */
+export interface ImplementStartResult {
+  readonly worktreeId: string;
+  /** Daemon-internal. Never projected onto a route response — see `ownedLocation`'s comment. */
+  readonly worktreePath: string;
+  readonly branch: string;
+  readonly baseCommit: string;
+  readonly sessionId: string;
+}
+
+export interface ImplementCollectRequest {
+  readonly worktreePath: string;
+  readonly branch: string;
+  readonly baseCommit: string;
+}
+
+export interface ImplementCollectResult {
+  readonly headCommit: string;
+  /** Commits the session produced, oldest first. Empty means the agent committed nothing. */
+  readonly commits: readonly string[];
 }
 
 export interface ImplementResult {
@@ -150,7 +181,18 @@ export class ImplementOrchestrator {
     this.#runGit = options.runGit ?? runGitCommand;
   }
 
-  async implement(request: ImplementRequest): Promise<ImplementResult> {
+  /**
+   * Everything up to and including handing the session to the provider: validate, preview, create
+   * the worktree, cut the branch, dispatch.
+   *
+   * Split out of `implement()` for issue #184's route. The route cannot hold an HTTP request open
+   * for the length of an implement session, and more importantly it should not: the renderer
+   * streams the session by id through the routes it already speaks, which is precisely how a
+   * session gets started *inside the ticket's worktree* without the renderer ever being handed
+   * that worktree's path. What comes back here is an id, a branch and a base commit — the path
+   * stays on the daemon side of the boundary.
+   */
+  async start(request: ImplementRequest): Promise<ImplementStartResult> {
     const spec = this.#validateSpec(request.spec);
     if (!request.repositoryPath.trim()) {
       throw new ImplementOrchestratorError('invalid_request', 'a repository path is required');
@@ -177,18 +219,40 @@ export class ImplementOrchestrator {
 
     const baseCommit = await this.#createBranch(location.path, branch);
     const session = await this.#runSession(request, spec, location.path);
-    const headCommit = await this.#resolveHead(location.path, branch);
-    const commits = await this.#commitsSince(location.path, baseCommit, headCommit);
 
     return {
       worktreeId: worktree.id,
       worktreePath: location.path,
       branch,
       baseCommit,
-      headCommit,
-      commits,
       sessionId: session.sessionId,
     };
+  }
+
+  /** Reads what the dispatched session actually committed. Pure git, no session involvement. */
+  async collect(request: ImplementCollectRequest): Promise<ImplementCollectResult> {
+    if (!request.worktreePath.trim()) {
+      throw new ImplementOrchestratorError('invalid_request', 'a worktree path is required');
+    }
+    if (!SHA_PATTERN.test(request.baseCommit)) {
+      throw new ImplementOrchestratorError('invalid_request', 'a full base commit sha is required');
+    }
+    const headCommit = await this.#resolveHead(request.worktreePath, request.branch);
+    return {
+      headCommit,
+      commits: await this.#commitsSince(request.worktreePath, request.baseCommit, headCommit),
+    };
+  }
+
+  /** Start plus collect, for a caller that can await the whole phase (the composition tests do). */
+  async implement(request: ImplementRequest): Promise<ImplementResult> {
+    const started = await this.start(request);
+    const collected = await this.collect({
+      worktreePath: started.worktreePath,
+      branch: started.branch,
+      baseCommit: started.baseCommit,
+    });
+    return { ...started, ...collected };
   }
 
   #validateSpec(spec: RefineSpecV1): RefineSpecV1 {
@@ -279,7 +343,7 @@ export class ImplementOrchestrator {
       return await this.#sessions.run({
         provider: request.provider,
         cwd,
-        prompt: buildImplementPrompt(spec),
+        prompt: appendOperatorInstructions(buildImplementPrompt(spec), request.extraInstructions),
         ...(request.model ? { model: request.model } : {}),
       });
     } catch (error) {
@@ -326,6 +390,29 @@ export class ImplementOrchestrator {
  * function takes no issue body, no GitHub payload, and no free-form caller text, so that negative
  * is a property of the signature rather than of the wording.
  */
+/**
+ * Appends the operator's own note to a spec-derived prompt, under its own heading.
+ *
+ * A separate function rather than a second parameter on `buildImplementPrompt()`, because that
+ * function's one-argument signature is the enforcement of "the implementer sees the spec and
+ * nothing else" and a test asserts its arity. This composes on top of that instead of widening it:
+ * the note is clearly labelled as a human's addition, and the prompt still says the spec is the
+ * agreement, so an instruction that contradicts the spec reads as what it is rather than as a
+ * quiet re-scoping.
+ */
+export function appendOperatorInstructions(prompt: string, extraInstructions?: string): string {
+  const note = extraInstructions?.trim();
+  if (!note) return prompt;
+  return [
+    prompt,
+    '',
+    'Extra instructions from the operator who started this run',
+    '  These were typed by a human alongside the Start button. They add to the spec above; they do',
+    '  not replace it, and they do not widen what is in scope.',
+    ...note.split(/\r?\n/).map((line) => `  ${line}`),
+  ].join('\n');
+}
+
 export function buildImplementPrompt(spec: RefineSpecV1): string {
   const criteria = spec.acceptanceCriteria.map(
     (criterion) => `  ${criterion.id} (${criterion.kind}): ${criterion.text}`,

@@ -29,6 +29,12 @@ import {
   worktreeCreateRequestV2Schema,
   worktreePreviewRequestV2Schema,
   pipenzoPublishRequestV1Schema,
+  pipenzoRefineRequestV1Schema,
+  pipenzoImplementRequestV1Schema,
+  pipenzoImplementResultQueryV1Schema,
+  pipenzoReviewRequestV1Schema,
+  pipenzoIssueClaimRequestV1Schema,
+  pipenzoIssueCreateRequestV1Schema,
   structuredWorkflowRequestV2Schema,
   providerIdSchema,
   type AgentCommandV2,
@@ -751,6 +757,35 @@ handle('daemon:cleanup-worktree', async (_event, input: unknown) => {
 handle('daemon:pipenzo-publish', async (_event, input: unknown) => {
   if (!client) throw new Error('daemon is not ready yet');
   return client.v2.pipenzo.publish(pipenzoPublishRequestV1Schema.parse(input));
+});
+// Pipenzo's Refine/Implement/Review phases and the two GitHub issue write ops (issue #184). Same
+// boundary and same reasoning as the publish handler above: main-process only, invoked by a
+// renderer click, never by anything agent session-facing. Note what does not cross back here —
+// every one of these speaks worktree ids, so the renderer is never handed a worktree path and
+// cannot ask the daemon to run a phase in a directory of its choosing.
+handle('daemon:pipenzo-refine', async (_event, input: unknown) => {
+  if (!client) throw new Error('daemon is not ready yet');
+  return client.v2.pipenzo.refine(pipenzoRefineRequestV1Schema.parse(input));
+});
+handle('daemon:pipenzo-implement', async (_event, input: unknown) => {
+  if (!client) throw new Error('daemon is not ready yet');
+  return client.v2.pipenzo.implement(pipenzoImplementRequestV1Schema.parse(input));
+});
+handle('daemon:pipenzo-implement-result', async (_event, input: unknown) => {
+  if (!client) throw new Error('daemon is not ready yet');
+  return client.v2.pipenzo.implementResult(pipenzoImplementResultQueryV1Schema.parse(input));
+});
+handle('daemon:pipenzo-review', async (_event, input: unknown) => {
+  if (!client) throw new Error('daemon is not ready yet');
+  return client.v2.pipenzo.review(pipenzoReviewRequestV1Schema.parse(input));
+});
+handle('daemon:pipenzo-claim-issue', async (_event, input: unknown) => {
+  if (!client) throw new Error('daemon is not ready yet');
+  return client.v2.pipenzo.claimIssue(pipenzoIssueClaimRequestV1Schema.parse(input));
+});
+handle('daemon:pipenzo-create-issue', async (_event, input: unknown) => {
+  if (!client) throw new Error('daemon is not ready yet');
+  return client.v2.pipenzo.createIssue(pipenzoIssueCreateRequestV1Schema.parse(input));
 });
 
 handle('dialog:select-and-upload-attachments', async (_event, input: unknown) => {

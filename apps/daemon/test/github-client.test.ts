@@ -457,3 +457,108 @@ async function catchAsync(fn: () => Promise<unknown>): Promise<unknown> {
   }
   throw new Error('expected a rejection');
 }
+
+/**
+ * The two write operations issue #184 added, and the reasons each is shaped the way it is.
+ */
+describe('GitHub issue write operations', () => {
+  const ISSUE_DATA = {
+    number: 184,
+    title: 'Expose the phases as routes',
+    body: 'body',
+    state: 'open',
+    labels: [],
+    html_url: 'https://github.com/jortega0033/pipenzo/issues/184',
+    updated_at: '2026-09-06T00:00:00Z',
+  };
+
+  it('adds an assignee rather than replacing the assignee list', async () => {
+    const { octokit, calls } = stubOctokit({
+      request: async () => ({
+        headers: {},
+        data: { ...ISSUE_DATA, assignees: [{ login: 'someone-else' }, { login: 'jortega0033' }] },
+      }),
+    });
+    const issue = await OctokitGitHubClient.withOctokit(octokit).assignIssue(
+      REF,
+      184,
+      'jortega0033',
+    );
+    expect(calls[0]?.route).toBe('POST /repos/{owner}/{repo}/issues/{issue_number}/assignees');
+    expect(calls[0]?.params).toMatchObject({ issue_number: 184, assignees: ['jortega0033'] });
+    // The write cannot evict a human already on the ticket, and the echo shows both.
+    expect(issue.assignees).toEqual(['someone-else', 'jortega0033']);
+  });
+
+  it('sends no-cache on the assignment so nothing can answer the follow-up read from a copy', async () => {
+    const { octokit, calls } = stubOctokit({
+      request: async () => ({ headers: {}, data: { ...ISSUE_DATA, assignees: [] } }),
+    });
+    await OctokitGitHubClient.withOctokit(octokit).assignIssue(REF, 184, 'jortega0033');
+    expect(calls[0]?.params).toMatchObject({ headers: { 'cache-control': 'no-cache' } });
+  });
+
+  it('refuses a login that is not one, before any request goes out', async () => {
+    const { octokit, calls } = stubOctokit({});
+    const error = await catchAsync(() =>
+      OctokitGitHubClient.withOctokit(octokit).assignIssue(REF, 184, 'not a login'),
+    );
+    expect((error as GitHubClientError).code).toBe('invalid_request');
+    expect(calls).toHaveLength(0);
+  });
+
+  it('creates an issue and never carries an assignee or a milestone with it', async () => {
+    const { octokit, calls } = stubOctokit({
+      request: async () => ({ headers: {}, data: { ...ISSUE_DATA, number: 901, assignees: [] } }),
+    });
+    const created = await OctokitGitHubClient.withOctokit(octokit).createIssue(REF, {
+      title: 'Drafted from an idea',
+      body: 'Acceptance criteria...',
+      labels: ['enhancement'],
+    });
+    expect(created.number).toBe(901);
+    expect(calls[0]?.route).toBe('POST /repos/{owner}/{repo}/issues');
+    expect(calls[0]?.params).toMatchObject({ title: 'Drafted from an idea', labels: ['enhancement'] });
+    // Creating and claiming stay two operator actions with two audit trails.
+    expect(calls[0]?.params).not.toHaveProperty('assignees');
+    expect(calls[0]?.params).not.toHaveProperty('milestone');
+  });
+
+  it('refuses an empty or oversized title without issuing a request', async () => {
+    const { octokit, calls } = stubOctokit({});
+    for (const title of ['   ', 'x'.repeat(257)]) {
+      const error = await catchAsync(() =>
+        OctokitGitHubClient.withOctokit(octokit).createIssue(REF, { title, body: '' }),
+      );
+      expect((error as GitHubClientError).code).toBe('invalid_request');
+    }
+    expect(calls).toHaveLength(0);
+  });
+
+  it('is mirrored by the fake, including the additive assignment', async () => {
+    const fake: GitHubClient = new FakeGitHubClient()
+      .seedIssue({
+        owner: REF.owner,
+        repo: REF.repo,
+        number: 184,
+        title: 'Expose the phases as routes',
+        body: 'body',
+        state: 'open',
+        labels: [],
+        assignees: ['someone-else'],
+        htmlUrl: 'https://github.com/jortega0033/pipenzo/issues/184',
+        updatedAt: '2026-09-06T00:00:00Z',
+        etag: undefined,
+      });
+    expect((await fake.assignIssue(REF, 184, 'jortega0033')).assignees).toEqual([
+      'someone-else',
+      'jortega0033',
+    ]);
+    // Re-assigning the same login is a no-op, matching GitHub's own behaviour.
+    expect((await fake.assignIssue(REF, 184, 'jortega0033')).assignees).toHaveLength(2);
+
+    const created = await fake.createIssue(REF, { title: 'New from idea', body: '' });
+    expect(created.assignees).toEqual([]);
+    expect((await fake.getIssue(REF, created.number)).title).toBe('New from idea');
+  });
+});

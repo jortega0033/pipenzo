@@ -48,6 +48,18 @@ import {
   structuredWorkflowResultV2Schema,
   pipenzoPublishRequestV1Schema,
   pipenzoPublishResultV1Schema,
+  pipenzoRefineRequestV1Schema,
+  pipenzoRefineResultV1Schema,
+  pipenzoImplementRequestV1Schema,
+  pipenzoImplementResultV1Schema,
+  pipenzoImplementResultQueryV1Schema,
+  pipenzoImplementCommitsV1Schema,
+  pipenzoReviewRequestV1Schema,
+  pipenzoReviewResultV1Schema,
+  pipenzoIssueClaimRequestV1Schema,
+  pipenzoIssueClaimResultV1Schema,
+  pipenzoIssueCreateRequestV1Schema,
+  pipenzoIssueCreateResultV1Schema,
   providerIdSchema,
   type AgentCommandV2,
   type AgentEvent,
@@ -92,6 +104,18 @@ import {
   type StructuredWorkflowResultV2,
   type PipenzoPublishRequestV1,
   type PipenzoPublishResultV1,
+  type PipenzoRefineRequestV1,
+  type PipenzoRefineResultV1,
+  type PipenzoImplementRequestV1,
+  type PipenzoImplementResultV1,
+  type PipenzoImplementResultQueryV1,
+  type PipenzoImplementCommitsV1,
+  type PipenzoReviewRequestV1,
+  type PipenzoReviewResultV1,
+  type PipenzoIssueClaimRequestV1,
+  type PipenzoIssueClaimResultV1,
+  type PipenzoIssueCreateRequestV1,
+  type PipenzoIssueCreateResultV1,
 } from '@agent-dock/shared';
 import type {
   RendererInteraction,
@@ -169,6 +193,12 @@ export interface AgentDockBridge {
     options?: { deleteUntracked?: boolean; deleteBranch?: boolean },
   ): Promise<OwnedWorktreeV2>;
   publishPipenzo(input: PipenzoPublishRequestV1): Promise<PipenzoPublishResultV1>;
+  refinePipenzo(input: PipenzoRefineRequestV1): Promise<PipenzoRefineResultV1>;
+  implementPipenzo(input: PipenzoImplementRequestV1): Promise<PipenzoImplementResultV1>;
+  implementResultPipenzo(input: PipenzoImplementResultQueryV1): Promise<PipenzoImplementCommitsV1>;
+  reviewPipenzo(input: PipenzoReviewRequestV1): Promise<PipenzoReviewResultV1>;
+  claimPipenzoIssue(input: PipenzoIssueClaimRequestV1): Promise<PipenzoIssueClaimResultV1>;
+  createPipenzoIssue(input: PipenzoIssueCreateRequestV1): Promise<PipenzoIssueCreateResultV1>;
   selectAndUploadAttachments(sessionId?: string): Promise<AttachmentMetadataV2[]>;
   validateStructuredOutput(input: StructuredWorkflowRequestV2): Promise<StructuredWorkflowResultV2>;
   createSession(input: CreateSessionInput): Promise<AgentSession>;
@@ -725,6 +755,30 @@ const api: AgentDockBridge = {
   async publishPipenzo(input) {
     const parsed = pipenzoPublishRequestV1Schema.parse(input);
     return pipenzoPublishResultV1Schema.parse(await ipcRenderer.invoke('daemon:pipenzo-publish', parsed));
+  },
+  async refinePipenzo(input) {
+    const parsed = pipenzoRefineRequestV1Schema.parse(input);
+    return pipenzoRefineResultV1Schema.parse(await ipcRenderer.invoke('daemon:pipenzo-refine', parsed));
+  },
+  async implementPipenzo(input) {
+    const parsed = pipenzoImplementRequestV1Schema.parse(input);
+    return pipenzoImplementResultV1Schema.parse(await ipcRenderer.invoke('daemon:pipenzo-implement', parsed));
+  },
+  async implementResultPipenzo(input) {
+    const parsed = pipenzoImplementResultQueryV1Schema.parse(input);
+    return pipenzoImplementCommitsV1Schema.parse(await ipcRenderer.invoke('daemon:pipenzo-implement-result', parsed));
+  },
+  async reviewPipenzo(input) {
+    const parsed = pipenzoReviewRequestV1Schema.parse(input);
+    return pipenzoReviewResultV1Schema.parse(await ipcRenderer.invoke('daemon:pipenzo-review', parsed));
+  },
+  async claimPipenzoIssue(input) {
+    const parsed = pipenzoIssueClaimRequestV1Schema.parse(input);
+    return pipenzoIssueClaimResultV1Schema.parse(await ipcRenderer.invoke('daemon:pipenzo-claim-issue', parsed));
+  },
+  async createPipenzoIssue(input) {
+    const parsed = pipenzoIssueCreateRequestV1Schema.parse(input);
+    return pipenzoIssueCreateResultV1Schema.parse(await ipcRenderer.invoke('daemon:pipenzo-create-issue', parsed));
   },
   async selectAndUploadAttachments(sessionId) {
     const parsedSessionId = sessionId === undefined ? undefined : sessionIdParamSchema.parse({ sessionId }).sessionId;

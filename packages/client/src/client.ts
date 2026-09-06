@@ -99,6 +99,30 @@ import {
   pipenzoPublishResultV1Schema,
   type PipenzoPublishRequestV1,
   type PipenzoPublishResultV1,
+  pipenzoRefineRequestV1Schema,
+  pipenzoRefineResultV1Schema,
+  pipenzoImplementRequestV1Schema,
+  pipenzoImplementResultV1Schema,
+  pipenzoImplementResultQueryV1Schema,
+  pipenzoImplementCommitsV1Schema,
+  pipenzoReviewRequestV1Schema,
+  pipenzoReviewResultV1Schema,
+  pipenzoIssueClaimRequestV1Schema,
+  pipenzoIssueClaimResultV1Schema,
+  pipenzoIssueCreateRequestV1Schema,
+  pipenzoIssueCreateResultV1Schema,
+  type PipenzoRefineRequestV1,
+  type PipenzoRefineResultV1,
+  type PipenzoImplementRequestV1,
+  type PipenzoImplementResultV1,
+  type PipenzoImplementResultQueryV1,
+  type PipenzoImplementCommitsV1,
+  type PipenzoReviewRequestV1,
+  type PipenzoReviewResultV1,
+  type PipenzoIssueClaimRequestV1,
+  type PipenzoIssueClaimResultV1,
+  type PipenzoIssueCreateRequestV1,
+  type PipenzoIssueCreateResultV1,
 } from '@agent-dock/shared';
 import {
   DaemonError,
@@ -300,6 +324,27 @@ export class AgentDockClient {
     pipenzo: {
       publish: (input: PipenzoPublishRequestV1): Promise<PipenzoPublishResultV1> =>
         this.publishPipenzoV1(input),
+      /**
+       * The three phases and the two GitHub issue write ops (issue #184).
+       *
+       * Every one of these addresses a worktree by id, never by path, exactly as `publish` does:
+       * `implement` answers with a worktree id and a session id, and `review` takes a worktree id.
+       * The daemon resolves ids to directories on its own side of the boundary, so this client
+       * has no way to name a directory for the daemon to work in.
+       */
+      refine: (input: PipenzoRefineRequestV1): Promise<PipenzoRefineResultV1> =>
+        this.refinePipenzoV1(input),
+      implement: (input: PipenzoImplementRequestV1): Promise<PipenzoImplementResultV1> =>
+        this.implementPipenzoV1(input),
+      implementResult: (
+        input: PipenzoImplementResultQueryV1,
+      ): Promise<PipenzoImplementCommitsV1> => this.implementResultPipenzoV1(input),
+      review: (input: PipenzoReviewRequestV1): Promise<PipenzoReviewResultV1> =>
+        this.reviewPipenzoV1(input),
+      claimIssue: (input: PipenzoIssueClaimRequestV1): Promise<PipenzoIssueClaimResultV1> =>
+        this.claimPipenzoIssueV1(input),
+      createIssue: (input: PipenzoIssueCreateRequestV1): Promise<PipenzoIssueCreateResultV1> =>
+        this.createPipenzoIssueV1(input),
     },
     integrations: {
       mcp: {
@@ -729,6 +774,92 @@ export class AgentDockClient {
       'pipenzo publish result',
       { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) },
       { expectedStatus: 200 },
+    );
+  }
+
+  private async refinePipenzoV1(input: PipenzoRefineRequestV1): Promise<PipenzoRefineResultV1> {
+    const parsed = validateInput(pipenzoRefineRequestV1Schema, input, 'pipenzo refine request');
+    return this.requestV2(
+      '/v2/pipenzo/refine',
+      pipenzoRefineResultV1Schema,
+      'pipenzo refine result',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) },
+      { expectedStatus: 200 },
+    );
+  }
+
+  private async implementPipenzoV1(
+    input: PipenzoImplementRequestV1,
+  ): Promise<PipenzoImplementResultV1> {
+    const parsed = validateInput(pipenzoImplementRequestV1Schema, input, 'pipenzo implement request');
+    return this.requestV2(
+      '/v2/pipenzo/implement',
+      pipenzoImplementResultV1Schema,
+      'pipenzo implement result',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) },
+      { expectedStatus: 200 },
+    );
+  }
+
+  private async implementResultPipenzoV1(
+    input: PipenzoImplementResultQueryV1,
+  ): Promise<PipenzoImplementCommitsV1> {
+    const parsed = validateInput(
+      pipenzoImplementResultQueryV1Schema,
+      input,
+      'pipenzo implement result request',
+    );
+    return this.requestV2(
+      '/v2/pipenzo/implement/result',
+      pipenzoImplementCommitsV1Schema,
+      'pipenzo implement commits',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) },
+      { expectedStatus: 200 },
+    );
+  }
+
+  private async reviewPipenzoV1(input: PipenzoReviewRequestV1): Promise<PipenzoReviewResultV1> {
+    const parsed = validateInput(pipenzoReviewRequestV1Schema, input, 'pipenzo review request');
+    return this.requestV2(
+      '/v2/pipenzo/review',
+      pipenzoReviewResultV1Schema,
+      'pipenzo review report',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) },
+      { expectedStatus: 200 },
+    );
+  }
+
+  private async claimPipenzoIssueV1(
+    input: PipenzoIssueClaimRequestV1,
+  ): Promise<PipenzoIssueClaimResultV1> {
+    const parsed = validateInput(
+      pipenzoIssueClaimRequestV1Schema,
+      input,
+      'pipenzo issue claim request',
+    );
+    return this.requestV2(
+      '/v2/pipenzo/issues/claim',
+      pipenzoIssueClaimResultV1Schema,
+      'pipenzo issue claim result',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) },
+      { expectedStatus: 200 },
+    );
+  }
+
+  private async createPipenzoIssueV1(
+    input: PipenzoIssueCreateRequestV1,
+  ): Promise<PipenzoIssueCreateResultV1> {
+    const parsed = validateInput(
+      pipenzoIssueCreateRequestV1Schema,
+      input,
+      'pipenzo issue create request',
+    );
+    return this.requestV2(
+      '/v2/pipenzo/issues',
+      pipenzoIssueCreateResultV1Schema,
+      'pipenzo created issue',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) },
+      { expectedStatus: 201 },
     );
   }
 

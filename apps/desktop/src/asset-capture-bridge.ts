@@ -50,6 +50,15 @@ export function installAssetCaptureBridge(): void {
     listWorktrees: async () => [],
     cleanupWorktree: async (worktreeId) => ({ id: worktreeId, workspaceId: 'a'.repeat(64), name: 'worktree', displayPath: 'worktree', status: 'missing', createdAt: '2026-01-01T00:00:00.000Z' }),
     publishPipenzo: async () => { throw new Error('publishing is not available while capturing assets'); },
+    // Pipenzo's phase routes (issue #184). Asset capture renders screens; it never runs a phase,
+    // never claims a ticket and never files an issue, so each of these refuses rather than
+    // returning a plausible-looking fake a screenshot could then present as real.
+    refinePipenzo: async () => { throw new Error('refine is not available while capturing assets'); },
+    implementPipenzo: async () => { throw new Error('implement is not available while capturing assets'); },
+    implementResultPipenzo: async () => { throw new Error('implement is not available while capturing assets'); },
+    reviewPipenzo: async () => { throw new Error('review is not available while capturing assets'); },
+    claimPipenzoIssue: async () => { throw new Error('claiming is not available while capturing assets'); },
+    createPipenzoIssue: async () => { throw new Error('issue creation is not available while capturing assets'); },
     selectAndUploadAttachments: async () => [],
     validateStructuredOutput: async (input) => ({ valid: true, normalizedOutput: input.output, errors: [] }),
     createSession: async () => {

@@ -212,8 +212,24 @@ export interface GitHubClient {
   listLabels(ref: RepoRef): Promise<readonly GitHubLabel[]>;
   /** Idempotent: an existing label with the same name is returned rather than re-created. */
   createLabel(ref: RepoRef, label: GitHubLabel): Promise<GitHubLabel>;
+  /**
+   * Adds an assignee (issue #184, for #83's claim pre-flight). Additive, never a replacement:
+   * GitHub's `POST .../assignees` adds, and Pipenzo must not be able to evict a human who is
+   * already on a ticket. The refusal in a lost claim race is decided by re-reading the issue
+   * afterwards, not by this call failing — GitHub happily accepts a second assignee.
+   */
+  assignIssue(ref: RepoRef, issueNumber: number, assignee: string): Promise<GitHubIssue>;
+  /** Creates an issue (issue #184, for #84's "New from idea"). Never opens a pull request. */
+  createIssue(ref: RepoRef, input: GitHubIssueDraft): Promise<GitHubIssue>;
   getPullRequestDiff(ref: RepoRef, pullNumber: number): Promise<GitHubPullRequestDiff>;
   listPullRequestChecks(ref: RepoRef, pullNumber: number): Promise<readonly GitHubCheckRun[]>;
+}
+
+/** What `createIssue` accepts. No assignee: creating and claiming stay two auditable steps. */
+export interface GitHubIssueDraft {
+  readonly title: string;
+  readonly body: string;
+  readonly labels?: readonly string[];
 }
 
 /**
@@ -430,19 +446,72 @@ export class OctokitGitHubClient implements GitHubClient {
       throw new GitHubClientError('not_found', `${operation}: reference is a pull request`);
     }
     const etag = response.headers.etag;
-    return {
-      owner: ref.owner,
-      repo: ref.repo,
-      number: requireNumber(data.number, 'number', operation),
-      title: requireString(data.title, 'title', operation),
-      body: typeof data.body === 'string' ? data.body : '',
-      state: data.state === 'closed' ? 'closed' : 'open',
-      labels: labelNames(data.labels),
-      assignees: loginNames(data.assignees),
-      htmlUrl: requireString(data.html_url, 'html_url', operation),
-      updatedAt: requireString(data.updated_at, 'updated_at', operation),
-      etag: typeof etag === 'string' ? etag : undefined,
-    };
+    return normalizeIssue(ref, data, typeof etag === 'string' ? etag : undefined, operation);
+  }
+
+  /**
+   * Adds an assignee and returns the issue *as GitHub answered the write*.
+   *
+   * The response body of `POST /assignees` is the updated issue, so the caller gets the
+   * post-write assignee list from the same round trip. That is deliberately **not** the claim
+   * decision: README's rule is assign, then re-read uncached, and the re-read is a separate
+   * `getIssue()` the caller makes — a write's own echo cannot see a concurrent assignment that
+   * landed a millisecond later, which is the exact race the claim rule exists for.
+   *
+   * `Cache-Control: no-cache` is set on the request so no intermediary can answer a subsequent
+   * read from a copy of this one.
+   */
+  async assignIssue(ref: RepoRef, issueNumber: number, assignee: string): Promise<GitHubIssue> {
+    const operation = `assignIssue ${ref.owner}/${ref.repo}#${issueNumber}`;
+    assertPositiveInteger(issueNumber, 'issue number', operation);
+    assertLogin(assignee, operation);
+    let response;
+    try {
+      response = await this.#octokit.request(
+        'POST /repos/{owner}/{repo}/issues/{issue_number}/assignees',
+        {
+          owner: ref.owner,
+          repo: ref.repo,
+          issue_number: issueNumber,
+          assignees: [assignee],
+          headers: { 'cache-control': 'no-cache' },
+        },
+      );
+    } catch (error) {
+      throw toGitHubClientError(error, operation);
+    }
+    const data = response.data as Record<string, unknown>;
+    if (data.pull_request !== undefined) {
+      throw new GitHubClientError('not_found', `${operation}: reference is a pull request`);
+    }
+    return normalizeIssue(ref, data, undefined, operation);
+  }
+
+  /**
+   * Creates an issue.
+   *
+   * Note what this is not allowed to become: GitHub's issue-create endpoint also accepts
+   * `assignees` and `milestone`, and neither is plumbed through. Creating a ticket and claiming it
+   * are two separate operator actions with two separate audit trails, and collapsing them into one
+   * request would mean a drafted issue could arrive already owned by whoever's PAT the daemon
+   * happens to hold.
+   */
+  async createIssue(ref: RepoRef, input: GitHubIssueDraft): Promise<GitHubIssue> {
+    const operation = `createIssue ${ref.owner}/${ref.repo}`;
+    assertIssueDraft(input, operation);
+    let response;
+    try {
+      response = await this.#octokit.request('POST /repos/{owner}/{repo}/issues', {
+        owner: ref.owner,
+        repo: ref.repo,
+        title: input.title,
+        body: input.body,
+        ...(input.labels && input.labels.length > 0 ? { labels: [...input.labels] } : {}),
+      });
+    } catch (error) {
+      throw toGitHubClientError(error, operation);
+    }
+    return normalizeIssue(ref, response.data as Record<string, unknown>, undefined, operation);
   }
 
   async listLabels(ref: RepoRef): Promise<readonly GitHubLabel[]> {
@@ -571,6 +640,52 @@ function assertPositiveInteger(value: number, field: string, operation: string):
   if (!Number.isSafeInteger(value) || value <= 0) {
     throw new GitHubClientError('invalid_request', `${operation}: ${field} must be a positive integer`);
   }
+}
+
+/** GitHub's own login rules: alphanumeric with single hyphens, at most 39 characters. */
+function assertLogin(login: string, operation: string): void {
+  if (!/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/.test(login)) {
+    throw new GitHubClientError('invalid_request', `${operation}: not a usable GitHub login`);
+  }
+}
+
+function assertIssueDraft(input: GitHubIssueDraft, operation: string): void {
+  const title = input.title.trim();
+  if (!title || title.length > 256) {
+    throw new GitHubClientError(
+      'invalid_request',
+      `${operation}: an issue title must be 1-256 characters`,
+    );
+  }
+  if (input.body.length > 65_536) {
+    throw new GitHubClientError('invalid_request', `${operation}: issue body is too long`);
+  }
+  for (const label of input.labels ?? []) {
+    if (!/^[^\s,][^,]{0,49}$/.test(label)) {
+      throw new GitHubClientError('invalid_request', `${operation}: label name is not usable`);
+    }
+  }
+}
+
+function normalizeIssue(
+  ref: RepoRef,
+  data: Record<string, unknown>,
+  etag: string | undefined,
+  operation: string,
+): GitHubIssue {
+  return {
+    owner: ref.owner,
+    repo: ref.repo,
+    number: requireNumber(data.number, 'number', operation),
+    title: requireString(data.title, 'title', operation),
+    body: typeof data.body === 'string' ? data.body : '',
+    state: data.state === 'closed' ? 'closed' : 'open',
+    labels: labelNames(data.labels),
+    assignees: loginNames(data.assignees),
+    htmlUrl: requireString(data.html_url, 'html_url', operation),
+    updatedAt: requireString(data.updated_at, 'updated_at', operation),
+    etag,
+  };
 }
 
 function assertLabel(label: GitHubLabel, operation: string): void {

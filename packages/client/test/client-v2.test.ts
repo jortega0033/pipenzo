@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { AGENT_DOCK_SUPPORTED_PROTOCOL_VERSIONS } from '@agent-dock/shared';
+import { AGENT_DOCK_SUPPORTED_PROTOCOL_VERSIONS, type RefineSpecV1 } from '@agent-dock/shared';
 import { AgentDockClient } from '../src/client.js';
 import {
   DaemonError,
@@ -1001,6 +1001,127 @@ describe('AgentDockClient.v2 pipenzo publish gate', () => {
       code: 'uncommitted_changes',
       message: 'the worktree has uncommitted changes',
     });
+  });
+});
+
+describe('AgentDockClient.v2 pipenzo phases', () => {
+  const WORKTREE_ID = '123e4567-e89b-42d3-a456-426614174011';
+  const BASE = 'a'.repeat(40);
+  const HEAD = 'b'.repeat(40);
+  const SPEC: RefineSpecV1 = {
+    schemaVersion: 1,
+    issue: { repo: 'jortega0033/pipenzo', number: 184, title: 'Expose the phases as routes' },
+    summary: 'Give the phases routes.',
+    acceptanceCriteria: [
+      { id: 'AC-1', kind: 'ubiquitous', text: 'The daemon shall expose a refine route' },
+    ],
+    outOfScope: ['Routing model tiers'],
+    filesLikelyTouched: [],
+    estimate: { changedLines: 400, filesTouched: 8, layered: false },
+    openQuestions: [],
+  };
+
+  function routeClient(status: number, body: unknown) {
+    const fetchImpl = vi.fn().mockImplementation(async (url: string) => {
+      if (url.endsWith('/health')) return healthResponse([1, 2]);
+      return jsonResponse(status, body);
+    });
+    return { fetchImpl, client: makeClient(fetchImpl) };
+  }
+
+  it('starts implement and receives a worktree id, never a worktree path', async () => {
+    const result = {
+      worktreeId: WORKTREE_ID,
+      branch: 'issue-184',
+      baseCommit: BASE,
+      sessionId: 'session-1',
+    };
+    const { fetchImpl, client } = routeClient(200, result);
+
+    await expect(
+      client.v2.pipenzo.implement({
+        spec: SPEC,
+        repositoryPath: '/repos/pipenzo',
+        provider: 'claude',
+      }),
+    ).resolves.toEqual(result);
+    const call = fetchImpl.mock.calls.find(([url]) => String(url).endsWith('/v2/pipenzo/implement'));
+    expect(call?.[1]).toMatchObject({ method: 'POST' });
+    // The schema has no field for one, so a caller cannot name a directory for the daemon either.
+    expect(JSON.parse(String((call?.[1] as RequestInit).body))).not.toHaveProperty('worktreePath');
+  });
+
+  it('sends the review request by worktree id and parses the report', async () => {
+    const report = {
+      schemaVersion: 1,
+      outcome: 'deterministic_failed',
+      baseCommit: BASE,
+      headCommit: HEAD,
+      implementerTier: 'mid',
+      deterministic: [{ id: 'build', status: 'failed', summary: 'pnpm build exited 1', durationMs: 5 }],
+    };
+    const { client } = routeClient(200, report);
+    await expect(
+      client.v2.pipenzo.review({
+        spec: SPEC,
+        worktreeId: WORKTREE_ID,
+        baseCommit: BASE,
+        headCommit: HEAD,
+        implementerTier: 'mid',
+        reviewer: { provider: 'claude', model: 'r', tier: 'mid' },
+        verifier: { provider: 'codex', model: 'v', tier: 'frontier' },
+      }),
+    ).resolves.toMatchObject({ outcome: 'deterministic_failed' });
+  });
+
+  it('claims an issue and reports a lost race as a result, not as an error', async () => {
+    const { client } = routeClient(200, {
+      repo: 'jortega0033/pipenzo',
+      issueNumber: 184,
+      outcome: 'claimed_elsewhere',
+      assignees: ['someone-else'],
+      title: 'Expose the phases as routes',
+      htmlUrl: 'https://github.com/jortega0033/pipenzo/issues/184',
+    });
+    await expect(
+      client.v2.pipenzo.claimIssue({ issueNumber: 184, assignee: 'jortega0033' }),
+    ).resolves.toMatchObject({ outcome: 'claimed_elsewhere' });
+  });
+
+  it('creates an issue against the 201 the route answers with', async () => {
+    const { client } = routeClient(201, {
+      repo: 'jortega0033/pipenzo',
+      issueNumber: 901,
+      title: 'New from idea',
+      htmlUrl: 'https://github.com/jortega0033/pipenzo/issues/901',
+    });
+    await expect(
+      client.v2.pipenzo.createIssue({ title: 'New from idea', body: '' }),
+    ).resolves.toMatchObject({ issueNumber: 901 });
+  });
+
+  it('rejects an unvalidated phase request before ever calling fetch', async () => {
+    const fetchImpl = vi.fn();
+    const client = makeClient(fetchImpl);
+    await expect(
+      client.v2.pipenzo.refine({ issueNumber: 0, repositoryPath: '/repos/pipenzo', provider: 'claude' }),
+    ).rejects.toBeInstanceOf(ValidationError);
+    await expect(
+      client.v2.pipenzo.claimIssue({ issueNumber: 184, assignee: 'not a login' }),
+    ).rejects.toBeInstanceOf(ValidationError);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('surfaces the phase gate closed error codes as a typed DaemonError', async () => {
+    const { client } = routeClient(409, {
+      code: 'read_only_violation',
+      error: 'the refine session used a tool outside the read-only allowlist',
+    });
+    const failure = await client.v2.pipenzo
+      .refine({ issueNumber: 184, repositoryPath: '/repos/pipenzo', provider: 'claude' })
+      .catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(DaemonError);
+    expect(failure).toMatchObject({ status: 409, code: 'read_only_violation' });
   });
 });
 

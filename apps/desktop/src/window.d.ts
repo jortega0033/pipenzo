@@ -41,6 +41,18 @@ import type {
   StructuredWorkflowResultV2,
   PipenzoPublishRequestV1,
   PipenzoPublishResultV1,
+  PipenzoRefineRequestV1,
+  PipenzoRefineResultV1,
+  PipenzoImplementRequestV1,
+  PipenzoImplementResultV1,
+  PipenzoImplementResultQueryV1,
+  PipenzoImplementCommitsV1,
+  PipenzoReviewRequestV1,
+  PipenzoReviewResultV1,
+  PipenzoIssueClaimRequestV1,
+  PipenzoIssueClaimResultV1,
+  PipenzoIssueCreateRequestV1,
+  PipenzoIssueCreateResultV1,
 } from '@agent-dock/shared';
 import type {
   RendererInteraction,
@@ -117,6 +129,34 @@ export interface AgentDockBridge {
    * comment for why this boundary is non-negotiable (CLAUDE.md hard rule #1).
    */
   publishPipenzo(input: PipenzoPublishRequestV1): Promise<PipenzoPublishResultV1>;
+  /**
+   * Pipenzo's Refine phase (issue #184). Read-only by construction on the daemon side: the
+   * session it starts is denied every write, command, network and MCP action, and a violation
+   * fails the phase rather than being downgraded to a warning.
+   */
+  refinePipenzo(input: PipenzoRefineRequestV1): Promise<PipenzoRefineResultV1>;
+  /**
+   * Starts the Implement phase: creates the ticket's worktree, cuts its `issue-<n>` branch and
+   * dispatches the session inside it. What comes back is a worktree id, a branch, a base commit
+   * and a session id — never the worktree's filesystem path. Stream the returned session id
+   * through the ordinary session APIs to watch it work.
+   */
+  implementPipenzo(input: PipenzoImplementRequestV1): Promise<PipenzoImplementResultV1>;
+  /** Reads what the dispatched implement session committed, addressed by worktree id. */
+  implementResultPipenzo(input: PipenzoImplementResultQueryV1): Promise<PipenzoImplementCommitsV1>;
+  /**
+   * Runs the Review gates in order: deterministic gates first, then the advisory reviewer, then
+   * the adversarial verifier — and a deterministic failure returns before either LLM pass is
+   * constructed.
+   */
+  reviewPipenzo(input: PipenzoReviewRequestV1): Promise<PipenzoReviewResultV1>;
+  /**
+   * The claim pre-flight (issue #83). Assigns the issue and then re-reads it uncached; an
+   * `claimed_elsewhere` outcome means the race was lost and the ticket must not be started.
+   */
+  claimPipenzoIssue(input: PipenzoIssueClaimRequestV1): Promise<PipenzoIssueClaimResultV1>;
+  /** Files a drafted issue (issue #84). Call only after a human approves the preview. */
+  createPipenzoIssue(input: PipenzoIssueCreateRequestV1): Promise<PipenzoIssueCreateResultV1>;
   selectAndUploadAttachments(sessionId?: string): Promise<AttachmentMetadataV2[]>;
   validateStructuredOutput(input: StructuredWorkflowRequestV2): Promise<StructuredWorkflowResultV2>;
   createSession(input: CreateSessionInput): Promise<AgentSession>;

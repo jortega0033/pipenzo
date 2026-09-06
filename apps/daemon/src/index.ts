@@ -21,6 +21,13 @@ import { OwnedWorktreeManager } from './worktree-manager.js';
 import { AttachmentStore } from './attachment-store.js';
 import { WorkspaceTrustStore } from './workspace-trust-store.js';
 import { PublishService } from './publish-service.js';
+import { PipenzoPhaseService } from './pipenzo-phase-service.js';
+import {
+  AwaitedPhaseSessions,
+  DispatchOnlyPhaseSessions,
+} from './pipenzo-phase-sessions.js';
+import { ExecFileGateCommands } from './gate-commands.js';
+import { OctokitGitHubClient } from './github-client.js';
 
 async function settlesWithin(promise: Promise<unknown>, timeoutMs: number): Promise<boolean> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -131,6 +138,20 @@ async function main() {
   // reviewed OS/runtime allowlist rather than inheriting this process's `process.env`.
   const publishService = new PublishService({ worktrees: worktreeManager, logger });
 
+  // Pipenzo's Refine/Implement/Review phases (issue #184). Same boundary as the publish gate: it
+  // is constructed here, in the daemon process, and is reachable only through the `/v2/pipenzo/*`
+  // routes behind the bearer token. The GitHub client is built lazily from a token read at call
+  // time, so no authenticated client is retained between requests, and the gate commands run on
+  // `buildGitEnvironment()`'s reviewed floor rather than inheriting this process's environment.
+  const phaseService = new PipenzoPhaseService({
+    refineSessions: new AwaitedPhaseSessions({ sessionManager }),
+    reviewSessions: new AwaitedPhaseSessions({ sessionManager }),
+    implementSessions: new DispatchOnlyPhaseSessions({ sessionManager }),
+    worktrees: worktreeManager,
+    github: () => OctokitGitHubClient.fromEnvironment(),
+    commands: new ExecFileGateCommands({ probeCwd: durableStateDirectory }),
+  });
+
   const app = buildServer({
     registry,
     sessionManager,
@@ -142,6 +163,7 @@ async function main() {
     worktreeManager,
     attachmentStore,
     publishService,
+    phaseService,
   });
 
   const requestedPort = Number(process.env.AGENT_DOCK_PORT ?? '0');

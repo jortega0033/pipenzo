@@ -97,6 +97,26 @@ export function createDemoBridge(): AgentDockBridge {
     publishPipenzo: async () => {
       throw new Error('publishing is not available in demo mode');
     },
+    // Same reasoning as publish, one step earlier in the loop (issue #184): a demo must not be
+    // able to start a real agent session, assign a real ticket, or file a real issue.
+    refinePipenzo: async () => {
+      throw new Error('refine is not available in demo mode');
+    },
+    implementPipenzo: async () => {
+      throw new Error('implement is not available in demo mode');
+    },
+    implementResultPipenzo: async () => {
+      throw new Error('implement is not available in demo mode');
+    },
+    reviewPipenzo: async () => {
+      throw new Error('review is not available in demo mode');
+    },
+    claimPipenzoIssue: async () => {
+      throw new Error('claiming a ticket is not available in demo mode');
+    },
+    createPipenzoIssue: async () => {
+      throw new Error('creating an issue is not available in demo mode');
+    },
     selectAndUploadAttachments: async () => [],
     validateStructuredOutput: async (input) => ({ valid: true, normalizedOutput: input.output, errors: [] }),
     createSession: async () => {

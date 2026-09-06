@@ -21,6 +21,8 @@ import type { AttachmentStore } from './attachment-store.js';
 import { registerV2MultimodalRoutes } from './routes/v2-multimodal.js';
 import type { PublishService } from './publish-service.js';
 import { registerPipenzoPublishRoutes } from './routes/pipenzo-publish.js';
+import type { PipenzoPhaseService } from './pipenzo-phase-service.js';
+import { registerPipenzoPhaseRoutes } from './routes/pipenzo-phases.js';
 
 export interface BuildServerOptions {
   registry: ProviderRegistry;
@@ -38,6 +40,12 @@ export interface BuildServerOptions {
    * configured otherwise."
    */
   publishService?: PublishService;
+  /**
+   * Pipenzo's Refine/Implement/Review phases and GitHub issue write ops (issue #184). Optional for
+   * the same reason `publishService` is: a daemon built without it has no phase routes at all,
+   * rather than routes that fail at call time.
+   */
+  phaseService?: PipenzoPhaseService;
 }
 
 /**
@@ -116,6 +124,7 @@ export function buildServer(opts: BuildServerOptions): FastifyInstance {
     }
     registerV2AgentWorktreeRoutes(app, opts.subagentStore, opts.worktreeManager);
     if (opts.publishService) registerPipenzoPublishRoutes(app, opts.publishService);
+    if (opts.phaseService) registerPipenzoPhaseRoutes(app, opts.phaseService);
     if (opts.attachmentStore)
       registerV2MultimodalRoutes(app, opts.attachmentStore, opts.sessionManager);
   });
