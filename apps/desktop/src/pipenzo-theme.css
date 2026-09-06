@@ -3668,6 +3668,235 @@
   .lesson-note .icon-sm {
     flex-shrink: 0;
   }
+
+  /* App shell — ported verbatim from Main.dc.html's shared sidebar/main-head block (identical
+     across every screen artboard). See AppShell.tsx. */
+  .shell {
+    display: flex;
+    overflow: hidden;
+    position: relative;
+    background: var(--color-bg);
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .logo-mark {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--color-accent);
+    color: var(--color-accent-fg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-mono);
+    font-weight: 700;
+    font-size: 16px;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+
+  .wordmark {
+    font-family: var(--font-mono);
+    font-weight: 700;
+    font-size: 16px;
+    letter-spacing: -0.01em;
+    line-height: 1;
+  }
+
+  .sidebar {
+    width: 240px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 16px 12px 12px;
+    background: var(--color-surface);
+    overflow: hidden;
+    transition: width var(--ease-pipenzo);
+  }
+
+  .sidebar .brand {
+    height: 32px;
+    padding: 0 6px;
+  }
+
+  .sidebar.collapsed {
+    width: 64px;
+  }
+
+  .sidebar.collapsed .wordmark,
+  .sidebar.collapsed .ws-text,
+  .sidebar.collapsed .ws-caret,
+  .sidebar.collapsed .nav-title,
+  .sidebar.collapsed .nav-lbl,
+  .sidebar.collapsed .nav-count,
+  .sidebar.collapsed .sb-user-text {
+    display: none;
+  }
+
+  .nav-group {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-top: 12px;
+  }
+
+  .nav-title {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--color-text-faint);
+    line-height: 1;
+    padding: 8px 10px;
+  }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 36px;
+    padding: 0 10px;
+    border-radius: var(--radius-pipenzo-sm);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--color-text-soft);
+    cursor: pointer;
+    white-space: nowrap;
+    transition:
+      background-color var(--ease-pipenzo),
+      color var(--ease-pipenzo);
+  }
+
+  .nav-item:hover {
+    background: var(--color-surface-2);
+    color: var(--color-text);
+  }
+
+  .nav-item.active {
+    background: var(--color-surface-3);
+    color: var(--color-text);
+  }
+
+  .nav-item .icon {
+    color: inherit;
+  }
+
+  .nav-count {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--color-text-faint);
+    line-height: 1;
+  }
+
+  .nav-count.hot {
+    color: var(--color-danger-text);
+    font-weight: 700;
+  }
+
+  .sidebar.collapsed .nav-item {
+    justify-content: center;
+    padding: 0;
+  }
+
+  .sb-foot {
+    margin-top: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .sb-user {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 44px;
+    padding: 0 6px;
+    border-radius: var(--radius-pipenzo-sm);
+    cursor: pointer;
+  }
+
+  .sb-user:hover {
+    background: var(--color-surface-2);
+  }
+
+  .sb-user-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .sb-user-name {
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .sb-user-sub {
+    font-size: 11px;
+    color: var(--color-text-faint);
+    line-height: 1;
+  }
+
+  .main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--color-bg);
+  }
+
+  .main-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    height: 56px;
+    padding: 0 24px;
+    flex-shrink: 0;
+  }
+
+  .main-head-r {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .crumbs {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    font-size: 13px;
+    color: var(--color-text-faint);
+    line-height: 1;
+  }
+
+  .crumbs .icon-sm {
+    color: var(--color-text-faint);
+  }
+
+  .crumbs .cur {
+    color: var(--color-text);
+    font-weight: 700;
+  }
+
+  .crumbs .mono {
+    font-size: 12px;
+  }
 }
 
 @keyframes pulse-warn {
