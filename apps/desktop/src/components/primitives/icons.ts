@@ -91,6 +91,10 @@ export const ICON_PATHS = {
      Foundations.dc.html's "sync status" primitive sample rather than approximated. */
   hourglass:
     'M200,75.64V40a16,16,0,0,0-16-16H72A16,16,0,0,0,56,40V76a16.07,16.07,0,0,0,6.4,12.8L114.67,128,62.4,167.2A16.07,16.07,0,0,0,56,180v36a16,16,0,0,0,16,16H184a16,16,0,0,0,16-16V180.36a16.09,16.09,0,0,0-6.35-12.77L141.27,128l52.38-39.6A16.05,16.05,0,0,0,200,75.64ZM72,40H184V75.64L178.23,80H77.33L72,76Zm56,78L98.67,96h58.4Zm56,98H72V180l48-36v24a8,8,0,0,0,16,0V144.08l48,36.28Z',
+  /* The claim-conflict card's "claimed by @someone-else" glyph -- ticket #47's one new icon,
+     copied from the .conflict-head sample in Foundations.dc.html's "Cards" section rather than
+     approximated from a similar-looking Phosphor "user" glyph. */
+  user: 'M230.92,212c-15.23-26.33-38.7-45.21-66.09-54.16a72,72,0,1,0-73.66,0C63.78,166.78,40.31,185.66,25.08,212a8,8,0,1,0,13.85,8c18.84-32.56,52.14-52,89.07-52s70.23,19.44,89.07,52a8,8,0,1,0,13.85-8ZM72,96a56,56,0,1,1,56,56A56.06,56.06,0,0,1,72,96Z',
 } as const;
 
 export type IconName = keyof typeof ICON_PATHS;

@@ -2082,6 +2082,73 @@
   .dialog .split-row .mono {
     color: var(--color-text-soft);
   }
+
+  /* Card .conflict block — ported verbatim from Foundations.dc.html's "Cards" section. Deliberately
+     one family for two Needs-human reactions: pipenzo:merge-conflict (named files with hunk
+     counts, then a why-paragraph) and claim conflict (why-paragraph only, no files, no action in
+     the card foot beside it) -- both amber, never red, since neither is a failure. See
+     Conflict.tsx. */
+  .conflict {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    background: var(--color-surface-2);
+    border-radius: var(--radius-pipenzo-sm);
+    padding: 10px 12px;
+  }
+
+  .conflict-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-warn);
+    line-height: 1;
+  }
+
+  .conflict-files {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .conflict-file {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--color-text-soft);
+    line-height: 1.4;
+  }
+
+  .conflict-file .p {
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .conflict-file .h {
+    color: var(--color-text-faint);
+    flex-shrink: 0;
+  }
+
+  .conflict-why {
+    font-size: 12px;
+    color: var(--color-text-soft);
+    line-height: 1.4;
+  }
+
+  .conflict-why b {
+    color: var(--color-text);
+    font-weight: 700;
+  }
 }
 
 @keyframes sk-shimmer {
