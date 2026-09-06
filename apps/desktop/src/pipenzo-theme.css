@@ -996,6 +996,53 @@
     flex-shrink: 0;
     animation: pulse-run 1.6s ease-out infinite;
   }
+
+  /* Popover shell — ported verbatim from Foundations.dc.html's "Popovers" section. Same surface
+     and shadow as .dialog, but it hangs off the control that opened it instead of covering the
+     screen: no scrim darkening, just a transparent outside-click catcher (Popover.tsx below
+     reuses .scrim.clear for that, exactly as the canvas's own note on that rule says the
+     workspace switcher does). .pop is the shared shell; .pop-title/.pop-sep/.pop-foot are what
+     the command palette (ticket #33) and workspace switcher (#34) build on top of it. */
+  .pop {
+    background: var(--color-surface-3);
+    border-radius: var(--radius-pipenzo);
+    box-shadow: var(--shadow-pipenzo);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .pop-title {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--color-text-faint);
+    line-height: 1;
+    padding: 12px 12px 8px;
+  }
+
+  .pop-sep {
+    height: 2px;
+    background: var(--color-surface-2);
+    flex-shrink: 0;
+  }
+
+  .pop-foot {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--color-surface-2);
+    font-size: 11px;
+    color: var(--color-text-faint);
+    line-height: 1.35;
+  }
+
+  .pop-foot .grow {
+    flex: 1;
+    min-width: 0;
+  }
 }
 
 @keyframes sk-shimmer {
