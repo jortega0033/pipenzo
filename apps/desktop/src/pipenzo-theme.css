@@ -726,6 +726,16 @@
     gap: 16px;
   }
 
+  /* Two side-by-side fields sharing a row -- the Implement dialog's branch-name-override/
+     run-budget pair in Main.dc.html. Ported from Main.dc.html's own `.two-col` rule, which had
+     never made it into this consolidated stylesheet before ImplementDialog.tsx (issue #83) was
+     the first real component to need it. */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
   .select-wrap {
     position: relative;
     display: block;
@@ -4174,6 +4184,254 @@
     background: var(--color-text);
     width: 16px;
     border-radius: var(--radius-pipenzo-pill);
+  }
+
+  /* DiffReview screen shell: head (id line, title, stat row) plus the two-column body (diff
+     cards on the left, the rail on the right) — ported verbatim from DiffReview.dc.html's
+     "===== screen =====" section, minus the artboard-preview-only fixed `.shell{height:900px}`
+     (this app's real `.shell` above already sizes itself to the actual window). See
+     DiffReviewHead.tsx (issue #106), the diff renderer (issue #107) and rail composition
+     (issue #109). */
+  .head {
+    padding: 0 24px 16px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 24px;
+    flex-shrink: 0;
+    background: var(--color-bg);
+  }
+
+  .head-l {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  .actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+    padding-bottom: 2px;
+  }
+
+  .h-id {
+    font-family: var(--font-mono);
+    color: var(--color-text-faint);
+    font-size: 12px;
+    line-height: 1;
+  }
+
+  .h-title {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    line-height: 1.25;
+    text-wrap: balance;
+  }
+
+  .stat-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 13px;
+    color: var(--color-text-soft);
+    line-height: 1;
+  }
+
+  .stat-row .mono {
+    font-size: 12px;
+  }
+
+  .add-t {
+    color: var(--color-ok);
+  }
+
+  .del-t {
+    color: var(--color-danger-text);
+  }
+
+  .body {
+    flex: 1;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 300px;
+    gap: 16px;
+    overflow: hidden;
+    background: var(--color-bg);
+    padding: 0 16px 16px 24px;
+  }
+
+  .diffs {
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .file {
+    border-radius: var(--radius-pipenzo);
+    overflow: hidden;
+    background: var(--color-surface);
+  }
+
+  .file-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    height: 40px;
+    padding: 0 16px;
+    background: var(--color-surface-2);
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+
+  .file-head .path {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--color-text);
+  }
+
+  .file-head .path .icon-sm {
+    color: var(--color-text-faint);
+  }
+
+  .file-head .path .dir {
+    color: var(--color-text-faint);
+  }
+
+  .file-stat {
+    display: flex;
+    gap: 6px;
+    color: var(--color-text-faint);
+  }
+
+  table.hunk {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 20px;
+  }
+
+  td.ln {
+    width: 44px;
+    text-align: right;
+    padding: 0 8px;
+    color: var(--color-text-faint);
+    user-select: none;
+    background: var(--color-surface);
+  }
+
+  td.sign {
+    width: 20px;
+    text-align: center;
+    padding: 0;
+    color: var(--color-text-faint);
+    user-select: none;
+  }
+
+  td.code {
+    padding: 0 12px 0 4px;
+    white-space: pre;
+    color: var(--color-text-soft);
+  }
+
+  tr.hh td {
+    background: var(--color-surface-2);
+    color: var(--color-text-faint);
+  }
+
+  tr.hh td.code {
+    padding-left: 8px;
+  }
+
+  tr.add td.code {
+    background: #213224;
+    color: var(--color-text);
+  }
+
+  tr.add td.sign {
+    background: #213224;
+    color: var(--color-ok);
+  }
+
+  tr.add td.ln {
+    background: #294d2e;
+    color: #b7e3bd;
+  }
+
+  tr.del td.code {
+    background: #402625;
+    color: var(--color-text);
+  }
+
+  tr.del td.sign {
+    background: #402625;
+    color: var(--color-danger-text);
+  }
+
+  tr.del td.ln {
+    background: #602e2c;
+    color: #f1b7b3;
+  }
+
+  /* A finding in the rail points at one line: selecting it marks the row's gutter rather than
+     scrolling it out from under you. */
+  tr.hit td.ln {
+    background: var(--color-accent);
+    color: var(--color-accent-fg);
+  }
+
+  tr.hit td.code {
+    box-shadow: inset 0 0 0 2px var(--color-accent);
+  }
+
+  .rail {
+    padding: 8px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    background: var(--color-surface);
+    border-radius: var(--radius-pipenzo);
+  }
+
+  .v-block .shots {
+    margin-top: 2px;
+  }
+
+  .commit {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--color-text-soft);
+    background: var(--color-surface-3);
+    padding: 12px;
+    border-radius: var(--radius-pipenzo-sm);
+    white-space: pre-wrap;
+  }
+
+  .confidence {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--color-text-soft);
+    line-height: 1.4;
+  }
+
+  .confidence .icon-sm {
+    color: var(--color-warn);
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  .confidence b {
+    color: var(--color-text);
+    font-weight: 700;
   }
 }
 
