@@ -906,6 +906,85 @@
     color: inherit;
   }
 
+  /* Dialog + scrim shell — ported verbatim from Foundations.dc.html's "Elevation" section and
+     Main.dc.html/DiffReview.dc.html's shared .scrim rule (Foundations.dc.html shows .dialog
+     itself but not .scrim -- the scrim only appears where a dialog is actually opened over a
+     screen, so its definition lives with those screens; Dialog.tsx below ports it from there
+     verbatim rather than inventing new values). .dialog is the one floating surface in this
+     system -- surface-3 under the standard shadow, everything else steps via the surface ramp
+     instead. Nested .field/.btn get a surface-4 bump since the dialog itself already sits on
+     surface-3 (var(--surface-3) for either would disappear into the dialog background). */
+  .dialog {
+    background: var(--color-surface-3);
+    border-radius: var(--radius-pipenzo);
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    box-shadow: var(--shadow-pipenzo);
+  }
+
+  .dialog .field {
+    background: var(--color-surface-4);
+  }
+
+  .dialog .field:hover,
+  .dialog .field:focus {
+    background: var(--color-surface-4);
+  }
+
+  .dialog .btn:not(.primary) {
+    background: var(--color-surface-4);
+  }
+
+  .dialog-title {
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 1.3;
+    text-wrap: balance;
+  }
+
+  .dialog-sub {
+    font-size: 12px;
+    color: var(--color-text-soft);
+    margin-top: 4px;
+    line-height: 1.4;
+  }
+
+  .dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  /* .scrim is `position: fixed` here rather than the canvas's `absolute` -- the canvas's own
+     preview nests it inside an artboard container that happens to already be `position:
+     relative`, but a real dialog needs to cover the actual viewport regardless of what any
+     ancestor in this app's layout is doing, so `fixed` is the correct choice for the same
+     visual result. Three renderings: default (dark, centered -- covers and blocks the screen
+     behind it), top (aligned to the top with 88px of headroom, for the ⌘K palette, so the board
+     stays readable behind it), clear (transparent, for a menu anchored to the control that
+     opened it, e.g. the workspace switcher -- the scrim there exists only to catch an
+     outside click, not to darken anything). */
+  .scrim {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 5;
+  }
+
+  .scrim.top {
+    align-items: flex-start;
+    padding-top: 88px;
+  }
+
+  .scrim.clear {
+    background: transparent;
+  }
+
   /* Live-run pulse: a small dot (the run indicator on an in-progress ticket) breathing via its
      box-shadow, softened to a static ring by the reduced-motion block below instead of stopped
      outright -- it should still read as "live", just not moving. */
