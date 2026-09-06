@@ -1,7 +1,11 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createServer, connect } from 'node:net';
 import { join } from 'node:path';
-import type { OwnedWorktreeV2 } from '@agent-dock/shared';
+import {
+  SCREENSHOT_PROVENANCE_LINES_V1,
+  type OwnedWorktreeV2,
+  type ScreenshotTrustClassV1,
+} from '@agent-dock/shared';
 import { buildGitEnvironment } from './pipenzo-git.js';
 import { readPipenzoRepoConfig, type PipenzoCommandConfig } from './pipenzo-repo-config.js';
 import {
@@ -9,8 +13,8 @@ import {
   detectScreenshotCapability,
   type CaptureRunResult,
   SCREENSHOT_EVIDENCE_SATISFIES_GATE,
-  SCREENSHOT_PROVENANCE_V1,
 } from './screenshot-capture.js';
+import { ScreenshotEscapeHatchRunner } from './screenshot-escape-hatch.js';
 
 /**
  * Baseline capture and the serial execution slot (Pipenzo issue #140).
@@ -233,6 +237,12 @@ export interface BaselineCost {
 export type ScreenshotVerificationResult =
   | {
       readonly status: 'completed';
+      /**
+       * Which of README's two trust classes produced this evidence (issue #141). Always reported,
+       * never inferred by a renderer: the two are secure for different reasons, and a reader has
+       * to know which reason applies to the picture in front of them.
+       */
+      readonly trustClass: ScreenshotTrustClassV1;
       readonly provenance: string;
       readonly satisfiesGate: typeof SCREENSHOT_EVIDENCE_SATISFIES_GATE;
       readonly baseline: CaptureRunResult;
@@ -258,6 +268,7 @@ export interface ScreenshotVerificationOptions {
   slot?: ScreenshotExecutionSlot;
   devServer?: DevServerStarter;
   capture?: ScreenshotCaptureExecutor;
+  escapeHatch?: ScreenshotEscapeHatchRunner;
   readyTimeoutMs?: number;
 }
 
@@ -268,6 +279,7 @@ export class ScreenshotVerificationRunner {
   readonly #slot: ScreenshotExecutionSlot;
   readonly #devServer: DevServerStarter;
   readonly #capture: ScreenshotCaptureExecutor;
+  readonly #escapeHatch: ScreenshotEscapeHatchRunner;
   readonly #readyTimeoutMs: number;
 
   constructor(options: ScreenshotVerificationOptions) {
@@ -275,6 +287,7 @@ export class ScreenshotVerificationRunner {
     this.#slot = options.slot ?? new ScreenshotExecutionSlot();
     this.#devServer = options.devServer ?? new SpawnDevServer();
     this.#capture = options.capture ?? new ScreenshotCaptureExecutor();
+    this.#escapeHatch = options.escapeHatch ?? new ScreenshotEscapeHatchRunner();
     this.#readyTimeoutMs = options.readyTimeoutMs ?? DEFAULT_READY_TIMEOUT_MS;
   }
 
@@ -285,9 +298,12 @@ export class ScreenshotVerificationRunner {
     // Read from the *source* repository, never the ticket worktree: the agent has had write access
     // to the worktree's package.json for the whole Implement phase, and this command's entire
     // claim to being trusted is that a human committed it.
-    let serve;
+    let serve: PipenzoCommandConfig | undefined;
+    let escapeHatchCommand: PipenzoCommandConfig | undefined;
     try {
-      serve = (await readPipenzoRepoConfig(location.sourcePath)).serve;
+      const config = await readPipenzoRepoConfig(location.sourcePath);
+      serve = config.serve;
+      escapeHatchCommand = config.screenshot;
     } catch (error) {
       return {
         status: 'errored',
@@ -301,13 +317,31 @@ export class ScreenshotVerificationRunner {
           'this repository configures no pipenzo.verify.serve command; screenshot verification is off',
       };
     }
+
+    /**
+     * Which trust class this run uses, decided here and only here.
+     *
+     * README's rule: the agent-proposed manifest is the path, and `pipenzo.verify.screenshot` is
+     * "the escape hatch for repos without Playwright". So Playwright decides. A repository with
+     * Playwright does not get to swap in a free-form command by also configuring one — that would
+     * let the weaker trust class win by being listed, rather than by being the only option.
+     */
     const capability = detectScreenshotCapability(location.sourcePath);
-    if (!capability.available) return { status: 'unavailable', reason: capability.reason };
+    const escapeHatch = capability.available ? undefined : escapeHatchCommand;
+    if (!capability.available && !escapeHatch) {
+      return {
+        status: 'unavailable',
+        reason: `${capability.reason}, and this repository configures no pipenzo.verify.screenshot command either`,
+      };
+    }
+    const trustClass: ScreenshotTrustClassV1 = escapeHatch
+      ? 'repo-authored-command'
+      : 'agent-proposed-manifest';
 
     const queuedAt = Date.now();
     return this.#slot.run(async () => {
       const slotWaitMs = Date.now() - queuedAt;
-      return this.#runInSlot(request, location, serve, slotWaitMs);
+      return this.#runInSlot(request, location, serve, trustClass, escapeHatch, slotWaitMs);
     });
   }
 
@@ -315,6 +349,8 @@ export class ScreenshotVerificationRunner {
     request: ScreenshotVerificationRequest,
     location: { path: string; sourcePath: string },
     serve: PipenzoCommandConfig,
+    trustClass: ScreenshotTrustClassV1,
+    escapeHatch: PipenzoCommandConfig | undefined,
     slotWaitMs: number,
   ): Promise<ScreenshotVerificationResult> {
     let baselineWorktreeId: string | undefined;
@@ -338,6 +374,7 @@ export class ScreenshotVerificationRunner {
       const baseline = await this.#captureAt(
         baselineLocation.path,
         serve,
+        escapeHatch,
         request.manifest,
         join(request.evidenceDirectory, 'baseline'),
       );
@@ -347,6 +384,7 @@ export class ScreenshotVerificationRunner {
       const head = await this.#captureAt(
         location.path,
         serve,
+        escapeHatch,
         request.manifest,
         join(request.evidenceDirectory, 'head'),
       );
@@ -354,7 +392,8 @@ export class ScreenshotVerificationRunner {
 
       return {
         status: 'completed',
-        provenance: SCREENSHOT_PROVENANCE_V1,
+        trustClass,
+        provenance: SCREENSHOT_PROVENANCE_LINES_V1[trustClass],
         satisfiesGate: SCREENSHOT_EVIDENCE_SATISFIES_GATE,
         baseline,
         head,
@@ -387,6 +426,7 @@ export class ScreenshotVerificationRunner {
   async #captureAt(
     cwd: string,
     serve: PipenzoCommandConfig,
+    escapeHatch: PipenzoCommandConfig | undefined,
     manifest: unknown,
     outputDirectory: string,
   ): Promise<CaptureRunResult> {
@@ -406,12 +446,23 @@ export class ScreenshotVerificationRunner {
       };
     }
     try {
-      return await this.#capture.capture({
-        repositoryPath: cwd,
-        origin: server.origin,
-        manifest,
-        outputDirectory,
-      });
+      // Note what the escape hatch is *not* handed: the manifest. Three daemon-chosen values reach
+      // a repo-authored command, and no agent-authored string does — see
+      // `screenshot-escape-hatch.ts` for why that is what keeps the two trust classes apart.
+      return escapeHatch
+        ? await this.#escapeHatch.run({
+            command: escapeHatch,
+            cwd,
+            origin: server.origin,
+            port: server.port,
+            outputDirectory,
+          })
+        : await this.#capture.capture({
+            repositoryPath: cwd,
+            origin: server.origin,
+            manifest,
+            outputDirectory,
+          });
     } finally {
       await server.stop().catch(() => undefined);
     }

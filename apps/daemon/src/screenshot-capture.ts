@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { CaptureManifestV1 } from '@agent-dock/shared';
+import { SCREENSHOT_PROVENANCE_LINES_V1, type CaptureManifestV1 } from '@agent-dock/shared';
 import { buildGitEnvironment } from './pipenzo-git.js';
 import { CAPTURE_RUNNER_SOURCE } from './capture-runner-source.js';
 import { resolveCaptureManifestSet, type ResolvedCapture } from './capture-manifest.js';
@@ -35,8 +35,9 @@ import { resolveCaptureManifestSet, type ResolvedCapture } from './capture-manif
 
 /** README: the capture "carries a fixed provenance line and can never satisfy a gate". */
 export const SCREENSHOT_EVIDENCE_SATISFIES_GATE = false as const;
+/** The manifest-driven path's provenance. The escape hatch's is a different trust class (#141). */
 export const SCREENSHOT_PROVENANCE_V1 =
-  'Captured by Pipenzo from an agent-proposed manifest, against a dev server the daemon started. Evidence only — this never satisfies a gate.';
+  SCREENSHOT_PROVENANCE_LINES_V1['agent-proposed-manifest'];
 
 export type PlaywrightPackageName = 'playwright' | '@playwright/test';
 const PLAYWRIGHT_PACKAGES: readonly PlaywrightPackageName[] = ['playwright', '@playwright/test'];

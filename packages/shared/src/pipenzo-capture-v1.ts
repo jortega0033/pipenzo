@@ -39,6 +39,42 @@ import { z } from 'zod';
  * nothing in it selects a different engine, a different origin, or a different document.
  */
 
+/**
+ * The two ways a screenshot can come to exist in Pipenzo, kept apart because they are **different
+ * trust classes** (Pipenzo issue #141) and README says so explicitly:
+ *
+ * > The `pipenzo.verify.screenshot` escape hatch for repos without Playwright stays a free-form
+ * > command — that one is a *different trust class*, because it is repo-authored and
+ * > human-committed, so a person has already reviewed it, exactly like a build script.
+ *
+ * `agent-proposed-manifest` is untrusted input made safe by a closed schema and a daemon that
+ * makes every call. `repo-authored-command` is trusted input, and it is trusted for exactly one
+ * reason: a human wrote it and a reviewer saw it in a diff. Neither is "more secure" than the
+ * other in the abstract — they are secure for different reasons, and collapsing them into one
+ * label would hide which reason applies to a given picture.
+ *
+ * This lives in `@agent-dock/shared` because the evidence block and the capability panel both
+ * render the distinction (issue #124), and a renderer must never be free to omit it.
+ */
+export const SCREENSHOT_TRUST_CLASSES = [
+  'agent-proposed-manifest',
+  'repo-authored-command',
+] as const;
+export type ScreenshotTrustClassV1 = (typeof SCREENSHOT_TRUST_CLASSES)[number];
+
+/**
+ * The fixed provenance line each trust class carries. README requires one, and requires that a
+ * screenshot never satisfy a gate — so both lines say what produced the picture *and* that it is
+ * evidence rather than a check.
+ */
+export const SCREENSHOT_PROVENANCE_LINES_V1: Readonly<Record<ScreenshotTrustClassV1, string>> =
+  Object.freeze({
+    'agent-proposed-manifest':
+      'Captured by Pipenzo from an agent-proposed manifest, against a dev server the daemon started. Evidence only — this never satisfies a gate.',
+    'repo-authored-command':
+      'Captured by this repository’s own pipenzo.verify.screenshot command, which a human committed and a reviewer saw. Evidence only — this never satisfies a gate.',
+  });
+
 const noControlCharacters = (value: string): boolean =>
   [...value].every((character) => {
     const code = character.charCodeAt(0);
