@@ -26,7 +26,9 @@ const STATUS_CHIP: Record<PreCommitmentStatus, { tone: ChipTone; label: string }
  * `PreCommitment.Outcome` for the appended real-outcome row) rather than a fixed three-row shape,
  * since a partial outcome in the canvas's own example shows only the outcome row with no plan
  * rows at all -- the caller decides what to include, this component only decides whether the
- * result is visible.
+ * result is visible. For a mismatch, the caller passes the original action/expect/if_wrong rows
+ * *and* the outcome row together (see PreCommitment.test.tsx) -- the real result is meant to read
+ * as a diff against the prediction sitting right above it, not to replace it.
  */
 export function PreCommitment({
   status,

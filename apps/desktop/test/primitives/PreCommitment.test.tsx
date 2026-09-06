@@ -61,6 +61,30 @@ describe('PreCommitment', () => {
     expect(screen.getByText('Test failed — child env had no PATH on Windows')).toBeInTheDocument();
   });
 
+  it('keeps the original plan rows visible next to the outcome row, so the outcome reads as a diff against the prediction rather than replacing it', () => {
+    const { container } = render(
+      <PreCommitment status="mismatch">
+        <PreCommitment.Row k="action">
+          Run the new regression test in isolation against the sanitized floor
+        </PreCommitment.Row>
+        <PreCommitment.Row k="expect">1 new test passes; the child env still carries PATH</PreCommitment.Row>
+        <PreCommitment.Row k="if_wrong">
+          Add PATH to the floor explicitly, re-run once, then park with the failing assertion
+        </PreCommitment.Row>
+        <PreCommitment.Outcome tone="mismatch" k="mismatch">
+          Test failed — child env had no PATH on Windows; buildBaseProcessEnvironment() reads
+          PATH, the host sets Path.
+        </PreCommitment.Outcome>
+      </PreCommitment>,
+    );
+    // Three plan rows plus the outcome row, all simultaneously visible -- nothing collapses once
+    // there is something to diff against.
+    expect(container.querySelectorAll('.pc-row')).toHaveLength(4);
+    expect(screen.getByText('expect')).toBeInTheDocument();
+    expect(screen.getByText('1 new test passes; the child env still carries PATH')).toBeInTheDocument();
+    expect(container.querySelector('.pc-row.got')).toBeInTheDocument();
+  });
+
   it('pins partial open showing only the outcome row, no plan rows required', () => {
     const { container } = render(
       <PreCommitment status="partial">
