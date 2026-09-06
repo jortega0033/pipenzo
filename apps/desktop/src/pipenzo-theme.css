@@ -3605,6 +3605,69 @@
     color: var(--color-text-soft);
     font-weight: 700;
   }
+
+  /* Lesson memory card — ported verbatim from Foundations.dc.html's "Lesson memory" section.
+     Local, human-gated, offered once when a ticket resolves; never written on its own and never
+     sent to a provider. See LessonCard.tsx. */
+  .lesson {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    background: var(--color-surface-2);
+    border-radius: var(--radius-pipenzo);
+    padding: 12px;
+  }
+
+  .lesson-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.3;
+  }
+
+  .lesson-head .icon-sm {
+    color: var(--color-warn);
+    flex-shrink: 0;
+  }
+
+  .lesson-head .grow {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .lesson-head .mono {
+    font-weight: 400;
+    font-size: 11px;
+    color: var(--color-text-faint);
+    flex-shrink: 0;
+  }
+
+  .lesson .field {
+    background: var(--color-surface-3);
+  }
+
+  .lesson-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .lesson-note {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    font-size: 11px;
+    color: var(--color-text-faint);
+    line-height: 1.35;
+  }
+
+  .lesson-note .icon-sm {
+    flex-shrink: 0;
+  }
 }
 
 @keyframes pulse-warn {
