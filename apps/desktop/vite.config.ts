@@ -1,6 +1,7 @@
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import electron from 'vite-plugin-electron/simple';
+import tailwindcss from '@tailwindcss/vite';
 
 // Bundles electron/main.ts and electron/preload.ts with esbuild and drives the Electron
 // process during `vite dev` (launch + reload on change); `vite build` produces the same
@@ -9,6 +10,7 @@ import electron from 'vite-plugin-electron/simple';
 // purpose-built for exactly this main/preload/renderer split, and needs no extra config.
 export default defineConfig({
   plugins: [
+    tailwindcss(),
     react(),
     electron({
       main: {

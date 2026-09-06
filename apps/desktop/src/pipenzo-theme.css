@@ -1,0 +1,90 @@
+@import 'tailwindcss';
+
+/*
+ * Pipenzo design tokens — dark-only, matching design/artboards/Foundations.dc.html's
+ * shared base block exactly. Do not hand-tune values here without also updating the
+ * canvas (or vice versa) — they're required to agree; see docs/agentdock-upstream-README.md
+ * for what this repo inherited vs. this file, which is Pipenzo's own.
+ *
+ * Tailwind v4 CSS-first theme: every token below (color, radius, shadow, spacing) is
+ * both a CSS custom property (var(--bg)) and a generated utility class
+ * (bg-bg, text-accent, rounded-r, shadow-pipenzo-sm, ...).
+ */
+@theme {
+  /* Surfaces — a 5-step near-black ramp. Stepped surfaces do all layering; no border
+     lines anywhere in the design system. */
+  --color-bg: #121212;
+  --color-surface: #181818;
+  --color-surface-2: #1f1f1f;
+  --color-surface-3: #282828;
+  --color-surface-4: #333333;
+
+  /* Text */
+  --color-text: #ffffff;
+  --color-text-soft: #b3b3b3;
+  --color-text-faint: #9c9c9c;
+
+  /* Accent + semantic pairs (fill / foreground-on-fill) */
+  --color-accent: #3fb950;
+  --color-accent-fg: #0a1a0d;
+  --color-ok: #3fb950;
+  --color-ok-fg: #0a1a0d;
+  --color-warn: #d29922;
+  --color-warn-fg: #1f1400;
+  --color-danger: #f85149;
+  --color-danger-fg: #2a0705;
+  /* Brighter variant of --danger for use as TEXT/icon color specifically — --danger
+     itself is for fills only. See the WCAG contrast audit that produced this split:
+     #f85149 fails AA as text on --surface-3/--surface-4, #ff7b72 passes everywhere. */
+  --color-danger-text: #ff7b72;
+
+  /* Radii */
+  --radius-pipenzo: 8px;
+  --radius-pipenzo-sm: 6px;
+  --radius-pipenzo-pill: 9999px;
+
+  /* Shadows */
+  --shadow-pipenzo: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --shadow-pipenzo-sm: 0 4px 12px rgba(0, 0, 0, 0.4);
+
+  /* Motion */
+  --ease-pipenzo: 120ms ease;
+
+  /* Spacing — 2px base, not Tailwind's default 4px base. Measured against actual
+     canvas usage (2/6/10px gaps account for more of the system than the values on a
+     4px grid do) rather than assumed; see README's spacing-scale note. */
+  --spacing-0\.5: 2px;
+  --spacing-1\.5: 6px;
+  --spacing-2\.5: 10px;
+}
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  body {
+    margin: 0;
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
