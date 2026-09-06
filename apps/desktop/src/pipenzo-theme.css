@@ -2012,6 +2012,76 @@
     color: var(--color-text);
     font-weight: 700;
   }
+
+  /* Card .split block — ported verbatim from Foundations.dc.html's "Cards" section. One
+     numbered-rows shape reused three ways: a proposed PR stack awaiting approval (warn head), a
+     plan declined at Refine for tripping a size guardrail (quiet head), and, embedded in the
+     plan-review gate dialog, the compact acceptance-criteria/out-of-scope/files-touched summary.
+     `.dialog .split` steps the block up to surface-4 rather than down, since the dialog itself
+     already sits on surface-3. See Split.tsx. */
+  .split {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    background: var(--color-surface-2);
+    border-radius: var(--radius-pipenzo-sm);
+    padding: 10px 12px;
+  }
+
+  .split-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-warn);
+    line-height: 1;
+  }
+
+  .split-head.quiet {
+    color: var(--color-text-soft);
+  }
+
+  .split-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--color-text-soft);
+    line-height: 1.45;
+  }
+
+  .split-n {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--color-text-faint);
+    flex-shrink: 0;
+  }
+
+  .split-kv {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--color-text-faint);
+    line-height: 1.4;
+  }
+
+  .split-kv b {
+    color: var(--color-text-soft);
+    font-weight: 700;
+  }
+
+  .dialog .split {
+    background: var(--color-surface-4);
+  }
+
+  .dialog .split-row .mono {
+    color: var(--color-text-soft);
+  }
 }
 
 @keyframes sk-shimmer {
