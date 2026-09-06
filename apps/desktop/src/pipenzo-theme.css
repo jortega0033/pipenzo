@@ -3227,6 +3227,43 @@
     color: var(--color-text-soft);
     font-weight: 700;
   }
+
+  /* Risk/severity comparison table — ported verbatim from Foundations.dc.html's "Risk-graded
+     approval" and "findings" sections. See GradeTable.tsx. */
+  .grade-table {
+    display: grid;
+    grid-template-columns: 140px repeat(3, minmax(0, 1fr));
+    gap: 2px;
+  }
+
+  .grade-table div {
+    background: var(--color-surface-2);
+    border-radius: var(--radius-pipenzo-sm);
+    padding: 10px 12px;
+    font-size: 12px;
+    color: var(--color-text-soft);
+    line-height: 1.45;
+    min-width: 0;
+  }
+
+  .grade-table .gh {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--color-text-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    display: flex;
+    align-items: center;
+  }
+
+  .grade-table b {
+    color: var(--color-text);
+    font-weight: 700;
+  }
+
+  .grade-table .no {
+    color: var(--color-text-faint);
+  }
 }
 
 @keyframes pulse-warn {
