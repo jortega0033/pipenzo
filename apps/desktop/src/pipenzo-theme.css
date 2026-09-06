@@ -2149,6 +2149,110 @@
     color: var(--color-text);
     font-weight: 700;
   }
+
+  /* LOW passive line — ported verbatim from Foundations.dc.html's "Risk-graded approval" section.
+     12px, text-faint throughout, an 8px dot's worth of a timestamp instead of the 28px event icon
+     every other stream row carries. See Risk.tsx (LowLine). */
+  .low-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--color-text-faint);
+    line-height: 1.3;
+    min-width: 0;
+  }
+
+  .low-line .mono {
+    font-size: 11px;
+    flex-shrink: 0;
+  }
+
+  .low-line .lt {
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Cumulative risk strip — ported verbatim from Foundations.dc.html's "Risk-graded approval"
+     section. 10 segments, one per point of the promotion threshold, filled green → amber → red
+     by position (not by how "bad" the score is -- the fill count carries severity). See
+     Risk.tsx (RiskStrip). */
+  .risk-strip {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .risk-segs {
+    display: flex;
+    gap: 2px;
+    height: 6px;
+  }
+
+  .risk-seg {
+    flex: 1;
+    border-radius: 2px;
+    background: var(--color-surface-3);
+  }
+
+  .risk-seg.on {
+    background: var(--color-ok);
+  }
+
+  .risk-seg.on.warm {
+    background: var(--color-warn);
+  }
+
+  .risk-seg.on.hot {
+    background: var(--color-danger);
+  }
+
+  .risk-lbl {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--color-text-soft);
+    line-height: 1.35;
+  }
+
+  .risk-lbl b {
+    color: var(--color-text);
+    font-weight: 700;
+  }
+
+  .risk-lbl .mono {
+    color: var(--color-text-faint);
+    font-size: 11px;
+    flex-shrink: 0;
+  }
+
+  .risk-promo {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--color-text-soft);
+    line-height: 1.4;
+    background: var(--color-surface-3);
+    padding: 8px 10px;
+    border-radius: var(--radius-pipenzo-sm);
+  }
+
+  .risk-promo .icon-sm {
+    color: var(--color-warn);
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  .risk-promo b {
+    color: var(--color-text);
+    font-weight: 700;
+  }
 }
 
 @keyframes sk-shimmer {
