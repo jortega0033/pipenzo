@@ -1352,6 +1352,86 @@
     color: var(--color-text-faint);
     flex-shrink: 0;
   }
+
+  /* Banner — ported verbatim from Foundations.dc.html's "Notices" section. The page-level,
+     persistent altitude: sits directly under the main header, full width. Four tones live in the
+     24px .b-ic circle only -- the container itself never tints (see the reduced-motion-adjacent
+     "blocking" exception ticket #36 adds below, which is the one deliberate exception to that
+     rule). .stack groups more than one banner with a 2px gap and corner-clipping, so the group
+     still reads as one rounded block instead of a pile of separate rounded rectangles. */
+  .banner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 44px;
+    padding: 8px 16px 8px 20px;
+    background: var(--color-surface-2);
+    font-size: 13px;
+    color: var(--color-text-soft);
+    line-height: 1.4;
+  }
+
+  .banner b {
+    color: var(--color-text);
+    font-weight: 700;
+  }
+
+  .banner .b-ic {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--color-surface-4);
+    color: var(--color-text);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .banner.ok .b-ic {
+    background: var(--color-ok);
+    color: var(--color-ok-fg);
+  }
+
+  .banner.warn .b-ic {
+    background: var(--color-warn);
+    color: var(--color-warn-fg);
+  }
+
+  .banner.danger .b-ic {
+    background: var(--color-danger);
+    color: var(--color-danger-fg);
+  }
+
+  .banner .b-text {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .banner .b-act {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .stack {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .stack > .banner:first-child {
+    border-radius: var(--radius-pipenzo) var(--radius-pipenzo) 0 0;
+  }
+
+  .stack > .banner:last-child {
+    border-radius: 0 0 var(--radius-pipenzo) var(--radius-pipenzo);
+  }
+
+  .stack > .banner:only-child {
+    border-radius: var(--radius-pipenzo);
+  }
 }
 
 @keyframes sk-shimmer {
