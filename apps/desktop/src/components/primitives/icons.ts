@@ -95,6 +95,10 @@ export const ICON_PATHS = {
      copied from the .conflict-head sample in Foundations.dc.html's "Cards" section rather than
      approximated from a similar-looking Phosphor "user" glyph. */
   user: 'M230.92,212c-15.23-26.33-38.7-45.21-66.09-54.16a72,72,0,1,0-73.66,0C63.78,166.78,40.31,185.66,25.08,212a8,8,0,1,0,13.85,8c18.84-32.56,52.14-52,89.07-52s70.23,19.44,89.07,52a8,8,0,1,0,13.85-8ZM72,96a56,56,0,1,1,56,56A56.06,56.06,0,0,1,72,96Z',
+  /* The raised-hand "stop" glyph -- the Live run controls' Stop button and the card family's
+     "3 failed" danger chip both use it. Copied from Foundations.dc.html's Cards section rather
+     than approximated from Phosphor's similar-but-not-identical "hand" icon. */
+  hand: 'M188,88a27.75,27.75,0,0,0-12,2.71V60a28,28,0,0,0-41.36-24.6A28,28,0,0,0,80,44v6.71A27.75,27.75,0,0,0,68,48,28,28,0,0,0,40,76v76a88,88,0,0,0,176,0V116A28,28,0,0,0,188,88Zm12,64a72,72,0,0,1-144,0V76a12,12,0,0,1,24,0v44a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v68a8,8,0,0,0,16,0V60a12,12,0,0,1,24,0v68.67A48.08,48.08,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V116a12,12,0,0,1,24,0Z',
 } as const;
 
 export type IconName = keyof typeof ICON_PATHS;
