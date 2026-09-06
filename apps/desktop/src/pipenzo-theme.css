@@ -3031,6 +3031,202 @@
     color: var(--color-text-faint);
     font-size: 11px;
   }
+
+  /* Shared approval-card shell — ported verbatim from TicketDetail.dc.html's plan-review gate,
+     stack approval and refusal panel. Distinct from HighApprovalCard's `.dialog` shell (that one
+     ports the Foundations.dc.html "Risk-graded approval" sample, which the canvas draws as a
+     dialog-or-inline surface) -- this is the TicketDetail-specific shell those same states, plus
+     TicketDetail's own inline HIGH card, actually sit in. See ApprovalCard.tsx. */
+  .approval-card {
+    background: var(--color-surface-2);
+    border-radius: var(--radius-pipenzo);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    box-shadow: var(--shadow-pipenzo-sm);
+  }
+
+  .approval-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .approval-head .grow {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .approval-ic {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--color-danger);
+    color: var(--color-danger-fg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .approval-ic.warn {
+    background: var(--color-warn);
+    color: var(--color-warn-fg);
+  }
+
+  .approval-ic.quiet {
+    background: var(--color-surface-4);
+    color: var(--color-text);
+  }
+
+  .approval-ic.ok {
+    background: var(--color-ok);
+    color: var(--color-ok-fg);
+  }
+
+  .approval-title {
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.3;
+    text-wrap: pretty;
+  }
+
+  .approval-sub {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--color-text-faint);
+    line-height: 1.4;
+    margin-top: 4px;
+  }
+
+  .approval-p {
+    margin: 0;
+    font-size: 13px;
+    color: var(--color-text-soft);
+    line-height: 1.45;
+  }
+
+  .approval-card .pc-head {
+    background: var(--color-surface-4);
+  }
+
+  .approval-card .pc-row {
+    background: var(--color-surface-3);
+  }
+
+  .approval-actions {
+    display: flex;
+    gap: 8px;
+  }
+
+  .approval-actions .btn {
+    flex: 1;
+  }
+
+  .approval-foot {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--color-text-faint);
+    line-height: 1.4;
+  }
+
+  .approval-foot .icon-sm {
+    color: var(--color-warn);
+  }
+
+  .approval-card .kids .kid {
+    background: var(--color-surface-3);
+  }
+
+  .approval-card .split {
+    background: var(--color-surface-3);
+  }
+
+  .r-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--color-text-soft);
+    cursor: pointer;
+    transition: color var(--ease-pipenzo);
+    min-height: 24px;
+  }
+
+  .r-link:hover {
+    color: var(--color-text);
+  }
+
+  .r-link:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: var(--radius-pipenzo-sm);
+  }
+
+  .r-link.faint {
+    color: var(--color-text-faint);
+    font-weight: 400;
+  }
+
+  .ref-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 2px;
+  }
+
+  .ref-cell {
+    background: var(--color-surface-3);
+    border-radius: var(--radius-pipenzo-sm);
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .ref-v {
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+  }
+
+  .ref-s {
+    font-size: 12px;
+    color: var(--color-text-faint);
+    line-height: 1.4;
+  }
+
+  .stack-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .stack-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--color-text-faint);
+    line-height: 1.4;
+  }
+
+  .stack-note .icon-sm {
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  .stack-note b {
+    color: var(--color-text-soft);
+    font-weight: 700;
+  }
 }
 
 @keyframes pulse-warn {
