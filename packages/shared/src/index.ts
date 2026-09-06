@@ -15,4 +15,5 @@ export * from './pipenzo-refine-v1.js';
 export * from './pipenzo-review-v1.js';
 export * from './pipenzo-phase-v1.js';
 export * from './pipenzo-capture-v1.js';
+export * from './pipenzo-adjudication-v1.js';
 

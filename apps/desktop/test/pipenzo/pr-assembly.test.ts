@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { RefineSpecV1, ReviewReportV1 } from '@agent-dock/shared';
+import type {
+  RefineSpecV1,
+  ReviewReportV1,
+  SpecTestAdjudicationV1,
+} from '@agent-dock/shared';
 import {
   buildCommitMessage,
   buildConfidenceLine,
@@ -44,6 +48,21 @@ const REPORT: ReviewReportV1 = {
     vendorDiversityUnavailable: false,
     findings: [],
   },
+};
+
+const ADJUDICATION: SpecTestAdjudicationV1 = {
+  schemaVersion: 1,
+  adjudicates: { baseCommit: 'a'.repeat(40), headCommit: 'b'.repeat(40) },
+  ruledBy: { sessionId: 's', tier: 'frontier', model: 'verifier-model' },
+  rulings: [
+    {
+      testId: 'a > one',
+      verdict: 'test_wrong',
+      rationale: 'asserts what the spec never said',
+      criterionId: 'AC-1',
+    },
+    { testId: 'b > two', verdict: 'code_wrong', rationale: 'AC-1 genuinely does not hold' },
+  ],
 };
 
 describe('buildCommitMessage', () => {
@@ -125,16 +144,42 @@ describe('buildPullRequestBody', () => {
     expect(body).toContain('never charged to the estimate');
   });
 
-  it('reports "None." for dropped spec-test rulings when none are given', () => {
+  it('says nothing was adjudicated, rather than omitting the section', () => {
     const body = buildPullRequestBody(SPEC, REPORT);
-    expect(body).toContain('## Dropped spec-test rulings\n\nNone.');
+    expect(body).toContain('## Spec-test rulings');
+    expect(body).toContain('No spec-generated test failed, so none was adjudicated.');
   });
 
-  it('lists dropped spec-test rulings when the caller supplies them', () => {
+  it('lists dropped spec-test rulings when the caller supplies a bare list', () => {
     const body = buildPullRequestBody(SPEC, REPORT, {
       droppedSpecTests: ['env-probe-server fixture test: flaked twice, dropped per adjudication'],
     });
-    expect(body).toContain('- env-probe-server fixture test: flaked twice, dropped per adjudication');
+    expect(body).toContain(
+      '- **Test wrong, dropped** env-probe-server fixture test: flaked twice, dropped per adjudication',
+    );
+  });
+
+  /**
+   * Issue #146. README: an invalid test is dropped **with the ruling recorded and visible in the
+   * PR body -- never silently deleted**. So the rationale is in the body, not only the verdict,
+   * and the sustained rulings are there too: a reader shown only the drops learns that the
+   * adjudicator removed a check and nothing else, which is a false impression of the run.
+   */
+  it('renders every ruling from an adjudication record, with its rationale and who ruled', () => {
+    const body = buildPullRequestBody(SPEC, REPORT, { adjudication: ADJUDICATION });
+    expect(body).toContain('Ruled once by the frontier-tier verifier (verifier-model).');
+    expect(body).toContain(
+      '**Test wrong, dropped** `a > one` (AC-1) — asserts what the spec never said',
+    );
+    expect(body).toContain('**Code wrong, test kept** `b > two` — AC-1 genuinely does not hold');
+  });
+
+  it('prefers the adjudication record over a caller-supplied bare list', () => {
+    const body = buildPullRequestBody(SPEC, REPORT, {
+      adjudication: ADJUDICATION,
+      droppedSpecTests: ['this stale list should not appear'],
+    });
+    expect(body).not.toContain('this stale list should not appear');
   });
 
   it('closes the originating issue', () => {

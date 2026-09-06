@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import type { ReviewReportV1 } from '@agent-dock/shared';
+import type { ReviewReportV1, SpecTestAdjudicationV1 } from '@agent-dock/shared';
 import { Finding, FindingsCount, FindingsList } from '../components/primitives/FindingsList.js';
 import { VerificationBlock, VRow } from '../components/primitives/VerificationBlock.js';
 import {
@@ -8,6 +8,8 @@ import {
   findingLocation,
   formatDiffScopeSummary,
   mapFindingSeverity,
+  specTestRulingAttribution,
+  specTestRulingRows,
   tallyFindings,
   type DiffScopeSummary,
 } from './rail.js';
@@ -15,20 +17,6 @@ import { ScreenshotEvidence, type RailScreenshot } from './ScreenshotEvidence.js
 
 export type { RailScreenshot };
 
-/**
- * The diff-review rail (issue #109): Machine-verified → Agent-captured → Findings by severity →
- * Review/verifier summary → Commit block, in exactly that order -- DiffReview.dc.html's own `.rail`
- * ordering, which is not arbitrary (README: deterministic gates are the one thing that gates the
- * ticket; everything below them is advisory or informational, and the rail's top-to-bottom order
- * is the same "what actually gates this" ordering the review-gates runner itself enforces).
- *
- * Everything here is a plain typed prop over `ReviewReportV1` (`packages/shared/src/
- * pipenzo-review-v1.ts`) plus the handful of things that schema doesn't carry: screenshots (no
- * capture-manifest schema exists yet, issue #138) and the agent's own self-reported claims about
- * its work (no pre-commitment/self-assessment schema exists yet either). Both are optional and
- * empty by default rather than faked -- an empty agent-captured zone with no rows is an honest
- * rendering of "nothing to show yet", not a placeholder standing in for missing wiring.
- */
 /**
  * The two halves of the diff, and the sentence that says which one the gate judged (issue #145).
  *
@@ -47,8 +35,23 @@ function DiffScopeSplit({ summary }: { summary: DiffScopeSummary }) {
   );
 }
 
+/**
+ * The diff-review rail (issue #109): Machine-verified → Agent-captured → Findings by severity →
+ * Review/verifier summary → Commit block, in exactly that order -- DiffReview.dc.html's own `.rail`
+ * ordering, which is not arbitrary (README: deterministic gates are the one thing that gates the
+ * ticket; everything below them is advisory or informational, and the rail's top-to-bottom order
+ * is the same "what actually gates this" ordering the review-gates runner itself enforces).
+ *
+ * Everything here is a plain typed prop over `ReviewReportV1` (`packages/shared/src/
+ * pipenzo-review-v1.ts`) plus the spec-test adjudication record (issue #146) and the handful of
+ * things neither schema carries: the agent's own self-reported claims about its work (no
+ * pre-commitment/self-assessment schema exists yet). Those are optional and empty by default
+ * rather than faked -- an empty agent-captured zone with no rows is an honest rendering of
+ * "nothing to show yet", not a placeholder standing in for missing wiring.
+ */
 export function RailPanel({
   report,
+  adjudication,
   agentCapturedRows = [],
   screenshots = [],
   screenshotProvenance,
@@ -57,6 +60,12 @@ export function RailPanel({
   commit,
 }: {
   report: ReviewReportV1;
+  /**
+   * The spec-test adjudication for this diff (issue #146), when one was made. A sibling record
+   * rather than a field on the report — see `pipenzo-adjudication-v1.ts` for why. Absent means no
+   * generated test failed, which is why no row is rendered rather than an empty "none" row.
+   */
+  adjudication?: SpecTestAdjudicationV1;
   /** Self-reported claims (e.g. "3/3 acceptance criteria met") -- no backend schema for these
    * yet; see the module comment. */
   agentCapturedRows?: readonly ReactNode[];
@@ -105,6 +114,20 @@ export function RailPanel({
           <VRow tone={report.diffScope.exceededEstimate ? 'danger' : 'ok'}>
             {diffScope?.statusText} <DiffScopeSplit summary={diffScope!} />
           </VRow>
+        )}
+        {/* Spec-test rulings (issue #146). Inside the machine-verified zone because a ruling is
+            about a deterministic gate's result — but every row says which model ruled, because
+            the ruling itself is a model's judgement and must not read as a machine check. */}
+        {adjudication && (
+          <>
+            <VRow>{specTestRulingAttribution(adjudication)}</VRow>
+            {specTestRulingRows(adjudication).map((row) => (
+              <VRow key={row.testId} tone={row.tone}>
+                {row.verdictLabel} <span className="m">{row.testId}{row.criterion}</span>
+                <span className="m"> — {row.rationale}</span>
+              </VRow>
+            ))}
+          </>
         )}
       </VerificationBlock>
 

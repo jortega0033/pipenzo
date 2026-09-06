@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import type { ReviewReportV1 } from '@agent-dock/shared';
+import type { ReviewReportV1, SpecTestAdjudicationV1 } from '@agent-dock/shared';
 import { RailPanel } from '../../src/pipenzo/RailPanel.js';
 
 const BASE_REPORT: ReviewReportV1 = {
@@ -163,5 +163,48 @@ describe('RailPanel', () => {
     );
     expect(container.querySelector('.commit')?.textContent).toBe('fix: thing\n\nCloses #94.');
     expect(screen.getByText('High confidence')).toBeInTheDocument();
+  });
+});
+
+/**
+ * Issue #146. The rail is where a reviewer sees that a machine check was removed from this ticket,
+ * so the rulings live in the machine-verified zone -- but attributed, because a ruling is a
+ * model's judgement and must never read as a machine check that ran.
+ */
+describe('RailPanel spec-test rulings', () => {
+  const ADJUDICATION: SpecTestAdjudicationV1 = {
+    schemaVersion: 1,
+    adjudicates: { baseCommit: 'a'.repeat(40), headCommit: 'b'.repeat(40) },
+    ruledBy: { sessionId: 's', tier: 'frontier', model: 'opus' },
+    rulings: [
+      { testId: 'a > one', verdict: 'test_wrong', rationale: 'asserts what the spec never said' },
+      { testId: 'b > two', verdict: 'code_wrong', rationale: 'AC-1 genuinely does not hold' },
+    ],
+  };
+
+  it('renders nothing at all when no generated test was adjudicated', () => {
+    render(<RailPanel report={BASE_REPORT} />);
+    expect(screen.queryByText(/Ruled once/)).not.toBeInTheDocument();
+  });
+
+  it('names the tier and model that ruled, and counts drops against sustained', () => {
+    render(<RailPanel report={BASE_REPORT} adjudication={ADJUDICATION} />);
+    expect(
+      screen.getByText(
+        'Ruled once by the frontier-tier verifier (opus): 1 dropped, 1 sustained against the code.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  /** A dropped test is never silently deleted: the row says "dropped" and carries the reason. */
+  it('says a dropped test was dropped, and shows why', () => {
+    render(<RailPanel report={BASE_REPORT} adjudication={ADJUDICATION} />);
+    expect(screen.getByText(/Test wrong, dropped/)).toBeInTheDocument();
+    expect(screen.getByText(/asserts what the spec never said/)).toBeInTheDocument();
+  });
+
+  it('shows the sustained rulings too, not only the drops', () => {
+    render(<RailPanel report={BASE_REPORT} adjudication={ADJUDICATION} />);
+    expect(screen.getByText(/Code wrong, test kept/)).toBeInTheDocument();
   });
 });

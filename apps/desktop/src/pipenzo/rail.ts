@@ -4,6 +4,8 @@ import type {
   GateStatus,
   LlmReviewPassV1,
   ReviewFindingV1,
+  SpecTestAdjudicationV1,
+  SpecTestVerdictV1,
   VerifierPassV1,
 } from '@agent-dock/shared';
 
@@ -169,4 +171,53 @@ export function deterministicGateRows(
   gates: readonly DeterministicGateResultV1[],
 ): readonly { readonly gate: DeterministicGateResultV1; readonly tone: VRowTone }[] {
   return gates.map((gate) => ({ gate, tone: gateTone(gate.status) }));
+}
+
+export interface SpecTestRulingRow {
+  readonly testId: string;
+  readonly verdict: SpecTestVerdictV1;
+  /** What a human reads. `test_wrong` says the consequence, not just the verdict. */
+  readonly verdictLabel: string;
+  readonly rationale: string;
+  /** ` (AC-2)` or an empty string, so a caller can concatenate without a conditional. */
+  readonly criterion: string;
+  readonly tone: VRowTone;
+}
+
+/**
+ * Every spec-test ruling, in the order it was recorded (issue #146).
+ *
+ * **Every** one, not only the drops. A reader shown only the dropped tests learns that the
+ * adjudicator removed two checks and nothing else; a reader shown all of them learns that it
+ * removed two and sustained three, which is a different — and true — impression of the run. That
+ * is the difference between a record and a summary of the convenient half.
+ *
+ * The label for `test_wrong` says "dropped" out loud because that is the consequence, and
+ * README's rule is that a dropped test is never silently deleted. A row reading only "test wrong"
+ * would be technically the verdict and practically an omission.
+ */
+export function specTestRulingRows(
+  adjudication: SpecTestAdjudicationV1,
+): readonly SpecTestRulingRow[] {
+  return adjudication.rulings.map((ruling) => ({
+    testId: ruling.testId,
+    verdict: ruling.verdict,
+    verdictLabel: ruling.verdict === 'test_wrong' ? 'Test wrong, dropped' : 'Code wrong, test kept',
+    rationale: ruling.rationale,
+    criterion: ruling.criterionId ? ` (${ruling.criterionId})` : '',
+    // A dropped check is a warning, not a success: the ticket now has one fewer machine check than
+    // its spec asked for, and the rail's tones are the one place that is visible at a glance.
+    tone: ruling.verdict === 'test_wrong' ? 'warn' : 'danger',
+  }));
+}
+
+/** One line summarising who ruled, so the tier that made the call is never implicit. */
+export function specTestRulingAttribution(adjudication: SpecTestAdjudicationV1): string {
+  const { ruledBy } = adjudication;
+  const dropped = adjudication.rulings.filter((ruling) => ruling.verdict === 'test_wrong').length;
+  const kept = adjudication.rulings.length - dropped;
+  return (
+    `Ruled once by the ${ruledBy.tier}-tier verifier (${ruledBy.model}): ` +
+    `${dropped} dropped, ${kept} sustained against the code.`
+  );
 }

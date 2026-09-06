@@ -1,5 +1,10 @@
-import type { PipenzoPullRequestInputV1, RefineSpecV1, ReviewReportV1 } from '@agent-dock/shared';
-import { formatDiffScopeSummary, mapFindingSeverity } from './rail.js';
+import type {
+  PipenzoPullRequestInputV1,
+  RefineSpecV1,
+  ReviewReportV1,
+  SpecTestAdjudicationV1,
+} from '@agent-dock/shared';
+import { formatDiffScopeSummary, mapFindingSeverity, specTestRulingRows } from './rail.js';
 
 /**
  * Commit message and PR body assembly (issue #111) -- pure functions over the two contracts that
@@ -19,16 +24,19 @@ import { formatDiffScopeSummary, mapFindingSeverity } from './rail.js';
  *   pre-commitment/self-assessment contract is defined anywhere in `packages/shared`.
  *   `buildConfidenceLine` instead reports what `ReviewReportV1` actually contains: the verifier's
  *   verdict, how many critical findings survived it, and how the diff landed against its estimate.
- * - **Dropped spec-test rulings.** `REVIEW_OUTCOMES` names `awaiting_test_adjudication` as a
- *   possible outcome, but the report shape carries no list of *which* spec-generated tests were
- *   adjudicated or dropped. `droppedSpecTests` is an optional caller-supplied list; empty by
- *   default, rendered as "none" rather than omitted, so a PR body reader can tell "none happened"
- *   apart from "this tool doesn't report that yet".
+ * Spec-test rulings used to be in that list too. They are not any more: issue #146 gave them a
+ * real contract (`SpecTestAdjudicationV1`), and this now renders it. `droppedSpecTests` survives
+ * as a caller-supplied override for a run whose adjudication record is not to hand; when the
+ * adjudication *is* passed, the rulings are rendered from it — every one of them, not only the
+ * drops, because "the verifier looked and said the code was wrong" is exactly as much a ruling as
+ * a drop is and a reader who only sees drops learns the wrong thing about the run.
  */
 export interface PullRequestAssemblyOptions {
   readonly commitType?: string;
   readonly commitScope?: string;
   readonly droppedSpecTests?: readonly string[];
+  /** Issue #146's record. Rendered in full, with each ruling's rationale. */
+  readonly adjudication?: SpecTestAdjudicationV1;
 }
 
 function commitSubject(spec: RefineSpecV1, options: PullRequestAssemblyOptions): string {
@@ -71,6 +79,39 @@ export function buildConfidenceLine(report: ReviewReportV1): string {
 }
 
 const SECTION_RULE = '---';
+
+/**
+ * The spec-test rulings section (issue #146).
+ *
+ * README: a failing spec-generated test is adjudicated once into test-wrong or code-wrong, and an
+ * invalid test is dropped **with the ruling recorded and visible in the PR body — never silently
+ * deleted**. So this section is always present, and it always says which of three situations
+ * applies: nothing was adjudicated, an adjudication record exists, or the caller supplied a bare
+ * list. Rendering nothing when there is nothing to say would leave a reader unable to tell "no
+ * generated test failed" apart from "this tool does not report that".
+ */
+export function buildSpecTestRulingsSection(options: PullRequestAssemblyOptions = {}): string {
+  const heading = '## Spec-test rulings';
+  if (options.adjudication) {
+    const { ruledBy } = options.adjudication;
+    const rows = specTestRulingRows(options.adjudication).map(
+      (row) => `- **${row.verdictLabel}** \`${row.testId}\`${row.criterion} — ${row.rationale}`,
+    );
+    return [
+      heading,
+      '',
+      `Ruled once by the ${ruledBy.tier}-tier verifier (${ruledBy.model}).`,
+      '',
+      ...rows,
+    ].join('\n');
+  }
+  const dropped = options.droppedSpecTests ?? [];
+  return `${heading}\n\n${
+    dropped.length > 0
+      ? dropped.map((entry) => `- **Test wrong, dropped** ${entry}`).join('\n')
+      : 'No spec-generated test failed, so none was adjudicated.'
+  }`;
+}
 
 /** The generated PR body: two-zone evidence (machine-verified vs. agent-captured, never merged
  * into one list -- same split as the rail, README's own requirement), the confidence line, the
@@ -124,10 +165,7 @@ export function buildPullRequestBody(
   const confidence = buildConfidenceLine(report);
   if (confidence) sections.push(`## Confidence\n\n${confidence}`);
 
-  const dropped = options.droppedSpecTests ?? [];
-  sections.push(
-    `## Dropped spec-test rulings\n\n${dropped.length > 0 ? dropped.map((entry) => `- ${entry}`).join('\n') : 'None.'}`,
-  );
+  sections.push(buildSpecTestRulingsSection(options));
 
   sections.push(`Closes #${spec.issue.number}.`);
 
