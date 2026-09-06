@@ -33,6 +33,7 @@ function realBridge(): AgentDockBridge {
     reviewPipenzo: vi.fn(),
     claimPipenzoIssue: vi.fn(),
     createPipenzoIssue: vi.fn(),
+    pipenzoCaptureCapabilities: vi.fn(),
     selectAndUploadAttachments: vi.fn().mockResolvedValue([]),
     validateStructuredOutput: vi.fn(),
     createSession: vi.fn(),

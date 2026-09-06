@@ -1,4 +1,6 @@
 import type {
+  PipenzoCaptureCapabilityRequestV1,
+  PipenzoCaptureCapabilityV1,
   PipenzoImplementCommitsV1,
   PipenzoImplementRequestV1,
   PipenzoImplementResultQueryV1,
@@ -36,6 +38,8 @@ import {
 } from './review-gates.js';
 import type { OwnedWorktreeLocator } from './publish-service.js';
 import type { PipenzoGitRunner } from './pipenzo-git.js';
+import { detectScreenshotCapability } from './screenshot-capture.js';
+import { readPipenzoRepoConfig, type PipenzoCommandConfig } from './pipenzo-repo-config.js';
 
 /**
  * The one service the Refine / Implement / Review routes call (Pipenzo issue #184).
@@ -240,6 +244,54 @@ export class PipenzoPhaseService {
     } catch (error) {
       throw toPhaseError(error);
     }
+  }
+
+  /* -------------------------------------------------- capability detection */
+
+  /**
+   * What screenshot verification would actually do for this repository right now (issue #124).
+   *
+   * A real probe, not configuration: `detectScreenshotCapability()` resolves Playwright from the
+   * repository without loading it, and the escape hatch is read from the repository's own
+   * committed `package.json`. README requires both capabilities degrade to a *stated* reduced mode
+   * rather than an error, so a `false` here always travels with the reason for it.
+   *
+   * `activeTrustClass` applies the same selection rule `ScreenshotVerificationRunner` uses, in one
+   * place: Playwright present means the agent-proposed manifest, always. A repository configuring
+   * both does not get to swap in the weaker trust class by listing it.
+   */
+  async captureCapabilities(
+    request: PipenzoCaptureCapabilityRequestV1,
+  ): Promise<PipenzoCaptureCapabilityV1> {
+    const capability = detectScreenshotCapability(request.repositoryPath);
+    let escapeHatch: PipenzoCommandConfig | undefined;
+    let escapeHatchReason: string | undefined;
+    try {
+      escapeHatch = (await readPipenzoRepoConfig(request.repositoryPath)).screenshot;
+      if (!escapeHatch) {
+        escapeHatchReason = 'this repository configures no pipenzo.verify.screenshot command';
+      }
+    } catch (error) {
+      // A malformed `pipenzo` block is reported as such rather than as "not configured": a
+      // repository that tried to configure this and got it wrong must not look like one that
+      // never tried.
+      escapeHatchReason =
+        error instanceof Error ? error.message : 'the repository pipenzo config is unreadable';
+    }
+    return {
+      schemaVersion: 1,
+      screenshot: capability.available
+        ? { available: true, packageName: capability.packageName }
+        : { available: false, reason: capability.reason },
+      escapeHatch: escapeHatch
+        ? { configured: true }
+        : { configured: false, ...(escapeHatchReason ? { reason: escapeHatchReason } : {}) },
+      activeTrustClass: capability.available
+        ? 'agent-proposed-manifest'
+        : escapeHatch
+          ? 'repo-authored-command'
+          : null,
+    };
   }
 
   /* ------------------------------------------------------ github issue ops */

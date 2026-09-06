@@ -60,6 +60,8 @@ import {
   pipenzoIssueClaimResultV1Schema,
   pipenzoIssueCreateRequestV1Schema,
   pipenzoIssueCreateResultV1Schema,
+  pipenzoCaptureCapabilityRequestV1Schema,
+  pipenzoCaptureCapabilityV1Schema,
   providerIdSchema,
   type AgentCommandV2,
   type AgentEvent,
@@ -116,6 +118,8 @@ import {
   type PipenzoIssueClaimResultV1,
   type PipenzoIssueCreateRequestV1,
   type PipenzoIssueCreateResultV1,
+  type PipenzoCaptureCapabilityRequestV1,
+  type PipenzoCaptureCapabilityV1,
 } from '@agent-dock/shared';
 import type {
   RendererInteraction,
@@ -199,6 +203,7 @@ export interface AgentDockBridge {
   reviewPipenzo(input: PipenzoReviewRequestV1): Promise<PipenzoReviewResultV1>;
   claimPipenzoIssue(input: PipenzoIssueClaimRequestV1): Promise<PipenzoIssueClaimResultV1>;
   createPipenzoIssue(input: PipenzoIssueCreateRequestV1): Promise<PipenzoIssueCreateResultV1>;
+  pipenzoCaptureCapabilities(input: PipenzoCaptureCapabilityRequestV1): Promise<PipenzoCaptureCapabilityV1>;
   selectAndUploadAttachments(sessionId?: string): Promise<AttachmentMetadataV2[]>;
   validateStructuredOutput(input: StructuredWorkflowRequestV2): Promise<StructuredWorkflowResultV2>;
   createSession(input: CreateSessionInput): Promise<AgentSession>;
@@ -779,6 +784,10 @@ const api: AgentDockBridge = {
   async createPipenzoIssue(input) {
     const parsed = pipenzoIssueCreateRequestV1Schema.parse(input);
     return pipenzoIssueCreateResultV1Schema.parse(await ipcRenderer.invoke('daemon:pipenzo-create-issue', parsed));
+  },
+  async pipenzoCaptureCapabilities(input) {
+    const parsed = pipenzoCaptureCapabilityRequestV1Schema.parse(input);
+    return pipenzoCaptureCapabilityV1Schema.parse(await ipcRenderer.invoke('daemon:pipenzo-capabilities', parsed));
   },
   async selectAndUploadAttachments(sessionId) {
     const parsedSessionId = sessionId === undefined ? undefined : sessionIdParamSchema.parse({ sessionId }).sessionId;

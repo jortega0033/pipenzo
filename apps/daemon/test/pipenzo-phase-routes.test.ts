@@ -1,4 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterAll, describe, expect, it } from 'vitest';
 import { ProviderRegistry, noopLogger } from '@agent-dock/agent-runtime';
 import type { CreateSessionV2Request, RefineSpecV1 } from '@agent-dock/shared';
 import { buildServer } from '../src/server.js';
@@ -19,6 +22,11 @@ const REPO_PATH = process.platform === 'win32' ? 'C:\\repos\\pipenzo' : '/repos/
 const WORKTREE_PATH = process.platform === 'win32' ? 'C:\\owned\\issue-184' : '/owned/issue-184';
 const REPO_ENV = { PIPENZO_GITHUB_REPO: 'jortega0033/pipenzo' } as const;
 const auth = { authorization: `Bearer ${TOKEN}` };
+
+const scratch: string[] = [];
+afterAll(async () => {
+  for (const directory of scratch) await rm(directory, { recursive: true, force: true });
+});
 
 function spec(overrides: Partial<RefineSpecV1> = {}): RefineSpecV1 {
   return {
@@ -421,6 +429,7 @@ describe('the phase routes as a surface', () => {
     '/v2/pipenzo/review',
     '/v2/pipenzo/issues/claim',
     '/v2/pipenzo/issues',
+    '/v2/pipenzo/capabilities',
   ];
 
   it('rejects an unauthenticated caller on every phase route', async () => {
@@ -477,5 +486,80 @@ describe('the phase routes as a surface', () => {
       expect(response.body).not.toContain('schemaVersion');
       expect(response.body).not.toContain(WORKTREE_PATH);
     }
+  });
+});
+
+/**
+ * Issue #124's backing route: a real probe of a real repository, and a reason attached to every
+ * "no". A capability panel whose toggles had no probe behind them would be exactly the unstated
+ * reduced mode README says must not happen.
+ */
+describe('POST /v2/pipenzo/capabilities', () => {
+  it('reports Playwright as unavailable, with a reason, for a repository without it', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'pipenzo-cap-'));
+    scratch.push(root);
+    await writeFile(join(root, 'package.json'), JSON.stringify({ name: 'bare' }), 'utf8');
+    const { app } = buildApp();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v2/pipenzo/capabilities',
+      headers: auth,
+      payload: { repositoryPath: root },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      schemaVersion: 1,
+      screenshot: { available: false },
+      escapeHatch: { configured: false },
+      activeTrustClass: null,
+    });
+    expect(response.json().screenshot.reason).toContain('no Playwright');
+  });
+
+  it('reports the escape hatch when the repository committed one, and names the trust class', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'pipenzo-cap-'));
+    scratch.push(root);
+    await writeFile(
+      join(root, 'package.json'),
+      JSON.stringify({
+        name: 'hatch',
+        pipenzo: { verify: { screenshot: { command: 'node', args: ['shots.mjs'] } } },
+      }),
+      'utf8',
+    );
+    const { app } = buildApp();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v2/pipenzo/capabilities',
+      headers: auth,
+      payload: { repositoryPath: root },
+    });
+    expect(response.json()).toMatchObject({
+      escapeHatch: { configured: true },
+      activeTrustClass: 'repo-authored-command',
+    });
+  });
+
+  /**
+   * A repository that tried to configure this and got it wrong must not look like one that never
+   * tried -- that is a reason to fix a typo, not a reason to shrug.
+   */
+  it('reports a malformed pipenzo block as a reason rather than as "not configured"', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'pipenzo-cap-'));
+    scratch.push(root);
+    await writeFile(
+      join(root, 'package.json'),
+      JSON.stringify({ name: 'broken', pipenzo: { verify: { screenshot: 'node shots.mjs' } } }),
+      'utf8',
+    );
+    const { app } = buildApp();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v2/pipenzo/capabilities',
+      headers: auth,
+      payload: { repositoryPath: root },
+    });
+    expect(response.json().escapeHatch).toMatchObject({ configured: false });
+    expect(response.json().escapeHatch.reason).toContain('pipenzo.verify.screenshot');
   });
 });

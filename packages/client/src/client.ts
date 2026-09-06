@@ -111,6 +111,8 @@ import {
   pipenzoIssueClaimResultV1Schema,
   pipenzoIssueCreateRequestV1Schema,
   pipenzoIssueCreateResultV1Schema,
+  pipenzoCaptureCapabilityRequestV1Schema,
+  pipenzoCaptureCapabilityV1Schema,
   type PipenzoRefineRequestV1,
   type PipenzoRefineResultV1,
   type PipenzoImplementRequestV1,
@@ -123,6 +125,8 @@ import {
   type PipenzoIssueClaimResultV1,
   type PipenzoIssueCreateRequestV1,
   type PipenzoIssueCreateResultV1,
+  type PipenzoCaptureCapabilityRequestV1,
+  type PipenzoCaptureCapabilityV1,
 } from '@agent-dock/shared';
 import {
   DaemonError,
@@ -345,6 +349,13 @@ export class AgentDockClient {
         this.claimPipenzoIssueV1(input),
       createIssue: (input: PipenzoIssueCreateRequestV1): Promise<PipenzoIssueCreateResultV1> =>
         this.createPipenzoIssueV1(input),
+      /**
+       * What screenshot verification would actually do for a repository right now (issue #124).
+       * A real probe on the daemon side, not a settings read.
+       */
+      captureCapabilities: (
+        input: PipenzoCaptureCapabilityRequestV1,
+      ): Promise<PipenzoCaptureCapabilityV1> => this.pipenzoCaptureCapabilitiesV1(input),
     },
     integrations: {
       mcp: {
@@ -860,6 +871,23 @@ export class AgentDockClient {
       'pipenzo created issue',
       { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) },
       { expectedStatus: 201 },
+    );
+  }
+
+  private async pipenzoCaptureCapabilitiesV1(
+    input: PipenzoCaptureCapabilityRequestV1,
+  ): Promise<PipenzoCaptureCapabilityV1> {
+    const parsed = validateInput(
+      pipenzoCaptureCapabilityRequestV1Schema,
+      input,
+      'pipenzo capability request',
+    );
+    return this.requestV2(
+      '/v2/pipenzo/capabilities',
+      pipenzoCaptureCapabilityV1Schema,
+      'pipenzo capability report',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) },
+      { expectedStatus: 200 },
     );
   }
 

@@ -1,5 +1,7 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import {
+  pipenzoCaptureCapabilityRequestV1Schema,
+  pipenzoCaptureCapabilityV1Schema,
   pipenzoImplementRequestV1Schema,
   pipenzoImplementResultQueryV1Schema,
   pipenzoImplementResultV1Schema,
@@ -132,6 +134,26 @@ export function registerPipenzoPhaseRoutes(
       return fail(reply, new PipenzoPhaseError('session_failed', 'review failed'));
     }
   });
+
+  // Capability detection (issue #124). A read, and a cheap one — a module resolution and a
+  // `package.json` parse — so it gets a higher limit than the human-paced phase routes: the
+  // Models & gates screen refreshes this whenever the operator switches repository.
+  app.post(
+    '/v2/pipenzo/capabilities',
+    { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } },
+    async (req, reply) => {
+      const parsed = pipenzoCaptureCapabilityRequestV1Schema.safeParse(req.body);
+      if (!parsed.success) return invalid(reply, 'capability request');
+      try {
+        reply.send(
+          pipenzoCaptureCapabilityV1Schema.parse(await service.captureCapabilities(parsed.data)),
+        );
+      } catch (error) {
+        if (error instanceof PipenzoPhaseError) return fail(reply, error);
+        return fail(reply, new PipenzoPhaseError('invalid_request', 'capability probe failed'));
+      }
+    },
+  );
 
   app.post('/v2/pipenzo/issues/claim', limits, async (req, reply) => {
     const parsed = pipenzoIssueClaimRequestV1Schema.safeParse(req.body);

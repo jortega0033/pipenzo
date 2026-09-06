@@ -213,6 +213,50 @@ export const captureManifestSetV1Schema = z
     }
   });
 
+/**
+ * What the Models & gates screen's agent-captured panel is allowed to say (Pipenzo issue #124).
+ *
+ * README: both optional capabilities are *capability-detected*, and both "degrade to a
+ * stated-out-loud reduced mode rather than an error". A panel that showed a toggle without saying
+ * whether the thing behind it exists would be exactly the reduced mode nobody stated — so the
+ * report carries the *reason* alongside the boolean, and the daemon fills both from a real probe
+ * of a real repository rather than from configuration.
+ *
+ * `activeTrustClass` is the answer to the question a reader of that panel actually has: not "is
+ * Playwright installed" but "if a capture ran right now, what would have produced it?". `null`
+ * means nothing would.
+ */
+export const pipenzoCaptureCapabilityRequestV1Schema = z
+  .object({ repositoryPath: z.string().min(1).max(4_096) })
+  .strict();
+
+export const pipenzoCaptureCapabilityV1Schema = z
+  .object({
+    schemaVersion: z.literal(1),
+    screenshot: z
+      .object({
+        available: z.boolean(),
+        /** Which package answered the probe, when one did. */
+        packageName: z.string().min(1).max(64).optional(),
+        /** Present whenever `available` is false. The stated-out-loud half. */
+        reason: z.string().min(1).max(500).optional(),
+      })
+      .strict(),
+    escapeHatch: z
+      .object({
+        configured: z.boolean(),
+        reason: z.string().min(1).max(500).optional(),
+      })
+      .strict(),
+    activeTrustClass: z.enum(SCREENSHOT_TRUST_CLASSES).nullable(),
+  })
+  .strict();
+
+export type PipenzoCaptureCapabilityRequestV1 = z.infer<
+  typeof pipenzoCaptureCapabilityRequestV1Schema
+>;
+export type PipenzoCaptureCapabilityV1 = z.infer<typeof pipenzoCaptureCapabilityV1Schema>;
+
 export type CaptureViewportV1 = z.infer<typeof captureViewportV1Schema>;
 export type CaptureActionV1 = z.infer<typeof captureActionV1Schema>;
 export type CaptureManifestV1 = z.infer<typeof captureManifestV1Schema>;

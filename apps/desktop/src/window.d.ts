@@ -53,6 +53,8 @@ import type {
   PipenzoIssueClaimResultV1,
   PipenzoIssueCreateRequestV1,
   PipenzoIssueCreateResultV1,
+  PipenzoCaptureCapabilityRequestV1,
+  PipenzoCaptureCapabilityV1,
 } from '@agent-dock/shared';
 import type {
   RendererInteraction,
@@ -157,6 +159,14 @@ export interface AgentDockBridge {
   claimPipenzoIssue(input: PipenzoIssueClaimRequestV1): Promise<PipenzoIssueClaimResultV1>;
   /** Files a drafted issue (issue #84). Call only after a human approves the preview. */
   createPipenzoIssue(input: PipenzoIssueCreateRequestV1): Promise<PipenzoIssueCreateResultV1>;
+  /**
+   * What screenshot verification would actually do for a repository right now (issue #124): a
+   * real probe of the repository's Playwright and its committed `pipenzo.verify.screenshot`
+   * command, with the reason attached whenever something is unavailable.
+   */
+  pipenzoCaptureCapabilities(
+    input: PipenzoCaptureCapabilityRequestV1,
+  ): Promise<PipenzoCaptureCapabilityV1>;
   selectAndUploadAttachments(sessionId?: string): Promise<AttachmentMetadataV2[]>;
   validateStructuredOutput(input: StructuredWorkflowRequestV2): Promise<StructuredWorkflowResultV2>;
   createSession(input: CreateSessionInput): Promise<AgentSession>;
