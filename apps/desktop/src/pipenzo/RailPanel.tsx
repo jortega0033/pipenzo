@@ -11,6 +11,7 @@ import {
   specTestRulingAttribution,
   specTestRulingRows,
   tallyFindings,
+  verifierStandingText,
   type DiffScopeSummary,
 } from './rail.js';
 import { ScreenshotEvidence, type RailScreenshot } from './ScreenshotEvidence.js';
@@ -188,12 +189,17 @@ export function RailPanel({
             </VRow>
           )}
           {report.verifier && (
-            <VRow>
+            <VRow tone={report.verifier.vendorDiversityUnavailable ? 'warn' : undefined}>
               Verifier ({report.verifier.model}):{' '}
               {report.verifier.findings.filter((finding) => mapFindingSeverity(finding.severity) === 'critical')
                 .length}{' '}
               critical · verdict {report.verifier.verdict}{' '}
-              <span className="m">never below the implementer's tier</span>
+              {/* Issue #147: the verifier's standing is part of what its verdict is worth. A
+                  single-vendor install cannot honour the cross-vendor tiebreak, and that has to be
+                  recorded on the run rather than left for a reader to infer from model names. */}
+              <span className="m">
+                {verifierStandingText(report.verifier, report.implementerTier)}
+              </span>
             </VRow>
           )}
         </div>

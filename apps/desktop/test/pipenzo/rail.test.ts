@@ -7,6 +7,7 @@ import {
   gateTone,
   mapFindingSeverity,
   tallyFindings,
+  verifierStandingText,
 } from '../../src/pipenzo/rail.js';
 
 describe('gateTone', () => {
@@ -146,5 +147,43 @@ describe('formatDiffScopeSummary', () => {
   it('reports an exceeded estimate distinctly from within-budget', () => {
     const exceeded = { ...DIFF_SCOPE, exceededEstimate: true };
     expect(formatDiffScopeSummary(exceeded).statusText).toBe('Diff scope exceeded the Refine estimate');
+  });
+});
+
+/**
+ * Issue #147. README requires that a run whose cross-vendor tiebreak had nothing to work with be
+ * *recorded on the run* -- a verifier that could not be cross-vendor is a weaker check, and the
+ * evidence block must not imply otherwise.
+ */
+describe('verifierStandingText', () => {
+  const verifier = (overrides: Partial<VerifierPassV1> = {}): VerifierPassV1 => ({
+    sessionId: 's',
+    tier: 'frontier',
+    model: 'opus',
+    verdict: 'approved',
+    vendorDiversityUnavailable: false,
+    findings: [],
+    ...overrides,
+  });
+
+  it('states the tier relationship rather than leaving a reader to work it out', () => {
+    expect(verifierStandingText(verifier(), 'mid')).toContain(
+      "above the implementer's mid tier",
+    );
+    expect(verifierStandingText(verifier({ tier: 'mid' }), 'mid')).toContain(
+      "at the implementer's mid tier",
+    );
+  });
+
+  it('says a same-vendor verifier is a weaker check, in words', () => {
+    const text = verifierStandingText(verifier({ vendorDiversityUnavailable: true }), 'mid');
+    expect(text).toContain('cross-vendor diversity was unavailable');
+    expect(text).toContain('weaker check');
+  });
+
+  it('says nothing about weakness when the tiebreak was honoured', () => {
+    const text = verifierStandingText(verifier(), 'mid');
+    expect(text).toContain('a different vendor from the implementer');
+    expect(text).not.toContain('weaker check');
   });
 });

@@ -147,6 +147,12 @@ export const pipenzoReviewRequestV1Schema = z
     baseCommit: z.string().regex(/^[0-9a-f]{40}$/),
     headCommit: z.string().regex(/^[0-9a-f]{40}$/),
     implementerTier: modelTierSchema,
+    /**
+     * The vendor the implementer ran on (issue #147). Optional, and its absence is not neutral:
+     * the daemon records the run as `vendorDiversityUnavailable` when it cannot show the verifier
+     * was a different vendor from the implementer.
+     */
+    implementerProvider: providerIdSchema.optional(),
     reviewer: pipenzoModelChoiceV1Schema,
     verifier: pipenzoModelChoiceV1Schema,
   })

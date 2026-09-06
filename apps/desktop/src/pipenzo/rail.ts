@@ -3,6 +3,7 @@ import type {
   DiffScopeV1,
   GateStatus,
   LlmReviewPassV1,
+  ModelTier,
   ReviewFindingV1,
   SpecTestAdjudicationV1,
   SpecTestVerdictV1,
@@ -171,6 +172,31 @@ export function deterministicGateRows(
   gates: readonly DeterministicGateResultV1[],
 ): readonly { readonly gate: DeterministicGateResultV1; readonly tone: VRowTone }[] {
   return gates.map((gate) => ({ gate, tone: gateTone(gate.status) }));
+}
+
+/**
+ * The verifier's standing, in one line (issue #147).
+ *
+ * Two facts, and both are about how much this verdict is worth rather than what it was:
+ *
+ * - **The tier relationship.** README's rule is a floor, so "at or above the implementer's tier"
+ *   is the claim worth making; printing "frontier" alone leaves a reader to work out whether that
+ *   cleared the bar.
+ * - **Whether the cross-vendor tiebreak had anything to work with.** A verifier sharing the
+ *   implementer's vendor shares its blind spots, and on a single-vendor install the tiebreak has
+ *   nothing to pick from. README requires that be *recorded on the run*, so it is stated in words
+ *   rather than left to be inferred from two model names a reader would have to know the vendors
+ *   of — and the sentence says it is a weaker check, because that is the consequence.
+ */
+export function verifierStandingText(
+  verifier: VerifierPassV1,
+  implementerTier: ModelTier,
+): string {
+  const relation = verifier.tier === implementerTier ? 'at' : 'above';
+  const diversity = verifier.vendorDiversityUnavailable
+    ? 'the same vendor as the implementer — cross-vendor diversity was unavailable on this install, so this is a weaker check'
+    : 'a different vendor from the implementer';
+  return `${verifier.tier}-tier verifier, ${relation} the implementer's ${implementerTier} tier, on ${diversity}.`;
 }
 
 export interface SpecTestRulingRow {

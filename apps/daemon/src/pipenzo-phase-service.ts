@@ -231,6 +231,9 @@ export class PipenzoPhaseService {
         baseCommit: request.baseCommit,
         headCommit: request.headCommit,
         implementerTier: request.implementerTier,
+        ...(request.implementerProvider
+          ? { implementerProvider: request.implementerProvider }
+          : {}),
         reviewer: request.reviewer,
         verifier: request.verifier,
       });

@@ -21,6 +21,7 @@ import {
   buildVerifierPrompt,
   computeDiffScope,
   isGeneratedTestPath,
+  selectVerifier,
   type CommandResult,
   type GateCommandRunner,
   type LlmPassOutcome,
@@ -419,16 +420,34 @@ describe('ReviewGatesRunner — honesty of the evidence', () => {
     expect(h.ran).not.toContain('reviewer');
   });
 
+  /**
+   * Issue #147 corrected which comparison this is. The cross-vendor rule is about the
+   * *implementer*: a verifier sharing the vendor of the code it is checking shares that vendor's
+   * blind spots. Comparing the verifier against the reviewer answered a question nobody asked.
+   */
   it('records when a single-vendor install could not honour the cross-vendor tiebreak', async () => {
     const sameVendor = harness({ specTests: true });
     const report = await sameVendor.runner.run(
-      request({ reviewer: tier('mid'), verifier: tier('frontier') }),
+      request({ implementerProvider: 'codex', verifier: tier('frontier', 'codex') }),
     );
     expect(report.verifier?.vendorDiversityUnavailable).toBe(true);
 
     const crossVendor = harness({ specTests: true });
-    const other = await crossVendor.runner.run(request());
+    const other = await crossVendor.runner.run(
+      request({ implementerProvider: 'claude', verifier: tier('frontier', 'codex') }),
+    );
     expect(other.verifier?.vendorDiversityUnavailable).toBe(false);
+  });
+
+  /**
+   * Fail-closed. A caller that never said which vendor the implementer ran on cannot have this run
+   * recorded as cross-vendor: that would be a claim the report has no basis for, and the whole
+   * point of the field is that the evidence block must not imply a stronger check than happened.
+   */
+  it('records diversity as unavailable when the implementer’s vendor is unknown', async () => {
+    const h = harness({ specTests: true });
+    const report = await h.runner.run(request({ verifier: tier('frontier', 'codex') }));
+    expect(report.verifier?.vendorDiversityUnavailable).toBe(true);
   });
 
   it('carries a verifier rejection through as its own outcome', async () => {
@@ -575,5 +594,121 @@ describe('the diff_scope gate summary', () => {
     );
     const gate = report.deterministic.find((entry) => entry.id === 'diff_scope');
     expect(gate?.status).toBe('passed');
+  });
+});
+
+/**
+ * Issue #147: the same-or-higher rule as *executable policy*, not as an assertion somebody
+ * remembers to call. A rule you check after choosing is a rule you can satisfy by choosing badly
+ * and then not checking.
+ */
+describe('selectVerifier', () => {
+  const claude = (t: ModelTier, model = `claude-${t}`): ModelChoice => ({
+    provider: 'claude',
+    model,
+    tier: t,
+  });
+  const codex = (t: ModelTier, model = `codex-${t}`): ModelChoice => ({
+    provider: 'codex',
+    model,
+    tier: t,
+  });
+
+  it('eliminates every candidate below the implementer tier, rather than deprioritising them', () => {
+    const selection = selectVerifier({
+      implementer: claude('mid'),
+      candidates: [claude('cheap'), codex('cheap'), codex('mid')],
+    });
+    expect(selection.outcome).toBe('selected');
+    expect(selection.outcome === 'selected' && selection.verifier.tier).toBe('mid');
+  });
+
+  /** README states the rule as a floor, and a floor is not a target. */
+  it('picks the lowest qualifying tier rather than the strongest available', () => {
+    const selection = selectVerifier({
+      implementer: claude('cheap'),
+      candidates: [codex('frontier'), codex('cheap'), codex('mid')],
+    });
+    expect(selection.outcome === 'selected' && selection.verifier.tier).toBe('cheap');
+  });
+
+  /** An adversarial check that fails the same way as the thing it checks is not adversarial. */
+  it('prefers a different vendor from the implementer among equal tiers', () => {
+    const selection = selectVerifier({
+      implementer: claude('mid'),
+      candidates: [claude('mid'), codex('mid')],
+    });
+    expect(selection.outcome === 'selected' && selection.verifier.provider).toBe('codex');
+    expect(selection.outcome === 'selected' && selection.crossVendor).toBe(true);
+    expect(selection.outcome === 'selected' && selection.vendorDiversityUnavailable).toBe(false);
+  });
+
+  /**
+   * The tiebreak is scoped to the winning tier. Reaching up a tier to find a different vendor
+   * would break the floor-is-not-a-target rule, and the tier relationship is the one README backs
+   * with regression evidence.
+   */
+  it('does not reach up a tier to find a different vendor', () => {
+    const selection = selectVerifier({
+      implementer: claude('mid'),
+      candidates: [claude('mid'), codex('frontier')],
+    });
+    expect(selection.outcome === 'selected' && selection.verifier.tier).toBe('mid');
+    expect(selection.outcome === 'selected' && selection.verifier.provider).toBe('claude');
+    expect(selection.outcome === 'selected' && selection.crossVendor).toBe(false);
+    // Diversity *was* available in the eligible set, just not at the winning tier. The run records
+    // that honestly rather than claiming the tiebreak had nothing to work with.
+    expect(selection.outcome === 'selected' && selection.vendorDiversityUnavailable).toBe(false);
+  });
+
+  it('records vendor diversity as unavailable on a single-vendor install', () => {
+    const selection = selectVerifier({
+      implementer: claude('mid'),
+      candidates: [claude('mid'), claude('frontier')],
+    });
+    expect(selection.outcome === 'selected' && selection.crossVendor).toBe(false);
+    expect(selection.outcome === 'selected' && selection.vendorDiversityUnavailable).toBe(true);
+  });
+
+  /** Silently downgrading is the failure mode the rule exists to prevent. */
+  it('returns none_eligible rather than the closest available when nothing clears the floor', () => {
+    const selection = selectVerifier({
+      implementer: claude('frontier'),
+      candidates: [claude('mid'), codex('cheap')],
+    });
+    expect(selection.outcome).toBe('none_eligible');
+    expect(selection.outcome === 'none_eligible' && selection.reason).toContain('frontier');
+  });
+
+  it('returns none_eligible for an empty install rather than inventing a verifier', () => {
+    expect(selectVerifier({ implementer: claude('cheap'), candidates: [] }).outcome).toBe(
+      'none_eligible',
+    );
+  });
+
+  /** A gate that picks a different model each run produces evidence nobody can compare. */
+  it('is deterministic for a given installed set, whatever order it arrives in', () => {
+    const candidates = [codex('mid', 'codex-b'), codex('mid', 'codex-a'), claude('mid')];
+    const first = selectVerifier({ implementer: claude('mid'), candidates });
+    const second = selectVerifier({
+      implementer: claude('mid'),
+      candidates: [...candidates].reverse(),
+    });
+    expect(first).toEqual(second);
+    expect(first.outcome === 'selected' && first.verifier.model).toBe('codex-a');
+  });
+
+  /** Whatever it selects always satisfies the assertion — policy and rule cannot disagree. */
+  it('never selects a verifier that assertVerifierTierAllowed would reject', () => {
+    for (const implementerTier of ['cheap', 'mid', 'frontier'] as const) {
+      const selection = selectVerifier({
+        implementer: claude(implementerTier),
+        candidates: [claude('cheap'), codex('mid'), claude('frontier'), codex('frontier')],
+      });
+      if (selection.outcome !== 'selected') continue;
+      expect(() =>
+        assertVerifierTierAllowed(implementerTier, selection.verifier.tier),
+      ).not.toThrow();
+    }
   });
 });

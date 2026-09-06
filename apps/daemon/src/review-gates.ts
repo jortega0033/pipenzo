@@ -177,6 +177,20 @@ export interface ReviewRequest {
   readonly headCommit: string;
   /** The tier the implementer ran at. The verifier is checked against this and never below it. */
   readonly implementerTier: ModelTier;
+  /**
+   * The vendor the implementer ran on (issue #147).
+   *
+   * The cross-vendor rule is about the *implementer*: an adversarial verifier sharing the vendor
+   * of the code it is checking shares that vendor's blind spots. Comparing the verifier against
+   * the reviewer — which is what this module did before — answered a question nobody asked, since
+   * the reviewer is advisory and may run anywhere.
+   *
+   * Optional for callers that genuinely do not know, and **fail-closed** when absent: the run is
+   * recorded as `vendorDiversityUnavailable`, because a diversity claim that cannot be
+   * demonstrated is exactly the kind of thing this field exists to stop the evidence block
+   * implying.
+   */
+  readonly implementerProvider?: ProviderId;
   readonly reviewer: ModelChoice;
   readonly verifier: ModelChoice;
 }
@@ -468,8 +482,15 @@ export class ReviewGatesRunner {
       // README: on a single-vendor install the cross-vendor tiebreak has nothing to pick from. It
       // degrades to same-vendor and *records* that it did — a verifier that could not be
       // cross-vendor is a weaker check, and the evidence block must not imply otherwise.
+      //
+      // Compared against the implementer, and fail-closed when the implementer's vendor is not
+      // known: `true` says "this run cannot show it was cross-vendor", which is the honest thing
+      // to record. `false` would be a claim, and this module does not get to make one it cannot
+      // support.
       vendorDiversityUnavailable:
-        outcome.vendorDiversityUnavailable ?? request.verifier.provider === request.reviewer.provider,
+        outcome.vendorDiversityUnavailable ??
+        (request.implementerProvider === undefined ||
+          request.verifier.provider === request.implementerProvider),
     };
   }
 
@@ -515,6 +536,92 @@ export function assertVerifierTierAllowed(implementer: ModelTier, verifier: Mode
       [`implementer=${implementer}`, `verifier=${verifier}`],
     );
   }
+}
+
+/**
+ * The same-or-higher rule as **executable policy** rather than as an assertion somebody remembers
+ * to call, plus the cross-vendor tiebreak (Pipenzo issue #147).
+ *
+ * `assertVerifierTierAllowed` answers "may this verifier gate this implementer?". This answers the
+ * question that actually comes up: "given what is installed, which verifier should gate it?" —
+ * and it is the difference between a rule and a policy. A rule you check after choosing is a rule
+ * you can satisfy by choosing badly and then not checking.
+ *
+ * ## The ordering, and why tier ascends
+ *
+ * 1. **Floor.** Candidates below the implementer's tier are eliminated. Not deprioritised.
+ * 2. **Lowest qualifying tier wins.** README states the rule as a floor — "never below" — and a
+ *    floor is not a target. Sending a frontier verifier at a cheap-tier ticket costs real money
+ *    for a check the rule already considers sufficient, and Pipenzo's whole per-ticket budget
+ *    framing is about not spending that quietly.
+ * 3. **Cross-vendor tiebreak among equal tiers.** Two candidates at the winning tier: the one from
+ *    a different vendor than the implementer wins. A verifier sharing the implementer's vendor
+ *    shares its blind spots, and an adversarial check that fails the same way as the thing it is
+ *    checking is not adversarial.
+ * 4. **Deterministic beyond that.** Ties are broken by provider then model name, so the same
+ *    installed set always selects the same verifier — a gate that picks a different model each run
+ *    produces evidence nobody can compare across runs.
+ *
+ * When no candidate clears the floor, this returns `none_eligible` rather than the best available.
+ * There is no "closest match" here on purpose: silently downgrading is the failure mode the rule
+ * exists to prevent, and it is worse than not running.
+ */
+export type VerifierSelection =
+  | {
+      readonly outcome: 'selected';
+      readonly verifier: ModelChoice;
+      /** True when the selected verifier is a different vendor from the implementer. */
+      readonly crossVendor: boolean;
+      /**
+       * True when no eligible cross-vendor candidate existed at all — a single-vendor install.
+       * README requires this be *recorded on the run*: a verifier that could not be cross-vendor
+       * is a weaker check, and the evidence block must not imply otherwise.
+       */
+      readonly vendorDiversityUnavailable: boolean;
+    }
+  | { readonly outcome: 'none_eligible'; readonly reason: string };
+
+export function selectVerifier(input: {
+  implementer: ModelChoice;
+  candidates: readonly ModelChoice[];
+}): VerifierSelection {
+  const floor = modelTierRank(input.implementer.tier);
+  const eligible = input.candidates.filter(
+    (candidate) => modelTierRank(candidate.tier) >= floor,
+  );
+  if (eligible.length === 0) {
+    return {
+      outcome: 'none_eligible',
+      reason: `no installed model is at or above the implementer's ${input.implementer.tier} tier`,
+    };
+  }
+  const lowestQualifyingRank = Math.min(
+    ...eligible.map((candidate) => modelTierRank(candidate.tier)),
+  );
+  const atTier = eligible.filter(
+    (candidate) => modelTierRank(candidate.tier) === lowestQualifyingRank,
+  );
+  const sorted = [...atTier].sort(
+    (a, b) => a.provider.localeCompare(b.provider) || a.model.localeCompare(b.model),
+  );
+  const crossVendor = sorted.filter(
+    (candidate) => candidate.provider !== input.implementer.provider,
+  );
+  // The tiebreak is scoped to the winning tier, not to the whole eligible set: reaching up a tier
+  // to find a different vendor would break the floor-is-not-a-target rule above, and the tier
+  // relationship is the one README backs with regression evidence.
+  const verifier = crossVendor[0] ?? sorted[0];
+  if (!verifier) {
+    return { outcome: 'none_eligible', reason: 'no verifier candidate could be selected' };
+  }
+  return {
+    outcome: 'selected',
+    verifier,
+    crossVendor: verifier.provider !== input.implementer.provider,
+    vendorDiversityUnavailable: !eligible.some(
+      (candidate) => candidate.provider !== input.implementer.provider,
+    ),
+  };
 }
 
 /** Repo-relative POSIX paths under the generated-test prefix are tests; everything else is not. */

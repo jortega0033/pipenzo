@@ -4,7 +4,12 @@ import type {
   ReviewReportV1,
   SpecTestAdjudicationV1,
 } from '@agent-dock/shared';
-import { formatDiffScopeSummary, mapFindingSeverity, specTestRulingRows } from './rail.js';
+import {
+  formatDiffScopeSummary,
+  mapFindingSeverity,
+  specTestRulingRows,
+  verifierStandingText,
+} from './rail.js';
 
 /**
  * Commit message and PR body assembly (issue #111) -- pure functions over the two contracts that
@@ -158,7 +163,13 @@ export function buildPullRequestBody(
     );
   }
   if (report.verifier) {
-    reviewLines.push(`- Verifier (${report.verifier.model}): verdict ${report.verifier.verdict}.`);
+    // Issue #147: the verifier's standing travels with its verdict. A reader deciding how much a
+    // verdict is worth needs to know it cleared the tier floor and whether the cross-vendor
+    // tiebreak had anything to work with -- neither is inferable from a model name.
+    reviewLines.push(
+      `- Verifier (${report.verifier.model}): verdict ${report.verifier.verdict}. ` +
+        verifierStandingText(report.verifier, report.implementerTier),
+    );
   }
   if (reviewLines.length > 0) sections.push(`## Agent-captured (self-reported — not verified by a human)\n\n${reviewLines.join('\n')}`);
 
