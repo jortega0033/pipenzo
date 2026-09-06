@@ -4068,6 +4068,113 @@
   .sub-lines .ok {
     color: var(--color-ok);
   }
+
+  /* Carousel — ported verbatim from Foundations.dc.html's own closing reference-sheet section.
+     Reference sheet only per the canvas's own note; built anyway, matching every primitive in
+     this batch. See Carousel.tsx. */
+  .carousel-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    background: var(--color-surface-2);
+    border-radius: var(--radius-pipenzo);
+    padding: 20px;
+  }
+
+  .carousel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .carousel-title {
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .carousel-nav {
+    display: flex;
+    gap: 4px;
+  }
+
+  .carousel-nav .icon-btn {
+    width: 28px;
+    height: 28px;
+  }
+
+  .carousel {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+    margin: 0 -20px;
+    padding: 0 20px;
+  }
+
+  .carousel::-webkit-scrollbar {
+    display: none;
+  }
+
+  .slide {
+    flex: 0 0 300px;
+    scroll-snap-align: start;
+    background: var(--color-surface);
+    border-radius: var(--radius-pipenzo);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .slide-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--color-text-faint);
+    line-height: 1;
+  }
+
+  .slide-top .icon-sm {
+    color: var(--color-accent);
+  }
+
+  .slide-title {
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.35;
+    text-wrap: pretty;
+  }
+
+  .slide-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--color-text-faint);
+  }
+
+  .dots {
+    display: flex;
+    gap: 6px;
+    justify-content: center;
+  }
+
+  .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--color-surface-4);
+  }
+
+  .dot.on {
+    background: var(--color-text);
+    width: 16px;
+    border-radius: var(--radius-pipenzo-pill);
+  }
 }
 
 @keyframes pulse-warn {
