@@ -2696,6 +2696,102 @@
     gap: 6px;
     flex-wrap: wrap;
   }
+
+  /* Stack container card + kid rows — ported verbatim from Foundations.dc.html's "Cards" section
+     (the read-only child-ticket rows a PR-stack container card shows). The `.kid .ext:focus-visible`
+     rule already exists in the shared focus-visible ring group above, ahead of this ticket, the
+     same way `.step.await`'s reduced-motion override was pre-ported for the phase stepper. See
+     Stack.tsx. */
+  .kids {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .kid {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 32px;
+    padding: 0 10px;
+    background: var(--color-surface-2);
+    font-size: 12px;
+    color: var(--color-text-soft);
+    line-height: 1;
+  }
+
+  .kid:first-child {
+    border-radius: var(--radius-pipenzo-sm) var(--radius-pipenzo-sm) 0 0;
+  }
+
+  .kid:last-child {
+    border-radius: 0 0 var(--radius-pipenzo-sm) var(--radius-pipenzo-sm);
+  }
+
+  .kid:only-child {
+    border-radius: var(--radius-pipenzo-sm);
+  }
+
+  .kid .n,
+  .kid .id {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--color-text-faint);
+    flex-shrink: 0;
+  }
+
+  .kid .t {
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .kid .t.done {
+    color: var(--color-text-faint);
+  }
+
+  .kid-ic {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    background: var(--color-surface-4);
+    color: var(--color-text-faint);
+  }
+
+  .kid-ic.done {
+    background: var(--color-ok);
+    color: var(--color-ok-fg);
+  }
+
+  .kid-ic.run {
+    background: var(--color-warn);
+    color: var(--color-warn-fg);
+  }
+
+  .kid .ext {
+    color: var(--color-text-faint);
+    display: inline-flex;
+    cursor: pointer;
+    transition: color var(--ease-pipenzo);
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: transparent;
+    flex-shrink: 0;
+  }
+
+  .kid .ext:hover {
+    color: var(--color-text);
+  }
 }
 
 @keyframes pulse-warn {
