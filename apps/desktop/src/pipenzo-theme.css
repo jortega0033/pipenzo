@@ -3519,6 +3519,92 @@
   .lightbox .shot-frame {
     box-shadow: var(--shadow-pipenzo);
   }
+
+  /* Reviewer findings list — ported verbatim from DiffReview.dc.html's findings sidebar. See
+     FindingsList.tsx. */
+  .findings {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .finding {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 6px 8px;
+    padding: 10px;
+    border-radius: var(--radius-pipenzo-sm);
+    background: var(--color-surface-3);
+    cursor: pointer;
+    transition: background-color var(--ease-pipenzo);
+  }
+
+  .finding:hover {
+    background: var(--color-surface-4);
+  }
+
+  .finding:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  .finding.active {
+    background: var(--color-surface-4);
+    box-shadow: inset 2px 0 0 var(--color-accent);
+  }
+
+  .finding .chip {
+    align-self: start;
+  }
+
+  .f-txt {
+    grid-column: 2;
+    font-size: 12px;
+    color: var(--color-text-soft);
+    line-height: 1.45;
+  }
+
+  .f-loc {
+    grid-column: 2;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--color-text-faint);
+    line-height: 1.35;
+  }
+
+  .f-loc .icon-xs {
+    flex-shrink: 0;
+  }
+
+  .f-loc span {
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .finding:hover .f-loc,
+  .finding.active .f-loc {
+    color: var(--color-text-soft);
+  }
+
+  .f-count {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+    color: var(--color-text-faint);
+    line-height: 1.35;
+  }
+
+  .f-count b {
+    color: var(--color-text-soft);
+    font-weight: 700;
+  }
 }
 
 @keyframes pulse-warn {
