@@ -1193,6 +1193,165 @@
   .cmdk-item .kbd {
     flex-shrink: 0;
   }
+
+  /* Workspace switcher — ported verbatim from Foundations.dc.html's "Popovers" section (the
+     .ws-menu popover) and the .ws trigger from Main.dc.html's shared sidebar block (same
+     identical base CSS block, just defined alongside the sidebar rules rather than the popover
+     ones since that's where the canvas first needs it). Read-only: switching repos happens here;
+     adding or removing a connected repo is Settings' job, which is why the menu ends in a
+     "Manage repos…" row instead of an inline add/remove control -- see WorkspaceSwitcher.tsx. */
+  .ws {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    height: 48px;
+    padding: 0 6px;
+    border-radius: var(--radius-pipenzo);
+    background: var(--color-surface-2);
+    border: none;
+    cursor: pointer;
+    text-align: left;
+    font-family: var(--font-sans);
+    transition: background-color var(--ease-pipenzo);
+  }
+
+  .ws:hover {
+    background: var(--color-surface-3);
+  }
+
+  .ws-ic {
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-pipenzo-sm);
+    background: var(--color-surface-4);
+    color: var(--color-text);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  .ws-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .ws-name {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .ws-sub {
+    font-size: 11px;
+    color: var(--color-text-faint);
+    line-height: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .ws-caret {
+    color: var(--color-text-faint);
+  }
+
+  .ws-menu {
+    width: 280px;
+  }
+
+  .ws-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 44px;
+    padding: 6px 10px;
+    margin: 0 4px;
+    border-radius: var(--radius-pipenzo-sm);
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    width: calc(100% - 8px);
+    text-align: left;
+    font-family: var(--font-sans);
+    color: var(--color-text);
+    transition: background-color var(--ease-pipenzo);
+  }
+
+  .ws-menu-item:hover {
+    background: var(--color-surface-4);
+  }
+
+  .ws-menu-item .ws-ic {
+    width: 24px;
+    height: 24px;
+    font-size: 11px;
+    background: var(--color-surface-4);
+  }
+
+  .ws-menu-item.active .ws-ic {
+    background: var(--color-accent);
+    color: var(--color-accent-fg);
+  }
+
+  .wm-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .wm-name {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .wm-sub {
+    font-size: 11px;
+    color: var(--color-text-faint);
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .wm-check {
+    color: var(--color-accent);
+    flex-shrink: 0;
+  }
+
+  .ws-menu-item.foot {
+    min-height: 36px;
+    margin-bottom: 4px;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--color-text-soft);
+  }
+
+  .ws-menu-item.foot:hover {
+    color: var(--color-text);
+  }
+
+  .ws-menu-item.foot .icon {
+    color: var(--color-text-faint);
+    flex-shrink: 0;
+  }
 }
 
 @keyframes sk-shimmer {
