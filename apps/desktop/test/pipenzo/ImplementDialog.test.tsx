@@ -57,7 +57,13 @@ describe('ImplementDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Start' }));
     await screen.findByRole('button', { name: 'Starting…' });
 
-    await waitFor(() => expect(onStarted).toHaveBeenCalledWith(WORKTREE));
+    await waitFor(() =>
+      expect(onStarted).toHaveBeenCalledWith(WORKTREE, {
+        worktreeName: 'issue-94',
+        extraInstructions: '',
+        runBudget: 'unlimited',
+      }),
+    );
     expect(previewWorktree).toHaveBeenCalledWith({ cwd: '/repo', name: 'issue-94' });
     expect(createWorktree).toHaveBeenCalledWith({ cwd: '/repo', name: 'issue-94', confirmIncludeCopy: true });
     // preview must resolve before create is even attempted -- two real round trips, not one.
@@ -94,5 +100,97 @@ describe('ImplementDialog', () => {
     installBridge();
     render(<ImplementDialog open={false} ticket={TICKET} cwd="/repo" onClose={() => {}} />);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('uses a valid branch-name override as the worktree name instead of the default', async () => {
+    const { previewWorktree } = installBridge();
+    render(<ImplementDialog open ticket={TICKET} cwd="/repo" onClose={() => {}} />);
+
+    fireEvent.change(screen.getByLabelText('Branch name override'), {
+      target: { value: 'issue-94-retry' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+
+    await waitFor(() =>
+      expect(previewWorktree).toHaveBeenCalledWith({ cwd: '/repo', name: 'issue-94-retry' }),
+    );
+  });
+
+  it('rejects an invalid branch-name override inline and refuses to start', () => {
+    const { previewWorktree } = installBridge();
+    render(<ImplementDialog open ticket={TICKET} cwd="/repo" onClose={() => {}} />);
+
+    fireEvent.change(screen.getByLabelText('Branch name override'), {
+      target: { value: 'issue 94/oops' },
+    });
+    expect(screen.getByText(/only letters, numbers/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Start' })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    expect(previewWorktree).not.toHaveBeenCalled();
+  });
+
+  it('passes extra instructions and the selected run budget through onStarted', async () => {
+    installBridge();
+    const onStarted = vi.fn();
+    render(<ImplementDialog open ticket={TICKET} cwd="/repo" onClose={() => {}} onStarted={onStarted} />);
+
+    fireEvent.change(screen.getByLabelText('Extra instructions (optional)'), {
+      target: { value: 'only touch the daemon side' },
+    });
+    fireEvent.change(screen.getByLabelText('Run budget'), { target: { value: '3' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+
+    await waitFor(() =>
+      expect(onStarted).toHaveBeenCalledWith(WORKTREE, {
+        worktreeName: 'issue-94',
+        extraInstructions: 'only touch the daemon side',
+        runBudget: '3',
+      }),
+    );
+  });
+
+  it('shows an explicit notice instead of silently skipping the claim check when none is wired', () => {
+    installBridge();
+    render(<ImplementDialog open ticket={TICKET} cwd="/repo" onClose={() => {}} />);
+    expect(screen.getByText(/claim verification isn't wired up yet/i)).toBeInTheDocument();
+  });
+
+  it('does not show the claim-check notice once a claimPreflight is supplied', () => {
+    installBridge();
+    render(
+      <ImplementDialog
+        open
+        ticket={TICKET}
+        cwd="/repo"
+        onClose={() => {}}
+        claimPreflight={() => Promise.resolve({ claimed: false })}
+      />,
+    );
+    expect(screen.queryByText(/claim verification isn't wired up yet/i)).not.toBeInTheDocument();
+  });
+
+  it('refuses to create a worktree when claimPreflight reports the ticket is already claimed', async () => {
+    const { previewWorktree } = installBridge();
+    const onStarted = vi.fn();
+    render(
+      <ImplementDialog
+        open
+        ticket={TICKET}
+        cwd="/repo"
+        onClose={() => {}}
+        onStarted={onStarted}
+        claimPreflight={() => Promise.resolve({ claimed: true, assignee: 'someone-else' })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    await screen.findByText(/already claimed by @someone-else/i);
+    expect(previewWorktree).not.toHaveBeenCalled();
+    expect(onStarted).not.toHaveBeenCalled();
+    // A claim conflict belongs to someone else -- there is nothing to retry, matching
+    // Main.dc.html's claimed-by-@someone-else card, which renders no action at all.
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Start' })).toBeInTheDocument();
   });
 });
