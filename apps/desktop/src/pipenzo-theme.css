@@ -1432,6 +1432,37 @@
   .stack > .banner:only-child {
     border-radius: var(--radius-pipenzo);
   }
+
+  /* Banner, degraded vs blocking — ported verbatim from Foundations.dc.html's "Loading, error and
+     empty" section. .retrying keeps the plain surface-2 container (the app still works, it's
+     just retrying) and tints only the .b-ic circle warn, matching its spinning icon; .blocking
+     is the one place in this whole notice family a container tints, because the screen behind it
+     is genuinely stale and nothing behind it works until it clears. Both add a `.b-count` mono
+     readout (an attempt counter, a backoff timer, a schema marker) alongside the message. */
+  .banner.retrying .b-ic {
+    background: var(--color-warn);
+    color: var(--color-warn-fg);
+  }
+
+  .banner .b-count {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--color-text-faint);
+    flex-shrink: 0;
+  }
+
+  .banner.blocking {
+    background: var(--color-danger-fg);
+    color: var(--color-danger-text);
+  }
+
+  .banner.blocking b {
+    color: var(--color-text);
+  }
+
+  .banner.blocking .b-count {
+    color: var(--color-danger-text);
+  }
 }
 
 @keyframes sk-shimmer {

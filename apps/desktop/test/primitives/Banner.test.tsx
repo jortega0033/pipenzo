@@ -56,6 +56,33 @@ describe('Banner', () => {
     expect(screen.queryByRole('button', { name: 'Dismiss' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Reconnect' })).toBeInTheDocument();
   });
+
+  it('renders the retrying variant with a spinning icon and a mono attempt count, keeping the plain container', () => {
+    const { container } = render(
+      <Banner icon="spinner" variant="retrying" count="attempt 2 of 5">
+        Can&apos;t reach GitHub — retrying in <b>18s</b>.
+      </Banner>,
+    );
+    const banner = container.querySelector('.banner')!;
+    expect(banner.className).toBe('banner retrying');
+    expect(container.querySelector('.b-ic svg')?.getAttribute('class')).toContain('spin');
+    expect(screen.getByText('attempt 2 of 5')).toBeInTheDocument();
+  });
+
+  it('renders the blocking variant tinting the container, paired with the danger tone', () => {
+    const { container } = render(
+      <Banner icon="x-circle" tone="danger" variant="blocking" count="backoff 8m">
+        GitHub is unreachable.
+      </Banner>,
+    );
+    expect(container.querySelector('.banner')?.className).toBe('banner danger blocking');
+    expect(screen.getByText('backoff 8m')).toBeInTheDocument();
+  });
+
+  it('omits the b-count element when count is not given', () => {
+    const { container } = render(<Banner icon="info">Message</Banner>);
+    expect(container.querySelector('.b-count')).not.toBeInTheDocument();
+  });
 });
 
 describe('BannerStack', () => {
