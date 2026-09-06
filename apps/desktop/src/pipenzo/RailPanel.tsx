@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react';
 import type { ReviewReportV1 } from '@agent-dock/shared';
 import { Finding, FindingsCount, FindingsList } from '../components/primitives/FindingsList.js';
-import { ScreenshotProvenance, Shots, ScreenshotThumb } from '../components/primitives/Screenshot.js';
 import { VerificationBlock, VRow } from '../components/primitives/VerificationBlock.js';
 import {
   combineFindings,
@@ -11,12 +10,9 @@ import {
   mapFindingSeverity,
   tallyFindings,
 } from './rail.js';
+import { ScreenshotEvidence, type RailScreenshot } from './ScreenshotEvidence.js';
 
-export interface RailScreenshot {
-  readonly label: ReactNode;
-  readonly refLabel: ReactNode;
-  readonly src?: string;
-}
+export type { RailScreenshot };
 
 /**
  * The diff-review rail (issue #109): Machine-verified → Agent-captured → Findings by severity →
@@ -37,7 +33,6 @@ export function RailPanel({
   agentCapturedRows = [],
   screenshots = [],
   screenshotProvenance,
-  onOpenScreenshot,
   selectedFindingIndex,
   onSelectFinding,
   commit,
@@ -46,9 +41,10 @@ export function RailPanel({
   /** Self-reported claims (e.g. "3/3 acceptance criteria met") -- no backend schema for these
    * yet; see the module comment. */
   agentCapturedRows?: readonly ReactNode[];
+  /** Rendered via `ScreenshotEvidence` (issue #110), which owns opening/closing its own lightbox
+   * -- the rail never has to know a lightbox exists. */
   screenshots?: readonly RailScreenshot[];
   screenshotProvenance?: ReactNode;
-  onOpenScreenshot?: (index: number) => void;
   /** Highlights the finding at this index and marks its line in `DiffFileList` via the same
    * `path`/`line` (see `findingLocation`). */
   selectedFindingIndex?: number;
@@ -98,19 +94,8 @@ export function RailPanel({
             </VRow>
           ))}
           {screenshots.length > 0 && (
-            <Shots>
-              {screenshots.map((shot, index) => (
-                <ScreenshotThumb
-                  key={index}
-                  label={shot.label}
-                  refLabel={shot.refLabel}
-                  src={shot.src}
-                  onOpen={onOpenScreenshot ? () => onOpenScreenshot(index) : undefined}
-                />
-              ))}
-            </Shots>
+            <ScreenshotEvidence screenshots={screenshots} provenance={screenshotProvenance} />
           )}
-          {screenshotProvenance && <ScreenshotProvenance>{screenshotProvenance}</ScreenshotProvenance>}
         </VerificationBlock>
       )}
 

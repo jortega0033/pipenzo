@@ -77,8 +77,7 @@ describe('RailPanel', () => {
     expect(container.querySelectorAll('.v-ic.self')).toHaveLength(1);
   });
 
-  it('renders screenshots in the agent-captured zone and wires onOpenScreenshot to the right index', () => {
-    const onOpenScreenshot = vi.fn();
+  it('renders screenshots in the agent-captured zone and opens the lightbox from a thumbnail', () => {
     render(
       <RailPanel
         report={BASE_REPORT}
@@ -86,11 +85,11 @@ describe('RailPanel', () => {
           { label: 'Before', refLabel: 'main · 287a4a6' },
           { label: 'After', refLabel: 'issue-94 · working tree' },
         ]}
-        onOpenScreenshot={onOpenScreenshot}
       />,
     );
     fireEvent.click(screen.getByText('After').closest('.shot')!);
-    expect(onOpenScreenshot).toHaveBeenCalledWith(1);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByText('After', { selector: '.lb-title' })).toBeInTheDocument();
   });
 
   it('shows the finding count tally and renders findings sorted by severity', () => {
