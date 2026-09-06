@@ -269,6 +269,167 @@
     animation: spin 0.9s linear infinite;
   }
 
+  /* Button family — ported verbatim from Foundations.dc.html's "Primitives" section. .btn is the
+     pill button (default/primary/ghost/danger x sm/default/lg); .icon-btn is the circular
+     icon-only button (default/ghost, one size). React owns variant/size/pending selection
+     (components/primitives/Button.tsx, IconButton.tsx) by composing these classnames -- the CSS
+     itself doesn't know about React and matches canvas markup 1:1 for anything hand-authored. */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 32px;
+    padding: 0 16px;
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1;
+    white-space: nowrap;
+    border-radius: var(--radius-pipenzo-pill);
+    border: none;
+    background: var(--color-surface-3);
+    color: var(--color-text);
+    cursor: pointer;
+    transition:
+      filter var(--ease-pipenzo),
+      transform var(--ease-pipenzo),
+      background-color var(--ease-pipenzo),
+      color var(--ease-pipenzo);
+  }
+
+  .btn:hover {
+    filter: brightness(1.2);
+  }
+
+  .btn:active {
+    filter: brightness(0.92);
+    transform: scale(0.98);
+  }
+
+  .btn:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  .btn.primary {
+    background: var(--color-accent);
+    color: var(--color-accent-fg);
+  }
+
+  .btn.primary:hover {
+    filter: brightness(1.08);
+    transform: scale(1.03);
+  }
+
+  .btn.primary:active {
+    filter: brightness(0.94);
+    transform: scale(0.98);
+  }
+
+  .btn.ghost {
+    background: transparent;
+    color: var(--color-text-soft);
+  }
+
+  .btn.ghost:hover {
+    filter: none;
+    color: var(--color-text);
+    background: var(--color-surface-3);
+  }
+
+  .btn.danger {
+    color: var(--color-danger-text);
+  }
+
+  .btn.danger:hover {
+    filter: none;
+    background: var(--color-danger);
+    color: var(--color-danger-fg);
+  }
+
+  .btn.lg {
+    height: 40px;
+    padding: 0 24px;
+    font-size: 14px;
+  }
+
+  .btn.sm {
+    height: 28px;
+    padding: 0 12px;
+    font-size: 12px;
+  }
+
+  /* pending: same size and label slot as the resting button (the label text just changes, e.g.
+     "Push branch" -> "Pushing…") -- never collapses to a bare spinner, and hover/active stop
+     reacting since a pending click has nothing to do. */
+  .btn.pending {
+    cursor: default;
+  }
+
+  .btn.pending:hover,
+  .btn.pending:active {
+    filter: none;
+    transform: none;
+  }
+
+  .btn:disabled {
+    color: var(--color-text-faint);
+    cursor: default;
+  }
+
+  .btn:disabled:hover,
+  .btn:disabled:active {
+    filter: none;
+    transform: none;
+  }
+
+  .icon-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: none;
+    background: var(--color-surface-3);
+    color: var(--color-text);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition:
+      filter var(--ease-pipenzo),
+      transform var(--ease-pipenzo);
+  }
+
+  .icon-btn:hover {
+    filter: brightness(1.2);
+  }
+
+  .icon-btn:active {
+    transform: scale(0.94);
+  }
+
+  .icon-btn.ghost {
+    background: transparent;
+    color: var(--color-text-soft);
+  }
+
+  .icon-btn.ghost:hover {
+    filter: none;
+    background: var(--color-surface-3);
+    color: var(--color-text);
+  }
+
+  .icon-btn:disabled {
+    color: var(--color-text-faint);
+    cursor: default;
+  }
+
+  .icon-btn:disabled:hover,
+  .icon-btn:disabled:active {
+    filter: none;
+    transform: none;
+  }
+
   /* Live-run pulse: a small dot (the run indicator on an in-progress ticket) breathing via its
      box-shadow, softened to a static ring by the reduced-motion block below instead of stopped
      outright -- it should still read as "live", just not moving. */
