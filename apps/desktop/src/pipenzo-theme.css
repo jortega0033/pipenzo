@@ -1043,6 +1043,156 @@
     flex: 1;
     min-width: 0;
   }
+
+  /* Command palette (⌘K) — ported verbatim from Foundations.dc.html's "Popovers" section. .cmdk
+     is the trigger pill in the header; .cmdk-panel is the .pop built on top of Popover.tsx, with
+     a search field over results grouped by type -- tickets, repos, then actions, always in that
+     fixed order (never ranked, so the same key sequence lands on the same row every time). It
+     only navigates and drafts; nothing in here starts or approves a run -- see
+     CommandPalette.tsx. */
+  .cmdk {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    width: 260px;
+    height: 32px;
+    padding: 0 8px 0 12px;
+    border-radius: var(--radius-pipenzo-pill);
+    background: var(--color-surface-2);
+    color: var(--color-text-faint);
+    font-size: 13px;
+    cursor: text;
+    border: none;
+    transition: background-color var(--ease-pipenzo);
+  }
+
+  .cmdk:hover {
+    background: var(--color-surface-3);
+  }
+
+  .cmdk.open {
+    background: var(--color-surface-3);
+    color: var(--color-text-soft);
+  }
+
+  .cmdk span:not(.kbd) {
+    flex: 1;
+    min-width: 0;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .cmdk-panel {
+    width: 560px;
+    max-height: 560px;
+  }
+
+  .cmdk-search {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px;
+    flex-shrink: 0;
+  }
+
+  .cmdk-search > .icon {
+    color: var(--color-text-faint);
+    flex-shrink: 0;
+  }
+
+  .cmdk-search .field {
+    background: var(--color-surface-4);
+  }
+
+  .cmdk-results {
+    overflow-y: auto;
+    padding: 2px 4px 6px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .cmdk-group {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .cmdk-group-title {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--color-text-faint);
+    line-height: 1;
+    padding: 10px 10px 6px;
+  }
+
+  .cmdk-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 36px;
+    padding: 6px 10px;
+    border-radius: var(--radius-pipenzo-sm);
+    font-size: 13px;
+    color: var(--color-text-soft);
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    width: 100%;
+    text-align: left;
+    transition:
+      background-color var(--ease-pipenzo),
+      color var(--ease-pipenzo);
+  }
+
+  .cmdk-item:hover {
+    background: var(--color-surface-4);
+    color: var(--color-text);
+  }
+
+  .cmdk-item.active {
+    background: var(--color-surface-4);
+    color: var(--color-text);
+    box-shadow: inset 2px 0 0 var(--color-accent);
+  }
+
+  .cmdk-item > .icon {
+    color: var(--color-text-faint);
+    flex-shrink: 0;
+  }
+
+  .cmdk-item:hover > .icon,
+  .cmdk-item.active > .icon {
+    color: var(--color-text);
+  }
+
+  .cmdk-id {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--color-text-faint);
+    flex-shrink: 0;
+  }
+
+  .cmdk-lbl {
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .cmdk-item .chip {
+    flex-shrink: 0;
+    height: 18px;
+    padding: 0 6px;
+  }
+
+  .cmdk-item .kbd {
+    flex-shrink: 0;
+  }
 }
 
 @keyframes sk-shimmer {
