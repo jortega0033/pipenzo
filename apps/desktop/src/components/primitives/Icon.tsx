@@ -11,6 +11,19 @@ const SIZE_PX = {
 
 export type IconSize = keyof typeof SIZE_PX;
 
+// The canvas's own per-size class names (.icon, .icon-sm, .icon-lg, .icon-xs -- "md" is the
+// unsuffixed default). Several contextual rules in pipenzo-theme.css target an icon this way
+// rather than by size (.select-wrap .icon positions the select's caret, .crumbs .icon-sm tints
+// a breadcrumb icon, etc.), so Icon applies its size class alongside the width/height it sets
+// directly -- both a container selector like that and a plain currentColor read work without
+// the consumer having to know which mechanism a given context relies on.
+const SIZE_CLASS = {
+  xs: 'icon-xs',
+  sm: 'icon-sm',
+  md: 'icon',
+  lg: 'icon-lg',
+} as const;
+
 /**
  * One entry from the curated Phosphor-regular set in icons.ts, rendered inline (no icon font,
  * no runtime fetch) at one of the canvas's four sizes -- 12 (xs), 14 (sm, the size used inside
@@ -36,9 +49,10 @@ export function Icon({
   className?: string;
 }) {
   const px = SIZE_PX[size];
+  const classes = className ? `${SIZE_CLASS[size]} ${className}` : SIZE_CLASS[size];
   return (
     <svg
-      className={className}
+      className={classes}
       width={px}
       height={px}
       viewBox="0 0 256 256"

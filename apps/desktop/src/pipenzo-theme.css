@@ -598,6 +598,115 @@
     background: var(--color-surface-4);
   }
 
+  /* Form controls — ported verbatim from Foundations.dc.html's "Forms" section. Anatomy after
+     Primer's FormControl: label above (.f-lbl, plus .req for an inline "required at HIGH"-style
+     note), the control itself (.field -- shared by <input>, <textarea> and the <select> inside
+     .select-wrap), then validation below: .f-help normally, replaced by .f-err rather than
+     shown alongside it once the field is invalid. .f-row is the label-left/control-right layout
+     used for a single toggle row inside a fieldset. FormField.tsx/TextField.tsx/Textarea.tsx/
+     Select.tsx wire this anatomy up with real <label htmlFor>, aria-invalid and
+     aria-describedby -- none of which the canvas markup shows, since a static .dc.html artboard
+     has no reason to, but which are exactly what "don't regress the WCAG pass" means here. */
+  .field {
+    display: block;
+    width: 100%;
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 20px;
+    padding: 8px 12px;
+    border-radius: var(--radius-pipenzo-sm);
+    border: none;
+    background: var(--color-surface-3);
+    color: var(--color-text);
+    resize: none;
+    transition: background-color var(--ease-pipenzo);
+  }
+
+  .field::placeholder {
+    color: var(--color-text-faint);
+  }
+
+  .field:hover {
+    background: var(--color-surface-4);
+  }
+
+  .field:focus {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 0;
+    background: var(--color-surface-4);
+  }
+
+  .field.invalid,
+  .field.invalid:focus {
+    outline: 2px solid var(--color-danger);
+  }
+
+  .f-lbl {
+    display: block;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--color-text-soft);
+    margin-bottom: 6px;
+    line-height: 1;
+  }
+
+  .f-help {
+    display: block;
+    font-size: 12px;
+    color: var(--color-text-faint);
+    margin-top: 6px;
+    line-height: 1.4;
+  }
+
+  .f-err {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--color-danger-text);
+    margin-top: 6px;
+    line-height: 1.4;
+  }
+
+  .f-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  .select-wrap {
+    position: relative;
+    display: block;
+  }
+
+  .select-wrap .field {
+    appearance: none;
+    -webkit-appearance: none;
+    padding-right: 36px;
+    cursor: pointer;
+  }
+
+  .select-wrap .icon {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--color-text-faint);
+    pointer-events: none;
+  }
+
+  /* an inline required-note appended to a label, e.g. "required at HIGH" on the reject-reason
+     field -- distinct from a bare asterisk so the condition is stated, not just flagged. */
+  .req {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--color-danger-text);
+    margin-left: 6px;
+  }
+
   /* Live-run pulse: a small dot (the run indicator on an in-progress ticket) breathing via its
      box-shadow, softened to a static ring by the reduced-motion block below instead of stopped
      outright -- it should still read as "live", just not moving. */

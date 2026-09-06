@@ -65,7 +65,7 @@ describe('Button', () => {
       expect(btn).toHaveAttribute('aria-busy', 'true');
       expect(btn).not.toBeDisabled();
       expect(btn.className).toBe('btn primary pending');
-      expect(btn.querySelector('svg')?.getAttribute('class')).toBe('spin');
+      expect(btn.querySelector('svg')?.getAttribute('class')).toBe('icon spin');
     });
 
     it('never collapses to a bare spinner -- the label passed as children is still rendered', () => {
