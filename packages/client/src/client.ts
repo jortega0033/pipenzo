@@ -155,6 +155,13 @@ export interface AttachmentUploadInput {
 export type SessionListV2Options = SessionListV2Query;
 export type SessionEventHistoryV2Options = SessionEventHistoryV2Query;
 
+/** `worktreeCleanupRequestV2Schema`'s two opt-in flags (issue #117), without the `worktreeId`
+ * this method already takes as its own parameter -- see `v2.worktrees.cleanup`. */
+export interface WorktreeCleanupOptions {
+  deleteUntracked?: boolean;
+  deleteBranch?: boolean;
+}
+
 interface CompatibilityResult {
   health: HealthResponse;
   daemonVersions: readonly number[];
@@ -269,7 +276,10 @@ export class AgentDockClient {
       preview: (input: WorktreePreviewRequestV2): Promise<WorktreePreviewV2> => this.previewWorktreeV2(input),
       create: (input: WorktreeCreateRequestV2): Promise<OwnedWorktreeV2> => this.createWorktreeV2(input),
       list: (): Promise<OwnedWorktreeV2[]> => this.listWorktreesV2(),
-      cleanup: (worktreeId: string): Promise<OwnedWorktreeV2> => this.cleanupWorktreeV2(worktreeId),
+      cleanup: (
+        worktreeId: string,
+        options?: WorktreeCleanupOptions,
+      ): Promise<OwnedWorktreeV2> => this.cleanupWorktreeV2(worktreeId, options),
     },
     attachments: {
       upload: (input: AttachmentUploadInput): Promise<AttachmentMetadataV2> => this.uploadAttachmentV2(input),
@@ -699,8 +709,15 @@ export class AgentDockClient {
     return (await this.requestV2('/v2/worktrees', ownedWorktreeListV2Schema, 'protocol-v2 owned worktrees', {}, { expectedStatus: 200 })).worktrees;
   }
 
-  private async cleanupWorktreeV2(worktreeId: string): Promise<OwnedWorktreeV2> {
-    const parsed = validateInput(worktreeCleanupRequestV2Schema, { worktreeId }, 'worktree cleanup request');
+  private async cleanupWorktreeV2(
+    worktreeId: string,
+    options?: WorktreeCleanupOptions,
+  ): Promise<OwnedWorktreeV2> {
+    const parsed = validateInput(
+      worktreeCleanupRequestV2Schema,
+      { worktreeId, ...options },
+      'worktree cleanup request',
+    );
     return this.requestV2('/v2/worktrees/cleanup', ownedWorktreeV2Schema, 'protocol-v2 owned worktree', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) }, { expectedStatus: 200 });
   }
 

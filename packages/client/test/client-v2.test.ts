@@ -879,6 +879,54 @@ describe('AgentDockClient.v2 security APIs', () => {
   });
 });
 
+describe('AgentDockClient.v2 worktree cleanup options', () => {
+  const WORKTREE_ID = '123e4567-e89b-42d3-a456-426614174011';
+  const CLEANED = {
+    id: WORKTREE_ID,
+    workspaceId: 'a'.repeat(64),
+    name: 'issue-94',
+    displayPath: 'issue-94',
+    status: 'missing',
+    createdAt: '2026-01-01T00:00:00.000Z',
+  } as const;
+
+  it('cleans up with no options by default', async () => {
+    const fetchImpl = vi.fn().mockImplementation(async (url: string) => {
+      if (url.endsWith('/health')) return healthResponse([1, 2]);
+      return jsonResponse(200, CLEANED);
+    });
+    await expect(makeClient(fetchImpl).v2.worktrees.cleanup(WORKTREE_ID)).resolves.toEqual(CLEANED);
+    const call = fetchImpl.mock.calls.find(([url]) => String(url).endsWith('/v2/worktrees/cleanup'));
+    expect(JSON.parse(String((call?.[1] as RequestInit).body))).toEqual({ worktreeId: WORKTREE_ID });
+  });
+
+  it('passes deleteUntracked and deleteBranch through to the request body', async () => {
+    const fetchImpl = vi.fn().mockImplementation(async (url: string) => {
+      if (url.endsWith('/health')) return healthResponse([1, 2]);
+      return jsonResponse(200, CLEANED);
+    });
+    await makeClient(fetchImpl).v2.worktrees.cleanup(WORKTREE_ID, { deleteUntracked: true, deleteBranch: true });
+    const call = fetchImpl.mock.calls.find(([url]) => String(url).endsWith('/v2/worktrees/cleanup'));
+    expect(JSON.parse(String((call?.[1] as RequestInit).body))).toEqual({
+      worktreeId: WORKTREE_ID,
+      deleteUntracked: true,
+      deleteBranch: true,
+    });
+  });
+
+  it('surfaces worktree_dirty as a typed DaemonError', async () => {
+    const fetchImpl = vi.fn().mockImplementation(async (url: string) => {
+      if (url.endsWith('/health')) return healthResponse([1, 2]);
+      return jsonResponse(409, { code: 'worktree_dirty', error: 'Dirty worktrees are never removed automatically' });
+    });
+    const failure = await makeClient(fetchImpl)
+      .v2.worktrees.cleanup(WORKTREE_ID)
+      .catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(DaemonError);
+    expect(failure).toMatchObject({ status: 409, code: 'worktree_dirty' });
+  });
+});
+
 describe('AgentDockClient.v2 pipenzo publish gate', () => {
   const WORKTREE_ID = '123e4567-e89b-42d3-a456-426614174010';
   const PUBLISH_RESULT = {

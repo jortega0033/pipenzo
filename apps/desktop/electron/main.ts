@@ -739,8 +739,11 @@ handle('daemon:list-worktrees', async () => {
 });
 handle('daemon:cleanup-worktree', async (_event, input: unknown) => {
   if (!client) throw new Error('daemon is not ready yet');
-  const parsed = worktreeCleanupRequestV2Schema.parse({ worktreeId: input });
-  return client.v2.worktrees.cleanup(parsed.worktreeId);
+  const parsed = worktreeCleanupRequestV2Schema.parse(input);
+  return client.v2.worktrees.cleanup(parsed.worktreeId, {
+    deleteUntracked: parsed.deleteUntracked,
+    deleteBranch: parsed.deleteBranch,
+  });
 });
 // Pipenzo's publish gate (issue #178). Reachable only from this main-process handler, invoked
 // only by the renderer's own "Push branch" / "Push & open PR" click — never from anything agent

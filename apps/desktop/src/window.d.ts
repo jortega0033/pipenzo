@@ -103,7 +103,14 @@ export interface AgentDockBridge {
   previewWorktree(input: WorktreePreviewRequestV2): Promise<WorktreePreviewV2>;
   createWorktree(input: WorktreeCreateRequestV2): Promise<OwnedWorktreeV2>;
   listWorktrees(): Promise<OwnedWorktreeV2[]>;
-  cleanupWorktree(worktreeId: string): Promise<OwnedWorktreeV2>;
+  /** `deleteUntracked` (issue #117/#112): removes an untracked-only-dirty worktree; any change to
+   * a tracked file always refuses regardless of this flag -- see `worktree-manager.ts`'s own
+   * `cleanupLocked()` comment. `deleteBranch` is a best-effort `git branch -D` after a successful
+   * removal. */
+  cleanupWorktree(
+    worktreeId: string,
+    options?: { deleteUntracked?: boolean; deleteBranch?: boolean },
+  ): Promise<OwnedWorktreeV2>;
   /**
    * Pipenzo's publish gate (issue #178). Call this only in direct response to a human clicking
    * "Push branch" or "Push & open PR" — see `apps/daemon/src/routes/pipenzo-publish.ts`'s module

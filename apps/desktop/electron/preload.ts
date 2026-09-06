@@ -164,7 +164,10 @@ export interface AgentDockBridge {
   previewWorktree(input: WorktreePreviewRequestV2): Promise<WorktreePreviewV2>;
   createWorktree(input: WorktreeCreateRequestV2): Promise<OwnedWorktreeV2>;
   listWorktrees(): Promise<OwnedWorktreeV2[]>;
-  cleanupWorktree(worktreeId: string): Promise<OwnedWorktreeV2>;
+  cleanupWorktree(
+    worktreeId: string,
+    options?: { deleteUntracked?: boolean; deleteBranch?: boolean },
+  ): Promise<OwnedWorktreeV2>;
   publishPipenzo(input: PipenzoPublishRequestV1): Promise<PipenzoPublishResultV1>;
   selectAndUploadAttachments(sessionId?: string): Promise<AttachmentMetadataV2[]>;
   validateStructuredOutput(input: StructuredWorkflowRequestV2): Promise<StructuredWorkflowResultV2>;
@@ -715,9 +718,9 @@ const api: AgentDockBridge = {
     const worktrees: unknown = await ipcRenderer.invoke('daemon:list-worktrees');
     return ownedWorktreeListV2Schema.parse({ worktrees }).worktrees;
   },
-  async cleanupWorktree(worktreeId) {
-    const parsed = worktreeCleanupRequestV2Schema.parse({ worktreeId });
-    return ownedWorktreeV2Schema.parse(await ipcRenderer.invoke('daemon:cleanup-worktree', parsed.worktreeId));
+  async cleanupWorktree(worktreeId, options) {
+    const parsed = worktreeCleanupRequestV2Schema.parse({ worktreeId, ...options });
+    return ownedWorktreeV2Schema.parse(await ipcRenderer.invoke('daemon:cleanup-worktree', parsed));
   },
   async publishPipenzo(input) {
     const parsed = pipenzoPublishRequestV1Schema.parse(input);
