@@ -707,6 +707,121 @@
     margin-left: 6px;
   }
 
+  /* Choice controls — ported verbatim from Foundations.dc.html's "Forms" section. .check/.radio
+     put the box first and the label second (Primer's convention for a choice control, as
+     opposed to a text field's label-above); a caption line under the label is .sub -- caption
+     size, never bold. Both are implemented as WAI-ARIA custom controls (role="checkbox"/"radio"
+     directly on the focusable element, Checkbox.tsx/RadioGroup.tsx) rather than a <label>
+     wrapping a native <input>, since the canvas gives .check/.radio their own focus-visible ring
+     (ticket #24's shared group) -- i.e. the box-plus-label element itself is meant to be the
+     thing that receives focus, not a proxy around a hidden input. .fieldset groups a set of
+     them under one label with no bottom margin on that label (the fieldset's own 10px gap
+     already separates it from the first control). */
+  .check,
+  .radio {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--color-text);
+    cursor: pointer;
+    line-height: 1.3;
+  }
+
+  .check .box,
+  .radio .box {
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    background: var(--color-surface-4);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: var(--color-accent-fg);
+    transition: background-color var(--ease-pipenzo);
+  }
+
+  .check .box.on,
+  .radio .box.on {
+    background: var(--color-accent);
+  }
+
+  .radio .box {
+    border-radius: 50%;
+  }
+
+  .radio .box.on::after {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--color-accent-fg);
+  }
+
+  .check .sub,
+  .radio .sub {
+    display: block;
+    font-size: 12px;
+    color: var(--color-text-faint);
+    font-weight: 400;
+  }
+
+  .fieldset {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .fieldset .f-lbl {
+    margin-bottom: 0;
+  }
+
+  .toggle {
+    width: 36px;
+    height: 20px;
+    border-radius: var(--radius-pipenzo-pill);
+    background: var(--color-surface-4);
+    position: relative;
+    cursor: pointer;
+    flex-shrink: 0;
+    border: none;
+    padding: 0;
+    transition: background-color var(--ease-pipenzo);
+  }
+
+  .toggle::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--color-text-soft);
+    transition:
+      transform var(--ease-pipenzo),
+      background-color var(--ease-pipenzo);
+  }
+
+  .toggle.on {
+    background: var(--color-accent);
+  }
+
+  .toggle.on::after {
+    transform: translateX(16px);
+    background: var(--color-accent-fg);
+  }
+
+  /* Not in the canvas CSS (no disabled toggle example there to copy) -- the "locked/always-on"
+     variant ticket #29 asks for needs *some* visual distinction from an interactive toggle, so
+     this follows the same opacity treatment the canvas already uses for a disabled .numctl
+     button rather than inventing a new one. */
+  .toggle:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+
   /* Live-run pulse: a small dot (the run indicator on an in-progress ticket) breathing via its
      box-shadow, softened to a static ring by the reduced-motion block below instead of stopped
      outright -- it should still read as "live", just not moving. */
