@@ -2253,6 +2253,165 @@
     color: var(--color-text);
     font-weight: 700;
   }
+
+  /* Pre-commitment record — ported verbatim from Foundations.dc.html's "Pre-commitment records"
+     section. One block, four states via the `.pc-head` chip + `.pc-toggle`: pending (no toggle),
+     match (collapsible, "show"/"hide"), mismatch/partial (pinned open, a static "stays open" in
+     the matching tone). See PreCommitment.tsx. */
+  .precommit {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    border-radius: var(--radius-pipenzo-sm);
+    overflow: hidden;
+  }
+
+  .pc-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--color-surface-3);
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--color-text);
+    line-height: 1;
+  }
+
+  .pc-head .grow {
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-weight: 400;
+    color: var(--color-text-soft);
+  }
+
+  .pc-head .grow b {
+    color: var(--color-text);
+    font-weight: 700;
+  }
+
+  .pc-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--color-text-faint);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: color var(--ease-pipenzo);
+    min-height: 24px;
+    padding: 0 6px;
+  }
+
+  .pc-toggle:hover {
+    color: var(--color-text);
+  }
+
+  .pc-row {
+    display: grid;
+    grid-template-columns: 64px minmax(0, 1fr);
+    gap: 12px;
+    padding: 8px 12px;
+    background: var(--color-surface-2);
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--color-text-soft);
+  }
+
+  .pc-k {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--color-text-faint);
+    line-height: 1.6;
+  }
+
+  .pc-row .mono {
+    font-size: 12px;
+    color: var(--color-text);
+  }
+
+  .pc-row.got {
+    color: var(--color-text);
+    background: var(--color-surface-3);
+  }
+
+  .pc-row.got .pc-k {
+    color: var(--color-danger-text);
+  }
+
+  .pc-row.got.ok .pc-k {
+    color: var(--color-ok);
+  }
+
+  .pc-row.got.part .pc-k {
+    color: var(--color-warn);
+  }
+
+  .pc-row.got .pc-k::before {
+    content: '✕ ';
+  }
+
+  .pc-row.got.ok .pc-k::before {
+    content: '✓ ';
+  }
+
+  .pc-row.got.part .pc-k::before {
+    content: '~ ';
+  }
+
+  /* The dialog itself sits on --surface-3, so a nested .precommit needs to step up rather than
+     down -- surface-4 for the head, and something strictly between surface-3/surface-4 (there is
+     no token for that yet) for the rows so they don't disappear into the dialog background. */
+  .dialog .pc-head {
+    background: var(--color-surface-4);
+  }
+
+  .dialog .pc-row {
+    background: #2e2e2e;
+  }
+
+  /* One-off flex row utility used by a handful of button/chip rows in the canvas (e.g. the HIGH
+     card's split Reject/Approve row) -- gap-8, wrapping by default, `flex-wrap: nowrap` opted
+     into inline where a row must never wrap. */
+  .row-gap {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  /* HIGH approval card — ported verbatim from Foundations.dc.html's "Risk-graded approval"
+     section. `.hi-ic` is the danger-tinted 32px icon well; `.hi-foot` is the mono rules line that
+     is always true at this risk level (no Undo, no auto-allow, ever). See HighApproval.tsx. */
+  .hi-ic {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--color-danger);
+    color: var(--color-danger-fg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .hi-foot {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--color-text-faint);
+    line-height: 1;
+  }
+
+  .hi-foot .icon-sm {
+    color: var(--color-warn);
+  }
 }
 
 @keyframes sk-shimmer {
