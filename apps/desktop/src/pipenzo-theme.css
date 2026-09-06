@@ -184,6 +184,126 @@
   .codeblock .k {
     color: var(--color-accent);
   }
+
+  /* Shared focus-visible ring for every non-button interactive element -- .btn's own
+     :focus-visible lives with the Button component instead, since it omits the border-radius
+     override this group needs (a pill already reads fine with a plain 2px/2px outline; a circle
+     like .icon-btn does not). Selector list and values ported verbatim from
+     Foundations.dc.html's shared base block so a keyboard user sees the exact same accent
+     outline everywhere. Each classname is real: components introduced by this and later
+     primitive tickets (icon-btn, toggle, check, radio, numctl button, ...) apply the ring simply
+     by using that literal class, matching canvas markup 1:1 rather than an invented utility name
+     every author has to remember to attach. Some of these (.nav-item, .ws, .sb-user, .cmdk,
+     .notice, .pc-toggle, .ai-undo, .kid .ext, .card) belong to screens outside this ticket
+     batch and are inert until those land -- the rule still needs porting now, as one unit, since
+     Foundations.dc.html defines it as one unit. */
+  .icon-btn:focus-visible,
+  .seg button:focus-visible,
+  .toggle:focus-visible,
+  .numctl button:focus-visible,
+  .nav-item:focus-visible,
+  .ws:focus-visible,
+  .sb-user:focus-visible,
+  .cmdk:focus-visible,
+  .notice .n-x:focus-visible,
+  .notice .n-act span:focus-visible,
+  .pc-toggle:focus-visible,
+  .ai-undo:focus-visible,
+  .kid .ext:focus-visible,
+  .shot:focus-visible,
+  .check:focus-visible,
+  .radio:focus-visible,
+  .card:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: var(--radius-pipenzo-sm);
+  }
+
+  /* -2px inset variant: dense list rows inside a popover with clipped corners (.pop's
+     overflow: hidden would clip an outward outline before it ever became visible) -- the ⌘K
+     palette's result rows and the workspace switcher's repo rows. */
+  .cmdk-item:focus-visible,
+  .ws-menu-item:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: -2px;
+  }
+
+  /* Loading: one shimmer primitive (.sk, sized inline by the consumer -- a placeholder block, a
+     pill, or a dot via the .pill/.dot modifiers) and one spin primitive (.spin, turns any icon
+     into a spinner). Both are flattened by the reduced-motion block below rather than removed:
+     the still shape keeps reading as "loading", it just stops animating. */
+  .sk {
+    display: block;
+    border-radius: var(--radius-pipenzo-sm);
+    background-color: var(--color-surface-2);
+    background-image: linear-gradient(
+      90deg,
+      var(--color-surface-2) 0%,
+      var(--color-surface-3) 50%,
+      var(--color-surface-2) 100%
+    );
+    background-size: 180% 100%;
+    background-repeat: no-repeat;
+    animation: sk-shimmer 1.4s linear infinite;
+  }
+
+  .sk.strong {
+    background-color: var(--color-surface-3);
+    background-image: linear-gradient(
+      90deg,
+      var(--color-surface-3) 0%,
+      var(--color-surface-4) 50%,
+      var(--color-surface-3) 100%
+    );
+  }
+
+  .sk.pill {
+    border-radius: var(--radius-pipenzo-pill);
+  }
+
+  .sk.dot {
+    border-radius: 50%;
+  }
+
+  .spin {
+    animation: spin 0.9s linear infinite;
+  }
+
+  /* Live-run pulse: a small dot (the run indicator on an in-progress ticket) breathing via its
+     box-shadow, softened to a static ring by the reduced-motion block below instead of stopped
+     outright -- it should still read as "live", just not moving. */
+  .run-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--color-accent);
+    flex-shrink: 0;
+    animation: pulse-run 1.6s ease-out infinite;
+  }
+}
+
+@keyframes sk-shimmer {
+  from {
+    background-position: 180% 0;
+  }
+  to {
+    background-position: -80% 0;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pulse-run {
+  0% {
+    box-shadow: 0 0 0 0 rgba(63, 185, 80, 0.45);
+  }
+  100% {
+    box-shadow: 0 0 0 8px rgba(63, 185, 80, 0);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -194,5 +314,46 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+
+  /* The rest of this block is ported verbatim from Foundations.dc.html's own reduced-motion
+     query. .step.await and .evt-ic.live have no base definition in this ticket batch (their
+     components -- the phase stepper, the event timeline -- belong to later screen tickets); the
+     override is still ported now, as the canvas defines it, so it's already correct once those
+     land instead of being one more thing a future ticket has to remember. */
+  .btn:hover,
+  .btn.primary:hover,
+  .btn:active,
+  .btn.primary:active,
+  .icon-btn:active {
+    transform: none !important;
+  }
+
+  .step.await {
+    box-shadow: 0 0 0 2px var(--color-warn-fg);
+  }
+
+  .evt-ic.live {
+    box-shadow: 0 0 0 2px var(--color-accent-fg);
+  }
+
+  .run-dot {
+    box-shadow: 0 0 0 2px var(--color-accent-fg);
+  }
+
+  /* loading: the shimmer flattens to a still block and the spinner to a still notch — the
+     shape still reads as a placeholder */
+  .sk {
+    animation: none !important;
+    background-image: none !important;
+    background-color: var(--color-surface-2);
+  }
+
+  .sk.strong {
+    background-color: var(--color-surface-3);
+  }
+
+  .spin {
+    animation: none !important;
   }
 }
