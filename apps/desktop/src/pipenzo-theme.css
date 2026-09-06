@@ -1688,6 +1688,52 @@
     flex-direction: column;
     gap: 8px;
   }
+
+  /* Sync-status pill — ported verbatim from Foundations.dc.html's "Primitives" section (the
+     "sync status" sample). One control, three renderings: synced (neutral), syncing (the notch
+     spins, refresh disabled while the poll is in flight), syncing slowly (amber -- a
+     degradation, not a failure, once the GitHub rate limit drops below ~15%). Set by the
+     rate-limit check on each poll, never by a click -- see SyncStatusPill.tsx, whose `status`
+     prop is always caller-controlled and never flips itself on refresh-button click. */
+  .sync-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 32px;
+    padding: 0 4px 0 10px;
+    border-radius: var(--radius-pipenzo-pill);
+    background: var(--color-surface-2);
+    color: var(--color-text-faint);
+    font-size: 12px;
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  .sync-status .icon-sm {
+    color: var(--color-text-faint);
+    flex-shrink: 0;
+  }
+
+  .sync-status .icon-btn {
+    width: 24px;
+    height: 24px;
+    flex-shrink: 0;
+  }
+
+  .sync-status.slow {
+    background: var(--color-warn-fg);
+    color: var(--color-warn);
+  }
+
+  .sync-status.slow .icon-sm,
+  .sync-status.slow .icon-btn.ghost {
+    color: var(--color-warn);
+  }
+
+  .sync-status.slow .icon-btn.ghost:hover {
+    background: var(--color-warn);
+    color: var(--color-warn-fg);
+  }
 }
 
 @keyframes sk-shimmer {
