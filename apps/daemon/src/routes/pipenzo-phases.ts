@@ -1,5 +1,7 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import {
+  pipenzoIdeaDraftRequestV1Schema,
+  pipenzoIdeaDraftResultV1Schema,
   pipenzoCaptureCapabilityRequestV1Schema,
   pipenzoCaptureCapabilityV1Schema,
   pipenzoImplementRequestV1Schema,
@@ -163,6 +165,17 @@ export function registerPipenzoPhaseRoutes(
     } catch (error) {
       if (error instanceof PipenzoPhaseError) return fail(reply, error);
       return fail(reply, new PipenzoPhaseError('github_failed', 'issue claim failed'));
+    }
+  });
+
+  app.post('/v2/pipenzo/issues/draft', limits, async (req, reply) => {
+    const parsed = pipenzoIdeaDraftRequestV1Schema.safeParse(req.body);
+    if (!parsed.success) return invalid(reply, 'issue draft request');
+    try {
+      reply.send(pipenzoIdeaDraftResultV1Schema.parse(await service.draftIssue(parsed.data)));
+    } catch (error) {
+      if (error instanceof PipenzoPhaseError) return fail(reply, error);
+      return fail(reply, new PipenzoPhaseError('session_failed', 'drafting failed'));
     }
   });
 

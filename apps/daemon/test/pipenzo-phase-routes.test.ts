@@ -46,6 +46,21 @@ function spec(overrides: Partial<RefineSpecV1> = {}): RefineSpecV1 {
 
 const REFINE_SPEC_JSON = JSON.stringify(spec());
 
+const DRAFT_JSON = JSON.stringify({
+  schemaVersion: 1,
+  title: 'Show an unread badge on the tray icon when a ticket is ready for review',
+  acceptanceCriteria: [
+    {
+      id: 'AC-1',
+      kind: 'event',
+      text: 'When a ticket reaches ready-for-review, the tray icon shall show an unread badge',
+    },
+  ],
+  outOfScope: ['sounds'],
+  estimate: { changedLines: 40, filesTouched: 1, layered: false },
+  openQuestions: [],
+});
+
 function issue(overrides: Partial<GitHubIssue> = {}): GitHubIssue {
   return {
     owner: 'jortega0033',
@@ -100,6 +115,7 @@ const noCommands: GateCommandRunner = {
 interface Harness {
   github?: FakeGitHubClient;
   refineOutput?: string;
+  draftOutput?: string;
   reviewPayload?: unknown;
   commands?: GateCommandRunner;
   env?: Record<string, string | undefined>;
@@ -114,9 +130,14 @@ function buildApp(harness: Harness = {}) {
     refineSessions: {
       run: async (request) => {
         harness.onSession?.(request);
+        // The drafter (issue #84) shares this port with Refine on purpose -- it is read-only for
+        // the same reason. Which payload to answer with is decided by which prompt arrived.
+        const drafting = request.prompt.startsWith('Someone described a problem');
         return {
           sessionId: SESSION_ID,
-          output: JSON.parse(harness.refineOutput ?? REFINE_SPEC_JSON),
+          output: JSON.parse(
+            drafting ? (harness.draftOutput ?? DRAFT_JSON) : (harness.refineOutput ?? REFINE_SPEC_JSON),
+          ),
           toolsUsed: ['Read', 'Grep'],
         };
       },
@@ -430,6 +451,7 @@ describe('the phase routes as a surface', () => {
     '/v2/pipenzo/issues/claim',
     '/v2/pipenzo/issues',
     '/v2/pipenzo/capabilities',
+    '/v2/pipenzo/issues/draft',
   ];
 
   it('rejects an unauthenticated caller on every phase route', async () => {
@@ -609,5 +631,44 @@ describe('the claim pre-flight identity rule', () => {
       outcome: 'claimed_elsewhere',
       assignees: ['someone-else', 'jortega0033'],
     });
+  });
+});
+
+/**
+ * Issue #84's route. The property worth asserting here is the separation: drafting creates
+ * nothing, and the fake GitHub client proves it by never being asked to.
+ */
+describe('POST /v2/pipenzo/issues/draft', () => {
+  it('drafts a structured issue from free text and creates nothing', async () => {
+    const { app, github } = buildApp();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v2/pipenzo/issues/draft',
+      headers: auth,
+      payload: {
+        idea: 'the tray icon never tells me a PR is ready',
+        repositoryPath: REPO_PATH,
+        provider: 'claude',
+      },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      sessionId: SESSION_ID,
+      draft: { title: expect.stringContaining('unread badge') },
+    });
+    // Nothing reached GitHub. Filing is a separate, human-clicked call.
+    expect(github.calls).toEqual([]);
+  });
+
+  it('reports a draft that fails the v1 schema as 422, not as a session failure', async () => {
+    const { app } = buildApp({ draftOutput: JSON.stringify({ schemaVersion: 1 }) });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v2/pipenzo/issues/draft',
+      headers: auth,
+      payload: { idea: 'anything', repositoryPath: REPO_PATH, provider: 'claude' },
+    });
+    expect(response.statusCode).toBe(422);
+    expect(response.json()).toMatchObject({ code: 'spec_invalid' });
   });
 });

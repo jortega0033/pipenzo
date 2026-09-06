@@ -1,4 +1,6 @@
 import type {
+  PipenzoIdeaDraftRequestV1,
+  PipenzoIdeaDraftResultV1,
   PipenzoCaptureCapabilityRequestV1,
   PipenzoCaptureCapabilityV1,
   PipenzoImplementCommitsV1,
@@ -39,6 +41,7 @@ import {
 import type { OwnedWorktreeLocator } from './publish-service.js';
 import type { PipenzoGitRunner } from './pipenzo-git.js';
 import { detectScreenshotCapability } from './screenshot-capture.js';
+import { IssueDraftError, IssueDrafter } from './issue-drafter.js';
 import { readPipenzoRepoConfig, type PipenzoCommandConfig } from './pipenzo-repo-config.js';
 
 /**
@@ -111,6 +114,7 @@ export interface PipenzoPhaseServiceOptions {
 
 export class PipenzoPhaseService {
   readonly #refine: RefineSubagent;
+  readonly #drafter: IssueDrafter;
   readonly #implement: ImplementOrchestrator;
   readonly #review: ReviewGatesRunner;
   readonly #worktrees: ImplementWorktreeManager & OwnedWorktreeLocator;
@@ -119,6 +123,10 @@ export class PipenzoPhaseService {
 
   constructor(options: PipenzoPhaseServiceOptions) {
     this.#refine = new RefineSubagent(options.refineSessions);
+    // The drafter runs on the refine session port on purpose: drafting an issue is the one moment
+    // a model is asked to imagine work that does not exist, and a write would let it make its own
+    // draft true. See `issue-drafter.ts`.
+    this.#drafter = new IssueDrafter(options.refineSessions);
     this.#implement = new ImplementOrchestrator({
       worktrees: options.worktrees,
       sessions: options.implementSessions,
@@ -332,6 +340,19 @@ export class PipenzoPhaseService {
     }
   }
 
+  /**
+   * Free text in, a structured draft out (issue #84). Creates nothing — filing the draft is a
+   * separate, human-clicked `createIssue`, so a model is never the last thing that happened
+   * before a ticket appeared in somebody's repository.
+   */
+  async draftIssue(request: PipenzoIdeaDraftRequestV1): Promise<PipenzoIdeaDraftResultV1> {
+    try {
+      return await this.#drafter.draft(request);
+    } catch (error) {
+      throw toPhaseError(error);
+    }
+  }
+
   async createIssue(request: PipenzoIssueCreateRequestV1): Promise<PipenzoIssueCreateResultV1> {
     const ref = this.#resolveRepo(request.repo);
     const github = this.#requireGitHub();
@@ -402,6 +423,14 @@ const REVIEW_CODES: Record<ReviewGateError['code'], PipenzoPhaseErrorCodeV1> = {
   verifier_failed: 'verifier_failed',
 };
 
+const DRAFT_CODES: Record<IssueDraftError['code'], PipenzoPhaseErrorCodeV1> = {
+  invalid_request: 'invalid_request',
+  draft_invalid: 'spec_invalid',
+  draft_missing: 'spec_missing',
+  read_only_violation: 'read_only_violation',
+  session_failed: 'session_failed',
+};
+
 const GITHUB_CODES: Record<GitHubClientError['code'], PipenzoPhaseErrorCodeV1> = {
   token_missing: 'token_missing',
   invalid_repository: 'repository_not_configured',
@@ -433,6 +462,9 @@ export function toPhaseError(error: unknown): PipenzoPhaseError {
   }
   if (error instanceof ReviewGateError) {
     return new PipenzoPhaseError(REVIEW_CODES[error.code], error.message, error.details);
+  }
+  if (error instanceof IssueDraftError) {
+    return new PipenzoPhaseError(DRAFT_CODES[error.code], error.message, error.details);
   }
   if (error instanceof GitHubClientError) {
     // The GitHub client redacts its own messages at construction, so this one is safe to surface.

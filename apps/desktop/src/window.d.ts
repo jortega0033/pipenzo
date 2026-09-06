@@ -55,6 +55,8 @@ import type {
   PipenzoIssueCreateResultV1,
   PipenzoCaptureCapabilityRequestV1,
   PipenzoCaptureCapabilityV1,
+  PipenzoIdeaDraftRequestV1,
+  PipenzoIdeaDraftResultV1,
 } from '@agent-dock/shared';
 import type {
   RendererInteraction,
@@ -167,6 +169,11 @@ export interface AgentDockBridge {
   pipenzoCaptureCapabilities(
     input: PipenzoCaptureCapabilityRequestV1,
   ): Promise<PipenzoCaptureCapabilityV1>;
+  /**
+   * Turns free text into a structured drafted issue (issue #84). Read-only and creates nothing —
+   * filing the draft is a separate `createPipenzoIssue` a human clicks.
+   */
+  draftPipenzoIssue(input: PipenzoIdeaDraftRequestV1): Promise<PipenzoIdeaDraftResultV1>;
   selectAndUploadAttachments(sessionId?: string): Promise<AttachmentMetadataV2[]>;
   validateStructuredOutput(input: StructuredWorkflowRequestV2): Promise<StructuredWorkflowResultV2>;
   createSession(input: CreateSessionInput): Promise<AgentSession>;

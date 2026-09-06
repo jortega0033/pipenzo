@@ -113,6 +113,8 @@ import {
   pipenzoIssueCreateResultV1Schema,
   pipenzoCaptureCapabilityRequestV1Schema,
   pipenzoCaptureCapabilityV1Schema,
+  pipenzoIdeaDraftRequestV1Schema,
+  pipenzoIdeaDraftResultV1Schema,
   type PipenzoRefineRequestV1,
   type PipenzoRefineResultV1,
   type PipenzoImplementRequestV1,
@@ -127,6 +129,8 @@ import {
   type PipenzoIssueCreateResultV1,
   type PipenzoCaptureCapabilityRequestV1,
   type PipenzoCaptureCapabilityV1,
+  type PipenzoIdeaDraftRequestV1,
+  type PipenzoIdeaDraftResultV1,
 } from '@agent-dock/shared';
 import {
   DaemonError,
@@ -356,6 +360,9 @@ export class AgentDockClient {
       captureCapabilities: (
         input: PipenzoCaptureCapabilityRequestV1,
       ): Promise<PipenzoCaptureCapabilityV1> => this.pipenzoCaptureCapabilitiesV1(input),
+      /** Free text in, a structured draft out (issue #84). Creates nothing. */
+      draftIssue: (input: PipenzoIdeaDraftRequestV1): Promise<PipenzoIdeaDraftResultV1> =>
+        this.draftPipenzoIssueV1(input),
     },
     integrations: {
       mcp: {
@@ -871,6 +878,19 @@ export class AgentDockClient {
       'pipenzo created issue',
       { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) },
       { expectedStatus: 201 },
+    );
+  }
+
+  private async draftPipenzoIssueV1(
+    input: PipenzoIdeaDraftRequestV1,
+  ): Promise<PipenzoIdeaDraftResultV1> {
+    const parsed = validateInput(pipenzoIdeaDraftRequestV1Schema, input, 'pipenzo idea draft request');
+    return this.requestV2(
+      '/v2/pipenzo/issues/draft',
+      pipenzoIdeaDraftResultV1Schema,
+      'pipenzo drafted issue',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) },
+      { expectedStatus: 200 },
     );
   }
 

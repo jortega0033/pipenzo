@@ -71,6 +71,7 @@ describe('electron/preload.ts — real bridge (AD-07)', () => {
         'claimPipenzoIssue',
         'createPipenzoIssue',
         'pipenzoCaptureCapabilities',
+        'draftPipenzoIssue',
         'selectAndUploadAttachments',
         'validateStructuredOutput',
         'createSession',

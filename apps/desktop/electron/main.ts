@@ -36,6 +36,7 @@ import {
   pipenzoIssueClaimRequestV1Schema,
   pipenzoIssueCreateRequestV1Schema,
   pipenzoCaptureCapabilityRequestV1Schema,
+  pipenzoIdeaDraftRequestV1Schema,
   structuredWorkflowRequestV2Schema,
   providerIdSchema,
   type AgentCommandV2,
@@ -787,6 +788,10 @@ handle('daemon:pipenzo-claim-issue', async (_event, input: unknown) => {
 handle('daemon:pipenzo-create-issue', async (_event, input: unknown) => {
   if (!client) throw new Error('daemon is not ready yet');
   return client.v2.pipenzo.createIssue(pipenzoIssueCreateRequestV1Schema.parse(input));
+});
+handle('daemon:pipenzo-draft-issue', async (_event, input: unknown) => {
+  if (!client) throw new Error('daemon is not ready yet');
+  return client.v2.pipenzo.draftIssue(pipenzoIdeaDraftRequestV1Schema.parse(input));
 });
 handle('daemon:pipenzo-capabilities', async (_event, input: unknown) => {
   if (!client) throw new Error('daemon is not ready yet');

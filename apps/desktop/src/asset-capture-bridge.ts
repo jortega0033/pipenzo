@@ -61,6 +61,7 @@ export function installAssetCaptureBridge(): void {
     createPipenzoIssue: async () => { throw new Error('issue creation is not available while capturing assets'); },
     // A probe, not an action -- so this answers rather than throwing. It answers "nothing
     // detected, and here is why", which is the honest thing for a run with no repository.
+    draftPipenzoIssue: async () => { throw new Error('drafting is not available while capturing assets'); },
     pipenzoCaptureCapabilities: async () => ({
       schemaVersion: 1 as const,
       screenshot: { available: false, reason: 'no repository is open while capturing assets' },
