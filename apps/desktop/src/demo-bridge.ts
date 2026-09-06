@@ -91,6 +91,12 @@ export function createDemoBridge(): AgentDockBridge {
       status: 'missing',
       createdAt: '2026-01-01T00:00:00.000Z',
     }),
+    // Demo mode never has a real worktree or a real GitHub remote to push to -- publishing is
+    // the one boundary in the whole app that must never fire from anything but a genuine human
+    // click against a genuine daemon (CLAUDE.md hard rule #1), and a demo session is neither.
+    publishPipenzo: async () => {
+      throw new Error('publishing is not available in demo mode');
+    },
     selectAndUploadAttachments: async () => [],
     validateStructuredOutput: async (input) => ({ valid: true, normalizedOutput: input.output, errors: [] }),
     createSession: async () => {

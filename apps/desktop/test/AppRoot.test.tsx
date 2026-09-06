@@ -26,6 +26,7 @@ function realBridge(): AgentDockBridge {
     createWorktree: vi.fn(),
     listWorktrees: vi.fn().mockResolvedValue([]),
     cleanupWorktree: vi.fn(),
+    publishPipenzo: vi.fn(),
     selectAndUploadAttachments: vi.fn().mockResolvedValue([]),
     validateStructuredOutput: vi.fn(),
     createSession: vi.fn(),

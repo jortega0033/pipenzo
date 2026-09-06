@@ -155,6 +155,7 @@ function installBridge(overrides: Partial<AgentDockBridge> = {}): {
       status: 'missing',
       createdAt: '2026-01-01T00:00:00.000Z',
     }),
+    publishPipenzo: vi.fn(),
     selectAndUploadAttachments: vi.fn().mockResolvedValue([]),
     validateStructuredOutput: vi.fn().mockImplementation(async (input) => ({
       valid: true,

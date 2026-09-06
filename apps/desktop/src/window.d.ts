@@ -39,6 +39,8 @@ import type {
   AttachmentMetadataV2,
   StructuredWorkflowRequestV2,
   StructuredWorkflowResultV2,
+  PipenzoPublishRequestV1,
+  PipenzoPublishResultV1,
 } from '@agent-dock/shared';
 import type {
   RendererInteraction,
@@ -102,6 +104,12 @@ export interface AgentDockBridge {
   createWorktree(input: WorktreeCreateRequestV2): Promise<OwnedWorktreeV2>;
   listWorktrees(): Promise<OwnedWorktreeV2[]>;
   cleanupWorktree(worktreeId: string): Promise<OwnedWorktreeV2>;
+  /**
+   * Pipenzo's publish gate (issue #178). Call this only in direct response to a human clicking
+   * "Push branch" or "Push & open PR" — see `apps/daemon/src/routes/pipenzo-publish.ts`'s module
+   * comment for why this boundary is non-negotiable (CLAUDE.md hard rule #1).
+   */
+  publishPipenzo(input: PipenzoPublishRequestV1): Promise<PipenzoPublishResultV1>;
   selectAndUploadAttachments(sessionId?: string): Promise<AttachmentMetadataV2[]>;
   validateStructuredOutput(input: StructuredWorkflowRequestV2): Promise<StructuredWorkflowResultV2>;
   createSession(input: CreateSessionInput): Promise<AgentSession>;

@@ -28,6 +28,7 @@ import {
   worktreeCleanupRequestV2Schema,
   worktreeCreateRequestV2Schema,
   worktreePreviewRequestV2Schema,
+  pipenzoPublishRequestV1Schema,
   structuredWorkflowRequestV2Schema,
   providerIdSchema,
   type AgentCommandV2,
@@ -740,6 +741,13 @@ handle('daemon:cleanup-worktree', async (_event, input: unknown) => {
   if (!client) throw new Error('daemon is not ready yet');
   const parsed = worktreeCleanupRequestV2Schema.parse({ worktreeId: input });
   return client.v2.worktrees.cleanup(parsed.worktreeId);
+});
+// Pipenzo's publish gate (issue #178). Reachable only from this main-process handler, invoked
+// only by the renderer's own "Push branch" / "Push & open PR" click — never from anything agent
+// session-facing (CLAUDE.md hard rule #1; see routes/pipenzo-publish.ts's module comment).
+handle('daemon:pipenzo-publish', async (_event, input: unknown) => {
+  if (!client) throw new Error('daemon is not ready yet');
+  return client.v2.pipenzo.publish(pipenzoPublishRequestV1Schema.parse(input));
 });
 
 handle('dialog:select-and-upload-attachments', async (_event, input: unknown) => {

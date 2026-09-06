@@ -63,6 +63,7 @@ describe('electron/preload.ts — real bridge (AD-07)', () => {
         'createWorktree',
         'listWorktrees',
         'cleanupWorktree',
+        'publishPipenzo',
         'selectAndUploadAttachments',
         'validateStructuredOutput',
         'createSession',

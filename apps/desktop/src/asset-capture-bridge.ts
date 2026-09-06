@@ -49,6 +49,7 @@ export function installAssetCaptureBridge(): void {
     createWorktree: async (input) => ({ id: '123e4567-e89b-42d3-a456-426614174099', workspaceId: 'a'.repeat(64), name: input.name, displayPath: input.name, status: 'ready', createdAt: '2026-01-01T00:00:00.000Z' }),
     listWorktrees: async () => [],
     cleanupWorktree: async (worktreeId) => ({ id: worktreeId, workspaceId: 'a'.repeat(64), name: 'worktree', displayPath: 'worktree', status: 'missing', createdAt: '2026-01-01T00:00:00.000Z' }),
+    publishPipenzo: async () => { throw new Error('publishing is not available while capturing assets'); },
     selectAndUploadAttachments: async () => [],
     validateStructuredOutput: async (input) => ({ valid: true, normalizedOutput: input.output, errors: [] }),
     createSession: async () => {

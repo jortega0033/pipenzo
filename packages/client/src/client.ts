@@ -95,6 +95,10 @@ import {
   type AttachmentMetadataV2,
   type StructuredWorkflowRequestV2,
   type StructuredWorkflowResultV2,
+  pipenzoPublishRequestV1Schema,
+  pipenzoPublishResultV1Schema,
+  type PipenzoPublishRequestV1,
+  type PipenzoPublishResultV1,
 } from '@agent-dock/shared';
 import {
   DaemonError,
@@ -274,6 +278,18 @@ export class AgentDockClient {
     },
     structured: {
       validate: (input: StructuredWorkflowRequestV2): Promise<StructuredWorkflowResultV2> => this.validateStructuredWorkflowV2(input),
+    },
+    /**
+     * Pipenzo's publish gate (issue #178). The one route this client speaks that can push a
+     * branch or open a pull request — never call it except in direct response to a human clicking
+     * "Push branch" or "Push & open PR" (see `apps/daemon/src/routes/pipenzo-publish.ts`'s module
+     * comment). Errors surface as `DaemonError` with the daemon's own closed `code` union
+     * (`uncommitted_changes`, `push_rejected`, `publish_busy`, ...) via the generic
+     * `fetchAuthenticated` error path — no route-specific error handling needed here.
+     */
+    pipenzo: {
+      publish: (input: PipenzoPublishRequestV1): Promise<PipenzoPublishResultV1> =>
+        this.publishPipenzoV1(input),
     },
     integrations: {
       mcp: {
@@ -686,6 +702,17 @@ export class AgentDockClient {
   private async cleanupWorktreeV2(worktreeId: string): Promise<OwnedWorktreeV2> {
     const parsed = validateInput(worktreeCleanupRequestV2Schema, { worktreeId }, 'worktree cleanup request');
     return this.requestV2('/v2/worktrees/cleanup', ownedWorktreeV2Schema, 'protocol-v2 owned worktree', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) }, { expectedStatus: 200 });
+  }
+
+  private async publishPipenzoV1(input: PipenzoPublishRequestV1): Promise<PipenzoPublishResultV1> {
+    const parsed = validateInput(pipenzoPublishRequestV1Schema, input, 'pipenzo publish request');
+    return this.requestV2(
+      '/v2/pipenzo/publish',
+      pipenzoPublishResultV1Schema,
+      'pipenzo publish result',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) },
+      { expectedStatus: 200 },
+    );
   }
 
   private async uploadAttachmentV2(input: AttachmentUploadInput): Promise<AttachmentMetadataV2> {

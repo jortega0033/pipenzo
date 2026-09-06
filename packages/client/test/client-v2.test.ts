@@ -879,6 +879,83 @@ describe('AgentDockClient.v2 security APIs', () => {
   });
 });
 
+describe('AgentDockClient.v2 pipenzo publish gate', () => {
+  const WORKTREE_ID = '123e4567-e89b-42d3-a456-426614174010';
+  const PUBLISH_RESULT = {
+    worktreeId: WORKTREE_ID,
+    remote: 'origin',
+    branch: 'issue-94',
+    headSha: 'a'.repeat(40),
+    updatedRemote: true,
+  } as const;
+
+  it('publishes a push request to the real route with a validated body', async () => {
+    const fetchImpl = vi.fn().mockImplementation(async (url: string) => {
+      if (url.endsWith('/health')) return healthResponse([1, 2]);
+      return jsonResponse(200, PUBLISH_RESULT);
+    });
+    const client = makeClient(fetchImpl);
+
+    await expect(
+      client.v2.pipenzo.publish({ worktreeId: WORKTREE_ID, branch: 'issue-94', operation: 'push' }),
+    ).resolves.toEqual(PUBLISH_RESULT);
+
+    const call = fetchImpl.mock.calls.find(([url]) => String(url).endsWith('/v2/pipenzo/publish'));
+    expect(call?.[1]).toMatchObject({ method: 'POST' });
+    expect(JSON.parse(String((call?.[1] as RequestInit).body))).toEqual({
+      worktreeId: WORKTREE_ID,
+      branch: 'issue-94',
+      operation: 'push',
+    });
+  });
+
+  it('publishes push-and-open-pull-request with the pull request body attached', async () => {
+    const opened = { ...PUBLISH_RESULT, pullRequest: { number: 12, htmlUrl: 'https://github.com/o/r/pull/12', baseRef: 'main', draft: false } };
+    const fetchImpl = vi.fn().mockImplementation(async (url: string) => {
+      if (url.endsWith('/health')) return healthResponse([1, 2]);
+      return jsonResponse(200, opened);
+    });
+    const client = makeClient(fetchImpl);
+
+    await expect(
+      client.v2.pipenzo.publish({
+        worktreeId: WORKTREE_ID,
+        branch: 'issue-94',
+        operation: 'push_and_open_pull_request',
+        pullRequest: { title: 'fix: sanitize env', body: 'Closes #94.' },
+      }),
+    ).resolves.toEqual(opened);
+  });
+
+  it('rejects an unvalidated request before ever calling fetch', async () => {
+    const fetchImpl = vi.fn();
+    const client = makeClient(fetchImpl);
+
+    await expect(
+      client.v2.pipenzo.publish({ worktreeId: 'not-a-uuid', branch: 'issue-94', operation: 'push' }),
+    ).rejects.toBeInstanceOf(ValidationError);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('surfaces the daemon publish gate closed error codes as a typed DaemonError', async () => {
+    const fetchImpl = vi.fn().mockImplementation(async (url: string) => {
+      if (url.endsWith('/health')) return healthResponse([1, 2]);
+      return jsonResponse(409, { code: 'uncommitted_changes', error: 'the worktree has uncommitted changes' });
+    });
+    const client = makeClient(fetchImpl);
+
+    const failure = await client.v2.pipenzo
+      .publish({ worktreeId: WORKTREE_ID, branch: 'issue-94', operation: 'push' })
+      .catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(DaemonError);
+    expect(failure).toMatchObject({
+      status: 409,
+      code: 'uncommitted_changes',
+      message: 'the worktree has uncommitted changes',
+    });
+  });
+});
+
 describe('AgentDockClient.v2 error mapping', () => {
   it('retains typed 401 and provider/session 404 errors', async () => {
     const status = new Map<string, number>([

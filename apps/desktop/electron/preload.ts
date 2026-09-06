@@ -46,6 +46,8 @@ import {
   attachmentListV2Schema,
   structuredWorkflowRequestV2Schema,
   structuredWorkflowResultV2Schema,
+  pipenzoPublishRequestV1Schema,
+  pipenzoPublishResultV1Schema,
   providerIdSchema,
   type AgentCommandV2,
   type AgentEvent,
@@ -88,6 +90,8 @@ import {
   type AttachmentMetadataV2,
   type StructuredWorkflowRequestV2,
   type StructuredWorkflowResultV2,
+  type PipenzoPublishRequestV1,
+  type PipenzoPublishResultV1,
 } from '@agent-dock/shared';
 import type {
   RendererInteraction,
@@ -161,6 +165,7 @@ export interface AgentDockBridge {
   createWorktree(input: WorktreeCreateRequestV2): Promise<OwnedWorktreeV2>;
   listWorktrees(): Promise<OwnedWorktreeV2[]>;
   cleanupWorktree(worktreeId: string): Promise<OwnedWorktreeV2>;
+  publishPipenzo(input: PipenzoPublishRequestV1): Promise<PipenzoPublishResultV1>;
   selectAndUploadAttachments(sessionId?: string): Promise<AttachmentMetadataV2[]>;
   validateStructuredOutput(input: StructuredWorkflowRequestV2): Promise<StructuredWorkflowResultV2>;
   createSession(input: CreateSessionInput): Promise<AgentSession>;
@@ -713,6 +718,10 @@ const api: AgentDockBridge = {
   async cleanupWorktree(worktreeId) {
     const parsed = worktreeCleanupRequestV2Schema.parse({ worktreeId });
     return ownedWorktreeV2Schema.parse(await ipcRenderer.invoke('daemon:cleanup-worktree', parsed.worktreeId));
+  },
+  async publishPipenzo(input) {
+    const parsed = pipenzoPublishRequestV1Schema.parse(input);
+    return pipenzoPublishResultV1Schema.parse(await ipcRenderer.invoke('daemon:pipenzo-publish', parsed));
   },
   async selectAndUploadAttachments(sessionId) {
     const parsedSessionId = sessionId === undefined ? undefined : sessionIdParamSchema.parse({ sessionId }).sessionId;
