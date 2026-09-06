@@ -822,6 +822,90 @@
     cursor: default;
   }
 
+  /* Bounded concurrency — ported verbatim from Foundations.dc.html's "Bounded concurrency"
+     section. .numctl is the 1-4 stepper (default 2, hard cap 4 -- one machine sharing one
+     subscription's rate limit); .lane-cap is the Working lane header's capacity pill, in three
+     renderings: under capacity, full (amber), and held (a ticket waiting on a file-overlap slot,
+     using the pause icon instead of play -- NumberStepper.tsx/LaneCap.tsx below). */
+  .numctl {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    height: 32px;
+    padding: 2px;
+    border-radius: var(--radius-pipenzo-pill);
+    background: var(--color-surface-3);
+  }
+
+  .numctl button {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: none;
+    background: transparent;
+    color: var(--color-text-soft);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition:
+      background-color var(--ease-pipenzo),
+      color var(--ease-pipenzo);
+  }
+
+  .numctl button:hover {
+    background: var(--color-surface-4);
+    color: var(--color-text);
+  }
+
+  .numctl button:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+
+  .numctl button:disabled:hover {
+    background: transparent;
+    color: var(--color-text-soft);
+  }
+
+  .numctl .val {
+    min-width: 44px;
+    text-align: center;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .numctl .val small {
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--color-text-faint);
+  }
+
+  .lane-cap {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 20px;
+    padding: 0 8px;
+    border-radius: var(--radius-pipenzo-pill);
+    background: var(--color-surface-2);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--color-text-soft);
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  .lane-cap.full {
+    color: var(--color-warn);
+  }
+
+  .lane-cap .icon-sm {
+    color: inherit;
+  }
+
   /* Live-run pulse: a small dot (the run indicator on an in-progress ticket) breathing via its
      box-shadow, softened to a static ring by the reduced-motion block below instead of stopped
      outright -- it should still read as "live", just not moving. */

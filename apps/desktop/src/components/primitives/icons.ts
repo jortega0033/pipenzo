@@ -9,6 +9,9 @@
  */
 export const ICON_PATHS = {
   plus: 'M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z',
+  /* The .numctl stepper's decrement button -- a plain bar, the same weight as the plus glyph
+     above with its vertical stroke removed. Not part of the icon-row inventory. */
+  minus: 'M224,128a8,8,0,0,1-8,8H40a8,8,0,0,1,0-16H216A8,8,0,0,1,224,128Z',
   'caret-down':
     'M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z',
   'caret-up':
