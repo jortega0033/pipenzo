@@ -39,11 +39,39 @@ export interface ImplementStartInput {
   readonly runBudget: RunBudget;
 }
 
-/** The result of the claim pre-flight issue #83 names: "assign issue + uncached GET /issues/:n
- * immediately before dispatch, refuse if assigned elsewhere." */
+/**
+ * The result of the claim pre-flight issue #83 names: "assign issue + uncached GET /issues/:n
+ * immediately before dispatch, refuse if assigned elsewhere."
+ *
+ * `claimed` here means **claimed by somebody else** — it is a refusal signal, not a success one.
+ * The name is inherited from the original injected-check shape and kept so callers do not silently
+ * invert on upgrade; `claimIssueForTicket` maps the daemon's `claimed_elsewhere` onto it.
+ */
 export interface ClaimPreflightResult {
   readonly claimed: boolean;
   readonly assignee?: string;
+}
+
+/**
+ * The real claim pre-flight, against the daemon route issue #184 added.
+ *
+ * Both halves of README's Team-usage rule happen on the daemon side of this call — assign, then
+ * re-read the issue *uncached*, then compare — so the renderer cannot execute only the first half.
+ * The login is not passed: the daemon holds the token and resolves the authenticated user itself,
+ * because a renderer that could name the assignee could claim a ticket as somebody else.
+ */
+export async function claimIssueForTicket(ticket: {
+  repo: string;
+  num: number;
+}): Promise<ClaimPreflightResult> {
+  const result = await getBridge().claimPipenzoIssue({
+    repo: ticket.repo,
+    issueNumber: ticket.num,
+  });
+  if (result.outcome === 'claimed') return { claimed: false };
+  // The other assignees, not this operator's own login — the card has to name who holds it.
+  const holder = result.assignees[0];
+  return { claimed: true, ...(holder ? { assignee: holder } : {}) };
 }
 
 /**
@@ -58,17 +86,24 @@ export interface ClaimPreflightResult {
  * why session dispatch inside the new worktree is not chained here too: a worktree's real
  * filesystem path is deliberately withheld from every route response the renderer can reach.
  *
- * `claimPreflight` is this ticket's own explicit, honest gap. The ticket's title makes the claim
- * check core scope: assign the issue, then an *uncached* `GET /issues/:n` immediately before
- * dispatch, refusing if it comes back assigned to someone else (README's "Team usage" best-effort
- * assignment race). Nothing in this repo can do that today -- `GitHubClient` (issue #177) has no
- * `assignIssue`, and nothing exposes it or `getIssue` as a daemon route the renderer can reach; see
- * `apps/daemon/src/github-client.ts`'s interface. Rather than silently skip the safety property
- * (auto-allow is exactly what CLAUDE.md's hard rules forbid doing quietly) or fabricate a call to a
- * route that doesn't exist, this component takes `claimPreflight` as an optional injected check: a
- * caller that has one wires it in and Start refuses closed on a claim conflict (`Conflict.tsx`'s
- * existing "claimed by @someone-else" treatment); a caller without one -- which is every real
- * caller today -- gets an explicit, un-dismissable notice instead of a false sense of safety.
+ * ## The claim pre-flight, now real
+ *
+ * This used to be an optional injected check with a warning notice attached, because
+ * `GitHubClient` had no `assignIssue` and nothing exposed it as a route. Issue #184 added both, so
+ * `claimPreflight` now **defaults to `claimIssueForTicket`** and Start refuses closed on a
+ * conflict rather than warning that it cannot check. The prop survives so a test can drive the
+ * conflict path without a daemon; it is no longer how a caller opts *in* to safety.
+ *
+ * The refusal is deliberately not a retryable error. Losing an assignment race is not a transient
+ * failure — README's Team-usage section makes the loser's card the one Needs-human variant with no
+ * action available, because the current user is not the person who can resolve someone else's
+ * claim — so the Start button does not turn into Retry for it.
+ *
+ * Still not chained here: dispatching the implement session inside the new worktree.
+ * `implementPipenzo` exists now and does exactly that, but it takes a `RefineSpecV1`, and a board
+ * card does not carry one until the ticket that gives cards their spec lands. Calling it with a
+ * fabricated spec would put invented acceptance criteria in front of the implementer, which is
+ * worse than the extra step.
  */
 export function ImplementDialog({
   open,
@@ -83,6 +118,10 @@ export function ImplementDialog({
   ticket: ImplementDialogTicket;
   /** The repository checkout the worktree is cut from. */
   cwd: string;
+  /**
+   * Overrides the real pre-flight. For tests only — the default is
+   * `claimIssueForTicket`, which speaks to the daemon. There is no way to switch the check *off*.
+   */
   claimPreflight?: () => Promise<ClaimPreflightResult>;
   onStarted?: (worktree: OwnedWorktreeV2, input: ImplementStartInput) => void;
 }) {
@@ -104,16 +143,16 @@ export function ImplementDialog({
     setClaimConflict(undefined);
     void start
       .run(async () => {
-        if (claimPreflight) {
-          const claim = await claimPreflight();
-          if (claim.claimed) {
-            setClaimConflict(claim.assignee);
-            throw new Error(
-              claim.assignee
-                ? `Already claimed by @${claim.assignee} — refusing to start a second worktree on this ticket.`
-                : 'Already claimed by another instance — refusing to start a second worktree on this ticket.',
-            );
-          }
+        // Always. There is no branch that skips this, which is the difference between a
+        // pre-flight and a warning.
+        const claim = await (claimPreflight ?? (() => claimIssueForTicket(ticket)))();
+        if (claim.claimed) {
+          setClaimConflict(claim.assignee);
+          throw new Error(
+            claim.assignee
+              ? `Already claimed by @${claim.assignee} — refusing to start a second worktree on this ticket.`
+              : 'Already claimed by another instance — refusing to start a second worktree on this ticket.',
+          );
         }
         const preview = await getBridge().previewWorktree({ cwd, name: worktreeName });
         if (preview.secretRisk) {
@@ -157,10 +196,11 @@ export function ImplementDialog({
         </>
       }
     >
-      {!claimPreflight && (
+      {claimConflict !== undefined && (
         <Notice tone="warn" icon="warning" quiet>
-          Claim verification isn't wired up yet — Start does not check whether someone else already
-          claimed this ticket before creating a worktree.
+          {claimConflict
+            ? `Claimed by @${claimConflict}. Nothing was started — this ticket is theirs to finish or release.`
+            : 'Claimed by another instance. Nothing was started.'}
         </Notice>
       )}
       <Textarea

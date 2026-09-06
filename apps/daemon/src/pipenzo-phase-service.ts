@@ -310,14 +310,17 @@ export class PipenzoPhaseService {
     const ref = this.#resolveRepo(request.repo);
     const github = this.#requireGitHub();
     try {
-      await github.assignIssue(ref, request.issueNumber, request.assignee);
+      // Resolved daemon-side when the caller did not name one. The token is here, so the identity
+      // is here — a renderer-supplied login would let one operator claim a ticket as another.
+      const assignee = request.assignee ?? (await github.getAuthenticatedLogin());
+      await github.assignIssue(ref, request.issueNumber, assignee);
       const confirmed = await github.getIssue(ref, request.issueNumber);
-      const others = confirmed.assignees.filter((login) => login !== request.assignee);
+      const others = confirmed.assignees.filter((login) => login !== assignee);
       return {
         repo: `${ref.owner}/${ref.repo}`,
         issueNumber: confirmed.number,
         outcome:
-          confirmed.assignees.includes(request.assignee) && others.length === 0
+          confirmed.assignees.includes(assignee) && others.length === 0
             ? 'claimed'
             : 'claimed_elsewhere',
         assignees: [...confirmed.assignees],

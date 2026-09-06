@@ -31,6 +31,12 @@ export class FakeGitHubClient implements GitHubClient {
   readonly #failures = new Map<string, GitHubClientError>();
   /** Where `createIssue` starts numbering. Seeded issues above it stay addressable. */
   #nextIssueNumber = 1_000;
+  #viewerLogin = 'pipenzo-test-user';
+
+  seedAuthenticatedLogin(login: string): this {
+    this.#viewerLogin = login;
+    return this;
+  }
 
   /** Pins the next number `createIssue` will hand out, so a test can assert an exact url. */
   setNextIssueNumber(next: number): this {
@@ -120,6 +126,12 @@ export class FakeGitHubClient implements GitHubClient {
     const updated: GitHubIssue = { ...issue, assignees: [...issue.assignees, assignee] };
     this.#issues.set(key, updated);
     return updated;
+  }
+
+  /** Whoever the fake token belongs to. Settable, so a test can drive both sides of a claim race. */
+  async getAuthenticatedLogin(): Promise<string> {
+    this.#enter('getAuthenticatedLogin', this.#viewerLogin);
+    return this.#viewerLogin;
   }
 
   async createIssue(ref: RepoRef, input: GitHubIssueDraft): Promise<GitHubIssue> {

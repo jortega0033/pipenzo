@@ -563,3 +563,51 @@ describe('POST /v2/pipenzo/capabilities', () => {
     expect(response.json().escapeHatch.reason).toContain('pipenzo.verify.screenshot');
   });
 });
+
+/**
+ * Issue #83's claim pre-flight, end to end on the route. The rule is README's Team-usage one:
+ * assign, then re-read uncached, then compare -- and both halves happen daemon-side so a renderer
+ * cannot execute only the first.
+ */
+describe('the claim pre-flight identity rule', () => {
+  it('resolves the assignee from the token when the caller names none', async () => {
+    const github = new FakeGitHubClient()
+      .seedAuthenticatedLogin('jortega0033')
+      .seedIssue(issue());
+    const { app } = buildApp({ github });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v2/pipenzo/issues/claim',
+      headers: auth,
+      payload: { issueNumber: 184 },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ outcome: 'claimed', assignees: ['jortega0033'] });
+    expect(github.calls.map((call) => call.method)).toEqual([
+      'getAuthenticatedLogin',
+      'assignIssue',
+      'getIssue',
+    ]);
+  });
+
+  /**
+   * The re-read is what decides the race, and it is a second request rather than the write's own
+   * echo -- an echo cannot see an assignment that landed a millisecond later.
+   */
+  it('loses the race to an assignment that landed between the write and the re-read', async () => {
+    const github = new FakeGitHubClient().seedAuthenticatedLogin('jortega0033').seedIssue(issue());
+    const { app } = buildApp({ github });
+    // Somebody else got there first; the write still succeeds because GitHub's assign is additive.
+    await github.assignIssue({ owner: 'jortega0033', repo: 'pipenzo' }, 184, 'someone-else');
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v2/pipenzo/issues/claim',
+      headers: auth,
+      payload: { issueNumber: 184 },
+    });
+    expect(response.json()).toMatchObject({
+      outcome: 'claimed_elsewhere',
+      assignees: ['someone-else', 'jortega0033'],
+    });
+  });
+});

@@ -562,3 +562,35 @@ describe('GitHub issue write operations', () => {
     expect((await fake.getIssue(REF, created.number)).title).toBe('New from idea');
   });
 });
+
+describe('getAuthenticatedLogin', () => {
+  /**
+   * The daemon holds the token, so the daemon is the only thing that knows who "I" is. A caller
+   * that could name the assignee could claim a ticket as somebody else, which defeats the point of
+   * an assignment race -- the loser has to be able to trust the name on the ticket.
+   */
+  it('reads the login the configured token authenticates as', async () => {
+    const { octokit, calls } = stubOctokit({
+      request: async () => ({ headers: {}, data: { login: 'jortega0033' } }),
+    });
+    await expect(OctokitGitHubClient.withOctokit(octokit).getAuthenticatedLogin()).resolves.toBe(
+      'jortega0033',
+    );
+    expect(calls[0]?.route).toBe('GET /user');
+  });
+
+  it('refuses a response whose login is not a usable GitHub login', async () => {
+    const { octokit } = stubOctokit({
+      request: async () => ({ headers: {}, data: { login: 'not a login' } }),
+    });
+    const error = await catchAsync(() =>
+      OctokitGitHubClient.withOctokit(octokit).getAuthenticatedLogin(),
+    );
+    expect((error as GitHubClientError).code).toBe('invalid_request');
+  });
+
+  it('is mirrored by the fake, which a test can point at either side of a race', async () => {
+    const fake: GitHubClient = new FakeGitHubClient().seedAuthenticatedLogin('someone-else');
+    await expect(fake.getAuthenticatedLogin()).resolves.toBe('someone-else');
+  });
+});

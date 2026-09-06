@@ -219,6 +219,15 @@ export interface GitHubClient {
    * afterwards, not by this call failing — GitHub happily accepts a second assignee.
    */
   assignIssue(ref: RepoRef, issueNumber: number, assignee: string): Promise<GitHubIssue>;
+  /**
+   * The login the configured token authenticates as (issue #83's claim pre-flight).
+   *
+   * The daemon holds the token, so the daemon is the only thing that actually knows who "I" is.
+   * Asking the renderer for a login would let a caller claim a ticket *as somebody else*, which
+   * would defeat the entire point of an assignment race — the loser has to be able to trust that
+   * the name on the ticket is the person who took it.
+   */
+  getAuthenticatedLogin(): Promise<string>;
   /** Creates an issue (issue #184, for #84's "New from idea"). Never opens a pull request. */
   createIssue(ref: RepoRef, input: GitHubIssueDraft): Promise<GitHubIssue>;
   getPullRequestDiff(ref: RepoRef, pullNumber: number): Promise<GitHubPullRequestDiff>;
@@ -496,6 +505,19 @@ export class OctokitGitHubClient implements GitHubClient {
    * request would mean a drafted issue could arrive already owned by whoever's PAT the daemon
    * happens to hold.
    */
+  async getAuthenticatedLogin(): Promise<string> {
+    const operation = 'getAuthenticatedLogin';
+    let response;
+    try {
+      response = await this.#octokit.request('GET /user');
+    } catch (error) {
+      throw toGitHubClientError(error, operation);
+    }
+    const login = requireString((response.data as Record<string, unknown>).login, 'login', operation);
+    assertLogin(login, operation);
+    return login;
+  }
+
   async createIssue(ref: RepoRef, input: GitHubIssueDraft): Promise<GitHubIssue> {
     const operation = `createIssue ${ref.owner}/${ref.repo}`;
     assertIssueDraft(input, operation);

@@ -171,12 +171,21 @@ export const pipenzoIssueClaimRequestV1Schema = z
   .object({
     repo: pipenzoRepoRefV1Schema.optional(),
     issueNumber: pipenzoIssueNumberV1Schema,
-    /** The login claiming the ticket. Compared against the issue's assignees after the write. */
+    /**
+     * The login claiming the ticket, compared against the issue's assignees after the write.
+     *
+     * **Optional, and normally omitted.** The daemon holds the token, so the daemon is the only
+     * thing that actually knows who "I" is; when this is absent it resolves the authenticated
+     * login itself. A renderer that supplied someone else's login could claim a ticket *as* them,
+     * which defeats the point of the race — the loser has to be able to trust that the name on the
+     * ticket is the person who took it.
+     */
     assignee: z
       .string()
       .min(1)
       .max(39)
-      .regex(/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/, 'must be a GitHub login'),
+      .regex(/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/, 'must be a GitHub login')
+      .optional(),
   })
   .strict();
 
