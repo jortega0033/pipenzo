@@ -430,6 +430,107 @@
     transform: none;
   }
 
+  /* Status chip + risk chip families — ported verbatim from Foundations.dc.html's "Primitives"
+     and risk-grade sections. .chip is the filled, uppercase, 11px status pill (ok/warn/danger/
+     neutral/ci/wait); .chip-risk is a *grade*, not a state -- tinted (not filled) and mono with
+     a leading dot, specifically so it can never be mistaken for a filled status chip at a
+     glance. There is deliberately no "done" tone: a merged PR closes its issue on GitHub, the
+     board's polling reconciler only ever queries open issues, and the card simply stops
+     appearing on the next poll -- see Chip.tsx's ChipTone union, which omits 'done' on purpose
+     rather than by oversight. */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 20px;
+    padding: 0 8px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    line-height: 1;
+    text-transform: uppercase;
+    border-radius: var(--radius-pipenzo-pill);
+    white-space: nowrap;
+  }
+
+  .chip-ok {
+    background: var(--color-ok);
+    color: var(--color-ok-fg);
+  }
+
+  .chip-warn {
+    background: var(--color-warn);
+    color: var(--color-warn-fg);
+  }
+
+  .chip-danger {
+    background: var(--color-danger);
+    color: var(--color-danger-fg);
+  }
+
+  .chip-neutral {
+    background: var(--color-surface-3);
+    color: var(--color-text-soft);
+  }
+
+  .chip-wait {
+    background: var(--color-surface-3);
+    color: var(--color-warn);
+  }
+
+  .chip-ci {
+    background: var(--color-danger-fg);
+    color: var(--color-danger-text);
+  }
+
+  /* risk grade: LOW / MEDIUM / HIGH. Tinted, mono, leading dot. */
+  .chip-risk {
+    font-family: var(--font-mono);
+    letter-spacing: 0.06em;
+    gap: 6px;
+  }
+
+  .chip-risk::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    flex-shrink: 0;
+  }
+
+  .chip-risk.low {
+    background: #1d3320;
+    color: #56d364;
+  }
+
+  .chip-risk.medium {
+    background: #33280f;
+    color: #e3b341;
+  }
+
+  .chip-risk.high {
+    background: #3a1e1d;
+    color: #ff7b72;
+  }
+
+  .self-tag {
+    display: inline-flex;
+    align-items: center;
+    height: 18px;
+    padding: 0 6px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--color-text-soft);
+    background: var(--color-surface-3);
+    border-radius: var(--radius-pipenzo-pill);
+    margin-left: 6px;
+    vertical-align: 1px;
+    white-space: nowrap;
+  }
+
   /* Live-run pulse: a small dot (the run indicator on an in-progress ticket) breathing via its
      box-shadow, softened to a static ring by the reduced-motion block below instead of stopped
      outright -- it should still read as "live", just not moving. */
