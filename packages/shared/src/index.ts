@@ -11,4 +11,5 @@ export * from './component-control-v2.js';
 export * from './agent-worktree-v2.js';
 export * from './multimodal-workflow-v2.js';
 export * from './pipenzo-publish-v1.js';
+export * from './pipenzo-refine-v1.js';
 
