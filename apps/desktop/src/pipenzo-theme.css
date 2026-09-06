@@ -3897,6 +3897,177 @@
   .crumbs .mono {
     font-size: 12px;
   }
+
+  /* Activity-stream event row — ported verbatim from TicketDetail.dc.html's `.stream` (this
+     lives there, not in Activity.dc.html or Foundations.dc.html despite ticket #65's own body --
+     the same artboard mismatch ticket #64 found for the phase stepper). See ActivityEvent.tsx. */
+  .evt {
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .evt-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .evt-ic {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--color-surface-3);
+    color: var(--color-text-soft);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .evt-ic.live {
+    background: var(--color-accent);
+    color: var(--color-accent-fg);
+    animation: pulse-run 1.6s ease-out infinite;
+  }
+
+  .evt-ic.bad {
+    background: var(--color-danger);
+    color: var(--color-danger-fg);
+  }
+
+  .evt-line {
+    flex: 1;
+    width: 2px;
+    background: var(--color-surface-3);
+    margin: 4px 0;
+    min-height: 16px;
+  }
+
+  .evt-line.end {
+    background: transparent;
+  }
+
+  .evt-body {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 4px 0 20px;
+  }
+
+  .evt-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .evt-tool {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--color-text-faint);
+    line-height: 1;
+  }
+
+  .evt-title {
+    font-size: 14px;
+    line-height: 1.4;
+    text-wrap: pretty;
+  }
+
+  .evt-meta {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--color-text-faint);
+    line-height: 1;
+  }
+
+  .evt-meta.live {
+    color: var(--color-accent);
+  }
+
+  .evt.low .evt-ic {
+    width: 8px;
+    height: 8px;
+    background: var(--color-surface-4);
+    margin-top: 8px;
+  }
+
+  .evt.low .evt-line {
+    margin-top: 6px;
+  }
+
+  .evt.low .evt-body {
+    padding: 4px 0 12px;
+  }
+
+  .evt.low .low-line {
+    height: 16px;
+  }
+
+  .evt-body .precommit,
+  .evt-body .ci-block,
+  .evt-body .approval-inline,
+  .evt-body .ai-done {
+    margin-top: 8px;
+  }
+
+  .sub-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 6px;
+    height: 28px;
+    padding: 0 12px 0 8px;
+    border-radius: var(--radius-pipenzo-pill);
+    background: var(--color-surface-2);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--color-text-soft);
+    cursor: pointer;
+    align-self: flex-start;
+    transition:
+      background-color var(--ease-pipenzo),
+      color var(--ease-pipenzo);
+  }
+
+  .sub-row:hover {
+    background: var(--color-surface-3);
+    color: var(--color-text);
+  }
+
+  .sub-row:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: var(--radius-pipenzo-sm);
+  }
+
+  .sub-row .icon-sm {
+    color: var(--color-text-faint);
+    transition: transform var(--ease-pipenzo);
+  }
+
+  .sub-row.open .icon-sm {
+    transform: rotate(90deg);
+  }
+
+  .sub-lines {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-top: 6px;
+    padding: 10px 12px;
+    border-radius: var(--radius-pipenzo-sm);
+    background: var(--color-surface-2);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--color-text-soft);
+    white-space: pre-wrap;
+  }
+
+  .sub-lines .ok {
+    color: var(--color-ok);
+  }
 }
 
 @keyframes pulse-warn {
