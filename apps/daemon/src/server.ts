@@ -19,6 +19,8 @@ import type { OwnedWorktreeManager } from './worktree-manager.js';
 import { registerV2AgentWorktreeRoutes } from './routes/v2-agents-worktrees.js';
 import type { AttachmentStore } from './attachment-store.js';
 import { registerV2MultimodalRoutes } from './routes/v2-multimodal.js';
+import type { PublishService } from './publish-service.js';
+import { registerPipenzoPublishRoutes } from './routes/pipenzo-publish.js';
 
 export interface BuildServerOptions {
   registry: ProviderRegistry;
@@ -30,6 +32,12 @@ export interface BuildServerOptions {
   subagentStore?: SubagentGraphStore;
   worktreeManager?: OwnedWorktreeManager;
   attachmentStore?: AttachmentStore;
+  /**
+   * Pipenzo's publish gate (issue #178). Optional so a daemon built without it simply has no
+   * publish route at all — the boundary's default is "cannot publish," not "publishes unless
+   * configured otherwise."
+   */
+  publishService?: PublishService;
 }
 
 /**
@@ -107,6 +115,7 @@ export function buildServer(opts: BuildServerOptions): FastifyInstance {
       registerV2ComponentRoutes(app, opts.registry, opts.trustStore);
     }
     registerV2AgentWorktreeRoutes(app, opts.subagentStore, opts.worktreeManager);
+    if (opts.publishService) registerPipenzoPublishRoutes(app, opts.publishService);
     if (opts.attachmentStore)
       registerV2MultimodalRoutes(app, opts.attachmentStore, opts.sessionManager);
   });

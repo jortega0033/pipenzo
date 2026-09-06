@@ -17,6 +17,13 @@ import {
 
 const REF: RepoRef = { owner: 'jortega0033', repo: 'pipenzo' };
 
+/**
+ * Builds a realistic token prefix at runtime so no literal in this file matches a real GitHub
+ * token pattern on disk — the repository's own `gitleaks` gate should never have to decide whether
+ * a test fixture is a leak.
+ */
+const gh = (kind: string): string => `${'gh'}${kind}_`;
+
 interface StubCall {
   route: string;
   params: Record<string, unknown>;
@@ -71,13 +78,20 @@ describe('parseRepoRef', () => {
 });
 
 describe('resolveGitHubToken', () => {
-  it('prefers the Pipenzo-specific variable over the generic one', () => {
-    const token = resolveGitHubToken({ PIPENZO_GITHUB_TOKEN: 'ghp_first', GITHUB_TOKEN: 'ghp_second' });
-    expect(token).toBe('ghp_first');
+  it('reads the Pipenzo-specific variable, and trims it', () => {
+    expect(resolveGitHubToken({ PIPENZO_GITHUB_TOKEN: `  ${gh('p')}padded  ` })).toBe(
+      `${gh('p')}padded`,
+    );
   });
 
-  it('falls back to GITHUB_TOKEN and trims', () => {
-    expect(resolveGitHubToken({ GITHUB_TOKEN: '  ghp_padded  ' })).toBe('ghp_padded');
+  /**
+   * No `GITHUB_TOKEN` fallback, on purpose: GitHub Actions injects that variable automatically, so
+   * a daemon started inside CI would silently publish as the Actions token rather than refusing.
+   * Ambiguity about which credential just pushed is exactly what a publish gate must not have.
+   */
+  it('ignores GITHUB_TOKEN, so a CI-injected credential can never be published with', () => {
+    const error = catchError(() => resolveGitHubToken({ GITHUB_TOKEN: `${gh('p')}fromActions` }));
+    expect((error as GitHubClientError).code).toBe('token_missing');
   });
 
   it('treats a blank variable as unset rather than as a token', () => {
@@ -101,24 +115,75 @@ describe('resolveConfiguredRepo', () => {
 
 describe('redactSecrets', () => {
   it('scrubs every credential shape a GitHub error can carry', () => {
+    const secret = 'AbCdEfGhIjKlMnOpQrStUvWxYz0123456789';
     const scrubbed = redactSecrets(
       [
-        'classic ghp_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789',
-        'fine-grained github_pat_11ABCDEFG0abcdefghij_KLMNOPQRSTUVWXYZ0123456789abcdef',
-        'header Authorization: Bearer ghs_0123456789abcdefghijklmnop',
-        'remote https://x-access-token:ghp_AbCdEfGhIjKlMnOpQrStUvWx@github.com/o/r.git',
+        `classic ${gh('p')}${secret}`,
+        `fine-grained ${'github'}_pat_11ABCDEFG0abcdefghij_KLMNOPQRSTUVWXYZ0123456789abcdef`,
+        `header Authorization: Bearer ${gh('s')}0123456789abcdefghijklmnop`,
+        `remote https://x-access-token:${gh('p')}${secret}@github.com/o/r.git`,
       ].join('\n'),
     );
-    expect(scrubbed).not.toMatch(/ghp_[A-Za-z0-9]{16}/);
-    expect(scrubbed).not.toMatch(/ghs_[A-Za-z0-9]{16}/);
+    expect(scrubbed).not.toContain(secret);
+    expect(scrubbed).not.toMatch(/gh[ps]_[A-Za-z0-9]{16}/);
     expect(scrubbed).not.toContain('github_pat_11ABCDEFG0');
     expect(scrubbed).toContain('[redacted]');
   });
 
-  it('leaves ordinary text alone', () => {
+  /**
+   * The shape a header rule that stops at the scheme word leaves behind. `Basic` carries
+   * base64(`x-access-token:<pat>`), which is exactly how git's HTTPS transport and octokit put a
+   * PAT on the wire — so it is what a `GIT_CURL_VERBOSE` line or a proxy error contains.
+   */
+  it('consumes the whole value of an auth header, not just its scheme', () => {
+    const basic = `eDphY2Nlc3MtdG9rZW46${'Z2hwX1NFQ1JFVFZBTFVF'}`;
+    for (const line of [
+      `Authorization: Basic ${basic}`,
+      `AUTHORIZATION: BEARER ${basic}`,
+      `proxy-authorization: Basic ${basic}`,
+      `{"access_token":"${basic}"}`,
+    ]) {
+      const scrubbed = redactSecrets(line);
+      expect(scrubbed).not.toContain(basic);
+      expect(scrubbed.toLowerCase()).toContain('[redacted]');
+    }
+  });
+
+  it('scrubs a bare JWT and a base64-encoded GitHub token', () => {
+    const jwt = 'eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOjEyM30.aabbCCddEEffGGhh';
+    expect(redactSecrets(`installation token ${jwt}`)).not.toContain(jwt);
+
+    const encoded = 'Z2hwX0FiQ2RFZkdoSWpLbE1uT3BRclN0VXZXeFl6MDEyMzQ1Njc4OQ==';
+    expect(redactSecrets(`payload ${encoded}`)).not.toContain(encoded);
+  });
+
+  it('scrubs a credential in a URL with no colon, the other form git accepts', () => {
+    const scrubbed = redactSecrets('https://sup3rs3cretP4ssw0rd@git.internal/o/r.git');
+    expect(scrubbed).not.toContain('sup3rs3cretP4ssw0rd');
+    expect(scrubbed).toBe('https://[redacted]@git.internal/o/r.git');
+  });
+
+  /**
+   * Redaction should remove the secret, not the sentence. A header rule firing first on the literal
+   * `x-access-token:` inside a URL would swallow the host and repository path with it, leaving an
+   * operator a push failure with no diagnostic in it at all.
+   */
+  it('keeps the diagnostic when scrubbing a credential out of a remote URL', () => {
+    const scrubbed = redactSecrets(
+      `fatal: unable to access https://x-access-token:${gh('p')}AbCdEfGhIjKlMnOpQrStUvWx@github.com/o/r.git/`,
+    );
+    expect(scrubbed).toContain('github.com/o/r.git');
+    expect(scrubbed).not.toMatch(/ghp_[A-Za-z0-9]{16}/);
+  });
+
+  it('leaves ordinary text, including commit shas, alone', () => {
     expect(redactSecrets('pull request #12 has 3 failing checks')).toBe(
       'pull request #12 has 3 failing checks',
     );
+    // A deliberate limit, recorded rather than re-litigated: a pre-2021 40-hex classic PAT cannot
+    // be matched without also redacting every commit sha this module puts in a message.
+    const sha = 'a'.repeat(40);
+    expect(redactSecrets(`pushed ${sha}`)).toBe(`pushed ${sha}`);
   });
 });
 

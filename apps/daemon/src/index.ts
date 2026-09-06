@@ -20,6 +20,7 @@ import { SubagentGraphStore } from './subagent-graph-store.js';
 import { OwnedWorktreeManager } from './worktree-manager.js';
 import { AttachmentStore } from './attachment-store.js';
 import { WorkspaceTrustStore } from './workspace-trust-store.js';
+import { PublishService } from './publish-service.js';
 
 async function settlesWithin(promise: Promise<unknown>, timeoutMs: number): Promise<boolean> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -123,6 +124,13 @@ async function main() {
   });
   const token = generateToken();
 
+  // Pipenzo's publish gate (issue #178). It is constructed here, in the daemon process, and is
+  // reachable only through `POST /v2/pipenzo/publish` behind the bearer token above. Nothing in
+  // the agent-runtime path receives a reference to it, and the GitHub PAT it reads at call time
+  // never reaches a provider subprocess: every provider spawn builds its environment from the
+  // reviewed OS/runtime allowlist rather than inheriting this process's `process.env`.
+  const publishService = new PublishService({ worktrees: worktreeManager, logger });
+
   const app = buildServer({
     registry,
     sessionManager,
@@ -133,6 +141,7 @@ async function main() {
     subagentStore,
     worktreeManager,
     attachmentStore,
+    publishService,
   });
 
   const requestedPort = Number(process.env.AGENT_DOCK_PORT ?? '0');

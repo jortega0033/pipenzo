@@ -13,6 +13,7 @@ import { resolveWorkspaceIdentity } from './workspace-identity.js';
 import type { WorkspaceIdentity } from './workspace-identity.js';
 import type { WorkspaceTrustStore } from './workspace-trust-store.js';
 import { isWorkspaceTrusted, revalidateWorkspaceTrusted } from './workspace-trust-guard.js';
+import { buildGitEnvironment } from './pipenzo-git.js';
 
 interface StoredWorktrees {
   version: 1;
@@ -58,7 +59,14 @@ const defaultGit: WorktreeGitRunner = (args, cwd) =>
         windowsHide: true,
         timeout: 10_000,
         maxBuffer: 1024 * 1024,
-        env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0' },
+        // Pipenzo change (issue #178): agentdock could hand `git` the daemon's full environment
+        // because nothing in that process held a credential. Pipenzo's daemon now holds a GitHub
+        // PAT, and this file's own comment below already notes that `git worktree`/`git status`
+        // can execute repository-local hooks, filters and fsmonitor config -- which, in a linked
+        // worktree an agent can write to, means agent-supplied code running in a daemon-spawned
+        // child. `buildGitEnvironment()` is the same reviewed default-deny floor provider
+        // subprocesses get; PATH/HOME/APPDATA are on it, so the real Git install is unaffected.
+        env: buildGitEnvironment(),
       },
       (error, stdout) => (error ? reject(error) : resolvePromise(stdout)),
     );
@@ -320,6 +328,26 @@ export class OwnedWorktreeManager {
   async list(): Promise<OwnedWorktreeV2[]> {
     await this.refreshStatuses();
     return [...this.#records.values()].map((record) => this.public(record));
+  }
+
+  /**
+   * Daemon-internal resolution of an owned worktree's real location (Pipenzo issue #178).
+   *
+   * `public()` deliberately strips `sourcePath`/`targetPath` so no client is ever told where a
+   * worktree lives, and that stays true: this accessor is additive and in-process only, never
+   * projected onto a route response. It exists so the publish service can take a *worktree id*
+   * from the renderer rather than a filesystem path — which is what makes "you can only publish a
+   * worktree agentdock itself created" enforceable instead of aspirational.
+   */
+  ownedLocation(id: string): { id: string; path: string; sourcePath: string } | undefined {
+    const record = this.#records.get(id);
+    if (!record) return undefined;
+    // A worktree the manager already knows is gone or detached from its source resolves to
+    // nothing, so a caller gets a clean "no such worktree" rather than an opaque Git error a few
+    // commands later. `dirty` and `locked` still resolve: those are states a caller may legitimately
+    // want to inspect and act on, and the publish path has its own refusal for uncommitted work.
+    if (record.status === 'missing' || record.status === 'orphaned') return undefined;
+    return { id: record.id, path: record.targetPath, sourcePath: record.sourcePath };
   }
 
   async cleanup(id: string, options: WorktreeCleanupOptionsV2 = {}): Promise<OwnedWorktreeV2> {

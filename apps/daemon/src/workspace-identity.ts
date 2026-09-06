@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { lstat, realpath, stat } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, parse, resolve } from 'node:path';
+import { buildGitEnvironment } from './pipenzo-git.js';
 
 const DEFAULT_GIT_TIMEOUT_MS = 2_000;
 const DEFAULT_GIT_MAX_OUTPUT_BYTES = 64 * 1024;
@@ -133,23 +134,15 @@ async function gitMarkerStatus(canonicalPath: string): Promise<'present' | 'abse
   }
 }
 
+/**
+ * Pipenzo change (issue #178): this used to start from `{ ...process.env }` and delete a denylist
+ * of `GIT_*` overrides. The Pipenzo daemon holds a GitHub PAT, and `git status` can invoke a
+ * `core.fsmonitor` command from repository config, so the floor is now an allowlist --
+ * `buildGitEnvironment()`, shared with every other daemon-side Git call site. The `GIT_*`
+ * deletions are no longer needed: an allowlist never copied them in the first place.
+ */
 function gitEnvironment(): NodeJS.ProcessEnv {
-  const env = { ...process.env };
-  for (const name of [
-    'GIT_DIR',
-    'GIT_WORK_TREE',
-    'GIT_COMMON_DIR',
-    'GIT_INDEX_FILE',
-    'GIT_OBJECT_DIRECTORY',
-    'GIT_ALTERNATE_OBJECT_DIRECTORIES',
-    'GIT_CEILING_DIRECTORIES',
-    'GIT_DISCOVERY_ACROSS_FILESYSTEM',
-  ]) {
-    delete env[name];
-  }
-  env.GIT_OPTIONAL_LOCKS = '0';
-  env.GIT_TERMINAL_PROMPT = '0';
-  return env;
+  return buildGitEnvironment();
 }
 
 const runGitWithExecFile: GitCommandRunner = (executable, args, options) =>

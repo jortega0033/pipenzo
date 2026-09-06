@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import type { CapabilitySelection } from '@agent-dock/shared';
 import type { WorkspaceIdentity } from './workspace-identity.js';
+import { buildGitEnvironment } from './pipenzo-git.js';
 
 const GIT_STATUS_TIMEOUT_MS = 2_000;
 const GIT_STATUS_MAX_BYTES = 64 * 1024;
@@ -100,20 +101,6 @@ export async function isWorkspaceDirty(workspace: WorkspaceIdentity): Promise<bo
 }
 
 function runGitStatus(cwd: string): Promise<string> {
-  const env = { ...process.env };
-  for (const name of [
-    'GIT_DIR',
-    'GIT_WORK_TREE',
-    'GIT_COMMON_DIR',
-    'GIT_INDEX_FILE',
-    'GIT_OBJECT_DIRECTORY',
-    'GIT_ALTERNATE_OBJECT_DIRECTORIES',
-  ]) {
-    delete env[name];
-  }
-  env.GIT_OPTIONAL_LOCKS = '0';
-  env.GIT_TERMINAL_PROMPT = '0';
-
   return new Promise((resolve, reject) => {
     execFile(
       'git',
@@ -121,7 +108,10 @@ function runGitStatus(cwd: string): Promise<string> {
       {
         cwd,
         encoding: 'utf8',
-        env,
+        // Pipenzo change (issue #178): an allowlist floor rather than `{ ...process.env }` minus a
+        // `GIT_*` denylist, so the daemon's GitHub PAT cannot reach a `core.fsmonitor` command
+        // this status call might invoke. See `pipenzo-git.ts`.
+        env: buildGitEnvironment(),
         killSignal: 'SIGKILL',
         maxBuffer: GIT_STATUS_MAX_BYTES,
         shell: false,

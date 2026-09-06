@@ -5,6 +5,12 @@
 // so the documented "internal" surface is actually internal rather than merely undocumented.
 export * from './types.js';
 export * from './logger.js';
+// Re-exported per the same rule the note above states: apps/daemon genuinely needs it now.
+// Pipenzo's publish service (issue #178) holds a GitHub PAT in the daemon process, so the `git`
+// children it spawns must start from this default-deny floor rather than `{ ...process.env }` --
+// the same guarantee provider subprocesses already get. Exporting it is what lets the daemon use
+// the one reviewed allowlist instead of writing a second, drifting copy of it.
+export * from './process/provider-environment.js';
 export * from './registry.js';
 export * from './providers/claude/index.js';
 export * from './providers/codex/adapter.js';

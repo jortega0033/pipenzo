@@ -30,8 +30,19 @@ import { paginateRest, type PaginateInterface } from '@octokit/plugin-paginate-r
  *   limiting surfaces as a typed `rate_limited` error with the reset time rather than a retry.
  */
 
-/** Environment variable Pipenzo reads its PAT from, in precedence order. */
-export const GITHUB_TOKEN_ENV_KEYS = Object.freeze(['PIPENZO_GITHUB_TOKEN', 'GITHUB_TOKEN'] as const);
+/**
+ * The only environment variable Pipenzo reads its PAT from.
+ *
+ * A `GITHUB_TOKEN` fallback was considered and rejected: GitHub Actions injects that variable
+ * automatically, so a daemon started inside CI would silently publish as the Actions token instead
+ * of failing `token_missing` — an ambiguity about *which credential just pushed* is exactly what a
+ * publish gate must not have. One name, no fallback.
+ *
+ * When build step 4 lands the Electron-main token vault, this read path is **deleted**, not kept
+ * as a fallback. A "vault, or else env" resolver is how a long-lived key survives its own
+ * replacement.
+ */
+export const GITHUB_TOKEN_ENV_KEYS = Object.freeze(['PIPENZO_GITHUB_TOKEN'] as const);
 
 /** Walking-skeleton single-repo pin (build order step 2: "hardcoded repo"). */
 export const GITHUB_REPO_ENV_KEY = 'PIPENZO_GITHUB_REPO';
@@ -81,15 +92,42 @@ export class GitHubClientError extends Error {
  * Deliberately pattern-based rather than "strip the token we happen to hold": the strings that
  * reach here come from octokit and from Node's HTTP stack, and they can contain a *different*
  * credential than the one this client was constructed with (a redirect, a proxy URL, a
- * `basic`-auth URL a user pasted into a remote). Matching the shapes covers all of them.
+ * credential-in-URL a user pasted into a remote). Matching the shapes covers all of them.
+ *
+ * Rule order matters and is not arbitrary. The URL rules run **before** the header rule, because
+ * `https://x-access-token:ghp_…@github.com/o/r.git` contains a literal `x-access-token:` and a
+ * header rule matching first would swallow the host and repository path along with the credential
+ * — leaving an operator a `push_failed` with no diagnostic in it at all. Redaction should remove
+ * the secret, not the sentence.
+ *
+ * **Known limit, recorded rather than re-litigated:** a pre-2021 40-hex classic PAT is not
+ * matched, and cannot be. This module interpolates commit SHAs into messages, and a 40-hex rule
+ * would redact every one of them. That is one more reason the env-PAT path is temporary and build
+ * step 4's vault is the real fix — a credential you cannot recognize is one you cannot scrub.
  */
 export function redactSecrets(value: string): string {
-  return value
-    .replace(/gh[pousr]_[A-Za-z0-9]{16,}/g, '[redacted]')
-    .replace(/github_pat_[A-Za-z0-9_]{20,}/g, '[redacted]')
-    .replace(/\b[Bb]earer\s+[A-Za-z0-9._~+/-]{8,}=*/g, 'Bearer [redacted]')
-    .replace(/\b(authorization|x-access-token|token)\s*[:=]\s*\S+/gi, '$1: [redacted]')
-    .replace(/(https?:\/\/)[^/@\s:]+:[^/@\s]+@/gi, '$1[redacted]@');
+  return (
+    value
+      // Credential in a URL, both forms: `user:pass@host` and the bare `token@host` git also uses.
+      .replace(/(https?:\/\/)[^/@\s:]+:[^/@\s]+@/gi, '$1[redacted]@')
+      .replace(/(https?:\/\/)[^/@\s:]+@/gi, '$1[redacted]@')
+      // Classic and fine-grained GitHub tokens, wherever they appear.
+      .replace(/gh[pousr]_[A-Za-z0-9]{16,}/g, '[redacted]')
+      .replace(/github_pat_[A-Za-z0-9_]{20,}/g, '[redacted]')
+      // A bare JWT — what a GitHub App installation token looks like with no `Bearer` in front.
+      .replace(/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, '[redacted]')
+      // Base64 of a `gh*_` token: what `Authorization: Basic` carries on the wire.
+      .replace(/\bZ2h[A-Za-z0-9+/]{16,}={0,2}/g, '[redacted]')
+      // Any auth header. The value alternation consumes the scheme *and* what follows it: a rule
+      // that stops after `Basic` leaves the entire credential sitting in the log line.
+      // The `"?'?` on both sides of the separator matters: in a JSON body the key is quoted
+      // (`"access_token":"…"`), and a rule that only allows a bare `key: value` misses it.
+      .replace(
+        /\b(proxy-authorization|authorization|x-access-token|access_token|token)"?'?\s*[:=]\s*"?'?(?:basic|bearer|token)?\s*[^\s"']+/gi,
+        '$1: [redacted]',
+      )
+      .replace(/\bbearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, 'Bearer [redacted]')
+  );
 }
 
 export interface RepoRef {
