@@ -1,5 +1,6 @@
 import { Octokit } from '@octokit/core';
 import { paginateRest, type PaginateInterface } from '@octokit/plugin-paginate-rest';
+import { PIPENZO_LABEL_NAMESPACE, isPipenzoLabel } from '@agent-dock/shared';
 
 /**
  * Pipenzo's GitHub API client (issue #177).
@@ -54,13 +55,16 @@ export const GITHUB_REPO_ENV_KEY = 'PIPENZO_GITHUB_REPO';
  * whoever put it there — a triage label, a `good first issue`, a release marker some other
  * automation writes — and a phase machine that replaced the whole label set on a lane transition
  * would quietly delete all of it on the first ticket it touched.
+ *
+ * Re-exported from `@agent-dock/shared` (Pipenzo issue #187) rather than declared here: the string
+ * and the `pipenzo:`-prefixed label vocabulary that depends on it now live in
+ * `pipenzo-ticket-v1.ts`, which both this daemon and the desktop renderer can import, whereas
+ * `apps/daemon` is not something the renderer can reach into. This module keeps the re-export (so
+ * every existing importer of `github-client.js` is untouched) but is no longer the source of truth
+ * for the string — it is still the source of truth for *the write guard below*, which is a
+ * daemon-only, network-adjacent concern the shared vocabulary module has no business owning.
  */
-export const PIPENZO_LABEL_NAMESPACE = 'pipenzo:';
-
-/** True for a label this machine is allowed to add or remove on its own. */
-export function isPipenzoLabel(name: string): boolean {
-  return name.startsWith(PIPENZO_LABEL_NAMESPACE);
-}
+export { PIPENZO_LABEL_NAMESPACE, isPipenzoLabel };
 
 export type GitHubClientErrorCode =
   | 'token_missing'

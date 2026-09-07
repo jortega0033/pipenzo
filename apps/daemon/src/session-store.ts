@@ -148,7 +148,13 @@ export class UnsupportedSessionStoreVersionError extends Error {
   }
 }
 
-function errorCode(error: unknown): string | undefined {
+/**
+ * Exported so `pipenzo-ticket-store.ts` (issue #187) can reuse the exact atomic-write/quarantine
+ * primitives below rather than re-deriving them. The ticket store's requirements name this function
+ * by name ("`atomicWriteJson`") as the pattern to follow — reusing the real implementation, not a
+ * second copy that could drift from it on the next Windows-fsync edge case someone finds here.
+ */
+export function errorCode(error: unknown): string | undefined {
   return error && typeof error === 'object' && 'code' in error
     ? String((error as NodeJS.ErrnoException).code)
     : undefined;
@@ -156,7 +162,7 @@ function errorCode(error: unknown): string | undefined {
 
 // Node exposes POSIX mode enforcement but not an equivalent Windows ACL API. On Windows these
 // chmod calls are best-effort and the daemon's per-user state-root ACL remains the security bound.
-function ensurePrivateDirectory(path: string): void {
+export function ensurePrivateDirectory(path: string): void {
   if (existsSync(path)) {
     if (!lstatSync(path).isDirectory()) {
       throw new Error(`session store path is not a directory: ${path}`);
@@ -173,7 +179,7 @@ function ensurePrivateDirectory(path: string): void {
   }
 }
 
-function ensurePrivateFile(path: string): void {
+export function ensurePrivateFile(path: string): void {
   try {
     chmodSync(path, FILE_MODE);
   } catch (error) {
@@ -185,7 +191,7 @@ function ensurePrivateFile(path: string): void {
 
 // Some Windows filesystems reject opening/fsyncing directories. Record and manifest files are
 // still fsynced before atomic rename; directory fsync is required everywhere Node supports it.
-function syncDirectory(path: string): void {
+export function syncDirectory(path: string): void {
   let descriptor: number | undefined;
   try {
     descriptor = openSync(path, 'r');
@@ -203,7 +209,7 @@ function syncDirectory(path: string): void {
   }
 }
 
-function atomicWriteJson(path: string, value: unknown): void {
+export function atomicWriteJson(path: string, value: unknown): void {
   const directory = dirname(path);
   const temporaryPath = join(directory, `.${basename(path)}.${process.pid}.${randomUUID()}.tmp`);
   let descriptor: number | undefined;
@@ -267,7 +273,7 @@ function parseLegacySession(value: unknown): AgentSession {
   return { ...session, prompt: '' };
 }
 
-function isObject(value: unknown): value is Record<string, unknown> {
+export function isObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 

@@ -15,6 +15,7 @@ import { SessionManager } from './session-manager.js';
 import { SessionAdmissionController, resolveMaxActiveSessions } from './session-admission.js';
 import { FileSessionStore } from './session-store.js';
 import { FileExecutionGraphStore } from './execution-graph-store.js';
+import { FileTicketStore } from './pipenzo-ticket-store.js';
 import { ensureStateDirectory, stateDirectory } from './state-directory.js';
 import { SubagentGraphStore } from './subagent-graph-store.js';
 import { OwnedWorktreeManager } from './worktree-manager.js';
@@ -99,17 +100,29 @@ async function main() {
       },
     },
   );
+  // Pipenzo's ticket store (issue #187): the JSON-file record of everything GitHub's labels can't
+  // hold (worktree id/path, attempt lineage, budget, risk score, pre-commitment events, poll
+  // ETags — README's *Ticket store* section). Constructed here, beside the other durable stores,
+  // for the same reason they are: `stateDirectory()` is the one root every durable store hangs off
+  // of, and `tickets-v1` keeps this store's on-disk layout parallel to `sessions-v1`. Nothing reads
+  // from or writes to it yet — the phase machine that will is #188 — so today this only proves the
+  // store loads (or refuses to, and says why) on daemon start.
+  const ticketStore = new FileTicketStore(join(durableStateDirectory, 'tickets-v1'));
+
   const sessionRecovery = sessionStore.getRecoveryReport();
   const graphRecovery = executionGraphStore.recoveryReport();
+  const ticketRecovery = ticketStore.getRecoveryReport();
   if (
     sessionRecovery.quarantinedFiles.length > 0 ||
     sessionRecovery.interruptedSessionIds.length > 0 ||
     graphRecovery.quarantinedPaths.length > 0 ||
-    graphRecovery.interruptedSessionIds.length > 0
+    graphRecovery.interruptedSessionIds.length > 0 ||
+    ticketRecovery.quarantinedFiles.length > 0
   ) {
     logger.warn('durable session recovery required repairs', {
       quarantinedSessionRecords: sessionRecovery.quarantinedFiles.length,
       quarantinedExecutionRecords: graphRecovery.quarantinedPaths.length,
+      quarantinedTicketRecords: ticketRecovery.quarantinedFiles.length,
       interruptedCompatibilitySessions: sessionRecovery.interruptedSessionIds.length,
       interruptedExecutions: graphRecovery.interruptedSessionIds.length,
     });
