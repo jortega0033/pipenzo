@@ -148,6 +148,16 @@ export interface PublishServiceOptions {
    * when the token moves from env to the Electron-main vault in build step 4.
    */
   env?: Readonly<Record<string, string | undefined>>;
+  /**
+   * Where the GitHub credential comes from (issue #165).
+   *
+   * Injected rather than read here, because in the shipped app it is **not** in `env` at all: the
+   * Electron-main vault hands it to the daemon over stdin, and `DaemonGitHubCredential` holds it in
+   * a private field precisely so it is not in an environment block a provider subprocess could read
+   * out of its own parent. The default keeps the direct-`pnpm dev` path (and every existing test)
+   * reading the environment exactly as before.
+   */
+  resolveGitHubCredential?: (env: Readonly<Record<string, string | undefined>>) => string;
   runGit?: PipenzoGitRunner;
   /** Built lazily, from a token read at call time, so no live authenticated client is retained. */
   createPullRequestOpener?: (token: string) => PullRequestOpener;
@@ -273,6 +283,8 @@ export class PublishService {
   readonly #env: Readonly<Record<string, string | undefined>>;
   readonly #runGit: PipenzoGitRunner;
   readonly #createOpener: (token: string) => PullRequestOpener;
+  /** A *resolver*, never the credential: this field holds a function, and is called at use. */
+  readonly #resolveCredential: (env: Readonly<Record<string, string | undefined>>) => string;
   readonly #logger: Logger | undefined;
   /** One publish at a time per worktree: two concurrent pushes of one branch is never intended. */
   readonly #inFlight = new Set<string>();
@@ -280,6 +292,7 @@ export class PublishService {
   constructor(options: PublishServiceOptions) {
     this.#worktrees = options.worktrees;
     this.#env = options.env ?? process.env;
+    this.#resolveCredential = options.resolveGitHubCredential ?? resolveGitHubToken;
     this.#runGit = options.runGit ?? runGitCommand;
     this.#createOpener = options.createPullRequestOpener ?? octokitPullRequestOpener;
     this.#logger = options.logger;
@@ -419,7 +432,7 @@ export class PublishService {
 
   #resolveToken(): string {
     try {
-      return resolveGitHubToken(this.#env);
+      return this.#resolveCredential(this.#env);
     } catch (error) {
       if (error instanceof GitHubClientError && error.code === 'token_missing') {
         throw new PublishServiceError('token_missing', error.message);

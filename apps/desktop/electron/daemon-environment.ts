@@ -1,19 +1,24 @@
 /**
  * The environment Electron main hands the daemon sidecar (issue #165).
  *
- * ## What changed, and why it is not a detail
+ * ## The credential is not in here at all, and that is the point
  *
- * Before the vault, main spawned the daemon with `{ ...process.env, ... }`. That was fine while the
- * PAT came from the operator's own shell — the daemon inheriting it *was* the delivery mechanism.
- * With a vault it is no longer fine, for a reason the GitHub client already writes down about
- * `GITHUB_TOKEN`: a publish gate must never be ambiguous about *which credential just pushed*. If
- * the vault holds one token and the launching shell exports another, an inherited environment
- * decides that question silently, by variable name, in a file nobody looks at.
+ * Before the vault, main spawned the daemon with `{ ...process.env, ... }` and the PAT rode along
+ * in it. That is exactly what this ticket had to stop, for a reason that has nothing to do with
+ * inheritance rules: **the daemon is the parent of every provider subprocess**, and a child can
+ * read its parent's initial environment block — `cat /proc/<ppid>/environ` on Linux, the PEB on
+ * Windows. A token in the daemon's environment is a token a model-directed shell command can print,
+ * no matter how careful the provider-spawn allowlists are.
  *
- * So this builder makes the answer explicit: every GitHub-credential-shaped variable is stripped
- * from the inherited environment, and exactly one is put back — the one the caller passed, from a
- * source the caller can name. There is no path by which a credential reaches the daemon without
- * appearing as an argument to this function.
+ * So this builder **strips** every GitHub-credential-shaped variable and puts none back. The
+ * credential is written to the daemon's stdin instead (see `main.ts` and the daemon's
+ * `github-credential.ts`); all this function contributes is `PIPENZO_CREDENTIAL_ON_STDIN`, a
+ * non-secret marker telling the daemon a message is coming so a daemon started any other way never
+ * reads from a stdin it does not own.
+ *
+ * Stripping still matters for its original reason too: with a vault holding one token and a
+ * launching shell possibly exporting another, an inherited variable would decide which credential
+ * the daemon's GitHub client used, silently, by variable name.
  *
  * ## Why case-insensitive stripping
  *
@@ -29,6 +34,13 @@
  * level down, at the provider-subprocess boundary (`buildLegacyProviderEnvironment`) and the git
  * boundary (`buildGitEnvironment`), which is where untrusted code actually runs. This is a
  * denylist for one specific class of value that must have exactly one source.
+ *
+ * It is also not a complete answer to "which credential pushed". The **push** does not use the PAT
+ * at all: `buildGitPushEnvironment` deliberately forwards `SSH_AUTH_SOCK`, `GIT_SSH_COMMAND`,
+ * `XDG_CONFIG_HOME` and the DBus address so the *user's own* credential helper can answer, which is
+ * the design (`pipenzo-git.ts` explains why). So an XDG-configured `credential.helper` is a second
+ * answer to that question, by intent. What this module makes unambiguous is narrower and worth
+ * stating precisely: **which credential the daemon's GitHub API client uses**.
  */
 
 /**
@@ -47,14 +59,41 @@ export const GITHUB_CREDENTIAL_ENV_KEYS = Object.freeze([
   'GITHUB_ENTERPRISE_TOKEN',
 ] as const);
 
-/** The variable the daemon's own `resolveGitHubToken` reads. Kept in sync by a boundary test. */
+/**
+ * The variable the daemon's own `resolveGitHubToken` reads — and which this builder therefore
+ * strips rather than sets. Named here so the boundary test can assert it stays stripped, and so the
+ * daemon's own declaration and this one cannot silently diverge.
+ */
 export const DAEMON_GITHUB_TOKEN_ENV_KEY = 'PIPENZO_GITHUB_TOKEN';
+
+/**
+ * Tells the daemon a credential message is coming on stdin. Must match the daemon's
+ * `CREDENTIAL_ON_STDIN_ENV_KEY`. Not a secret — it is the absence of the secret from this
+ * environment that is the security property.
+ */
+export const CREDENTIAL_ON_STDIN_ENV_KEY = 'PIPENZO_CREDENTIAL_ON_STDIN';
 
 export type DaemonGitHubTokenSource = 'vault' | 'environment' | 'none';
 
 export interface DaemonGitHubTokenResolution {
   readonly token: string | undefined;
   readonly source: DaemonGitHubTokenSource;
+}
+
+/**
+ * The shape a credential must have before it is handed to the daemon.
+ *
+ * Applied to **both** sources, not just the vault's. The vault validates on the way in, but the
+ * development fallback reads a value straight out of a shell, and that value becomes an HTTP
+ * `Authorization` header — where a newline is request splitting. Printable, non-whitespace ASCII
+ * covers every token format GitHub has issued and excludes every separator. The floor is 20 rather
+ * than 8 because every real format is at least 36 characters, so a truncated paste should read as
+ * "not configured" rather than as a credential that 401s later.
+ */
+const TOKEN_PATTERN = /^[\x21-\x7e]{20,512}$/;
+
+export function isTokenShaped(value: string | undefined): value is string {
+  return typeof value === 'string' && TOKEN_PATTERN.test(value);
 }
 
 /**
@@ -65,53 +104,83 @@ export interface DaemonGitHubTokenResolution {
  * "vault, or else env" fallback:
  *
  * - In a **packaged** app there is no exception at all. A shipped Pipenzo authenticates with the
- *   token the user connected in the UI or with nothing, full stop. That is what makes "which
- *   credential just pushed" answerable from the UI alone.
+ *   token the user connected in the UI or with nothing, full stop.
  * - In **development** the vault cannot be filled until the device-code connect step (#114) is
  *   built, and the repository's own live-run harness starts the daemon from an exported PAT. Losing
  *   that would mean this ticket broke every existing local workflow to deliver a vault nothing can
  *   write to yet.
  *
+ * ## Why two gates and not just `isPackaged`
+ *
+ * `app.isPackaged` is not a security boundary: Electron derives it from the executable's *filename*
+ * (`false` iff the binary is called `electron`). Nothing is signed and nothing is decided at build
+ * time, so a shipped artifact that ships the stock binary un-renamed would silently re-enable the
+ * fallback. `isDevelopmentBuild` is a constant the bundler substitutes at build time and a rename
+ * cannot reach, and it defaults to `false` — the safe answer — if the substitution is ever missing.
+ * Both must agree before an inherited credential is used.
+ *
  * The ambiguity the rule against fallbacks exists to prevent is *silent* precedence. This returns
  * `source` precisely so nothing about it is silent: main logs it, and the connection status the
- * renderer sees carries it, so "you are publishing with a shell variable, not with the account you
- * connected" is a visible state rather than an inference.
+ * renderer sees carries it, so "you are running on a shell variable, not the account you connected"
+ * is a visible state rather than an inference.
  */
 export function resolveDaemonGitHubToken(input: {
   readonly vaultToken: string | undefined;
   readonly environmentToken: string | undefined;
   readonly isPackaged: boolean;
+  readonly isDevelopmentBuild: boolean;
 }): DaemonGitHubTokenResolution {
   const vaultToken = input.vaultToken?.trim();
-  if (vaultToken) return { token: vaultToken, source: 'vault' };
-  if (input.isPackaged) return { token: undefined, source: 'none' };
+  if (isTokenShaped(vaultToken)) return { token: vaultToken, source: 'vault' };
+  if (input.isPackaged || !input.isDevelopmentBuild) return { token: undefined, source: 'none' };
   const environmentToken = input.environmentToken?.trim();
-  if (environmentToken) return { token: environmentToken, source: 'environment' };
+  if (isTokenShaped(environmentToken)) {
+    return { token: environmentToken, source: 'environment' };
+  }
   return { token: undefined, source: 'none' };
+}
+
+/**
+ * The one credential message written to the daemon's stdin, as a single JSON line.
+ *
+ * A JSON envelope rather than a bare token so a second field never needs a second channel, and
+ * newline-terminated so the daemon's reader settles on the line rather than waiting for the pipe to
+ * close.
+ */
+export function buildDaemonCredentialMessage(token: string | undefined): string {
+  return `${JSON.stringify(isTokenShaped(token) ? { githubToken: token } : {})}\n`;
 }
 
 export interface DaemonEnvironmentOptions {
   readonly appId: string;
-  /** The one credential the daemon is allowed to have, or nothing. Never read from `source`. */
-  readonly githubToken?: string | undefined;
+  /**
+   * Whether a credential message will be written to the child's stdin. The credential *value* is
+   * deliberately not a parameter of this function: there is no argument that could put it in an
+   * environment block, so there is no mistake that could.
+   */
+  readonly credentialOnStdin: boolean;
 }
 
 /**
  * Builds the daemon child's environment: the inherited one, minus every GitHub credential, plus
- * Pipenzo's own three variables.
+ * Pipenzo's own markers.
  */
 export function buildDaemonEnvironment(
   source: Readonly<Record<string, string | undefined>>,
   options: DaemonEnvironmentOptions,
 ): Record<string, string | undefined> {
   const target: Record<string, string | undefined> = { ...source };
-  const stripped = new Set(GITHUB_CREDENTIAL_ENV_KEYS.map((key) => key.toUpperCase()));
+  const stripped = new Set<string>([
+    ...GITHUB_CREDENTIAL_ENV_KEYS.map((key) => key.toUpperCase()),
+    // Not a credential, but the daemon must never see a stale marker: an inherited `=1` would make
+    // a daemon wait on a stdin nobody is going to write to.
+    CREDENTIAL_ON_STDIN_ENV_KEY,
+  ]);
   for (const key of Object.keys(target)) {
     if (stripped.has(key.toUpperCase())) delete target[key];
   }
   target.ELECTRON_RUN_AS_NODE = '1';
   target.AGENT_DOCK_APP_ID = options.appId;
-  const token = options.githubToken?.trim();
-  if (token) target[DAEMON_GITHUB_TOKEN_ENV_KEY] = token;
+  if (options.credentialOnStdin) target[CREDENTIAL_ON_STDIN_ENV_KEY] = '1';
   return target;
 }

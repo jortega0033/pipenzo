@@ -16,6 +16,15 @@ export default defineConfig({
       main: {
         entry: 'electron/main.ts',
         vite: {
+          // Substituted at build time, and read by main.ts as the second of two gates on the
+          // development GitHub-credential fallback (issue #165). `app.isPackaged` alone is not a
+          // security boundary — Electron derives it from the executable's *filename*, so a shipped
+          // artifact that ships the stock binary un-renamed would silently re-enable the fallback.
+          // This constant is baked in by the bundler and a rename cannot reach it. main.ts treats a
+          // missing substitution as `false`, so failing to define it fails closed.
+          define: {
+            __PIPENZO_DEVELOPMENT_BUILD__: JSON.stringify(process.env.NODE_ENV !== 'production'),
+          },
           build: {
             outDir: 'dist-electron',
             rollupOptions: { external: ['electron'] },

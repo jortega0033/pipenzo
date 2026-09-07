@@ -30,6 +30,7 @@ import {
 import { ExecFileGateCommands } from './gate-commands.js';
 import { OctokitGitHubClient } from './github-client.js';
 import { ConditionalRequestCache } from './github-conditional-cache.js';
+import { DaemonGitHubCredential } from './github-credential.js';
 import { PipenzoPhaseMachine } from './pipenzo-phase-machine.js';
 import { PipenzoPhaseEventBus } from './pipenzo-phase-events.js';
 import { PipenzoCrashRecovery } from './pipenzo-crash-recovery.js';
@@ -55,6 +56,17 @@ async function main() {
   // that wants to coexist with another AgentDock-based app on the same machine.
   const appId = process.env.AGENT_DOCK_APP_ID?.trim() || DEFAULT_APP_ID;
   assertNoLiveDaemon(appId);
+
+  // The GitHub credential (issue #165), read from stdin before anything else so no code path can
+  // run against a half-initialized one. It arrives over a pipe rather than in this process's
+  // environment because the daemon is the *parent* of every provider subprocess, and a child can
+  // read its parent's initial environment block (`/proc/<ppid>/environ`) — see
+  // `github-credential.ts`. When nothing was injected (a daemon started directly, the live-smoke
+  // harness, CI) this falls back to `PIPENZO_GITHUB_TOKEN` exactly as before.
+  const githubCredential = await DaemonGitHubCredential.fromStartup({ stdin: process.stdin });
+  logger.info('github credential source', {
+    source: githubCredential.injected ? 'injected' : 'environment-or-absent',
+  });
   const registry = buildProviderRegistry(logger);
   const durableStateDirectory = stateDirectory({ appId });
   // Every subdirectory below is created independently, some via ensureStateDirectory() (which
@@ -152,7 +164,11 @@ async function main() {
   // the agent-runtime path receives a reference to it, and the GitHub PAT it reads at call time
   // never reaches a provider subprocess: every provider spawn builds its environment from the
   // reviewed OS/runtime allowlist rather than inheriting this process's `process.env`.
-  const publishService = new PublishService({ worktrees: worktreeManager, logger });
+  const publishService = new PublishService({
+    worktrees: worktreeManager,
+    logger,
+    resolveGitHubCredential: (env) => githubCredential.resolve(env),
+  });
 
   // Pipenzo's Refine/Implement/Review phases (issue #184). Same boundary as the publish gate: it
   // is constructed here, in the daemon process, and is reachable only through the `/v2/pipenzo/*`
@@ -173,7 +189,9 @@ async function main() {
     implementSessions: new DispatchOnlyPhaseSessions({ sessionManager }),
     worktrees: worktreeManager,
     github: () =>
-      OctokitGitHubClient.fromEnvironment(process.env, { cache: githubConditionalCache }),
+      OctokitGitHubClient.fromToken(githubCredential.resolve(), {
+        cache: githubConditionalCache,
+      }),
     commands: new ExecFileGateCommands({ probeCwd: durableStateDirectory }),
   });
 
@@ -189,7 +207,9 @@ async function main() {
   const phaseMachine = new PipenzoPhaseMachine({
     tickets: ticketStore,
     github: () =>
-      OctokitGitHubClient.fromEnvironment(process.env, { cache: githubConditionalCache }),
+      OctokitGitHubClient.fromToken(githubCredential.resolve(), {
+        cache: githubConditionalCache,
+      }),
     events: phaseEvents,
   });
 

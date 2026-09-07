@@ -1,5 +1,17 @@
-import { randomBytes } from 'node:crypto';
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
+import {
+  chmodSync,
+  closeSync,
+  existsSync,
+  fsyncSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  writeSync,
+} from 'node:fs';
 import { join } from 'node:path';
 
 /**
@@ -38,8 +50,25 @@ import { join } from 'node:path';
  *
  * The login and the timestamp. They are not secrets, and keeping them in cleartext lets
  * `status()` answer "connected as X" without decrypting anything — so the only code path that ever
- * produces plaintext is `readToken()`, which has exactly one caller (`main.ts`'s daemon-environment
- * builder) and a source-level test asserting it stays that way.
+ * produces plaintext is `readToken()`, which has exactly one caller (`main.ts`'s daemon spawn) and
+ * a source-level test asserting it stays that way.
+ *
+ * ## Where the plaintext goes from here
+ *
+ * Down the daemon child's **stdin**, once, at spawn — never into its environment. The daemon is the
+ * parent of every provider subprocess, and a child can read its parent's initial environment block
+ * (`/proc/<ppid>/environ` on Linux, the PEB on Windows) no matter what it inherited, so an
+ * environment variable would put the token one `cat` away from model-authored code. See
+ * `daemon-environment.ts` and the daemon's `github-credential.ts`.
+ *
+ * ## What this does not defend against, stated rather than implied
+ *
+ * Anything already running as this OS user. `safeStorage` binds its key to that account, so a
+ * process running as the user can decrypt the file — and `clear()` unlinks rather than scrubs, so
+ * the ciphertext stays recoverable from free blocks. No file format fixes that. The real mitigation
+ * is a credential that expires: a GitHub App installation token or an OAuth token with refresh,
+ * rather than a long-lived `repo` PAT. That is a decision for the device-flow ticket (#114), and it
+ * is recorded here so it is a choice rather than an oversight.
  */
 
 /** The file name under the vault directory. Versioned so a future format change is a new name. */
@@ -116,6 +145,13 @@ interface StoredVaultRecord {
 const LOGIN_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
 
 /**
+ * The Linux `safeStorage` backends that are real keyrings. Allowlisted rather than denylisting
+ * `basic_text`, so a backend Electron adds later — or reports as `unknown` — is refused by default
+ * instead of silently trusted. See `encryptionAvailability`.
+ */
+const REAL_LINUX_BACKENDS = new Set(['gnome_libsecret', 'kwallet', 'kwallet5', 'kwallet6']);
+
+/**
  * What may be stored as a token.
  *
  * The character rule is the load-bearing part, and it is about the *destination*, not about GitHub:
@@ -124,15 +160,22 @@ const LOGIN_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
  * Printable, non-whitespace ASCII covers every token format GitHub has ever issued (`ghp_`,
  * `gho_`, `github_pat_`, and the 40-hex classic) and excludes every separator.
  */
-const TOKEN_PATTERN = /^[\x21-\x7e]{8,512}$/;
+const TOKEN_PATTERN = /^[\x21-\x7e]{20,512}$/;
 
 function assertToken(token: string): void {
   if (!TOKEN_PATTERN.test(token)) {
     throw new GitHubTokenVaultError(
       'invalid_token',
-      'a GitHub token must be 8-512 printable, non-whitespace characters',
+      'a GitHub token must be 20-512 printable, non-whitespace characters',
     );
   }
+}
+
+/** Constant-time, so verifying the round trip is not itself a timing oracle on the token. */
+function sameSecret(a: string, b: string): boolean {
+  const left = Buffer.from(a, 'utf8');
+  const right = Buffer.from(b, 'utf8');
+  return left.length === right.length && timingSafeEqual(left, right);
 }
 
 function assertLogin(login: string): void {
@@ -189,11 +232,18 @@ export class GitHubTokenVault {
       } catch {
         backend = undefined;
       }
-      // Only `basic_text` is refused. An *absent* accessor (older Electron) is not treated as a
-      // failure: refusing every Linux machine because the introspection call does not exist would
-      // make the vault unusable on the platform, which is a worse answer than trusting the
-      // `isEncryptionAvailable()` the platform does provide.
-      if (backend === 'basic_text') return { available: false, reason: 'plaintext_backend' };
+      // An *absent* accessor (older Electron) is not a failure: refusing every Linux machine
+      // because an introspection call does not exist would make the vault unusable on the platform,
+      // which is a worse answer than trusting the `isEncryptionAvailable()` the platform does give.
+      //
+      // A backend the accessor reports but cannot name *is* a failure. `basic_text` is a published
+      // constant key; `unknown` means Electron could not identify the backend at all, which is the
+      // same epistemic state as the missing accessor except that here the accessor exists and is
+      // telling us it does not know. A credential store that cannot say what it is, is not one to
+      // claim protection from.
+      if (backend !== undefined && !REAL_LINUX_BACKENDS.has(backend)) {
+        return { available: false, reason: 'plaintext_backend' };
+      }
     }
     return { available: true };
   }
@@ -220,11 +270,24 @@ export class GitHubTokenVault {
 
     let ciphertext: string;
     try {
-      ciphertext = this.#safeStorage.encryptString(input.token).toString('base64');
+      const encrypted = this.#safeStorage.encryptString(input.token);
+      // Verify the round trip before writing. Encryption succeeding does not mean decryption will:
+      // on macOS the Keychain item's ACL is bound to the app's code signature, so a rename, a
+      // re-sign, or an unsigned development build produces a record that stores fine and can never
+      // be read back. Without this check the user would see "connected as X" — `status()` never
+      // decrypts — while `readToken()` silently returned nothing and the daemon ran with no
+      // credential at all.
+      if (!sameSecret(this.#safeStorage.decryptString(encrypted), input.token)) {
+        throw new Error('round trip mismatch');
+      }
+      ciphertext = encrypted.toString('base64');
     } catch {
       // Deliberately not re-thrown with the underlying message: an encryption failure's message is
       // one of the few places a library could echo its input back.
-      throw new GitHubTokenVaultError('write_failed', 'the OS credential store refused to encrypt');
+      throw new GitHubTokenVaultError(
+        'write_failed',
+        'the OS credential store could not store and read back the token',
+      );
     }
     const record: StoredVaultRecord = {
       schemaVersion: GITHUB_TOKEN_VAULT_SCHEMA_VERSION,
@@ -234,11 +297,22 @@ export class GitHubTokenVault {
     };
 
     mkdirSync(this.#directory, { recursive: true, mode: 0o700 });
+    // Sweep any temporary file a previous crash left behind before writing a new one. Each of those
+    // holds a ciphertext copy, and nothing else would ever remove them.
+    this.#sweepTemporaryFiles();
     const temporaryPath = `${this.#path}.${randomBytes(8).toString('hex')}.tmp`;
     try {
-      writeFileSync(temporaryPath, JSON.stringify(record), { encoding: 'utf8', mode: 0o600 });
-      // `writeFileSync`'s `mode` is only applied when it creates the file, and is masked by umask;
-      // an explicit chmod is what actually guarantees the mode on every platform that has one.
+      const handle = openSync(temporaryPath, 'wx', 0o600);
+      try {
+        writeSync(handle, JSON.stringify(record), null, 'utf8');
+        // Durability before the rename, not after: without it a crash can publish a zero-length
+        // file over a perfectly good record, and the user's only symptom is having to reconnect.
+        fsyncSync(handle);
+      } finally {
+        closeSync(handle);
+      }
+      // `open`'s mode is masked by umask and ignored where the file already exists; an explicit
+      // chmod is what actually guarantees the mode on every platform that has one.
       chmodSync(temporaryPath, 0o600);
       renameSync(temporaryPath, this.#path);
     } catch (error) {
@@ -255,9 +329,39 @@ export class GitHubTokenVault {
     return { state: 'connected', login: record.login, storedAt: record.storedAt };
   }
 
-  /** Forgets the stored token. Removing a vault that is not there is success, not a failure. */
+  /**
+   * Forgets the stored token. Removing a vault that is not there is success, not a failure.
+   *
+   * Unlinking does not scrub the blocks, so the ciphertext stays recoverable from free space by
+   * anyone who is already this OS user — and `safeStorage` binds its key to that same user, so they
+   * could decrypt it. Overwriting the file first would not fix that either (a journalling or
+   * copy-on-write filesystem writes elsewhere). The honest mitigation is not a better delete: it is
+   * a credential that expires. That is a reason to move to a GitHub App installation token or an
+   * OAuth token with refresh rather than a long-lived `repo` PAT, and it is recorded here rather
+   * than papered over with a shred that does not shred.
+   */
   clear(): void {
     rmSync(this.#path, { force: true });
+    this.#sweepTemporaryFiles();
+  }
+
+  /** Removes crashed-write leftovers. Each one holds a ciphertext copy nothing else would clean. */
+  #sweepTemporaryFiles(): void {
+    let names: string[];
+    try {
+      names = readdirSync(this.#directory);
+    } catch {
+      return;
+    }
+    const prefix = `${GITHUB_TOKEN_VAULT_FILE}.`;
+    for (const name of names) {
+      if (!name.startsWith(prefix) || !name.endsWith('.tmp')) continue;
+      try {
+        rmSync(join(this.#directory, name), { force: true });
+      } catch {
+        // A file another instance is mid-write on. It will be swept by whoever writes next.
+      }
+    }
   }
 
   /**
