@@ -256,9 +256,29 @@ screen is worse than no button. **Discard and restart** needs nothing here: it g
 `POST /v2/worktrees/cleanup`, addressed by the worktree id above.
 
 **`labelWrite`** says how far the `pipenzo:interrupted` *label* got, which is not the same question
-as whether the ticket parked. `pending` means the local park is committed and the label write has
-not run yet, `written` means GitHub agrees, and `failed` means the attempt failed and was logged —
-the ticket is still parked locally, and the next ticket read or transition reconciles the two sides.
+as whether the ticket parked. `pending` means the local park is committed and the label write has not
+run yet. `written` means GitHub carries the label too, and is claimed only when the settled label set
+actually contains it — a transition can return without throwing and still land elsewhere. `failed`
+means the attempt failed and was logged; the record is left exactly as the failed transition left it,
+which may mean reconciliation put it back in the lane it crashed in, and the next read or transition
+reconciles the two sides. `superseded` means a human moved the ticket out of the park before the
+write reached it, so the write was abandoned rather than performed — the writes run while this route
+is already serving, so that is a normal outcome, not a failure. `skipped` means the ticket was
+already holding an unanswered human gate and neither side's labels were touched.
+
+Recovery never re-asserts a park over a record that has moved. Nothing in the record distinguishes
+"reconciliation reverted the park" from "a human acted while the write was in flight", and the
+writes run against a live API, so restoring blind would discard real human progress and invent a
+divergence between the record and GitHub. The report, not the lane, is the surface that guarantees an
+interrupted ticket is still visible.
+
+**A ticket already holding `pipenzo:awaiting-stack-approval`, `pipenzo:needs-pre-scoping` or
+`pipenzo:merge-conflict` is reported but not parked.** Those labels are questions already put to a
+human and not yet answered, and `setIssueLabels` replaces the whole `pipenzo:` namespace, so writing
+`interrupted` over one would destroy the gate on the authoritative side with nothing downstream to
+raise it again — after a Resume the ticket would proceed past an approval nobody gave. Such a ticket
+is already in the Needs-human lane the park would have moved it to, so nothing is lost by leaving it
+alone.
 
 The route is read-only, and that is the whole surface: recovery's two actions already have routes,
 and a POST here would be a second worktree-cleanup path competing with the one that enforces the

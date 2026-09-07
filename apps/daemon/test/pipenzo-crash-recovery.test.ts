@@ -301,6 +301,35 @@ describe('PipenzoCrashRecovery.park', () => {
     expect(report.parked[0]?.labels).not.toContain('pipenzo:working');
   });
 
+  it('parks a ticket once even when the crash interrupted two of its sessions', () => {
+    // A ticket carries several attempts across a tier escalation or sibling executions. Parking per
+    // session would put two cards for one ticket on the recovery screen, and publish a second stream
+    // event whose `fromLane` came from a pre-park snapshot -- naming a lane the ticket had left.
+    const { events, recovery } = harness({
+      ticket: {
+        attempts: [
+          { sessionId: SESSION_ID, tier: 'mid', model: 'claude-sonnet', outcome: 'dispatched' },
+          {
+            sessionId: 'session-escalated',
+            tier: 'frontier',
+            model: 'claude-opus',
+            outcome: 'dispatched',
+          },
+        ],
+      },
+    });
+
+    const report = recovery.park({
+      interruptedSessionIds: [SESSION_ID, 'session-escalated'],
+      quarantinedTicketRecordCount: 0,
+    });
+
+    expect(report.parked).toHaveLength(1);
+    expect(report.parked[0]?.sessionId).toBe(SESSION_ID);
+    expect(report.interruptedSessionCount).toBe(2);
+    expect(events.retained).toHaveLength(1);
+  });
+
   it('announces the lane move on the phase stream', () => {
     const { events, recovery } = harness();
 
@@ -441,16 +470,116 @@ describe('PipenzoCrashRecovery.writeLabels', () => {
     expect(write?.key).toContain('pipenzo:interrupted');
   });
 
-  it('does not throw, and does not undo the local park, when GitHub refuses the write', async () => {
-    const { github, tickets, recovery } = harness();
+  it('does not throw when GitHub refuses the write, and reports the failure', async () => {
+    const { github, recovery } = harness();
     github.failNext('setIssueLabels', new GitHubClientError('rate_limited', 'rate limited'));
 
     recovery.park({ interruptedSessionIds: [SESSION_ID], quarantinedTicketRecordCount: 0 });
     const report = await recovery.writeLabels();
 
+    // The report is the surface a recovery screen reads, and it still names the ticket.
+    expect(report.parked[0]?.ticketId).toBe(TICKET_ID);
     expect(report.parked[0]?.labelWrite).toBe('failed');
-    expect(tickets.get(TICKET_ID)?.lane).toBe('needs-human');
-    expect(tickets.get(TICKET_ID)?.labels).toContain('pipenzo:interrupted');
+  });
+
+  it('does not re-park over a state the phase machine reconciled from GitHub', async () => {
+    // `transition()` reconciles before it writes, so a successful read followed by a failed write
+    // leaves the record wherever GitHub says. Recovery deliberately does not restore its park on top
+    // of that: nothing in the record distinguishes "reconciliation reverted my park" from "a human
+    // moved this while the write was in flight", and this loop runs against a live API. Re-parking
+    // blind discarded real human progress and invented a divergence between the record and GitHub.
+    const { github, tickets, recovery } = harness();
+    recovery.park({ interruptedSessionIds: [SESSION_ID], quarantinedTicketRecordCount: 0 });
+
+    // The issue moved on while recovery was queued; the write then fails.
+    github.seedIssue(makeIssue(['pipenzo:ready-for-review']));
+    github.failNext('setIssueLabels', new GitHubClientError('rate_limited', 'rate limited'));
+
+    const report = await recovery.writeLabels();
+
+    expect(report.parked[0]?.labelWrite).toBe('failed');
+    // Both sides tell the same story: the record reflects GitHub, not a park recovery re-asserted.
+    expect(tickets.get(TICKET_ID)?.lane).toBe('ready-for-review');
+    expect(tickets.get(TICKET_ID)?.labels).not.toContain('pipenzo:interrupted');
+  });
+
+  it('does not claim written when the transition settled on a different label', async () => {
+    // A transition can return without throwing and still land elsewhere -- a racing writer's label
+    // outranking ours, ambiguous labels, no label at all. `written` means "GitHub carries
+    // pipenzo:interrupted too", so it must not be claimed for a set that does not contain it.
+    const { github, recovery } = harness();
+    recovery.park({ interruptedSessionIds: [SESSION_ID], quarantinedTicketRecordCount: 0 });
+    github.seedIssue(makeIssue(['pipenzo:ready-for-review']));
+
+    const report = await recovery.writeLabels();
+
+    if (!report.parked[0]?.labels.includes('pipenzo:interrupted')) {
+      expect(report.parked[0]?.labelWrite).not.toBe('written');
+    }
+  });
+
+  it('abandons the label write when a human moved the ticket out of the park first', async () => {
+    // The route serving the recovery report is live while this loop runs, and each ticket costs two
+    // GitHub round trips, so a human can read the parked set and act on it long before the last
+    // ticket's turn. Re-asserting `interrupted` over that decision would be recovery overruling the
+    // human it defers to everywhere else.
+    const { github, tickets, recovery } = harness();
+    recovery.park({ interruptedSessionIds: [SESSION_ID], quarantinedTicketRecordCount: 0 });
+
+    const parked = tickets.get(TICKET_ID);
+    expect(parked?.labels).toContain('pipenzo:interrupted');
+    tickets.update(TICKET_ID, { ...parked!, lane: 'queued', labels: ['pipenzo:queued'] });
+
+    const report = await recovery.writeLabels();
+
+    expect(report.parked[0]?.labelWrite).toBe('superseded');
+    expect(github.calls).toHaveLength(0);
+    // The human's decision stands, and recovery did not re-park it.
+    expect(tickets.get(TICKET_ID)?.lane).toBe('queued');
+    expect(tickets.get(TICKET_ID)?.labels).not.toContain('pipenzo:interrupted');
+  });
+
+  it('leaves an outstanding human gate untouched rather than destroying it', async () => {
+    // `awaiting-stack-approval` is a question already put to a human and not yet answered. Parking
+    // would write `interrupted` through the phase machine, and `setIssueLabels` replaces the whole
+    // `pipenzo:` namespace -- so the gate would be destroyed on the authoritative side with nothing
+    // downstream to raise it again, and a later Resume would sail past an approval nobody gave.
+    const { github, tickets, recovery } = harness({
+      ticket: { labels: ['pipenzo:awaiting-stack-approval'] },
+      issueLabels: ['pipenzo:awaiting-stack-approval'],
+    });
+
+    const report = recovery.park({
+      interruptedSessionIds: [SESSION_ID],
+      quarantinedTicketRecordCount: 0,
+    });
+
+    // Still reported, so the desktop knows this ticket also holds a crashed session.
+    expect(report.parked[0]?.ticketId).toBe(TICKET_ID);
+    expect(report.parked[0]?.labelWrite).toBe('skipped');
+    expect(report.parked[0]?.labels).toEqual(['pipenzo:awaiting-stack-approval']);
+    // Neither side's labels were touched: the gate survives, locally and on GitHub.
+    expect(tickets.get(TICKET_ID)?.labels).toEqual(['pipenzo:awaiting-stack-approval']);
+    expect(tickets.get(TICKET_ID)?.labels).not.toContain('pipenzo:interrupted');
+
+    await recovery.writeLabels();
+
+    expect(github.calls).toHaveLength(0);
+    expect(tickets.get(TICKET_ID)?.labels).toEqual(['pipenzo:awaiting-stack-approval']);
+  });
+
+  it('still replaces a state label belonging to another lane', () => {
+    // The crash itself must still be recorded: `working` is a state the crash invalidated, not an
+    // unanswered question, so it goes.
+    const { recovery } = harness({ ticket: { labels: ['pipenzo:working'] } });
+
+    const report = recovery.park({
+      interruptedSessionIds: [SESSION_ID],
+      quarantinedTicketRecordCount: 0,
+    });
+
+    expect(report.parked[0]?.labels).toContain('pipenzo:interrupted');
+    expect(report.parked[0]?.labels).not.toContain('pipenzo:working');
   });
 
   it('does not throw when GitHub is unreachable before the write is even attempted', async () => {

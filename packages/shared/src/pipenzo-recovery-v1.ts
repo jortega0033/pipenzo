@@ -62,8 +62,24 @@ import {
  * - `written` — GitHub carries `pipenzo:interrupted` too; both sides agree.
  * - `failed` — the attempt failed and was logged. The ticket is still parked locally, and the next
  *   `read()`/`transition()` on it reconciles the two sides.
+ * - `superseded` — a human moved the ticket out of the park before the label write reached it, so
+ *   the write was abandoned rather than performed. The route serving this report is live while the
+ *   writes are still running, so this is a normal outcome, not a failure: recovery parks a ticket to
+ *   put a decision in front of someone, and once they have made it, re-asserting `interrupted` over
+ *   the top would be recovery overruling the human it was built to defer to.
+ * - `skipped` — the ticket was already holding an unanswered human gate (`awaiting-stack-approval`,
+ *   `needs-pre-scoping`, `merge-conflict`), so neither side's labels were touched. It is already in
+ *   the Needs-human lane the park would have moved it to, and `setIssueLabels` replaces the whole
+ *   `pipenzo:` namespace, so writing `interrupted` over it would destroy a question nobody has
+ *   answered yet. `labels` on this entry is the ticket's real, untouched set.
  */
-export const PIPENZO_RECOVERY_LABEL_WRITES = ['pending', 'written', 'failed'] as const;
+export const PIPENZO_RECOVERY_LABEL_WRITES = [
+  'pending',
+  'written',
+  'failed',
+  'superseded',
+  'skipped',
+] as const;
 
 export type PipenzoRecoveryLabelWriteV1 = (typeof PIPENZO_RECOVERY_LABEL_WRITES)[number];
 export const pipenzoRecoveryLabelWriteV1Schema = z.enum(PIPENZO_RECOVERY_LABEL_WRITES);

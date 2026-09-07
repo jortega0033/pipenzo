@@ -145,6 +145,14 @@ export class PipenzoCrashRecovery {
     const parked: PipenzoParkedTicketV1[] = [];
     let unmatched = 0;
 
+    // One ticket parks once, however many of its sessions the crash interrupted. A ticket can carry
+    // several `attempts[]` -- a tier escalation, sibling executions -- and without this the loop
+    // would park the same ticket twice: two cards for one ticket on the recovery screen, and a
+    // second phase-stream event whose `fromLane` was read from a pre-park snapshot and so names a
+    // lane the ticket had already left. The first interrupted session is the one reported, matching
+    // `#sessionToTicket`'s first-wins rule.
+    const parkedTicketIds = new Set<string>();
+
     for (const sessionId of sessionIds) {
       const ticket = index.get(sessionId);
       if (!ticket) {
@@ -154,8 +162,12 @@ export class PipenzoCrashRecovery {
         unmatched += 1;
         continue;
       }
+      if (parkedTicketIds.has(ticket.ticketId)) continue;
       const record = this.#parkTicket(ticket, sessionId);
-      if (record) parked.push(record);
+      if (record) {
+        parkedTicketIds.add(ticket.ticketId);
+        parked.push(record);
+      }
     }
 
     if (unmatched > 0) {
@@ -215,17 +227,35 @@ export class PipenzoCrashRecovery {
         updated.push(entry);
         continue;
       }
+      // Re-read immediately before the write, because this loop runs while the API is live. Each
+      // iteration costs two GitHub round trips, so on a real backlog the board has been up and
+      // answering `GET /v2/pipenzo/recovery` for a long time before the last ticket's turn comes --
+      // long enough for someone to read the parked set and act on it. If they moved this ticket out
+      // of the park, the write is abandoned: recovery parks a ticket to put a decision in front of a
+      // human, and re-asserting `interrupted` after they made it would be this module overruling the
+      // human it exists to defer to, which is the same harm as the auto-resume it refuses outright.
+      if (!this.#stillParked(entry.ticketId)) {
+        updated.push({ ...entry, labelWrite: 'superseded' });
+        continue;
+      }
       try {
         const result = await machine.transition(entry.ticketId, 'pipenzo:interrupted');
         // Report what the two sides settled on rather than what was asked for. A concurrent writer
         // can pin the issue at another lane between the write and its response, and a recovery
         // screen that showed the lane it requested would be the one surface claiming a state
         // neither store holds.
+        //
+        // `written` means "GitHub carries pipenzo:interrupted too", so it is claimed only when the
+        // label is actually in the settled set. A transition can return without throwing and still
+        // land a different label -- `transitionDivergenceFor` names the cases: a racing writer whose
+        // label outranks ours (`lane_reconciled`), `ambiguous_labels`, `unlabelled`. Reporting
+        // `written` there would assert an agreement that does not exist.
+        const landed = result.ticket.labels.includes('pipenzo:interrupted');
         updated.push({
           ...entry,
           lane: result.ticket.lane,
           labels: [...result.ticket.labels],
-          labelWrite: 'written',
+          labelWrite: landed ? 'written' : 'superseded',
         });
       } catch (error) {
         // Named, so an operator knows which ticket GitHub has not been told about, and can find it
@@ -237,7 +267,22 @@ export class PipenzoCrashRecovery {
           issueNumber: entry.issueNumber,
           error: error instanceof Error ? error.message : String(error),
         });
-        updated.push({ ...this.#restorePark(entry), labelWrite: 'failed' });
+        // The local record is left exactly as the failed transition left it, which may mean the
+        // park was undone: `transition()` reconciles before it writes, and reconciliation is
+        // label-wins, so a successful issue read followed by a failed `setIssueLabels` rewrites the
+        // record to whatever the issue still says.
+        //
+        // Re-applying the park here was tried and removed. Nothing in the record can distinguish
+        // "reconciliation reverted my park" from "a human moved this ticket while the write was in
+        // flight" -- there is no revision on `PipenzoTicketRecordV1` and no compare-and-set on the
+        // store -- and this loop runs after `listen()`, against a live API, so the second case is
+        // real. Restoring blind discarded genuine human progress and left the local record and the
+        // phase stream claiming a lane GitHub disagreed with: a divergence recovery invented.
+        //
+        // Leaving it alone keeps both sides telling the same story, and costs nothing that matters:
+        // the interruption is still reported here with `labelWrite: 'failed'`, which is the surface
+        // the recovery screen reads, and the next read or transition reconciles anyway.
+        updated.push({ ...entry, labelWrite: 'failed' });
       }
     }
 
@@ -246,28 +291,26 @@ export class PipenzoCrashRecovery {
   }
 
   /**
-   * Re-applies a park that the phase machine reverted on its way to a write that then failed.
+   * Whether the ticket is still in the park this recovery wrote, and so still recovery's to finish.
    *
-   * `transition()` reconciles before it writes, and reconciliation is label-wins: it rewrites the
-   * local record to whatever the issue currently says. For a recovery transition that step lands on
-   * the record this module *just* wrote, so a successful `getIssue` followed by a failed
-   * `setIssueLabels` — a rate limit hit between the two calls, a token with read but not write scope
-   * — leaves the ticket back in the lane it crashed in, with the park silently undone. That is
-   * correct behaviour for the machine (GitHub really is authoritative, and the label really is not
-   * there) and the wrong end state here, because the reason the label is not there is that the write
-   * this daemon was in the middle of making did not land. Restoring the park keeps the guarantee
-   * that matters: an interrupted ticket is parked somewhere a human will see it, whatever GitHub
-   * did or did not do.
+   * Checked immediately before each label write. A record that has left `needs-human`, or that no
+   * longer carries `pipenzo:interrupted`, has been moved by something other than this loop -- in
+   * practice a human acting on the recovery screen, since the route is live throughout.
    *
-   * Idempotent, and a no-op in the common case: a transition that failed before reaching GitHub at
-   * all (no token, an unreachable network) never reconciled anything, so the park is still in place
-   * and the `pipenzo:interrupted` check below finds it.
+   * The check narrows the window to one ticket's transition rather than closing it outright: a human
+   * acting in the seconds between this read and `setIssueLabels` returning is still overwritten, and
+   * `#restorePark` cannot tell that case apart from the reconciliation it exists to undo, because
+   * both leave a record without the label. Closing it fully needs a compare-and-set the ticket store
+   * does not offer. What is bounded here is the window that actually matters: without this check it
+   * spanned the whole backlog's worth of round trips, which is where a human realistically acts.
    */
-  #restorePark(entry: PipenzoParkedTicketV1): PipenzoParkedTicketV1 {
-    const current = this.#tickets.get(entry.ticketId);
-    if (!current || current.labels.includes('pipenzo:interrupted')) return entry;
-    const restored = this.#persistPark(current);
-    return restored ? { ...entry, lane: restored.lane, labels: [...restored.labels] } : entry;
+  #stillParked(ticketId: string): boolean {
+    const current = this.#tickets.get(ticketId);
+    return (
+      current !== undefined &&
+      current.lane === 'needs-human' &&
+      current.labels.includes('pipenzo:interrupted')
+    );
   }
 
   /** A defensive copy, so a route handler cannot hand a caller the live report to mutate. */
@@ -312,10 +355,16 @@ export class PipenzoCrashRecovery {
     };
     try {
       this.#tickets.update(ticket.ticketId, parked);
-    } catch (error) {
+    } catch {
+      // The store's own message is deliberately not forwarded. It bottoms out in `atomicWriteJson`,
+      // which does not wrap Node's fs errors, so an EACCES or ENOSPC would put the absolute record
+      // path -- and with it the state directory layout, the OS username and the pid -- into the
+      // daemon's log, where the logger's key-based redactor would not catch it. Same substitution
+      // the phase machine's `persist()` makes, for the same reason: recovery has no more business
+      // publishing the daemon's on-disk layout than the phase surface does. The ticket id is enough
+      // to act on, and the store has already reported the failure through its own quarantine path.
       this.#logger.warn('could not park an interrupted ticket in the ticket store', {
         ticketId: ticket.ticketId,
-        error: error instanceof Error ? error.message : String(error),
       });
       return undefined;
     }
@@ -335,7 +384,10 @@ export class PipenzoCrashRecovery {
 
   /** The parked record plus the session that put it there, as the recovery surface reports it. */
   #parkTicket(ticket: PipenzoTicketRecordV1, sessionId: string): PipenzoParkedTicketV1 | undefined {
-    const parked = this.#persistPark(ticket);
+    // A ticket already holding an unanswered human gate is reported as it stands, not parked: it is
+    // already in the lane the park would move it to, and writing over its label would destroy the
+    // question it is holding. See `holdsHumanGate`.
+    const parked = holdsHumanGate(ticket) ? ticket : this.#persistPark(ticket);
     if (!parked) return undefined;
     return {
       ticketId: parked.ticketId,
@@ -344,12 +396,12 @@ export class PipenzoCrashRecovery {
       sessionId,
       lane: parked.lane,
       phase: parked.phase,
-      labels: parked.labels,
+      labels: [...parked.labels],
       ...(parked.worktree
         ? { worktree: { id: parked.worktree.id, branch: parked.worktree.branch } }
         : {}),
       resumable: this.#resumable(sessionId),
-      labelWrite: 'pending',
+      labelWrite: holdsHumanGate(ticket) ? 'skipped' : 'pending',
     };
   }
 
@@ -390,6 +442,8 @@ export class PipenzoCrashRecovery {
  * ticket through a lane change. Predicting the same set is what makes the subsequent `transition()`
  * find the two sides in agreement instead of reporting a divergence recovery itself caused.
  *
+ * A ticket already holding an unanswered human gate is never parked at all — see `holdsHumanGate`.
+ *
  * The schema marker is deliberately *not* added when the record does not already carry it. The
  * machine's write will add it to the issue, but until that write lands the authoritative side has
  * no such label, and a local record asserting a state GitHub never agreed to is the one failure mode
@@ -400,4 +454,37 @@ function interruptedLabels(current: readonly PipenzoLabelV1[]): PipenzoLabelV1[]
     (label) => label === PIPENZO_SCHEMA_V1_MARKER_LABEL || isConditionLabel(label),
   );
   return [...new Set<PipenzoLabelV1>(['pipenzo:interrupted', ...retained])];
+}
+
+/**
+ * The Needs-human labels that stand for a question already put to a human and not yet answered.
+ *
+ * These are not states a crash invalidates. `pipenzo:awaiting-stack-approval` is README's
+ * decomposition or blown-estimate gate, waiting on someone to accept, reorder or reject;
+ * `needs-pre-scoping` and `merge-conflict` are the same shape of unfinished ask.
+ */
+const PIPENZO_HUMAN_GATE_LABELS: ReadonlySet<PipenzoLabelV1> = new Set<PipenzoLabelV1>([
+  'pipenzo:needs-pre-scoping',
+  'pipenzo:awaiting-stack-approval',
+  'pipenzo:merge-conflict',
+]);
+
+/**
+ * Whether the ticket is already waiting on a human, in which case recovery leaves its labels alone.
+ *
+ * Parking would write `pipenzo:interrupted` through `PipenzoPhaseMachine.transition()`, and
+ * `setIssueLabels` replaces the whole `pipenzo:` namespace — so the gate would be destroyed on the
+ * authoritative side, with nothing downstream to raise it again. After a Resume the ticket would
+ * proceed straight past an approval nobody ever gave. Losing a pending approval that way is the same
+ * class of harm as auto-resuming into one, which this module refuses outright.
+ *
+ * Skipping the park costs nothing that matters. The whole point of parking is to put a ticket
+ * somewhere a human will see it, and a ticket at a gate is already in the Needs-human lane, already
+ * on the board, already in front of the person whose answer it waits on. The interruption is still
+ * reported: the entry appears in the recovery report with its real labels and `labelWrite: 'skipped'`,
+ * so the desktop can show that this ticket also holds a crashed session without the daemon
+ * overwriting the question it is holding.
+ */
+function holdsHumanGate(ticket: PipenzoTicketRecordV1): boolean {
+  return ticket.labels.some((label) => PIPENZO_HUMAN_GATE_LABELS.has(label));
 }

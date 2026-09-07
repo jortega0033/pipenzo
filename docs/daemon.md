@@ -210,11 +210,31 @@ named and reported as `labelWrite: 'failed'`.
 
 The label write goes through `PipenzoPhaseMachine` rather than `GitHubClient.setIssueLabels`
 directly, so which labels survive a write, what the local record says afterwards, and the phase-stream
-announcement all stay in one place. One consequence needs handling and gets it: the machine
-reconciles before it writes, and reconciliation is label-wins, so a successful issue read followed by
-a failed label write would rewrite the local record back to the lane the ticket crashed in and undo
-the park. Recovery re-applies the park in that case — the label is missing precisely because the
-write that would have added it did not land.
+announcement all stay in one place. One consequence is worth naming: the machine reconciles before it
+writes, and reconciliation is label-wins, so a successful issue read followed by a failed label write
+rewrites the local record back to the lane the ticket crashed in, undoing the park.
+
+Recovery deliberately does **not** re-apply the park on top of that. Nothing in the record can tell
+"reconciliation reverted my park" apart from "a human moved this ticket while the write was in
+flight" — there is no revision on the record and no compare-and-set on the store — and the label
+writes run after `listen()`, against a live API, so the second case is real. Restoring blind
+discarded genuine human progress and left the record and the phase stream claiming a lane GitHub
+disagreed with, a divergence recovery invented. Instead the write is skipped outright when the ticket
+has already left the park (`labelWrite: 'superseded'`), and a failure leaves both sides telling the
+same story (`labelWrite: 'failed'`). The recovery report, not the lane, is what guarantees an
+interrupted ticket stays visible.
+
+For the same reason, a ticket already holding an unanswered human gate — `pipenzo:awaiting-stack-approval`,
+`pipenzo:needs-pre-scoping`, `pipenzo:merge-conflict` — is reported but never parked
+(`labelWrite: 'skipped'`). `setIssueLabels` replaces the whole `pipenzo:` namespace, so writing
+`interrupted` over one of those would destroy a question nobody has answered, and nothing downstream
+would raise it again: after a Resume the ticket would proceed straight past an approval that was
+never given. Such a ticket is already in the Needs-human lane, already in front of the person whose
+answer it is waiting on, so leaving it alone costs nothing the park was there to provide.
+
+One ticket parks once, however many of its sessions the crash interrupted — a ticket carries several
+`attempts[]` across a tier escalation, and parking per session would put two cards on the recovery
+screen for one ticket.
 
 Sessions that map to no ticket are normal rather than an error: agentdock runs plain sessions with no
 Pipenzo ticket behind them, and a crash interrupts those the same way. They are counted and logged,
