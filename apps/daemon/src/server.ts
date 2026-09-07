@@ -26,6 +26,8 @@ import { registerPipenzoPhaseRoutes } from './routes/pipenzo-phases.js';
 import type { PipenzoPhaseMachine } from './pipenzo-phase-machine.js';
 import { registerPipenzoTicketRoutes } from './routes/pipenzo-tickets.js';
 import type { PipenzoPhaseEventBus } from './pipenzo-phase-events.js';
+import type { PipenzoCrashRecovery } from './pipenzo-crash-recovery.js';
+import { registerPipenzoRecoveryRoutes } from './routes/pipenzo-recovery.js';
 
 export interface BuildServerOptions {
   registry: ProviderRegistry;
@@ -57,6 +59,12 @@ export interface BuildServerOptions {
    * a route test wants.
    */
   phaseEvents?: PipenzoPhaseEventBus;
+  /**
+   * Crash recovery's parked set (issue #190). Optional for the same reason the rest of this surface
+   * is: a daemon built without it has no recovery route at all, rather than one that answers with an
+   * empty report a caller cannot distinguish from "nothing was interrupted".
+   */
+  crashRecovery?: PipenzoCrashRecovery;
 }
 
 /**
@@ -138,6 +146,7 @@ export function buildServer(opts: BuildServerOptions): FastifyInstance {
     if (opts.phaseService) registerPipenzoPhaseRoutes(app, opts.phaseService);
     if (opts.phaseMachine)
       registerPipenzoTicketRoutes(app, opts.phaseMachine, opts.phaseEvents);
+    if (opts.crashRecovery) registerPipenzoRecoveryRoutes(app, opts.crashRecovery);
     if (opts.attachmentStore)
       registerV2MultimodalRoutes(app, opts.attachmentStore, opts.sessionManager);
   });

@@ -31,6 +31,7 @@ import { ExecFileGateCommands } from './gate-commands.js';
 import { OctokitGitHubClient } from './github-client.js';
 import { PipenzoPhaseMachine } from './pipenzo-phase-machine.js';
 import { PipenzoPhaseEventBus } from './pipenzo-phase-events.js';
+import { PipenzoCrashRecovery } from './pipenzo-crash-recovery.js';
 
 async function settlesWithin(promise: Promise<unknown>, timeoutMs: number): Promise<boolean> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -181,6 +182,30 @@ async function main() {
     events: phaseEvents,
   });
 
+  // Pipenzo's crash recovery (issue #190). The two recovery reports read above already mark the
+  // sessions interrupted; this is what maps them back onto tickets, parks each one in Needs-human,
+  // and records what a human's two options are. Same GitHub boundary as everything else on this
+  // surface -- it reaches GitHub only through the phase machine above, which builds its client
+  // lazily from a token read at call time.
+  const crashRecovery = new PipenzoCrashRecovery({
+    tickets: ticketStore,
+    executions: executionGraphStore,
+    sessions: sessionStore,
+    logger,
+    machine: phaseMachine,
+    events: phaseEvents,
+  });
+  // The local half runs here, before the server listens, so the recovery route can never answer with
+  // a half-built report. It writes only ticket-store files, so it cannot fail on a network and
+  // cannot be the reason a daemon does not start. The GitHub half runs after `listen()` below.
+  crashRecovery.park({
+    interruptedSessionIds: [
+      ...sessionRecovery.interruptedSessionIds,
+      ...graphRecovery.interruptedSessionIds,
+    ],
+    quarantinedTicketRecordCount: ticketRecovery.quarantinedFiles.length,
+  });
+
   const app = buildServer({
     registry,
     sessionManager,
@@ -195,6 +220,7 @@ async function main() {
     phaseService,
     phaseMachine,
     phaseEvents,
+    crashRecovery,
   });
 
   const requestedPort = Number(process.env.AGENT_DOCK_PORT ?? '0');
@@ -212,6 +238,14 @@ async function main() {
     appId,
     discoveryFile: filePath,
   });
+
+  // Crash recovery's GitHub half, deliberately after `listen()` and deliberately not awaited. Every
+  // parked ticket is already durable and already served by `GET /v2/pipenzo/recovery`; all this adds
+  // is `pipenzo:interrupted` on the issue. Awaiting it would make the daemon's startup -- and so the
+  // desktop's first connection -- wait on a rate-limited API for one round trip per parked ticket,
+  // and a GitHub outage would turn one crash into a daemon that never finishes starting. `void` is
+  // safe rather than sloppy here: `writeLabels()` catches per ticket and cannot reject.
+  void crashRecovery.writeLabels();
 
   let shuttingDown = false;
   async function shutdown(signal: string) {
