@@ -168,6 +168,60 @@ slow to drain its socket is cut loose by the shared bounded writer (`apps/daemon
 the same state machine protocol v2's session stream uses) rather than allowed to grow the daemon's
 memory without bound.
 
+## Pipenzo crash recovery
+
+A daemon restart already marks every non-terminal session `interrupted` with
+`reason: 'daemon_restart'` and reports its id — `FileExecutionGraphStore` for executions,
+`FileSessionStore` for its v1 compatibility records. Neither store knows what a ticket is.
+`PipenzoCrashRecovery` (`apps/daemon/src/pipenzo-crash-recovery.ts`) is what maps those session ids
+back onto tickets, so a crash mid-Implement does not leave an interrupted session, a dirty worktree,
+and a ticket whose local phase and GitHub label disagree with nothing that owns the three together.
+
+**It parks. It never resumes and never retries, and no configuration flag turns that off.** The
+approval state of an in-flight MEDIUM/HIGH action is unknowable after a crash — the daemon died
+somewhere between the implementer posting what it was about to run and a human approving or denying
+it, and nothing on disk distinguishes those two — so resuming into that gap could silently re-run
+something a person was about to deny. A parked ticket offers a human exactly two actions: **Resume**,
+offered only when a `providerSessionId` and a `continuationScope` both exist (that is, only when it
+would actually succeed), and **Discard and restart**, which is the existing
+`POST /v2/worktrees/cleanup` path rather than anything new.
+
+**The `sessionId → ticketId` index is built in memory, at recovery time.** `attempts[].sessionId`
+already carries the lineage, so the index is a walk over the ticket records the store loaded on
+construction: recovery runs once per daemon start, the walk costs no extra I/O, and nothing about the
+ticket store's on-disk schema changes. A persisted index would be durable state that can tear
+mid-write, which would give the crash-recovery path its own crash-recovery problem.
+
+**Write order is inverted relative to the phase machine, deliberately.** A transition writes GitHub
+first; recovery writes the **local** record first and attempts the label afterwards. The question is
+different: not which order survives a crash between two writes, but what must never be allowed to
+stop a daemon from starting. A daemon starts in exactly the conditions where a GitHub write is least
+likely to work — no token configured, no network, a quota already spent — and ordering GitHub first
+would mean an interrupted ticket is parked *nowhere* whenever GitHub is unreachable. Ordering the
+local write first costs a window in which this daemon knows a ticket is interrupted and GitHub does
+not, and that window closes on its own when the next read reconciles.
+
+So the local half runs at startup, before the server listens, and the GitHub half runs after
+`listen()` resolves and is not awaited: every parked ticket is already durable and already served by
+`GET /v2/pipenzo/recovery` by then, and awaiting one round trip per parked ticket would make the
+desktop's first connection wait on a rate-limited API. The GitHub half is sequential rather than
+concurrent, for the same quota reason, and it cannot throw — a failure is logged with the ticket
+named and reported as `labelWrite: 'failed'`.
+
+The label write goes through `PipenzoPhaseMachine` rather than `GitHubClient.setIssueLabels`
+directly, so which labels survive a write, what the local record says afterwards, and the phase-stream
+announcement all stay in one place. One consequence needs handling and gets it: the machine
+reconciles before it writes, and reconciliation is label-wins, so a successful issue read followed by
+a failed label write would rewrite the local record back to the lane the ticket crashed in and undo
+the park. Recovery re-applies the park in that case — the label is missing precisely because the
+write that would have added it did not land.
+
+Sessions that map to no ticket are normal rather than an error: agentdock runs plain sessions with no
+Pipenzo ticket behind them, and a crash interrupts those the same way. They are counted and logged,
+not treated as a failure. The ticket store's own recovery composes with this one: a store that had to
+quarantine a torn record on the same start reports that count beside the parked set, and the
+surviving tickets still park.
+
 ## Session admission
 
 `POST /sessions` and `POST /v2/sessions` (including resume/fork) share one daemon-wide admission

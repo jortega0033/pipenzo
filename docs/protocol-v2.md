@@ -87,6 +87,7 @@ provider-control error when the selected provider does not implement the operati
 | `POST /v2/pipenzo/tickets/read`                          |   `200` | Reconcile a Pipenzo ticket against its issue's `pipenzo:` labels (issue #188); see below |
 | `POST /v2/pipenzo/tickets/transition`                    |   `200` | Write a new `pipenzo:` label, then reconcile the same way (issue #188); see below |
 | `GET /v2/pipenzo/tickets/events`                         |   `200` | SSE stream of every ticket's phase changes (issue #189); see below               |
+| `GET /v2/pipenzo/recovery`                               |   `200` | What this daemon start parked after a crash (issue #190); see below              |
 
 MCP inspection withholds environment, header, bearer-token, and URL values, exposing only their
 presence/classification. The current adapter returns configured stdio `command` and `args` values
@@ -213,6 +214,56 @@ throttling a stream the renderer reconnects to after every daemon restart would 
 of live data at the worst moment. It sits behind the same bearer token and the same reject-any-Origin
 guard as the rest of the surface. The stream has no terminal event — it ends when the subscriber
 disconnects or the daemon stops.
+
+### `GET /v2/pipenzo/recovery` — what this daemon start parked (issue #190)
+
+A read of what crash recovery found when this daemon started, described in
+[daemon.md](daemon.md#pipenzo-crash-recovery). It takes no arguments, answers from memory computed
+once at startup, costs no GitHub call, and is the only route on this surface that is a `GET` for
+exactly that reason. `PipenzoRecoveryReportV1` is:
+
+```jsonc
+{
+  "schemaVersion": 1,
+  "interruptedSessionCount": 3,      // deduplicated across both stores' recovery reports
+  "unmatchedSessionCount": 1,        // sessions with no Pipenzo ticket — normal, not an error
+  "quarantinedTicketRecordCount": 0, // torn ticket files the store repaired on the same start
+  "parked": [
+    {
+      "ticketId": "…",
+      "repo": "owner/name",
+      "issueNumber": 190,
+      "sessionId": "…",
+      "lane": "needs-human",
+      "phase": "implement",          // the phase the ticket was in or last completed
+      "labels": ["pipenzo:interrupted"],
+      "worktree": { "id": "…", "branch": "issue-190" },
+      "resumable": true,
+      "labelWrite": "written"
+    }
+  ]
+}
+```
+
+`worktree` carries id and branch and never `path`, the same withholding the ticket routes above
+apply and for the same reason: the renderer addresses a worktree by id so it can never ask the
+daemon to run anything in a directory of its own choosing.
+
+**`resumable` is the whole of the Resume affordance.** It is true only when a `providerSessionId`
+and a `continuationScope` both exist for that session — that is, only when resume would actually
+succeed. Offering Resume without both is a button that fails when pressed, which on a recovery
+screen is worse than no button. **Discard and restart** needs nothing here: it goes through
+`POST /v2/worktrees/cleanup`, addressed by the worktree id above.
+
+**`labelWrite`** says how far the `pipenzo:interrupted` *label* got, which is not the same question
+as whether the ticket parked. `pending` means the local park is committed and the label write has
+not run yet, `written` means GitHub agrees, and `failed` means the attempt failed and was logged —
+the ticket is still parked locally, and the next ticket read or transition reconciles the two sides.
+
+The route is read-only, and that is the whole surface: recovery's two actions already have routes,
+and a POST here would be a second worktree-cleanup path competing with the one that enforces the
+tracked/untracked split — as well as the obvious place a future auto-resume would grow, which issue
+#190 forbids outright.
 
 Protocol v2 has no `cancel-all` route. The unversioned v1 endpoint remains a narrow desktop-shutdown
 mechanism. Command dispatch is available only when the frozen selection includes the command's
