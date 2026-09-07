@@ -3799,6 +3799,99 @@
     flex-shrink: 0;
   }
 
+  /* Pre-app shell — ported from Connect.dc.html's own layout block (issue #113). Deliberately not
+     the `.shell` two-column frame below it: before a credential exists there is no workspace, so
+     there is no sidebar, no workspace row and no breadcrumb bar to put in one. See PreAppShell.tsx.
+
+     Two departures from the canvas, both required by the difference between an artboard and a
+     window. The canvas root is `.app { height: 980px }`, a fixed artboard height; a real window
+     sizes to itself, and `height: 100%` would collapse here because neither `body` nor `#root`
+     carries a height for it to be a percentage *of* -- so it is `min-height: 100vh`, which is the
+     window regardless. And it is named `.preapp` rather than `.app`, because a bare `.app` in a
+     shared stylesheet is the kind of name a later screen collides with by accident --
+     `.app-shell`/`.app-header` already exist in this repo's inherited CSS. Everything else (the
+     64px bar, the 24px gutter, the flat --bg on both rows) is the canvas's. */
+  .preapp {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background: var(--color-bg);
+  }
+
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 64px;
+    padding: 0 24px;
+    background: var(--color-bg);
+    flex-shrink: 0;
+  }
+
+  .center {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 48px 40px;
+    background: var(--color-bg);
+    overflow: hidden;
+  }
+
+  /* The 620px column each Connect step renders into. A fixed width, not a max-width: the device
+     code and the repo list are both read at a glance, and a column that grows with the window
+     turns a scannable list into a scan across a monitor. */
+  .pane {
+    width: 620px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .pane-title {
+    font-size: 28px;
+    font-weight: 700;
+    margin: 0;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+    text-wrap: balance;
+  }
+
+  .pane-sub {
+    margin: 0;
+    font-size: 14px;
+    color: var(--color-text-soft);
+    line-height: 1.6;
+    text-wrap: pretty;
+  }
+
+  .pane-sub b {
+    color: var(--color-text);
+    font-weight: 700;
+  }
+
+  .pane-acts {
+    display: flex;
+    gap: 8px;
+  }
+
+  /* A step the install cannot reach yet (the repo picker with no credential behind it). The canvas
+     has no such state -- it is a static preview where both steps are deliberately clickable, as its
+     own inline note says -- so this is the one rule here with no canvas counterpart.
+
+     Scoped to `.seg.steps` rather than bare `.seg`, which is shared with Segmented.tsx's own
+     switches (Simple/Expert, the filter tabs). Written unscoped, the next of those to gain a
+     disabled option would inherit styling nobody chose for it. */
+  .seg.steps button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .seg.steps button:disabled:hover {
+    color: var(--color-text-faint);
+    background: transparent;
+  }
+
   /* App shell — ported verbatim from Main.dc.html's shared sidebar/main-head block (identical
      across every screen artboard). See AppShell.tsx. */
   .shell {
