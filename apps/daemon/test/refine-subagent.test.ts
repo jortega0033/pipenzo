@@ -245,6 +245,31 @@ describe('buildRefineSessionRequest', () => {
     expect(request.model).toBeUndefined();
   });
 
+  /**
+   * Found by the first live run, not by any unit test here: the prompt described the spec in prose
+   * and the prose was missing three of the schema's required fields (`schemaVersion`, `issue`, and
+   * the per-criterion `id`), so a well-behaved model returned a payload `refineSpecV1Schema`
+   * rejected. Every test in this file fed a hand-written valid spec through a fake session port,
+   * which is exactly why none of them could see it.
+   *
+   * It matters because `AwaitedPhaseSessions` dispatches these on the legacy session path, where
+   * `outputSchema` is *not* enforced by the provider — the prompt is the only thing telling the
+   * model what the schema requires. So the prompt has to name every required key.
+   */
+  it('names every field the spec schema requires, since the prompt is the only enforcement', () => {
+    const { prompt } = buildRefineSessionRequest({
+      issue: ISSUE,
+      cwd: process.cwd(),
+      provider: 'codex',
+    });
+    for (const key of REFINE_SPEC_V1_JSON_SCHEMA.required) expect(prompt).toContain(key);
+    // The two the prose used to leave to the schema: the literal version, the issue identity, and
+    // the criterion id format a generated test or a review finding cites.
+    expect(prompt).toContain('the integer 1');
+    expect(prompt).toContain(`"number": ${ISSUE.number}`);
+    expect(prompt).toContain('"AC-1"');
+  });
+
   it('truncates an oversized issue body rather than blowing the prompt bound', () => {
     const request = buildRefineSessionRequest({
       issue: { ...ISSUE, body: 'x'.repeat(200_000) },
