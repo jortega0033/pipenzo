@@ -563,6 +563,149 @@ describe('GitHub issue write operations', () => {
   });
 });
 
+/**
+ * Issue #186. The phase machine's states are GitHub labels, so it cannot write a state without
+ * these two methods — `createLabel` only ever made a label exist at the *repository* level.
+ */
+describe('issue label writes', () => {
+  it('replaces the pipenzo namespace while carrying a human\'s own labels through', async () => {
+    const { octokit, calls } = stubOctokit({
+      paginate: async () => [
+        { name: 'pipenzo:queued' },
+        { name: 'bug' },
+        { name: 'good first issue' },
+      ],
+      // Echoes the labels it was actually sent. A handler returning a fixed list would let an
+      // implementation that dropped every foreign label still satisfy the assertions on `result`.
+      request: async (_route, params) => ({
+        data: (params.labels as string[]).map((name) => ({ name })),
+      }),
+    });
+    const client = OctokitGitHubClient.withOctokit(octokit);
+    const result = await client.setIssueLabels(REF, 78, ['pipenzo:working']);
+
+    const put = calls.find((call) => call.route.startsWith('PUT'));
+    // The previous lane label is gone (replace, not add) and both foreign labels survived.
+    expect(put?.params.labels).toEqual(['bug', 'good first issue', 'pipenzo:working']);
+    expect(result).toEqual(['bug', 'good first issue', 'pipenzo:working']);
+  });
+
+  /**
+   * The read half is a full replace's input, so a label it fails to see is a label the write
+   * deletes. One page of a hundred is not the whole issue.
+   */
+  it('paginates the read, so a foreign label past the first page still survives', async () => {
+    const many = Array.from({ length: 150 }, (_, index) => ({ name: `triage-${index}` }));
+    const { octokit, calls } = stubOctokit({
+      paginate: async () => [...many, { name: 'pipenzo:queued' }],
+      request: async (_route, params) => ({
+        data: (params.labels as string[]).map((name) => ({ name })),
+      }),
+    });
+    await OctokitGitHubClient.withOctokit(octokit).setIssueLabels(REF, 78, ['pipenzo:working']);
+    const sent = calls.find((call) => call.route.startsWith('PUT'))?.params.labels as string[];
+    expect(sent).toHaveLength(151);
+    expect(sent).toContain('triage-149');
+    expect(sent).not.toContain('pipenzo:queued');
+  });
+
+  it('clears the namespace on an empty set without touching anything else', async () => {
+    const { octokit, calls } = stubOctokit({
+      paginate: async () => [{ name: 'pipenzo:working' }, { name: 'bug' }],
+      request: async (_route, params) => ({
+        data: (params.labels as string[]).map((name) => ({ name })),
+      }),
+    });
+    await OctokitGitHubClient.withOctokit(octokit).setIssueLabels(REF, 78, []);
+    expect(calls.find((call) => call.route.startsWith('PUT'))?.params.labels).toEqual(['bug']);
+  });
+
+  it('refuses to write a label outside its own namespace, before any request goes out', async () => {
+    const { octokit, calls } = stubOctokit({});
+    await expect(
+      OctokitGitHubClient.withOctokit(octokit).setIssueLabels(REF, 78, ['wontfix']),
+    ).rejects.toMatchObject({ code: 'invalid_request' });
+    expect(calls).toHaveLength(0);
+  });
+
+  it('treats removing a label that is not on the issue as success', async () => {
+    const { octokit } = stubOctokit({
+      request: async () => {
+        throw httpError(404, 'Label does not exist');
+      },
+    });
+    await expect(
+      OctokitGitHubClient.withOctokit(octokit).removeIssueLabel(REF, 78, 'pipenzo:queued'),
+    ).resolves.toBeUndefined();
+  });
+
+  it('still reports a real failure when removing a label', async () => {
+    const { octokit } = stubOctokit({
+      request: async () => {
+        throw httpError(403, 'Resource not accessible');
+      },
+    });
+    await expect(
+      OctokitGitHubClient.withOctokit(octokit).removeIssueLabel(REF, 78, 'pipenzo:queued'),
+    ).rejects.toMatchObject({ code: 'forbidden' });
+  });
+
+  it('rejects a non-positive issue number and a foreign label on the remove path too', async () => {
+    const { octokit, calls } = stubOctokit({});
+    const client = OctokitGitHubClient.withOctokit(octokit);
+    await expect(client.removeIssueLabel(REF, 0, 'pipenzo:queued')).rejects.toMatchObject({
+      code: 'invalid_request',
+    });
+    await expect(client.removeIssueLabel(REF, 78, 'bug')).rejects.toMatchObject({
+      code: 'invalid_request',
+    });
+    expect(calls).toHaveLength(0);
+  });
+
+  /**
+   * The fake has to preserve foreign labels for the same reason the real client does: the phase
+   * machine is tested against the fake, so a fake that just overwrote the array would certify the
+   * opposite of the property this ticket exists to protect.
+   */
+  it('is mirrored by the fake, including the preservation and the idempotent remove', async () => {
+    const fake = new FakeGitHubClient().seedIssue({
+      owner: REF.owner,
+      repo: REF.repo,
+      number: 78,
+      title: 'First-run empty',
+      body: '',
+      state: 'open',
+      labels: ['pipenzo:queued', 'bug'],
+      assignees: [],
+      htmlUrl: 'https://github.com/jortega0033/pipenzo/issues/78',
+      updatedAt: '2026-09-07T00:00:00Z',
+      etag: undefined,
+    });
+
+    expect(await fake.setIssueLabels(REF, 78, ['pipenzo:working'])).toEqual([
+      'bug',
+      'pipenzo:working',
+    ]);
+    expect((await fake.getIssue(REF, 78)).labels).toEqual(['bug', 'pipenzo:working']);
+
+    await fake.removeIssueLabel(REF, 78, 'pipenzo:working');
+    expect((await fake.getIssue(REF, 78)).labels).toEqual(['bug']);
+    // Twice, because the phase machine re-applies transitions on recovery.
+    await fake.removeIssueLabel(REF, 78, 'pipenzo:working');
+    expect((await fake.getIssue(REF, 78)).labels).toEqual(['bug']);
+
+    await expect(fake.setIssueLabels(REF, 78, ['wontfix'])).rejects.toMatchObject({
+      code: 'invalid_request',
+    });
+
+    // Namespace before existence, matching the real client, where the guard is synchronous and a
+    // missing issue is not discoverable until the request it never gets to make.
+    await expect(fake.setIssueLabels(REF, 999, ['wontfix'])).rejects.toMatchObject({
+      code: 'invalid_request',
+    });
+  });
+});
+
 describe('getAuthenticatedLogin', () => {
   /**
    * The daemon holds the token, so the daemon is the only thing that knows who "I" is. A caller

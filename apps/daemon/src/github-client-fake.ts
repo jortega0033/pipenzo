@@ -1,5 +1,7 @@
 import {
   GitHubClientError,
+  PIPENZO_LABEL_NAMESPACE,
+  isPipenzoLabel,
   type GitHubCheckRun,
   type GitHubClient,
   type GitHubIssue,
@@ -126,6 +128,60 @@ export class FakeGitHubClient implements GitHubClient {
     const updated: GitHubIssue = { ...issue, assignees: [...issue.assignees, assignee] };
     this.#issues.set(key, updated);
     return updated;
+  }
+
+  /**
+   * Replaces the issue's `pipenzo:` labels while carrying its foreign ones through, exactly as the
+   * real client's read-modify-write does.
+   *
+   * The preservation has to live in the fake too, not just in the octokit implementation. The phase
+   * machine's tests run against this object, so a fake that simply overwrote the label array would
+   * let every one of them pass while the real client deleted a human's triage labels — the fake
+   * would be certifying the opposite of the property it is there to protect.
+   */
+  async setIssueLabels(
+    ref: RepoRef,
+    issueNumber: number,
+    labels: readonly string[],
+  ): Promise<readonly string[]> {
+    const key = FakeGitHubClient.key(ref, issueNumber);
+    this.#enter('setIssueLabels', `${key}:${labels.join(',')}`);
+    // Namespace first, existence second — the same order the real client fails in. There, the
+    // namespace guard is synchronous and runs before the request, so a missing issue is not even
+    // discoverable until after it passes. A fake that checked existence first would answer
+    // `not_found` where the real client answers `invalid_request` for the same call.
+    for (const name of labels) {
+      if (!isPipenzoLabel(name)) {
+        throw new GitHubClientError(
+          'invalid_request',
+          `setIssueLabels ${key}: ${name} is outside the ${PIPENZO_LABEL_NAMESPACE} namespace`,
+        );
+      }
+    }
+    const issue = this.#issues.get(key);
+    if (!issue) throw new GitHubClientError('not_found', `setIssueLabels ${key}: no such issue`);
+    const foreign = issue.labels.filter((name) => !isPipenzoLabel(name));
+    const next = [...new Set([...foreign, ...labels])];
+    this.#issues.set(key, { ...issue, labels: next });
+    return next;
+  }
+
+  /** Removing a label that is not there is success, matching the real client's 404 path. */
+  async removeIssueLabel(ref: RepoRef, issueNumber: number, name: string): Promise<void> {
+    const key = FakeGitHubClient.key(ref, issueNumber);
+    this.#enter('removeIssueLabel', `${key}:${name}`);
+    if (!isPipenzoLabel(name)) {
+      throw new GitHubClientError(
+        'invalid_request',
+        `removeIssueLabel ${key}: ${name} is outside the ${PIPENZO_LABEL_NAMESPACE} namespace`,
+      );
+    }
+    const issue = this.#issues.get(key);
+    if (!issue) return;
+    this.#issues.set(key, {
+      ...issue,
+      labels: issue.labels.filter((existing) => existing !== name),
+    });
   }
 
   /** Whoever the fake token belongs to. Settable, so a test can drive both sides of a claim race. */

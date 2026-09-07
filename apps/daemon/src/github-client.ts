@@ -47,6 +47,21 @@ export const GITHUB_TOKEN_ENV_KEYS = Object.freeze(['PIPENZO_GITHUB_TOKEN'] as c
 /** Walking-skeleton single-repo pin (build order step 2: "hardcoded repo"). */
 export const GITHUB_REPO_ENV_KEY = 'PIPENZO_GITHUB_REPO';
 
+/**
+ * The one label namespace Pipenzo owns, and the boundary `setIssueLabels` refuses to cross.
+ *
+ * Every state in README's label table is prefixed with this. Everything else on an issue belongs to
+ * whoever put it there — a triage label, a `good first issue`, a release marker some other
+ * automation writes — and a phase machine that replaced the whole label set on a lane transition
+ * would quietly delete all of it on the first ticket it touched.
+ */
+export const PIPENZO_LABEL_NAMESPACE = 'pipenzo:';
+
+/** True for a label this machine is allowed to add or remove on its own. */
+export function isPipenzoLabel(name: string): boolean {
+  return name.startsWith(PIPENZO_LABEL_NAMESPACE);
+}
+
 export type GitHubClientErrorCode =
   | 'token_missing'
   | 'invalid_repository'
@@ -212,6 +227,25 @@ export interface GitHubClient {
   listLabels(ref: RepoRef): Promise<readonly GitHubLabel[]>;
   /** Idempotent: an existing label with the same name is returned rather than re-created. */
   createLabel(ref: RepoRef, label: GitHubLabel): Promise<GitHubLabel>;
+  /**
+   * Replaces the `pipenzo:` labels on one issue, and returns the issue's resulting label set.
+   *
+   * Replace, not add: a lane transition that left the previous lane's label in place would put the
+   * ticket in two lanes at once, and the label is the authoritative side of that (README's label
+   * table). Passing an empty array clears the namespace.
+   *
+   * Foreign labels are preserved by this method rather than by its callers. Pipenzo owns one
+   * namespace, not the issue, so a human's `bug` or `good first issue` has to survive every lane
+   * write — and a rule enforced at one call site is a rule that the second call site forgets. See
+   * the implementation for the read-modify-write this costs.
+   */
+  setIssueLabels(
+    ref: RepoRef,
+    issueNumber: number,
+    labels: readonly string[],
+  ): Promise<readonly string[]>;
+  /** Removes one label, treating "it was not there" as success so a transition is idempotent. */
+  removeIssueLabel(ref: RepoRef, issueNumber: number, name: string): Promise<void>;
   /**
    * Adds an assignee (issue #184, for #83's claim pre-flight). Additive, never a replacement:
    * GitHub's `POST .../assignees` adds, and Pipenzo must not be able to evict a human who is
@@ -588,6 +622,104 @@ export class OctokitGitHubClient implements GitHubClient {
     }
   }
 
+  /**
+   * Replaces this issue's `pipenzo:` labels, preserving every label outside that namespace.
+   *
+   * GitHub's `PUT .../labels` replaces the issue's entire label set, which is the semantics a lane
+   * transition wants for the namespace and exactly the wrong semantics for everything else. So the
+   * current labels are read first and the foreign ones are carried into the write.
+   *
+   * **The read-modify-write race is real and is accepted here.** A label a human adds between the
+   * GET and the PUT is lost. The alternative — `POST` the additions and `DELETE` the removals
+   * individually — is race-free but not atomic, so a lane transition could be observed with two
+   * lane labels at once or none, and the lane is the state the board renders from. A briefly wrong
+   * lane is a worse failure than a rarely dropped triage label, so this takes the atomic write and
+   * narrows the window instead: one GET immediately before one PUT, no work in between.
+   *
+   * Callers that only need a label gone should use `removeIssueLabel`, which is a single request
+   * and has no window at all.
+   */
+  async setIssueLabels(
+    ref: RepoRef,
+    issueNumber: number,
+    labels: readonly string[],
+  ): Promise<readonly string[]> {
+    const operation = `setIssueLabels ${ref.owner}/${ref.repo}#${issueNumber}`;
+    assertPositiveInteger(issueNumber, 'issue number', operation);
+    for (const name of labels) assertLabelName(name, operation);
+    // The machine may only write its own namespace. A caller asking for anything else is a bug in
+    // the caller, and refusing here is what keeps "Pipenzo owns one namespace" true by
+    // construction rather than by everyone remembering.
+    for (const name of labels) {
+      if (!isPipenzoLabel(name)) {
+        throw new GitHubClientError(
+          'invalid_request',
+          `${operation}: ${name} is outside the ${PIPENZO_LABEL_NAMESPACE} namespace`,
+        );
+      }
+    }
+    try {
+      // Paginated, like `listLabels`, and for a sharper reason than completeness: the PUT below
+      // replaces the issue's *entire* label set, so a foreign label this read failed to see is a
+      // foreign label the write deletes. A single 100-item page would turn "preserve what a human
+      // put here" into "preserve the first hundred of it".
+      const current = await this.#octokit.paginate(
+        'GET /repos/{owner}/{repo}/issues/{issue_number}/labels',
+        { owner: ref.owner, repo: ref.repo, issue_number: issueNumber, per_page: 100 },
+      );
+      const foreign = labelNames(current).filter((name) => !isPipenzoLabel(name));
+      // A caller that repeats a name, or a foreign label that somehow starts with the namespace,
+      // must not produce a duplicate entry in the write.
+      const desired = [...new Set([...foreign, ...labels])];
+      const response = await this.#octokit.request(
+        'PUT /repos/{owner}/{repo}/issues/{issue_number}/labels',
+        {
+          owner: ref.owner,
+          repo: ref.repo,
+          issue_number: issueNumber,
+          labels: desired,
+          headers: { 'cache-control': 'no-cache' },
+        },
+      );
+      return labelNames(response.data);
+    } catch (error) {
+      throw toGitHubClientError(error, operation);
+    }
+  }
+
+  /**
+   * Removes one label from one issue. A label that was not on the issue is success, not a failure.
+   *
+   * GitHub answers both "that label is not on this issue" and "there is no such issue" with a 404,
+   * so treating 404 as success also swallows a wrong issue number. That is the documented trade:
+   * the phase machine re-applies transitions on recovery and must be able to remove a label twice
+   * without failing, and it learns about a bad issue number from the `getIssue` it does anyway.
+   *
+   * Returns nothing on purpose. The 404 path cannot know the resulting label set, and inventing one
+   * would be worse than making the caller re-read when it actually needs it.
+   */
+  async removeIssueLabel(ref: RepoRef, issueNumber: number, name: string): Promise<void> {
+    const operation = `removeIssueLabel ${ref.owner}/${ref.repo}#${issueNumber}:${name}`;
+    assertPositiveInteger(issueNumber, 'issue number', operation);
+    assertLabelName(name, operation);
+    if (!isPipenzoLabel(name)) {
+      throw new GitHubClientError(
+        'invalid_request',
+        `${operation}: ${name} is outside the ${PIPENZO_LABEL_NAMESPACE} namespace`,
+      );
+    }
+    try {
+      await this.#octokit.request(
+        'DELETE /repos/{owner}/{repo}/issues/{issue_number}/labels/{name}',
+        { owner: ref.owner, repo: ref.repo, issue_number: issueNumber, name },
+      );
+    } catch (error) {
+      const mapped = toGitHubClientError(error, operation);
+      if (mapped.code === 'not_found') return;
+      throw mapped;
+    }
+  }
+
   async getPullRequestDiff(ref: RepoRef, pullNumber: number): Promise<GitHubPullRequestDiff> {
     const operation = `getPullRequestDiff ${ref.owner}/${ref.repo}#${pullNumber}`;
     assertPositiveInteger(pullNumber, 'pull request number', operation);
@@ -682,11 +814,7 @@ function assertIssueDraft(input: GitHubIssueDraft, operation: string): void {
   if (input.body.length > 65_536) {
     throw new GitHubClientError('invalid_request', `${operation}: issue body is too long`);
   }
-  for (const label of input.labels ?? []) {
-    if (!/^[^\s,][^,]{0,49}$/.test(label)) {
-      throw new GitHubClientError('invalid_request', `${operation}: label name is not usable`);
-    }
-  }
+  for (const label of input.labels ?? []) assertLabelName(label, operation);
 }
 
 function normalizeIssue(
@@ -710,10 +838,21 @@ function normalizeIssue(
   };
 }
 
-function assertLabel(label: GitHubLabel, operation: string): void {
-  if (!/^[^\s,][^,]{0,49}$/.test(label.name)) {
+/**
+ * One label-name rule, shared by every path that sends a name to GitHub.
+ *
+ * A comma is excluded because GitHub's own `DELETE .../labels/{name}` takes the name in the path
+ * and treats a comma as a separator, so a name containing one is not addressable for removal — a
+ * label the machine could add and then never take off again.
+ */
+function assertLabelName(name: string, operation: string): void {
+  if (!/^[^\s,][^,]{0,49}$/.test(name)) {
     throw new GitHubClientError('invalid_request', `${operation}: label name is not usable`);
   }
+}
+
+function assertLabel(label: GitHubLabel, operation: string): void {
+  assertLabelName(label.name, operation);
   if (!/^[0-9a-f]{6}$/.test(label.color)) {
     throw new GitHubClientError(
       'invalid_request',
