@@ -232,7 +232,7 @@ that report lives in daemon memory, and a session reported interrupted is termin
 un-owned thing this section exists to eliminate. Recovery still does not re-park, because writing
 over a record a human may have just moved is the worse of the two failures and was measured doing
 real damage. Closing the gap properly needs a durable marker rather than process memory, and is
-tracked separately.
+tracked as issue #201.
 
 For the same reason, a ticket already holding an unanswered human decision —
 `pipenzo:awaiting-stack-approval`, `pipenzo:needs-pre-scoping`, `pipenzo:merge-conflict`,

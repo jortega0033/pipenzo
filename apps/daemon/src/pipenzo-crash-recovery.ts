@@ -316,7 +316,7 @@ export class PipenzoCrashRecovery {
         // to eliminate. Recovery still does not re-park, because the alternative -- writing over a
         // record a human may have just moved -- is the worse of the two, and it was measured doing
         // real damage. Closing the gap properly needs a durable marker rather than process memory,
-        // which is its own ticket.
+        // which is issue #201.
         updated.push({ ...this.#refreshed(entry), labelWrite: 'failed' });
       }
     }
