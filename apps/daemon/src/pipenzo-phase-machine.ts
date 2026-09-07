@@ -318,12 +318,22 @@ function toMachineError(error: unknown): PipenzoPhaseMachineError {
 /* ------------------------------------------------------------- reconciliation */
 
 /**
- * What `read()` found when it compared the local record against the issue's labels.
+ * How far the issue's labels sat from what this side expected. Both paths report it, but they are
+ * answering the question against different expectations, and the difference matters to anyone
+ * consuming the field (the audit trail in #149 above all):
  *
- * - `none` — the two agree; nothing was rewritten.
- * - `lane_reconciled` — they disagreed, the label won, the local record was rewritten to match.
- * - `ambiguous_labels` — the issue carried more than one lane-bearing label; `LANE_PRECEDENCE`
- *   picked one. May or may not also have changed the local lane, so `changed` says which.
+ * - `read()` compares the **local record** against the issue. Expectation: the record is right.
+ * - `transition()` compares **what it just wrote** against what GitHub answered. Expectation: the
+ *   write landed. A transition moving the lane is the operation succeeding, not a divergence --
+ *   see `transitionDivergenceFor`.
+ *
+ * - `none` — the issue matched the expectation. On a read, nothing was rewritten; on a transition
+ *   the local record still moves (that is what `changed` reports), because the write is the point.
+ * - `lane_reconciled` — the issue's lane won over the expected one: on a read the local record was
+ *   rewritten to match, on a transition the lane asked for is not the lane that came back.
+ * - `ambiguous_labels` — the issue carried a lane-bearing label beyond the expected one, and
+ *   `LANE_PRECEDENCE` picked the lane. May or may not also have changed the local lane, so
+ *   `changed` says which.
  * - `unlabelled` — the issue carries no lane-bearing `pipenzo:` label at all.
  */
 export type PipenzoTicketDivergenceKind =
@@ -412,12 +422,15 @@ export class PipenzoPhaseMachine {
           (existing) => isConditionLabel(existing) && existing !== label,
         );
 
+    // Every lane-bearing label this write intends to leave on the issue. The schema marker is not
+    // lane-bearing, so it is deliberately not part of the comparison set below.
+    const intendedLabels: readonly PipenzoLaneBearingLabelV1[] = [label, ...retainedConditions];
+
     // The authoritative write.
     let resulting: readonly string[];
     try {
       resulting = await client.setIssueLabels(ref, current.ticket.issueNumber, [
-        label,
-        ...retainedConditions,
+        ...intendedLabels,
         PIPENZO_SCHEMA_V1_MARKER_LABEL,
       ]);
     } catch (error) {
@@ -439,7 +452,7 @@ export class PipenzoPhaseMachine {
 
     return {
       ticket: next,
-      divergence: divergenceFor(observedLabels, current.ticket.lane, reconciledLane),
+      divergence: transitionDivergenceFor(observedLabels, intendedLabels, target, reconciledLane),
       previousLane: current.ticket.lane,
       observedLabels,
       changed: true,
@@ -583,4 +596,35 @@ function divergenceFor(
 ): PipenzoTicketDivergenceKind {
   if (observed.length > 1) return 'ambiguous_labels';
   return previousLane === nextLane ? 'none' : 'lane_reconciled';
+}
+
+/**
+ * The same question as `divergenceFor`, asked about the *write* path, where "diverged" means
+ * something different and `divergenceFor` gets it wrong in all three directions.
+ *
+ * On a read, divergence is local-record-vs-issue: the record said one lane, the issue said another.
+ * On a transition there is no such comparison to make -- the local record is *supposed* to move,
+ * because we just asked it to. Judging a transition by `previousLane !== nextLane` reports drift on
+ * every ordinary move (`queued` -> `working` is the transition succeeding, not GitHub disagreeing),
+ * reports `ambiguous_labels` for the deliberately retained `pipenzo:ci-failed` that README's
+ * ci-failed row says rides along into Ready-for-review, and -- the one that actually loses data --
+ * reports `none` when a concurrent writer pinned the issue at the lane it already held, which is
+ * precisely the "our write was overridden" race `setIssueLabels`' response exists to reveal.
+ *
+ * So the write path asks intent-vs-outcome instead: we wrote `intended`, GitHub answered
+ * `observed`, and anything we did not ask for is the divergence.
+ */
+function transitionDivergenceFor(
+  observed: readonly PipenzoLaneBearingLabelV1[],
+  intended: readonly PipenzoLaneBearingLabelV1[],
+  target: PipenzoLaneV1,
+  reconciledLane: PipenzoLaneV1,
+): PipenzoTicketDivergenceKind {
+  // A racer stripped the namespace between our write and its response.
+  if (observed.length === 0) return 'unlabelled';
+  // Our label went in but someone else's outranks it: the lane we asked for is not the lane we got.
+  if (reconciledLane !== target) return 'lane_reconciled';
+  // The lane held, but the issue carries a lane-bearing label we never wrote.
+  if (observed.some((label) => !intended.includes(label))) return 'ambiguous_labels';
+  return 'none';
 }

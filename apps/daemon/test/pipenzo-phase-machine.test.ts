@@ -176,6 +176,82 @@ describe('PipenzoPhaseMachine.transition', () => {
 });
 
 /**
+ * A transition reports divergence against *what it wrote*, not against the lane the ticket used to
+ * hold -- a ticket moving lanes is the transition working. These cover the four outcomes, because
+ * #149's audit trail keys off this field and a transition that reports drift on every ordinary move
+ * (or stays silent when a racer overrode it) makes that trail worse than no trail.
+ */
+describe('PipenzoPhaseMachine.transition divergence', () => {
+  it('reports no divergence for an ordinary lane move, which is the transition succeeding', async () => {
+    const { machine } = harness();
+
+    const result = await machine.transition(TICKET_ID, 'pipenzo:working');
+
+    expect(result.ticket.lane).toBe('working');
+    // The lane changed and the record was rewritten -- `changed` is what says so, not `divergence`.
+    expect(result.changed).toBe(true);
+    expect(result.divergence).toBe('none');
+  });
+
+  it("reports no divergence when ci-failed rides along into Ready-for-review, README's row", async () => {
+    const { machine } = harness({
+      ticket: { lane: 'needs-human', labels: ['pipenzo:ci-failed'] },
+      issueLabels: ['pipenzo:ci-failed'],
+    });
+
+    const result = await machine.transition(TICKET_ID, 'pipenzo:ready-for-review');
+
+    // Both labels were intended: the retained condition label is not an ambiguity.
+    expect(result.observedLabels).toContain('pipenzo:ci-failed');
+    expect(result.ticket.lane).toBe('ready-for-review');
+    expect(result.divergence).toBe('none');
+  });
+
+  it('reports lane_reconciled when a concurrent writer pins the lane we tried to move off', async () => {
+    const { machine, github } = harness({
+      ticket: { lane: 'needs-human', labels: ['pipenzo:needs-human'] },
+      issueLabels: ['pipenzo:needs-human'],
+    });
+    // The race the write path exists to reveal: our label goes in, someone else's answer comes back
+    // holding the ticket exactly where it already was. Comparing against the *previous* lane calls
+    // this `none` and loses the overridden write entirely.
+    github.setIssueLabels = async () => ['pipenzo:needs-human', 'pipenzo:schema-v1'];
+
+    const result = await machine.transition(TICKET_ID, 'pipenzo:ready-for-review');
+
+    expect(result.ticket.lane).toBe('needs-human');
+    expect(result.divergence).toBe('lane_reconciled');
+  });
+
+  it('reports ambiguous_labels when the lane held but a label we never wrote came back', async () => {
+    const { machine, github } = harness({
+      ticket: { lane: 'working', labels: ['pipenzo:working'] },
+      issueLabels: ['pipenzo:working'],
+    });
+    // Same lane as the target, so the lane check passes -- but ci-failed was never ours to write.
+    github.setIssueLabels = async () => [
+      'pipenzo:needs-human',
+      'pipenzo:ci-failed',
+      'pipenzo:schema-v1',
+    ];
+
+    const result = await machine.transition(TICKET_ID, 'pipenzo:needs-human');
+
+    expect(result.ticket.lane).toBe('needs-human');
+    expect(result.divergence).toBe('ambiguous_labels');
+  });
+
+  it('reports unlabelled when a racer strips the namespace between the write and its response', async () => {
+    const { machine, github } = harness();
+    github.setIssueLabels = async () => [];
+
+    const result = await machine.transition(TICKET_ID, 'pipenzo:working');
+
+    expect(result.divergence).toBe('unlabelled');
+  });
+});
+
+/**
  * README's `pipenzo:ci-failed` row, which is the one label whose lane is written as a transition
  * rather than a value: "The label stays on the ticket, but a ticket carrying it moves to Ready for
  * review the moment the forked fix attempt commits".
