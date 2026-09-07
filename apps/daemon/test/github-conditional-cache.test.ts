@@ -61,6 +61,92 @@ describe('ConditionalRequestCache', () => {
       notModified: 1,
       modified: 1,
       evictions: 0,
+      oversized: 0,
+    });
+  });
+
+  /**
+   * The memory bound, enforced here rather than assumed from GitHub's own body limit. A count-only
+   * bound says nothing about bytes: 512 maximal issue bodies would be tens of megabytes.
+   */
+  describe('bounded in bytes as well as in entries', () => {
+    const big = (kilobytes: number): string => 'x'.repeat(kilobytes * 1024);
+
+    it('evicts least-recently-used until it is back inside the byte budget', () => {
+      // Each 20 KiB value costs about 41 KB retained (UTF-16), so two fit in 100 KiB and three
+      // do not — the third store has to evict exactly one.
+      const budget = 100 * 1024;
+      const cache = new ConditionalRequestCache({ maxEntries: 100, maxBytes: budget });
+      cache.set(REF, 'a', 'W/"a"', big(20));
+      cache.set(REF, 'b', 'W/"b"', big(20));
+      cache.get(REF, 'a'); // make 'b' the least recently used
+      cache.set(REF, 'c', 'W/"c"', big(20));
+
+      expect(cache.bytes).toBeLessThanOrEqual(budget);
+      expect(cache.get(REF, 'b')).toBeUndefined();
+      expect(cache.get(REF, 'a')).toBeDefined();
+      expect(cache.get(REF, 'c')).toBeDefined();
+      expect(cache.stats.evictions).toBeGreaterThan(0);
+    });
+
+    /** One response larger than the whole budget is refused, not admitted to evict everything else. */
+    it('refuses a single response bigger than the entire budget', () => {
+      const cache = new ConditionalRequestCache({ maxBytes: 16 * 1024 });
+      cache.set(REF, 'keep', 'W/"a"', 'small');
+      cache.set(REF, 'huge', 'W/"b"', big(64));
+
+      expect(cache.get(REF, 'huge')).toBeUndefined();
+      expect(cache.get(REF, 'keep')?.value).toBe('small');
+      expect(cache.stats.oversized).toBe(1);
+    });
+
+    it('keeps its byte total honest across replacement, invalidation and clear', () => {
+      const cache = new ConditionalRequestCache();
+      cache.set(REF, 'a', 'W/"1"', big(4));
+      const afterFirst = cache.bytes;
+      cache.set(REF, 'a', 'W/"2"', big(4));
+      expect(cache.bytes).toBe(afterFirst);
+
+      cache.invalidate(REF, 'a');
+      expect(cache.bytes).toBe(0);
+
+      cache.set(REF, 'b', 'W/"3"', big(4));
+      cache.clear();
+      expect(cache.bytes).toBe(0);
+    });
+
+    it('rejects a nonsensical byte bound', () => {
+      for (const bad of [0, -1, 1.5, Number.NaN]) {
+        expect(() => new ConditionalRequestCache({ maxBytes: bad })).toThrow(/positive integer/);
+      }
+    });
+  });
+
+  /**
+   * The counter that lets an in-flight conditional read notice a write landing underneath it.
+   * Invalidation bumps it; eviction deliberately does not, because an entry dropped for space was
+   * never contradicted.
+   */
+  describe('generation', () => {
+    it('advances on every invalidation', () => {
+      const cache = new ConditionalRequestCache();
+      const start = cache.generation;
+      cache.invalidate(REF, 'issue:1');
+      expect(cache.generation).toBe(start + 1);
+      cache.invalidateRepo(REF);
+      expect(cache.generation).toBe(start + 2);
+      cache.clear();
+      expect(cache.generation).toBe(start + 3);
+    });
+
+    it('does not advance on a store, a read, or an eviction', () => {
+      const cache = new ConditionalRequestCache({ maxEntries: 1 });
+      cache.set(REF, 'a', 'W/"a"', 1);
+      const start = cache.generation;
+      cache.get(REF, 'a');
+      cache.set(REF, 'b', 'W/"b"', 2); // evicts 'a'
+      expect(cache.get(REF, 'a')).toBeUndefined();
+      expect(cache.generation).toBe(start);
     });
   });
 

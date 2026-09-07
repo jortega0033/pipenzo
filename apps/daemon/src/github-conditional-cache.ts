@@ -33,20 +33,57 @@ import type { RepoRef } from './github-client.js';
  * and served to the phase machine as though it were fresh from GitHub. A bounded in-memory map has
  * no such failure mode, and a daemon restart simply pays one cold read per resource.
  *
- * ## Bounded, and least-recently-used
+ * ## Bounded twice, and least-recently-used
  *
  * A workspace-level connected-repos list (epic #4) times the issues in each is unbounded, and an
  * unbounded map holding whole issue bodies is a leak in a process meant to run for days. Entries
- * are evicted least-recently-used past `maxEntries`; an evicted entry costs exactly one
+ * are evicted least-recently-used past **both** bounds; an evicted entry costs exactly one
  * unconditional read the next time it is asked for.
+ *
+ * There are two bounds rather than one because a count alone does not bound memory. GitHub's issue
+ * body limit is 65,536 characters, which V8 stores as UTF-16 — so 512 maximal issues would be about
+ * 64 MB, not the "few megabytes" a count-only bound suggests. Worse, that number is an assumption
+ * about a third party's current limit rather than something this code enforces. The byte budget
+ * makes the ceiling this module's own property.
  */
 
-/** The bound. 512 issue-sized entries is a few megabytes at worst and far more than one board. */
+/** The entry-count bound: far more than one board's worth of tickets. */
 export const DEFAULT_CONDITIONAL_CACHE_MAX_ENTRIES = 512;
+
+/**
+ * The memory bound, enforced rather than assumed. 8 MiB holds hundreds of ordinary issues and
+ * caps the pathological case regardless of what GitHub's own body limit becomes.
+ */
+export const DEFAULT_CONDITIONAL_CACHE_MAX_BYTES = 8 * 1024 * 1024;
 
 export interface ConditionalCacheEntry<T> {
   readonly etag: string;
   readonly value: T;
+}
+
+interface StoredEntry {
+  readonly etag: string;
+  readonly value: unknown;
+  /** Approximate retained size, so the byte budget does not have to re-measure on eviction. */
+  readonly bytes: number;
+}
+
+/**
+ * Approximate retained size of one entry, in bytes.
+ *
+ * `JSON.stringify` length times two, for V8's UTF-16 string storage, plus the key. Approximate on
+ * purpose: an exact measurement would need `v8.serialize` or a heap walk, and the number is used
+ * only to enforce a budget, where being within a small factor is the whole requirement. An
+ * unserializable value is treated as maximal so it is refused rather than admitted unmeasured.
+ */
+function approximateBytes(key: string, value: unknown): number {
+  let serialized: string | undefined;
+  try {
+    serialized = JSON.stringify(value);
+  } catch {
+    return Number.POSITIVE_INFINITY;
+  }
+  return (serialized?.length ?? 0) * 2 + key.length * 2;
 }
 
 /**
@@ -60,10 +97,16 @@ export interface ConditionalCacheStats {
   readonly cold: number;
   /** Requests GitHub answered `304 Not Modified` — the ones that cost no quota. */
   readonly notModified: number;
-  /** Requests that came back with a body, replacing whatever was stored. */
+  /**
+   * Requests GitHub answered with a body — the ones that spent quota. Counted whether or not the
+   * response turned out to be storable (no ETag, too large, not a cacheable shape), because the
+   * consumer of this number is the rate-limit surface, and quota is spent either way.
+   */
   readonly modified: number;
-  /** Entries dropped to stay under `maxEntries`. */
+  /** Entries dropped to stay inside `maxEntries` or `maxBytes`. */
   readonly evictions: number;
+  /** Responses refused outright because one of them alone exceeded the byte budget. */
+  readonly oversized: number;
 }
 
 interface MutableStats {
@@ -72,6 +115,7 @@ interface MutableStats {
   notModified: number;
   modified: number;
   evictions: number;
+  oversized: number;
 }
 
 function cacheKey(ref: RepoRef, resource: string): string {
@@ -88,26 +132,59 @@ export class ConditionalRequestCache {
    * `Map` preserves insertion order, so deleting and re-inserting on every touch makes the first
    * key in iteration order the least recently used, which is exactly what eviction needs.
    */
-  readonly #entries = new Map<string, ConditionalCacheEntry<unknown>>();
+  readonly #entries = new Map<string, StoredEntry>();
   readonly #maxEntries: number;
+  readonly #maxBytes: number;
+  #bytes = 0;
+  #generation = 0;
   readonly #stats: MutableStats = {
     validatorsSent: 0,
     cold: 0,
     notModified: 0,
     modified: 0,
     evictions: 0,
+    oversized: 0,
   };
 
-  constructor(options: { maxEntries?: number } = {}) {
-    const requested = options.maxEntries ?? DEFAULT_CONDITIONAL_CACHE_MAX_ENTRIES;
-    if (!Number.isSafeInteger(requested) || requested < 1) {
+  constructor(options: { maxEntries?: number; maxBytes?: number } = {}) {
+    const requestedEntries = options.maxEntries ?? DEFAULT_CONDITIONAL_CACHE_MAX_ENTRIES;
+    if (!Number.isSafeInteger(requestedEntries) || requestedEntries < 1) {
       throw new Error('conditional request cache maxEntries must be a positive integer');
     }
-    this.#maxEntries = requested;
+    const requestedBytes = options.maxBytes ?? DEFAULT_CONDITIONAL_CACHE_MAX_BYTES;
+    if (!Number.isSafeInteger(requestedBytes) || requestedBytes < 1) {
+      throw new Error('conditional request cache maxBytes must be a positive integer');
+    }
+    this.#maxEntries = requestedEntries;
+    this.#maxBytes = requestedBytes;
   }
 
   get size(): number {
     return this.#entries.size;
+  }
+
+  /** Approximate retained bytes. See `approximateBytes` for what "approximate" means here. */
+  get bytes(): number {
+    return this.#bytes;
+  }
+
+  /**
+   * Bumped by every *invalidation*, and read by callers that must detect one happening underneath
+   * an in-flight request.
+   *
+   * The race this exists for is real, not theoretical: `index.ts` shares one cache between the
+   * phase machine's reconciler and the phase service's request-scoped clients. A read captures its
+   * validator, awaits GitHub, and meanwhile a write on the same resource lands and invalidates the
+   * entry. If GitHub then answers the pre-write validator with a `304` — which its
+   * eventually-consistent replicas really do — the read would return the pre-write body and, worse,
+   * keep confirming it on every subsequent poll, because a matching `304` looks like agreement.
+   * Comparing the generation across the await turns that into an ordinary cache miss.
+   *
+   * Eviction deliberately does **not** bump it. An entry dropped for space was never contradicted,
+   * so a `304` against its validator is still the truth.
+   */
+  get generation(): number {
+    return this.#generation;
   }
 
   get stats(): ConditionalCacheStats {
@@ -131,23 +208,38 @@ export class ConditionalRequestCache {
     this.#entries.delete(key);
     this.#entries.set(key, entry);
     this.#stats.validatorsSent += 1;
-    return entry as ConditionalCacheEntry<T>;
+    return { etag: entry.etag, value: entry.value as T };
   }
 
   /**
    * Records a fresh 200 response. An empty or non-string ETag stores nothing rather than storing a
-   * validator GitHub would reject — a resource served without one simply stays uncached.
+   * validator GitHub would reject — a resource served without one simply stays uncached. A single
+   * response larger than the whole byte budget is refused rather than admitted and then allowed to
+   * evict everything else to make room for itself.
    */
   set<T>(ref: RepoRef, resource: string, etag: string, value: T): void {
     this.#stats.modified += 1;
-    if (typeof etag !== 'string' || etag.trim() === '') return;
     const key = cacheKey(ref, resource);
-    this.#entries.delete(key);
-    this.#entries.set(key, { etag, value });
-    while (this.#entries.size > this.#maxEntries) {
+    if (typeof etag !== 'string' || etag.trim() === '') {
+      this.#drop(key);
+      return;
+    }
+    const bytes = approximateBytes(key, value);
+    if (bytes > this.#maxBytes) {
+      this.#stats.oversized += 1;
+      this.#drop(key);
+      return;
+    }
+    this.#drop(key);
+    this.#entries.set(key, { etag, value, bytes });
+    this.#bytes += bytes;
+    while (
+      this.#entries.size > this.#maxEntries ||
+      (this.#bytes > this.#maxBytes && this.#entries.size > 1)
+    ) {
       const oldest = this.#entries.keys().next();
       if (oldest.done === true) break;
-      this.#entries.delete(oldest.value);
+      this.#drop(oldest.value);
       this.#stats.evictions += 1;
     }
   }
@@ -157,9 +249,22 @@ export class ConditionalRequestCache {
     this.#stats.notModified += 1;
   }
 
-  /** Drops one resource. Used after a write to that resource; see `invalidateRepo`. */
+  /**
+   * Drops one resource, and records that an invalidation happened. Used after a write to that
+   * resource, and whenever a caller decides a stored entry can no longer be trusted; see
+   * `generation` for the in-flight race this bump exists for.
+   */
   invalidate(ref: RepoRef, resource: string): void {
-    this.#entries.delete(cacheKey(ref, resource));
+    this.#generation += 1;
+    this.#drop(cacheKey(ref, resource));
+  }
+
+  /** Removes a key and keeps the byte total honest. Never counts as an invalidation on its own. */
+  #drop(key: string): void {
+    const existing = this.#entries.get(key);
+    if (existing === undefined) return;
+    this.#bytes -= existing.bytes;
+    this.#entries.delete(key);
   }
 
   /**
@@ -174,13 +279,16 @@ export class ConditionalRequestCache {
    * entirely.
    */
   invalidateRepo(ref: RepoRef): void {
+    this.#generation += 1;
     const prefix = repoPrefix(ref);
     for (const key of [...this.#entries.keys()]) {
-      if (key.startsWith(prefix)) this.#entries.delete(key);
+      if (key.startsWith(prefix)) this.#drop(key);
     }
   }
 
   clear(): void {
+    this.#generation += 1;
     this.#entries.clear();
+    this.#bytes = 0;
   }
 }

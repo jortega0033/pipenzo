@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { Octokit } from '@octokit/core';
+import { describe, expect, it, vi } from 'vitest';
 import {
   FakeGitHubClient,
 } from '../src/github-client-fake.js';
@@ -8,6 +9,7 @@ import {
   MAX_RATE_LIMIT_RETRIES,
   MAX_RATE_LIMIT_SLEEP_SECONDS,
   OctokitGitHubClient,
+  PIPENZO_OCTOKIT_PLUGINS,
   createPipenzoOctokit,
   parseRepoRef,
   redactSecrets,
@@ -833,6 +835,57 @@ describe('conditional requests (issue #161)', () => {
     expect(cache.get(REF, 'issue:161')).toBeUndefined();
   });
 
+  /**
+   * The race the shared cache makes real: a read captures its validator, awaits GitHub, and a write
+   * on the same resource lands meanwhile. GitHub's replicas can still answer the pre-write validator
+   * with a 304, and serving the pre-write body would not self-heal — every later poll would get the
+   * same agreeing 304.
+   */
+  it('re-reads unconditionally when the entry is invalidated while the read is in flight', async () => {
+    const cache = new ConditionalRequestCache();
+    cache.set(REF, 'issue:161', 'W/"v1"', { number: 161, title: 'stale' });
+
+    let call = 0;
+    const { octokit, calls } = stubOctokit({
+      request: async () => {
+        call += 1;
+        if (call === 1) {
+          // A concurrent write lands while this request is in flight.
+          cache.invalidate(REF, 'issue:161');
+          throw notModified();
+        }
+        return { headers: { etag: 'W/"v2"' }, data: ISSUE_BODY };
+      },
+    });
+
+    const issue = await OctokitGitHubClient.withOctokit(octokit, { cache }).getIssue(REF, 161);
+
+    expect(issue.title).toBe('ETag + conditional-request layer');
+    expect(calls).toHaveLength(2);
+    // The re-read carries no validator, so it cannot be answered 304 again.
+    expect(conditionalHeader(calls[1])).toBeUndefined();
+    expect(cache.stats.notModified).toBe(0);
+  });
+
+  it('still serves the cached body when an unrelated resource was invalidated meanwhile', async () => {
+    const cache = new ConditionalRequestCache();
+    cache.set(REF, 'issue:161', 'W/"v1"', { number: 161, title: 'cached' });
+
+    const { octokit, calls } = stubOctokit({
+      request: async () => {
+        throw notModified();
+      },
+    });
+    const client = OctokitGitHubClient.withOctokit(octokit, { cache });
+    // Nothing invalidates during this read; eviction of another key must not count as one either.
+    cache.set(REF, 'issue:999', 'W/"other"', { number: 999 });
+
+    const issue = (await client.getIssue(REF, 161)) as unknown as { title: string };
+    expect(issue.title).toBe('cached');
+    expect(calls).toHaveLength(1);
+    expect(cache.stats.notModified).toBe(1);
+  });
+
   describe('writes drop what they may have changed', () => {
     it('setIssueLabels invalidates the issue it wrote to', async () => {
       const cache = new ConditionalRequestCache();
@@ -947,6 +1000,72 @@ describe('conditional requests (issue #161)', () => {
       await OctokitGitHubClient.withOctokit(octokit).listLabels(REF);
       expect(calls).toHaveLength(1);
     });
+
+    /**
+     * The case that would otherwise return a silently incomplete list forever: page one is
+     * byte-identical (so GitHub answers 304) but the list has since grown a second page. GitHub
+     * sends `Link` on a 304 as well, and that header is what settles it — the alternative would be
+     * trusting GitHub's undocumented label ordering to guarantee that growth always disturbs
+     * page one.
+     */
+    it('refuses a 304 whose own Link header says a second page now exists', async () => {
+      const cache = new ConditionalRequestCache();
+      cache.set(REF, 'labels', 'W/"labels"', [
+        { name: 'pipenzo:queued', color: 'aabbcc', description: 'Accepted' },
+      ]);
+      const nextLink = '<https://api.github.com/x?page=2>; rel="next"';
+      let call = 0;
+      const { octokit, calls } = stubOctokit({
+        request: async () => {
+          call += 1;
+          // The conditional first attempt is answered 304 — but with a `Link` that contradicts the
+          // single-page assumption the cached entry was stored under. The re-read is unconditional.
+          if (call === 1) throw httpError(304, 'Not modified', { link: nextLink });
+          return { headers: { etag: 'W/"page1"', link: nextLink }, data: PAGE };
+        },
+        paginate: async () => [...PAGE, { name: 'pipenzo:working' }],
+      });
+
+      const labels = await OctokitGitHubClient.withOctokit(octokit, { cache }).listLabels(REF);
+
+      expect(labels).toHaveLength(2);
+      expect(cache.stats.notModified).toBe(0);
+      expect(cache.get(REF, 'labels')).toBeUndefined();
+      expect(conditionalHeader(calls[0])).toBe('W/"labels"');
+    });
+
+    it('accepts a 304 with no Link header, which is the ordinary unchanged single page', async () => {
+      const cache = new ConditionalRequestCache();
+      const cached = [{ name: 'pipenzo:queued', color: 'aabbcc', description: 'Accepted' }];
+      cache.set(REF, 'labels', 'W/"labels"', cached);
+      const { octokit } = stubOctokit({
+        request: async () => {
+          throw notModified();
+        },
+        paginate: async () => {
+          throw new Error('must not fall through to paginate');
+        },
+      });
+
+      await expect(
+        OctokitGitHubClient.withOctokit(octokit, { cache }).listLabels(REF),
+      ).resolves.toEqual(cached);
+      expect(cache.stats.notModified).toBe(1);
+    });
+  });
+
+  it('createIssue with labels invalidates the repository label list it may have added to', async () => {
+    const cache = new ConditionalRequestCache();
+    cache.set(REF, 'labels', 'W/"stale"', []);
+    const { octokit } = stubOctokit({
+      request: async () => ({ headers: {}, data: ISSUE_BODY }),
+    });
+    await OctokitGitHubClient.withOctokit(octokit, { cache }).createIssue(REF, {
+      title: 'a new ticket',
+      body: '',
+      labels: ['pipenzo:queued'],
+    });
+    expect(cache.get(REF, 'labels')).toBeUndefined();
   });
 });
 
@@ -985,12 +1104,49 @@ describe('rate-limit retry policy (issue #161)', () => {
   });
 
   /**
-   * `@octokit/plugin-throttling` throws at construction if either handler is missing. Building a
-   * real instance is therefore the cheapest possible proof that both plugins are installed on the
-   * client every Pipenzo GitHub call goes through — the publish service's included, since it builds
-   * its own instance from this same factory.
+   * That the configured client *constructs* proves nothing on its own: an unrecognised `throttle`
+   * option is simply ignored, so dropping the plugin would leave this passing. What does prove it
+   * is the plugin's own precondition — `@octokit/plugin-throttling` throws unless both handlers are
+   * supplied — exercised against the same composed constructor the real client uses.
    */
-  it('is actually installed: the configured octokit constructs with both handlers', () => {
+  it('really has the throttling plugin installed, not just a throttle option', () => {
+    const Composed = Octokit.plugin(...PIPENZO_OCTOKIT_PLUGINS);
+    expect(() => new Composed({ auth: `${gh('p')}notARealTokenForTests000` })).toThrow(
+      /onSecondaryRateLimit and onRateLimit/,
+    );
+    // And with the handlers this module supplies, the same constructor is satisfied.
     expect(() => createPipenzoOctokit(`${gh('p')}notARealTokenForTests000`)).not.toThrow();
+  });
+
+  /** `@octokit/plugin-retry` announces itself on the instance; that is a fingerprint, not a guess. */
+  it('really has the retry plugin installed', () => {
+    const octokit = createPipenzoOctokit(`${gh('p')}notARealTokenForTests000`) as unknown as {
+      retry?: { retryRequest?: unknown };
+    };
+    expect(typeof octokit.retry?.retryRequest).toBe('function');
+  });
+
+  /**
+   * The one path in this module that escapes `GitHubClientError`'s redaction: octokit's own logger,
+   * which the throttling plugin calls when a rate-limit handler throws. Left at octokit's default
+   * it goes straight to `console.warn` unscrubbed.
+   */
+  it('scrubs credentials out of octokit’s own log output', () => {
+    const secret = `${gh('p')}AbCdEfGhIjKlMnOpQrStUvWx`;
+    const octokit = createPipenzoOctokit(secret) as unknown as {
+      log: { warn: (...args: unknown[]) => void; error: (...args: unknown[]) => void };
+    };
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      octokit.log.warn('limit handler failed', new Error(`Authorization: Bearer ${secret}`));
+      octokit.log.error(`remote https://x-access-token:${secret}@github.com/o/r.git`);
+      const emitted = JSON.stringify([...warn.mock.calls, ...error.mock.calls]);
+      expect(emitted).not.toContain(secret);
+      expect(emitted).toContain('[redacted]');
+    } finally {
+      warn.mockRestore();
+      error.mockRestore();
+    }
   });
 });
