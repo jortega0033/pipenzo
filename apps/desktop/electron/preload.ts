@@ -68,6 +68,7 @@ import {
   pipenzoTicketTransitionRequestV1Schema,
   pipenzoTicketReconciliationV1Schema,
   pipenzoPhaseEventV1Schema,
+  pipenzoGitHubConnectionV1Schema,
   providerIdSchema,
   type AgentCommandV2,
   type AgentEvent,
@@ -132,6 +133,7 @@ import {
   type PipenzoTicketTransitionRequestV1,
   type PipenzoTicketReconciliationV1,
   type PipenzoPhaseEventV1,
+  type PipenzoGitHubConnectionV1,
 } from '@agent-dock/shared';
 import type {
   RendererInteraction,
@@ -225,6 +227,13 @@ export interface AgentDockBridge {
    * filter on `ticketId` for a single card. Returns its own unsubscribe.
    */
   onPipenzoPhaseEvent(callback: (event: PipenzoPhaseEventV1) => void): () => void;
+  /**
+   * The GitHub credential's state, never the credential (issue #165). There is no counterpart that
+   * *sets* a token: the device-code flow runs in main, so a `repo`-scoped credential never crosses
+   * this bridge in either direction. `disconnectGitHub` is the only write, and it only forgets.
+   */
+  pipenzoGitHubConnection(): Promise<PipenzoGitHubConnectionV1>;
+  disconnectGitHub(): Promise<PipenzoGitHubConnectionV1>;
   selectAndUploadAttachments(sessionId?: string): Promise<AttachmentMetadataV2[]>;
   validateStructuredOutput(input: StructuredWorkflowRequestV2): Promise<StructuredWorkflowResultV2>;
   createSession(input: CreateSessionInput): Promise<AgentSession>;
@@ -821,6 +830,16 @@ const api: AgentDockBridge = {
   async pipenzoTicketTransition(input) {
     const parsed = pipenzoTicketTransitionRequestV1Schema.parse(input);
     return pipenzoTicketReconciliationV1Schema.parse(await ipcRenderer.invoke('daemon:pipenzo-ticket-transition', parsed));
+  },
+  async pipenzoGitHubConnection() {
+    return pipenzoGitHubConnectionV1Schema.parse(
+      await ipcRenderer.invoke('pipenzo:github-connection'),
+    );
+  },
+  async disconnectGitHub() {
+    return pipenzoGitHubConnectionV1Schema.parse(
+      await ipcRenderer.invoke('pipenzo:disconnect-github'),
+    );
   },
   onPipenzoPhaseEvent(callback) {
     const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => {

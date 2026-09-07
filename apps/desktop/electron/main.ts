@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, Tray, Menu } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, safeStorage, shell, Tray, Menu } from 'electron';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
@@ -44,11 +44,18 @@ import {
   type AgentCommandV2,
   type AgentEventV2Envelope,
   type AgentSessionV2,
+  type PipenzoGitHubConnectionV1,
   type ProviderId,
   type WorkspaceTrustUpdateRequestV2,
 } from '@agent-dock/shared';
 import { AgentDockClient, DaemonError } from '@agent-dock/client';
 import { resolveDaemonEntry } from './resolve-daemon-entry.js';
+import { GitHubTokenVault } from './github-token-vault.js';
+import {
+  buildDaemonEnvironment,
+  resolveDaemonGitHubToken,
+  type DaemonGitHubTokenSource,
+} from './daemon-environment.js';
 import { resolveWindowIcon } from './resolve-window-icon.js';
 import { sendToRenderer } from './send-to-renderer.js';
 import {
@@ -121,6 +128,32 @@ function discoveryFilePath(): string {
   return join(tmpdir(), 'agent-dock', `${APP_ID}.json`);
 }
 
+/**
+ * Pipenzo's GitHub token vault (issue #165). Main-process-only, by construction: this binding is
+ * never passed to a window, never reachable from `preload.ts`, and its `readToken()` has exactly
+ * one caller — `spawnDaemon` below — which
+ * `apps/desktop/test/github-token-boundary.test.ts` asserts at the source level.
+ *
+ * Nothing writes to it yet. The device-code flow that will (`vault.store(...)`) runs in main too,
+ * for the reason `pipenzo-credential-v1.ts` sets out: main asks GitHub for the code, main polls,
+ * main receives the token, so the credential never crosses into the renderer in either direction.
+ * That flow is issue #114.
+ */
+const tokenVault = new GitHubTokenVault({
+  directory: app.getPath('userData'),
+  safeStorage,
+});
+
+/** Which credential the currently running daemon was started with. Reported, never inferred. */
+let daemonTokenSource: DaemonGitHubTokenSource = 'none';
+
+/**
+ * Set while a deliberate restart is in flight, so the child's `exit` handler starts the next daemon
+ * instead of reporting the app broken. Only the credential-change path sets it; a daemon that dies
+ * on its own is still an error.
+ */
+let respawnDaemonOnExit = false;
+
 function sendStatus(status: DaemonStatus): void {
   sendToRenderer(mainWindow, 'daemon:status', status);
 }
@@ -134,9 +167,28 @@ function spawnDaemon(): void {
   });
   const spawnedAt = Date.now();
 
+  // The one place in this app that turns a stored credential back into plaintext, and the one
+  // place that decides which credential the daemon gets. See `daemon-environment.ts` for why the
+  // inherited environment is stripped rather than merged, and why the development fallback is
+  // narrow and named rather than silent.
+  const credential = resolveDaemonGitHubToken({
+    vaultToken: tokenVault.readToken(),
+    environmentToken: process.env.PIPENZO_GITHUB_TOKEN,
+    isPackaged: app.isPackaged,
+  });
+  daemonTokenSource = credential.source;
+  if (credential.source === 'environment') {
+    console.warn(
+      '[pipenzo] no GitHub token in the vault; this development build is using the inherited PIPENZO_GITHUB_TOKEN. A packaged build would refuse.',
+    );
+  }
+
   daemonChild = spawn(process.execPath, args, {
     cwd,
-    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', AGENT_DOCK_APP_ID: APP_ID },
+    env: buildDaemonEnvironment(process.env, {
+      appId: APP_ID,
+      ...(credential.token === undefined ? {} : { githubToken: credential.token }),
+    }),
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
   });
@@ -149,8 +201,12 @@ function spawnDaemon(): void {
     console.error(`[daemon] ${chunk.toString('utf8').trim()}`);
   });
   daemonChild.on('exit', (code, signal) => {
-    if (!client) return; // never became ready; startup error already reported
+    const wasReady = client !== undefined;
     client = undefined;
+    daemonChild = undefined;
+    // Teardown runs unconditionally now that a restart can be deliberate: every collection below is
+    // empty on a daemon that never became ready, so clearing them costs nothing, and skipping them
+    // on a restart path would leak an aborted stream's controller into the next daemon's lifetime.
     for (const controller of streamAborts.values()) controller.abort();
     streamAborts.clear();
     activeSessionIds.clear();
@@ -165,6 +221,17 @@ function spawnDaemon(): void {
     // local, and the next daemon gets a fresh `forwardPipenzoPhaseEvents` call.
     phaseStreamAbort?.abort();
     phaseStreamAbort = undefined;
+    if (respawnDaemonOnExit) {
+      // A credential change (issue #165). The daemon reads its GitHub token from the environment it
+      // was spawned with, so a new credential is a new process — there is deliberately no route
+      // that hands a running daemon a token, which would be a credential-accepting HTTP endpoint
+      // inside the one process the whole publish boundary rests on.
+      respawnDaemonOnExit = false;
+      sendStatus({ state: 'connecting' });
+      spawnDaemon();
+      return;
+    }
+    if (!wasReady) return; // never became ready; startup error already reported
     sendStatus({
       state: 'unavailable',
       error: `daemon process exited unexpectedly (code ${code ?? 'null'}, signal ${signal ?? 'null'})`,
@@ -711,6 +778,67 @@ function handle(channel: string, listener: IpcHandlerListener): void {
 handle('daemon:get-status', (): DaemonStatus =>
   client ? { state: 'ready' } : { state: 'connecting' },
 );
+
+/**
+ * What the renderer may know about the GitHub credential (issue #165).
+ *
+ * Assembled field by field from the vault's own status rather than spread from it, for the reason
+ * `preload.ts`'s `toDaemonStatus` gives about the daemon status: a spread carries whatever the
+ * source object happens to have, and this is the one object in the app whose source sits next to a
+ * credential. Building it explicitly means a field added to the vault's status tomorrow cannot
+ * reach a window by accident.
+ */
+function gitHubConnectionStatus(): PipenzoGitHubConnectionV1 {
+  const status = tokenVault.status();
+  switch (status.state) {
+    case 'connected':
+      return {
+        state: 'connected',
+        login: status.login,
+        storedAt: status.storedAt,
+        source: daemonTokenSource,
+      };
+    case 'unavailable':
+      return { state: 'unavailable', reason: status.reason, source: daemonTokenSource };
+    default:
+      return { state: 'disconnected', source: daemonTokenSource };
+  }
+}
+
+/**
+ * Restarts the daemon so it picks up a changed credential.
+ *
+ * The daemon reads its GitHub token from the environment it was spawned with, and that is on
+ * purpose: the alternative — a daemon route that accepts a credential at runtime — would put a
+ * credential-writing endpoint inside the exact process the publish boundary rests on, reachable by
+ * anything holding the local bearer token. A process restart has no such surface. It is also
+ * cheap at the only moment it happens: connecting or disconnecting GitHub is a pre-app action,
+ * before any ticket is running.
+ */
+function restartDaemonForCredentialChange(): void {
+  if (!daemonChild) {
+    spawnDaemon();
+    return;
+  }
+  respawnDaemonOnExit = true;
+  sendStatus({ state: 'connecting' });
+  daemonChild.kill();
+}
+
+handle('pipenzo:github-connection', (): PipenzoGitHubConnectionV1 => gitHubConnectionStatus());
+
+/**
+ * Forgets the stored credential. There is deliberately no matching "store" channel: the device-code
+ * flow (#114) runs entirely in main, so a token never crosses the bridge in either direction.
+ */
+handle('pipenzo:disconnect-github', (): PipenzoGitHubConnectionV1 => {
+  tokenVault.clear();
+  restartDaemonForCredentialChange();
+  // `source` in this reply still describes the daemon that is on its way out; the restart it just
+  // triggered recomputes it. The renderer re-reads the connection when `daemon:status` next goes
+  // `ready`, which is the same moment the new daemon's credential actually takes effect.
+  return gitHubConnectionStatus();
+});
 
 handle('daemon:list-providers', async () => {
   if (!client) throw new Error('daemon is not ready yet');
