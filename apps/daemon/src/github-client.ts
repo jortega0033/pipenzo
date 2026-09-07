@@ -25,8 +25,12 @@ import { ConditionalRequestCache } from './github-conditional-cache.js';
  *    sits behind later (README's near-term post-MVP list). Callers depend on the interface.
  *
  * Walking-skeleton simplifications, all owned by later build-order steps:
- * - The PAT is read from the environment. The Electron-main token vault and device-flow OAuth are
- *   build step 4; step 2 and step 3 both read a PAT from env by design.
+ * - Device-flow OAuth is still build step 4. What this client authenticates with is a PAT.
+ *
+ * Issue #165 closed the other half of that row. The shipped daemon no longer reads its PAT from
+ * its own environment: Electron main holds it in a `safeStorage` vault and writes it over stdin,
+ * and `fromToken` — reading a token this module no longer fetches for itself — is what `index.ts`
+ * calls. `GITHUB_TOKEN_ENV_KEYS` below documents what is left of the env path and who still uses it.
  *
  * Issue #161 closed the two rate-limit gaps this comment used to list:
  * - **Conditional requests.** `getIssue` and `listLabels` send `If-None-Match` from a
@@ -47,9 +51,15 @@ import { ConditionalRequestCache } from './github-conditional-cache.js';
  * of failing `token_missing` — an ambiguity about *which credential just pushed* is exactly what a
  * publish gate must not have. One name, no fallback.
  *
- * When build step 4 lands the Electron-main token vault, this read path is **deleted**, not kept
- * as a fallback. A "vault, or else env" resolver is how a long-lived key survives its own
- * replacement.
+ * Issue #165 settled what happens to this read path now the Electron-main vault exists, and it is
+ * not quite the "delete it outright" this comment used to promise. It is no longer how the
+ * **shipped** daemon gets its credential: Electron main strips this variable from the daemon's
+ * environment entirely and writes the token to stdin instead, because the daemon is the parent of
+ * every provider subprocess and a child can read its parent's environment block regardless of what
+ * it inherited (`github-credential.ts` has the full argument). What remains is the only source a
+ * daemon started *without* an Electron main has — a direct `pnpm dev`, the live-smoke harness, CI —
+ * and in the shipped app it is unreachable rather than merely deprioritised, so the "vault, or else
+ * env" ambiguity this comment warned about cannot arise.
  */
 export const GITHUB_TOKEN_ENV_KEYS = Object.freeze(['PIPENZO_GITHUB_TOKEN'] as const);
 
@@ -661,12 +671,30 @@ export class OctokitGitHubClient implements GitHubClient {
     this.#cache = cache;
   }
 
-  /** Reads the PAT from the environment and builds the client. Throws `token_missing` if unset. */
-  static fromEnvironment(
-    env: Readonly<Record<string, string | undefined>> = process.env,
+  /**
+   * Builds the client from a token the caller already resolved. The only credential-bearing
+   * factory this class has.
+   *
+   * There used to be a `fromEnvironment` beside it that did its own `process.env` read. Issue #165
+   * removed its last caller — `index.ts` resolves through `DaemonGitHubCredential`, which prefers
+   * the credential Electron main wrote to stdin and falls back to the environment itself — and it
+   * is deleted rather than left exported, which is what this module's original comment promised:
+   * *"this read path is deleted, not kept as a fallback."* An exported, untested, zero-caller
+   * factory that reads a PAT out of `process.env` is precisely the thing a later edit picks up by
+   * name and quietly reintroduces the env read with. The environment path itself is not lost; it
+   * lives in `resolveGitHubToken`, which is exported and directly tested.
+   *
+   * It takes a `cache` option because this is the factory the shipped daemon actually calls, so a
+   * version of it that could not be handed the shared `ConditionalRequestCache` would leave issue
+   * #161's conditional-request layer switched off everywhere except the tests that construct a
+   * client directly — present in the source, absent from the running app, and invisible to
+   * anything but a rate-limit graph.
+   */
+  static fromToken(
+    token: string,
     options: OctokitGitHubClientOptions = {},
   ): OctokitGitHubClient {
-    return new OctokitGitHubClient(createPipenzoOctokit(resolveGitHubToken(env)), options.cache);
+    return new OctokitGitHubClient(createPipenzoOctokit(token), options.cache);
   }
 
   /** Injection seam for tests and for a caller that already holds a configured octokit. */

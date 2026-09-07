@@ -75,6 +75,10 @@ describe('electron/preload.ts — real bridge (AD-07)', () => {
         'pipenzoTicketRead',
         'pipenzoTicketTransition',
         'onPipenzoPhaseEvent',
+        // The GitHub credential's state and a disconnect (issue #165). There is deliberately no
+        // third member here: nothing on this bridge stores or returns a token.
+        'pipenzoGitHubConnection',
+        'disconnectGitHub',
         'selectAndUploadAttachments',
         'validateStructuredOutput',
         'createSession',

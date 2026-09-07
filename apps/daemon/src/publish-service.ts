@@ -11,10 +11,10 @@ import {
   createPipenzoOctokit,
   redactSecrets,
   resolveConfiguredRepo,
-  resolveGitHubToken,
   toGitHubClientError,
   type RepoRef,
 } from './github-client.js';
+import { DaemonGitHubCredential } from './github-credential.js';
 import {
   buildGitEnvironment,
   buildGitPushEnvironment,
@@ -144,10 +144,24 @@ export interface PublishServiceOptions {
   worktrees: OwnedWorktreeLocator;
   /**
    * The daemon's own environment. Passed explicitly rather than read ambiently so a test can
-   * prove what this service does and does not read, and so there is exactly one place to change
-   * when the token moves from env to the Electron-main vault in build step 4.
+   * prove what this service does and does not read.
+   *
+   * That move from env to the Electron-main vault has now happened (issue #165): in the shipped
+   * app this environment no longer carries a credential, and `resolveGitHubCredential` below is
+   * what actually supplies one. This stays as the fallback source for a daemon nobody injected
+   * into — `pnpm dev`, the live-smoke harness, CI.
    */
   env?: Readonly<Record<string, string | undefined>>;
+  /**
+   * Where the GitHub credential comes from (issue #165).
+   *
+   * Injected rather than read here, because in the shipped app it is **not** in `env` at all: the
+   * Electron-main vault hands it to the daemon over stdin, and `DaemonGitHubCredential` holds it in
+   * a private field precisely so it is not in an environment block a provider subprocess could read
+   * out of its own parent. The default keeps the direct-`pnpm dev` path (and every existing test)
+   * reading the environment exactly as before.
+   */
+  resolveGitHubCredential?: (env: Readonly<Record<string, string | undefined>>) => string;
   runGit?: PipenzoGitRunner;
   /** Built lazily, from a token read at call time, so no live authenticated client is retained. */
   createPullRequestOpener?: (token: string) => PullRequestOpener;
@@ -273,6 +287,8 @@ export class PublishService {
   readonly #env: Readonly<Record<string, string | undefined>>;
   readonly #runGit: PipenzoGitRunner;
   readonly #createOpener: (token: string) => PullRequestOpener;
+  /** A *resolver*, never the credential: this field holds a function, and is called at use. */
+  readonly #resolveCredential: (env: Readonly<Record<string, string | undefined>>) => string;
   readonly #logger: Logger | undefined;
   /** One publish at a time per worktree: two concurrent pushes of one branch is never intended. */
   readonly #inFlight = new Set<string>();
@@ -280,6 +296,13 @@ export class PublishService {
   constructor(options: PublishServiceOptions) {
     this.#worktrees = options.worktrees;
     this.#env = options.env ?? process.env;
+    // Not the raw `resolveGitHubToken`, which only trims and rejects empty: the shape rule that
+    // `DaemonGitHubCredential.resolve` enforces on the environment fallback has to hold on every
+    // path to `createPipenzoOctokit`, and the half of a symmetric rule that gets skipped is the
+    // half that stops being true. `index.ts` always injects `githubCredential.resolve`, so this
+    // default is only reached by a caller assembling a `PublishService` by hand.
+    this.#resolveCredential =
+      options.resolveGitHubCredential ?? ((env) => DaemonGitHubCredential.none().resolve(env));
     this.#runGit = options.runGit ?? runGitCommand;
     this.#createOpener = options.createPullRequestOpener ?? octokitPullRequestOpener;
     this.#logger = options.logger;
@@ -419,7 +442,7 @@ export class PublishService {
 
   #resolveToken(): string {
     try {
-      return resolveGitHubToken(this.#env);
+      return this.#resolveCredential(this.#env);
     } catch (error) {
       if (error instanceof GitHubClientError && error.code === 'token_missing') {
         throw new PublishServiceError('token_missing', error.message);

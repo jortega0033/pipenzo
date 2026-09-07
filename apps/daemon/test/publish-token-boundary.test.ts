@@ -104,6 +104,29 @@ describe('the GitHub token never reaches a provider subprocess', () => {
     expect(env.HOME).toBe('/home/dev');
   });
 
+  /**
+   * The sharper half of this invariant, added by issue #165. Every assertion above is about
+   * *inheritance* \u2014 what a child is handed. None of them helps if the token sits in the daemon's
+   * own environment block, because the daemon is the **parent** of every provider subprocess and a
+   * child can read its parent's initial environment (`/proc/<ppid>/environ` on Linux, the PEB on
+   * Windows) regardless of what it inherited.
+   *
+   * So the shipped daemon is not given the token in its environment at all: Electron main writes it
+   * to stdin (see `apps/desktop/electron/daemon-environment.ts` and the desktop-side boundary test)
+   * and `DaemonGitHubCredential` holds it in a private field. What is asserted here is the daemon
+   * half of that contract \u2014 the injected credential is never written back into `process.env`, which
+   * would put it right back where a child could read it.
+   */
+  it('is never written back into the daemon\u2019s own environment once injected', async () => {
+    const source = await readFile(join(daemonSrc, 'github-credential.ts'), 'utf8');
+    const code = stripComments(source);
+    // `=(?!=)` so an ordinary comparison is not mistaken for an assignment.
+    expect(code).not.toMatch(/process\.env\[[^\]]*\]\s*=(?!=)/);
+    expect(code).not.toMatch(/process\.env\.\w+\s*=(?!=)/);
+    // Sanity: the module being scanned is the one that actually holds the credential.
+    expect(code).toMatch(/class DaemonGitHubCredential/);
+  });
+
   it('is dropped by both of Pipenzo\u2019s own git environments', () => {
     // The one process that legitimately holds the token still does not hand it to a child, so a
     // repository hook, filter or fsmonitor command cannot read it out of the environment.
@@ -233,9 +256,13 @@ describe('the publish service holds its credential narrowly', () => {
     // Comments are stripped first: this module *documents* the argv shapes it refuses to use, and
     // a prose mention of `http.extraheader` must not read as an occurrence of it.
     const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-    // One call site: `#resolveToken()`. Everything else routes through it.
-    expect(code.match(/resolveGitHubToken\(/g)).toHaveLength(1);
-    // No field ever holds it.
+    // One call site: `#resolveToken()`. Everything else routes through it. Since issue #165 the
+    // credential source is injected (the shipped daemon receives it over stdin, not from `env`), so
+    // what is counted is the *invocation of the resolver*, not the name of the env reader.
+    expect(code.match(/this\.#resolveCredential\(/g)).toHaveLength(1);
+    // And the env reader is only ever the default, never called directly.
+    expect(code).not.toMatch(/resolveGitHubToken\(/);
+    // No field ever holds the token itself. `#resolveCredential` holds a *function*.
     expect(code).not.toMatch(/#token\b|this\.token\b|readonly token\b/);
     // No token ever reaches a git argv array.
     expect(code).not.toMatch(/http\.extraheader|x-access-token|--config\s+http/);
@@ -246,6 +273,47 @@ describe('the publish service holds its credential narrowly', () => {
     for (const call of source.match(/#logger\?\.\w+\([\s\S]*?\}\);/g) ?? []) {
       expect(call).not.toMatch(/token/i);
     }
+  });
+
+  /**
+   * `index.ts` is where both of the daemon's security-relevant GitHub decisions are actually made,
+   * and until now nothing asserted either one. Every unit test in this area constructs its subject
+   * directly, so `index.ts` could be reverted to reading `process.env` — or quietly stop passing
+   * the shared ETag cache — and the whole suite would stay green.
+   *
+   * That is not hypothetical. Rebasing this branch onto issue #161 produced exactly the second
+   * failure: git merged both sides cleanly into a `fromToken` that took no cache argument, which
+   * would have shipped #161's conditional-request layer switched off in the running app while all
+   * of its own tests passed. A conflict resolution is precisely where this class of bug hides, so
+   * the wiring gets a tripwire of its own.
+   */
+  it('builds its GitHub clients from the injected credential and the shared ETag cache', async () => {
+    const code = stripComments(await readFile(join(daemonSrc, 'index.ts'), 'utf8'));
+
+    // The credential is read once, at startup, from the stdin channel — not from this process's
+    // environment (issue #165).
+    expect(code).toMatch(/DaemonGitHubCredential\.fromStartup\(/);
+    expect(code).toMatch(/resolveGitHubCredential:\s*\(env\)\s*=>\s*githubCredential\.resolve\(env\)/);
+
+    // Both client factories resolve through that credential, and each is handed the one per-daemon
+    // conditional-request cache (issue #161). Two call sites: the phase service and the phase
+    // machine.
+    expect(code).toMatch(/const githubConditionalCache = new ConditionalRequestCache\(\)/);
+    const allCallSites = code.match(/OctokitGitHubClient\.fromToken\(/g) ?? [];
+    const wired =
+      code.match(
+        /OctokitGitHubClient\.fromToken\(\s*githubCredential\.resolve\(\),\s*\{\s*cache:\s*githubConditionalCache,?\s*\}/g,
+      ) ?? [];
+    // Both of today's call sites, and at least those two — an exact `toHaveLength(2)` would fail on
+    // a legitimately-added third consumer, and would report it as "the cache wiring broke" when the
+    // truth is "someone added a correctly-wired client". The property this test actually defends is
+    // the one below: *every* call site is wired, whatever the count.
+    expect(wired.length).toBeGreaterThanOrEqual(2);
+    expect(wired.length).toBe(allCallSites.length);
+
+    // And no path here reads a credential out of the environment for itself.
+    expect(code).not.toMatch(/fromEnvironment\(/);
+    expect(code).not.toMatch(/resolveGitHubToken\(/);
   });
 
   it('routes every string that can escape through the redactor', async () => {

@@ -8,7 +8,7 @@ import tailwindcss from '@tailwindcss/vite';
 // dist-electron/ output for packaging. This is the one non-boring dependency in the desktop
 // app, chosen over hand-rolled esbuild+concurrently scripting because it's small,
 // purpose-built for exactly this main/preload/renderer split, and needs no extra config.
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   plugins: [
     tailwindcss(),
     react(),
@@ -16,6 +16,34 @@ export default defineConfig({
       main: {
         entry: 'electron/main.ts',
         vite: {
+          // Substituted at build time, and read by main.ts as the second of two gates on the
+          // development GitHub-credential fallback (issue #165). `app.isPackaged` alone is not a
+          // security boundary — Electron derives it from the executable's *filename*, so a shipped
+          // artifact that ships the stock binary un-renamed would silently re-enable the fallback.
+          // This constant is baked in by the bundler and a rename cannot reach it. main.ts treats a
+          // missing substitution as `false`, so failing to define it fails closed.
+          //
+          // Keyed on `command`, not on `process.env.NODE_ENV`: Vite does not reliably set NODE_ENV
+          // before evaluating this file, so the env check would read `undefined` during
+          // `vite build` and bake `true` — a development flag — into the very artifact that gets
+          // packaged. `command === 'build'` is the signal that actually distinguishes the two.
+          //
+          // The result is stronger than a gate. With the constant folded to `false`, Rollup's
+          // dead-code elimination removes the fallback branch from `resolveDaemonGitHubToken`
+          // outright: in `dist-electron/main.js` that function reduces to the vault lookup and a
+          // `{ token: undefined, source: 'none' }` return, and does not read `environmentToken` at
+          // all. A packaged build cannot take a code path it does not contain.
+          //
+          // What remains in the artifact, stated precisely so this note is not read as more than it
+          // is: the *call site* still evaluates `process.env.PIPENZO_GITHUB_TOKEN` and passes it in
+          // as an argument the callee now ignores, the `source === 'environment'` warning string
+          // survives in a branch that can no longer be reached, and the variable's name is in the
+          // environment-stripping list, where it must be. So the token is still *read* in a
+          // packaged build; it is simply discarded. The eliminated branch is what carries the
+          // guarantee. (Verified by inspecting the built output, not inferred.)
+          define: {
+            __PIPENZO_DEVELOPMENT_BUILD__: JSON.stringify(command !== 'build'),
+          },
           build: {
             outDir: 'dist-electron',
             rollupOptions: { external: ['electron'] },
@@ -42,4 +70,4 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./test/setup.ts'],
   },
-});
+}));
