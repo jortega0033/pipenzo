@@ -13,6 +13,10 @@ import {
   type PipenzoPhaseMachine,
   type PipenzoTicketReconciliation,
 } from '../pipenzo-phase-machine.js';
+import {
+  BoundedPipenzoPhaseSseWriter,
+  type PipenzoPhaseEventBus,
+} from '../pipenzo-phase-events.js';
 
 /**
  * The phase-machine routes (Pipenzo issue #188).
@@ -112,9 +116,27 @@ function toReconciliationBody(result: PipenzoTicketReconciliation) {
   };
 }
 
+/**
+ * `Last-Event-ID` for the phase stream, resolved to the first sequence the subscriber still needs.
+ *
+ * Absent means "from the start of whatever window you still hold" (0), and a present id means
+ * "everything after this one", hence the `+ 1`. Same parser and same contract as the v2 session
+ * stream's, deliberately: a renderer that already knows how to reconnect to one stream should not
+ * have to learn a second set of cursor rules. Anything not a plain non-negative integer is a
+ * client bug and is refused rather than coerced.
+ */
+function parsePhaseLastEventId(header: string | string[] | undefined): number | undefined {
+  const value = Array.isArray(header) ? header[0] : header;
+  if (value === undefined) return 0;
+  if (!/^\d+$/.test(value)) return undefined;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed < Number.MAX_SAFE_INTEGER ? parsed + 1 : undefined;
+}
+
 export function registerPipenzoTicketRoutes(
   app: FastifyInstance,
   machine: PipenzoPhaseMachine,
+  events?: PipenzoPhaseEventBus,
 ): void {
   const limits = { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } };
 
@@ -150,5 +172,63 @@ export function registerPipenzoTicketRoutes(
     // now, so a response-shape mismatch must not be reported as a failure to transition -- the
     // operator's natural retry would be judged against a state that has already moved.
     reply.send(pipenzoTicketReconciliationV1Schema.parse(toReconciliationBody(result)));
+  });
+
+  if (!events) return;
+
+  /**
+   * The phase-change stream (#189).
+   *
+   * Deliberately *not* under the `limits` above. Those exist because each of the two routes costs a
+   * GitHub read against a quota; this one costs a socket and no upstream call at all, and rate-
+   * limiting a stream a renderer reconnects to after every daemon restart would lock the board out
+   * of live data at precisely the wrong moment. It stays behind the same bearer token and the same
+   * reject-any-Origin guard as everything else on this surface.
+   */
+  app.get('/v2/pipenzo/tickets/events', async (req, reply) => {
+    const sinceSequence = parsePhaseLastEventId(req.headers['last-event-id']);
+    if (sinceSequence === undefined) {
+      reply.code(400).send({ error: 'invalid Last-Event-ID', code: 'invalid_last_event_id' });
+      return;
+    }
+
+    const window = events.replayWindow();
+    if (sinceSequence < window.earliestSequence || sinceSequence > window.nextSequence) {
+      // The buffer is bounded, so a cursor outside it cannot be served honestly. Reporting the
+      // window back lets the caller resubscribe at a sequence that exists instead of guessing.
+      reply.code(409).send({
+        error: 'requested phase history is unavailable',
+        code: 'replay_gap',
+        details: window,
+      });
+      return;
+    }
+
+    reply.hijack();
+    reply.raw.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+    });
+
+    let unsubscribe: (() => void) | undefined;
+    let cleanupRequested = false;
+    const cleanup = (): void => {
+      if (!unsubscribe) {
+        // Replay can close the writer synchronously, before `subscribe` has returned its disposer.
+        cleanupRequested = true;
+        return;
+      }
+      const release = unsubscribe;
+      unsubscribe = undefined;
+      release();
+    };
+
+    const writer = new BoundedPipenzoPhaseSseWriter(reply.raw, cleanup);
+    reply.raw.once('close', () => writer.close());
+    writer.start();
+
+    unsubscribe = events.subscribe(sinceSequence, (event) => writer.write(event));
+    if (cleanupRequested) cleanup();
   });
 }

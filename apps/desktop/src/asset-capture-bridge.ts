@@ -73,6 +73,9 @@ export function installAssetCaptureBridge(): void {
     // so both refuse rather than returning a reconciliation that looks real.
     pipenzoTicketRead: async () => { throw new Error('ticket read is not available while capturing assets'); },
     pipenzoTicketTransition: async () => { throw new Error('ticket transition is not available while capturing assets'); },
+    // No daemon and no phase stream while capturing assets: a no-op unsubscribe, not a throw,
+    // because a component that subscribes on mount should still render.
+    onPipenzoPhaseEvent: () => () => {},
     selectAndUploadAttachments: async () => [],
     validateStructuredOutput: async (input) => ({ valid: true, normalizedOutput: input.output, errors: [] }),
     createSession: async () => {

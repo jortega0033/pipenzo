@@ -10,6 +10,7 @@ import { FakeGitHubClient } from '../src/github-client-fake.js';
 import type { GitHubIssue } from '../src/github-client.js';
 import { FileTicketStore } from '../src/pipenzo-ticket-store.js';
 import { PipenzoPhaseMachine } from '../src/pipenzo-phase-machine.js';
+import { PipenzoPhaseEventBus } from '../src/pipenzo-phase-events.js';
 
 const TOKEN = 'test-token-pipenzo-tickets';
 const TICKET_ID = '00000000-0000-4000-8000-000000000001';
@@ -74,6 +75,7 @@ function buildApp(options: {
   ticket?: Partial<PipenzoTicketRecordV1>;
   issueLabels?: readonly string[];
   withGitHub?: boolean;
+  withEvents?: boolean;
 } = {}) {
   const registry = new ProviderRegistry();
   const tickets = new FileTicketStore(storeDirectory());
@@ -81,19 +83,23 @@ function buildApp(options: {
   const github = new FakeGitHubClient().seedIssue(
     makeIssue(options.issueLabels ?? ['pipenzo:queued']),
   );
+  const phaseEvents = options.withEvents === false ? undefined : new PipenzoPhaseEventBus();
   const phaseMachine = new PipenzoPhaseMachine({
     tickets,
     ...(options.withGitHub === false ? {} : { github: () => github }),
+    ...(phaseEvents ? { events: phaseEvents } : {}),
   });
   return {
     github,
     tickets,
+    phaseEvents,
     app: buildServer({
       registry,
       sessionManager: new SessionManager(registry, noopLogger),
       token: TOKEN,
       logger: noopLogger,
       phaseMachine,
+      ...(phaseEvents ? { phaseEvents } : {}),
     }),
   };
 }
@@ -277,4 +283,126 @@ describe('POST /v2/pipenzo/tickets/transition', () => {
 
     expect(response.statusCode).toBe(400);
   });
+});
+
+/**
+ * The phase stream (#189).
+ *
+ * The rejection paths reply normally and are tested with `inject` like every other route here. The
+ * streaming path cannot be: `inject` resolves when the response ends, and this stream deliberately
+ * has no terminal event -- a board stream ends when the subscriber disconnects, not when some event
+ * arrives. So the happy path runs against a real listening socket and closes the read itself.
+ */
+describe('GET /v2/pipenzo/tickets/events', () => {
+  it('refuses a Last-Event-ID that is not a plain sequence, rather than coercing it', async () => {
+    const { app } = buildApp();
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/v2/pipenzo/tickets/events',
+      headers: { ...auth, 'last-event-id': 'not-a-number' },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ code: 'invalid_last_event_id' });
+  });
+
+  it('refuses a cursor the bounded window no longer holds, and reports the window', async () => {
+    const { app, phaseEvents } = buildApp();
+
+    // Nothing has been published, so "everything after sequence 9" is a gap, not an empty tail.
+    const response = await app.inject({
+      method: 'GET',
+      url: '/v2/pipenzo/tickets/events',
+      headers: { ...auth, 'last-event-id': '9' },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({
+      code: 'replay_gap',
+      details: phaseEvents!.replayWindow(),
+    });
+  });
+
+  it('is not registered at all when the daemon was built without a bus', async () => {
+    const { app } = buildApp({ withEvents: false });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/v2/pipenzo/tickets/events',
+      headers: auth,
+    });
+
+    expect(response.statusCode).toBe(404);
+  });
+
+  it('requires the bearer token like every other route on this surface', async () => {
+    const { app } = buildApp();
+
+    const response = await app.inject({ method: 'GET', url: '/v2/pipenzo/tickets/events' });
+
+    expect(response.statusCode).toBe(401);
+  });
+
+  it('replays the retained window and then streams a live transition', async () => {
+    const { app, phaseEvents } = buildApp();
+    // Published before anyone subscribes, so one connection covers both replay and live delivery.
+    phaseEvents!.publish({
+      ticketId: TICKET_ID,
+      fromLane: 'queued',
+      toLane: 'working',
+      phase: 'implement',
+      labels: ['pipenzo:working'],
+    });
+
+    await app.listen({ port: 0, host: '127.0.0.1' });
+    const address = app.server.address();
+    const port = typeof address === 'object' && address ? address.port : 0;
+    const controller = new AbortController();
+
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/v2/pipenzo/tickets/events`, {
+        headers: auth,
+        signal: controller.signal,
+      });
+      expect(response.status).toBe(200);
+      expect(response.headers.get('content-type')).toContain('text/event-stream');
+
+      const reader = response.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffered = '';
+      const readUntil = async (predicate: (text: string) => boolean): Promise<void> => {
+        while (!predicate(buffered)) {
+          const { value, done } = await reader.read();
+          if (done) return;
+          buffered += decoder.decode(value, { stream: true });
+        }
+      };
+
+      await readUntil((text) => text.includes('id: 0'));
+      expect(buffered).toContain('event: ticket.phase_changed');
+
+      await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/tickets/transition',
+        headers: auth,
+        payload: { ticketId: TICKET_ID, label: 'pipenzo:needs-human' },
+      });
+      await readUntil((text) => text.includes('id: 1'));
+
+      const frames = buffered
+        .split('\n\n')
+        .filter((frame) => frame.includes('data: '))
+        .map(
+          (frame) => JSON.parse(frame.split('data: ')[1]!) as { sequence: number; toLane: string },
+        );
+      expect(frames.map((frame) => frame.sequence)).toEqual([0, 1]);
+      expect(frames[1]!.toLane).toBe('needs-human');
+
+      await reader.cancel().catch(() => undefined);
+    } finally {
+      controller.abort();
+      await app.close();
+    }
+  }, 15_000);
 });

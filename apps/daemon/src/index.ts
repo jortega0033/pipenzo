@@ -30,6 +30,7 @@ import {
 import { ExecFileGateCommands } from './gate-commands.js';
 import { OctokitGitHubClient } from './github-client.js';
 import { PipenzoPhaseMachine } from './pipenzo-phase-machine.js';
+import { PipenzoPhaseEventBus } from './pipenzo-phase-events.js';
 
 async function settlesWithin(promise: Promise<unknown>, timeoutMs: number): Promise<boolean> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -170,9 +171,14 @@ async function main() {
   // when the two disagree the label wins. Same GitHub boundary as the phase service above: the
   // client is built lazily from a token read at call time, so no authenticated client is retained
   // between requests and nothing in the agent-runtime path holds a reference to it.
+  // The phase-change stream (issue #189). Held here rather than inside the machine so the routes
+  // can subscribe to the same bus the machine publishes to, and so a daemon assembled for a test can
+  // leave it out entirely.
+  const phaseEvents = new PipenzoPhaseEventBus();
   const phaseMachine = new PipenzoPhaseMachine({
     tickets: ticketStore,
     github: () => OctokitGitHubClient.fromEnvironment(),
+    events: phaseEvents,
   });
 
   const app = buildServer({
@@ -188,6 +194,7 @@ async function main() {
     publishService,
     phaseService,
     phaseMachine,
+    phaseEvents,
   });
 
   const requestedPort = Number(process.env.AGENT_DOCK_PORT ?? '0');

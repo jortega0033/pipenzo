@@ -96,6 +96,14 @@ const activeSessionIds = new Set<string>();
 const streamAborts = new Map<string, AbortController>();
 const activeInteractiveSessionIds = new Set<string>();
 const interactiveStreamAborts = new Map<string, AbortController>();
+/**
+ * The single phase-stream subscription (#189). One per daemon connection, not one per ticket: the
+ * daemon serves every ticket's transitions on one stream, and the renderer filters. Held here so a
+ * daemon restart can tear the old one down before starting the next.
+ */
+let phaseStreamAbort: AbortController | undefined;
+/** The last sequence forwarded to the renderer, so a reconnect resumes rather than replays. */
+let lastPhaseSequence: number | undefined;
 const pendingInteractiveCreates = new PendingInteractiveCreates();
 const interactionBroker = new InteractionBroker();
 // Startup may use the 30-second handshake bound plus graceful and hard-stop reap windows.
@@ -153,6 +161,11 @@ function spawnDaemon(): void {
     for (const controller of interactiveStreamAborts.values()) controller.abort();
     interactiveStreamAborts.clear();
     activeInteractiveSessionIds.clear();
+    phaseStreamAbort?.abort();
+    phaseStreamAbort = undefined;
+    // The next daemon is a new process with a new, empty phase buffer, so the old cursor names a
+    // sequence that will never exist again. Dropping it makes the next subscribe start clean.
+    lastPhaseSequence = undefined;
     sendStatus({
       state: 'unavailable',
       error: `daemon process exited unexpectedly (code ${code ?? 'null'}, signal ${signal ?? 'null'})`,
@@ -229,6 +242,9 @@ async function waitForDaemonReady(spawnedAt: number, timeoutMs = 15_000): Promis
         // as both the readiness check and the version-compatibility check in one call.
         await candidate.health();
         client = candidate;
+        // Subscribed once here rather than on a renderer request: the board must not miss a
+        // transition that happens between the daemon coming up and a window being opened.
+        forwardPipenzoPhaseEvents();
         sendStatus({ state: 'ready' });
         return;
       } catch {
@@ -275,6 +291,45 @@ function forwardSessionEvents(sessionId: string): void {
       });
     } finally {
       if (streamAborts.get(sessionId) === controller) streamAborts.delete(sessionId);
+    }
+  })();
+}
+
+/**
+ * Relays the daemon's phase-change stream (#189) to the renderer.
+ *
+ * Reconnects on failure, resuming from the last sequence actually forwarded, because the board's
+ * correctness depends on not missing a transition: a card left in the wrong lane looks exactly like
+ * a card in the right one. A `replay_gap` (the cursor fell out of the daemon's bounded window) is
+ * the one failure a cursor cannot fix, so it drops the cursor and resubscribes from the window the
+ * daemon still has -- the renderer re-reads the tickets it cares about on reconnect anyway.
+ */
+function forwardPipenzoPhaseEvents(): void {
+  if (!client) return;
+  phaseStreamAbort?.abort();
+  const controller = new AbortController();
+  phaseStreamAbort = controller;
+  const activeClient = client;
+
+  void (async () => {
+    while (!controller.signal.aborted) {
+      try {
+        for await (const event of activeClient.v2.pipenzo.ticketEvents({
+          signal: controller.signal,
+          ...(lastPhaseSequence === undefined
+            ? {}
+            : { lastEventId: String(lastPhaseSequence) }),
+        })) {
+          lastPhaseSequence = event.sequence;
+          sendToRenderer(mainWindow, 'daemon:pipenzo-phase-event', event);
+        }
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        // 409 is the daemon refusing a cursor it no longer holds. Retrying it would fail forever.
+        if (err instanceof DaemonError && err.status === 409) lastPhaseSequence = undefined;
+      }
+      if (controller.signal.aborted) return;
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
     }
   })();
 }
@@ -492,6 +547,8 @@ async function killDaemon(): Promise<void> {
     clearInteractionSession(sessionId, 'shutdown');
   }
   for (const controller of interactiveStreamAborts.values()) controller.abort();
+  phaseStreamAbort?.abort();
+  phaseStreamAbort = undefined;
   await pendingInteractiveCreates.waitForPending(INTERACTIVE_CREATE_SHUTDOWN_TIMEOUT_MS);
   const activeClient = client;
   if (activeClient) {

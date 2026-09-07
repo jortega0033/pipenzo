@@ -138,6 +138,8 @@ export function createDemoBridge(): AgentDockBridge {
     pipenzoTicketTransition: async () => {
       throw new Error('ticket transition is not available in demo mode');
     },
+    // Demo mode has no daemon to stream from; subscribing is inert rather than an error.
+    onPipenzoPhaseEvent: () => () => {},
     selectAndUploadAttachments: async () => [],
     validateStructuredOutput: async (input) => ({ valid: true, normalizedOutput: input.output, errors: [] }),
     createSession: async () => {
