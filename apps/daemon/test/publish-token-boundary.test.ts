@@ -299,10 +299,17 @@ describe('the publish service holds its credential narrowly', () => {
     // conditional-request cache (issue #161). Two call sites: the phase service and the phase
     // machine.
     expect(code).toMatch(/const githubConditionalCache = new ConditionalRequestCache\(\)/);
-    const wired = code.match(
-      /OctokitGitHubClient\.fromToken\(\s*githubCredential\.resolve\(\),\s*\{\s*cache:\s*githubConditionalCache,?\s*\}/g,
-    );
-    expect(wired).toHaveLength(2);
+    const allCallSites = code.match(/OctokitGitHubClient\.fromToken\(/g) ?? [];
+    const wired =
+      code.match(
+        /OctokitGitHubClient\.fromToken\(\s*githubCredential\.resolve\(\),\s*\{\s*cache:\s*githubConditionalCache,?\s*\}/g,
+      ) ?? [];
+    // Both of today's call sites, and at least those two — an exact `toHaveLength(2)` would fail on
+    // a legitimately-added third consumer, and would report it as "the cache wiring broke" when the
+    // truth is "someone added a correctly-wired client". The property this test actually defends is
+    // the one below: *every* call site is wired, whatever the count.
+    expect(wired.length).toBeGreaterThanOrEqual(2);
+    expect(wired.length).toBe(allCallSites.length);
 
     // And no path here reads a credential out of the environment for itself.
     expect(code).not.toMatch(/fromEnvironment\(/);

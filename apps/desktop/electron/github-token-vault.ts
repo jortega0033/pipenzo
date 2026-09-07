@@ -400,8 +400,15 @@ export class GitHubTokenVault {
    */
   clear(): boolean {
     const existed = existsSync(this.#path);
-    rmSync(this.#path, { force: true });
-    this.#sweepTemporaryFiles();
+    // `finally`, because a throwing `rmSync` (EPERM/EBUSY — an antivirus or indexer holding the
+    // handle open on the packaging platform) would otherwise skip the sweep on exactly the machines
+    // where deletion is failing, and every unswept `.tmp` left by an interrupted write is a full
+    // ciphertext copy of the credential the user just asked to forget.
+    try {
+      rmSync(this.#path, { force: true });
+    } finally {
+      this.#sweepTemporaryFiles();
+    }
     return existed;
   }
 

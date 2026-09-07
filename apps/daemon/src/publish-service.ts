@@ -11,10 +11,10 @@ import {
   createPipenzoOctokit,
   redactSecrets,
   resolveConfiguredRepo,
-  resolveGitHubToken,
   toGitHubClientError,
   type RepoRef,
 } from './github-client.js';
+import { DaemonGitHubCredential } from './github-credential.js';
 import {
   buildGitEnvironment,
   buildGitPushEnvironment,
@@ -296,7 +296,13 @@ export class PublishService {
   constructor(options: PublishServiceOptions) {
     this.#worktrees = options.worktrees;
     this.#env = options.env ?? process.env;
-    this.#resolveCredential = options.resolveGitHubCredential ?? resolveGitHubToken;
+    // Not the raw `resolveGitHubToken`, which only trims and rejects empty: the shape rule that
+    // `DaemonGitHubCredential.resolve` enforces on the environment fallback has to hold on every
+    // path to `createPipenzoOctokit`, and the half of a symmetric rule that gets skipped is the
+    // half that stops being true. `index.ts` always injects `githubCredential.resolve`, so this
+    // default is only reached by a caller assembling a `PublishService` by hand.
+    this.#resolveCredential =
+      options.resolveGitHubCredential ?? ((env) => DaemonGitHubCredential.none().resolve(env));
     this.#runGit = options.runGit ?? runGitCommand;
     this.#createOpener = options.createPullRequestOpener ?? octokitPullRequestOpener;
     this.#logger = options.logger;

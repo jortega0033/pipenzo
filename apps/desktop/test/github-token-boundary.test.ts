@@ -411,7 +411,9 @@ describe('nothing on the renderer bridge can obtain the token', () => {
    * every running session. Disconnecting an already-disconnected vault must change nothing.
    */
   it('does not restart the daemon when a disconnect changes nothing', async () => {
-    const main = await readElectron('main.ts');
+    // `stripComments`, like its siblings above: line-comment prose quoting the *old* form of either
+    // guard below would otherwise fail this test for saying what the guard used to be.
+    const main = stripComments(await readElectron('main.ts'));
     // The decision itself is `clear()`'s return value, and it is covered behaviourally in
     // `github-token-vault.test.ts` ("reports whether a disconnect actually removed anything"),
     // including the machine-without-a-credential-store case that made the previous
@@ -419,8 +421,10 @@ describe('nothing on the renderer bridge can obtain the token', () => {
     // here is only the wiring: that the handler gates on that return value and on nothing else.
     expect(main).toMatch(/if \(tokenVault\.clear\(\)\) restartDaemonForCredentialChange\(\)/);
     // And specifically not on `status()`, which cannot distinguish "nothing stored" from "cannot
-    // tell" and so answers the same on every machine where the loop was reachable.
-    expect(main).not.toMatch(/tokenVault\.status\(\)[^;]*!==\s*'disconnected'/);
+    // tell" and so answers the same on every machine where the loop was reachable. The quote class
+    // is `['"]` rather than `'`: the reintroduction this guards against is a *rewrite*, and a
+    // rewrite is exactly where a different quote style arrives.
+    expect(main).not.toMatch(/tokenVault\.status\(\)[^;]*!==\s*['"]disconnected['"]/);
 
     // The next two guards are scoped to the restart function's own body. `if (isQuitting) return;`
     // also appears in the window-close handler, so a whole-file match would stay green with the
@@ -433,5 +437,74 @@ describe('nothing on the renderer bridge can obtain the token', () => {
     expect(body).toMatch(/if \(credentialRestartPending\) return;/);
     // Nor is one started while the app is shutting down, which is how a daemon is orphaned.
     expect(body).toMatch(/if \(isQuitting\) return;/);
+  });
+
+  /**
+   * The `error`/`exit` ordering in `spawnDaemon` is the riskiest part of the credential-restart
+   * work and has now produced two separate ordering bugs, both of which left a latch that refuses
+   * every future credential change — or a live daemon nothing will ever kill. Neither bug is
+   * reachable from a unit test without a real failing spawn or a real failing `kill()`, so the
+   * ordering is pinned at the source, the same way the guards above are.
+   */
+  describe("spawnDaemon's child-lifecycle latches", () => {
+    /** The two handler bodies, comment-free, so prose about a latch is never read as one. */
+    const handlers = async (): Promise<{ error: string; exit: string }> => {
+      const main = stripComments(await readElectron('main.ts'));
+      const errorAt = main.indexOf("child.on('error'");
+      const exitAt = main.indexOf("child.on('exit'");
+      const endAt = main.indexOf('waitForDaemonReady', exitAt);
+      expect(errorAt).toBeGreaterThan(-1);
+      expect(exitAt).toBeGreaterThan(errorAt);
+      expect(endAt).toBeGreaterThan(exitAt);
+      return { error: main.slice(errorAt, exitAt), exit: main.slice(exitAt, endAt) };
+    };
+
+    /**
+     * A spawn that never started emits `error` and `close` but never `exit`, and `exit` is where
+     * all three latches are normally released. Left set, `daemonChild` names a process with no pid:
+     * the next credential change takes it as the live daemon, arms `credentialRestartPending`,
+     * kills nothing, and waits forever for an `exit` that cannot come.
+     */
+    it('releases every latch when a spawn never started', async () => {
+      const { error } = await handlers();
+      expect(error).toMatch(/daemonChild = undefined;/);
+      expect(error).toMatch(/respawnAfterExit = undefined;/);
+      expect(error).toMatch(/credentialRestartPending = false;/);
+    });
+
+    /**
+     * And releases them *only* then. Node emits `error` on a ChildProcess for a failed `kill()` and
+     * a failed `send()` too, where the child is still running — and a failing `kill()` is precisely
+     * what the credential restart does on the packaging platform. Clearing `daemonChild` for a live
+     * daemon makes `before-quit` short-circuit on `!daemonChild` and never call `killDaemon()`,
+     * orphaning a daemon that still holds the old credential and still blocks the next launch
+     * through the single-instance guard, while the next disconnect spawns a second one beside it.
+     */
+    it('does not clear live-daemon state for an error on a child that did start', async () => {
+      const main = stripComments(await readElectron('main.ts'));
+      // The discriminator has to be "did this child ever start", not "was there an error".
+      expect(main).toMatch(/child\.once\(\s*['"]spawn['"]/);
+      const { error } = await handlers();
+      const guardAt = error.search(/if \(started\)/);
+      expect(guardAt).toBeGreaterThan(-1);
+      // ...and it has to return *before* the teardown, or it is not a guard.
+      expect(guardAt).toBeLessThan(error.indexOf('daemonChild = undefined;'));
+      expect(error.slice(guardAt)).toMatch(/return;/);
+    });
+
+    /**
+     * Everything below the `!isCurrent` early return is skipped for a child that has already been
+     * replaced. `credentialRestartPending` is a latch that *refuses* future credential changes
+     * while set, so releasing it below that return is how one superseded child disables connecting
+     * and disconnecting GitHub for the rest of the session.
+     */
+    it('releases the credential-restart latch above the superseded-child return', async () => {
+      const { exit } = await handlers();
+      const releaseAt = exit.indexOf('credentialRestartPending = false;');
+      const returnAt = exit.search(/if \(!isCurrent\) return;/);
+      expect(releaseAt).toBeGreaterThan(-1);
+      expect(returnAt).toBeGreaterThan(-1);
+      expect(releaseAt).toBeLessThan(returnAt);
+    });
   });
 });

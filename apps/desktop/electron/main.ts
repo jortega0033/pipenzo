@@ -215,6 +215,16 @@ function spawnDaemon(): void {
   });
   daemonChild = child;
 
+  // Node emits `error` on a ChildProcess for more than a failed spawn — a `kill()` that fails
+  // (`TerminateProcess` on the packaging platform) and a failed `send()` both arrive on the same
+  // event, and in those cases the child is still running. Only a spawn that never started may tear
+  // down the live-daemon state below; see the `error` handler for what tearing it down wrongly
+  // costs. `spawn` fires exactly once, before any other event, on a child that did start.
+  let started = false;
+  child.once('spawn', () => {
+    started = true;
+  });
+
   // One line, then close: the daemon reads exactly one message and never listens again. An `error`
   // listener is required rather than tidy — a child that died before this write turns an ordinary
   // EPIPE into an unhandled stream error that would take the app down with it.
@@ -235,6 +245,16 @@ function spawnDaemon(): void {
   // change respawns, rather than only at startup.
   child.on('error', (error: Error) => {
     if (daemonChild !== child) return;
+    // The child is alive and this is a `kill()`/`send()` failure, not a spawn failure. Dropping
+    // `daemonChild` here would be worse than the error being reported: `before-quit` short-circuits
+    // on `!daemonChild` and would never call `killDaemon()`, orphaning a live daemon that still
+    // holds the old credential and still blocks the next launch through the single-instance guard,
+    // while `client` kept routing requests to it and the next disconnect spawned a *second* daemon
+    // alongside it. Report and keep the state.
+    if (started) {
+      sendStatus({ state: 'unavailable', error: `daemon process error: ${error.message}` });
+      return;
+    }
     // A spawn that never started emits `error` and `close`, but not `exit` — so the exit handler
     // below, which is where every one of these latches is normally released, never runs. Left set,
     // `daemonChild` names a process with no pid: the next credential change would take it as the
