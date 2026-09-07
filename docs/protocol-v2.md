@@ -272,13 +272,20 @@ writes run against a live API, so restoring blind would discard real human progr
 divergence between the record and GitHub. The report, not the lane, is the surface that guarantees an
 interrupted ticket is still visible.
 
-**A ticket already holding `pipenzo:awaiting-stack-approval`, `pipenzo:needs-pre-scoping` or
-`pipenzo:merge-conflict` is reported but not parked.** Those labels are questions already put to a
-human and not yet answered, and `setIssueLabels` replaces the whole `pipenzo:` namespace, so writing
-`interrupted` over one would destroy the gate on the authoritative side with nothing downstream to
-raise it again — after a Resume the ticket would proceed past an approval nobody gave. Such a ticket
-is already in the Needs-human lane the park would have moved it to, so nothing is lost by leaving it
-alone.
+On the two non-`written` outcomes the entry's `lane` and `labels` are re-read from the store, so the
+report describes where the ticket actually is rather than where the park tried to put it.
+
+**A ticket already holding `pipenzo:awaiting-stack-approval`, `pipenzo:needs-pre-scoping`,
+`pipenzo:merge-conflict` or `pipenzo:ready-for-review` is reported but not parked.** Those labels are
+questions already put to a human and not yet answered, and `setIssueLabels` replaces the whole
+`pipenzo:` namespace, so writing `interrupted` over one would destroy the gate on the authoritative
+side with nothing downstream to raise it again — after a Resume the ticket would proceed past an
+approval nobody gave.
+
+**One limit is worth knowing before building against this.** This report is held in daemon memory and
+a session is reported interrupted exactly once, so a ticket whose label write failed after
+reconciliation had already undone its park is not re-reported by the next daemon start. Treat the
+report as the authoritative view for the life of one daemon, not as durable state.
 
 The route is read-only, and that is the whole surface: recovery's two actions already have routes,
 and a POST here would be a second worktree-cleanup path competing with the one that enforces the

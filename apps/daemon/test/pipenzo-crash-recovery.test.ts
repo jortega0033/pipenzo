@@ -20,6 +20,7 @@ import { PipenzoPhaseMachine } from '../src/pipenzo-phase-machine.js';
 import { PipenzoPhaseEventBus } from '../src/pipenzo-phase-events.js';
 import {
   PipenzoCrashRecovery,
+  type RecoveryPhaseWriter,
   type RecoveryCompatSessionLookup,
   type RecoveryExecutionLookup,
 } from '../src/pipenzo-crash-recovery.js';
@@ -173,6 +174,8 @@ interface HarnessOptions {
   execution?: DurableExecutionRecord | null;
   compat?: AgentSession | null;
   withMachine?: boolean;
+  /** Stands in for the phase machine, to reach a settled set the real one cannot produce. */
+  machine?: RecoveryPhaseWriter;
   /** A corrupt file dropped into `records/` before the store loads, to force a quarantine. */
   corruptRecord?: boolean;
 }
@@ -204,7 +207,7 @@ function harness(options: HarnessOptions = {}) {
       options.compat === null || options.compat === undefined ? {} : { [SESSION_ID]: options.compat },
     ),
     logger: noopLogger,
-    ...(options.withMachine === false ? {} : { machine }),
+    ...(options.withMachine === false ? {} : { machine: options.machine ?? machine }),
     events,
   });
   return {
@@ -503,19 +506,59 @@ describe('PipenzoCrashRecovery.writeLabels', () => {
     expect(tickets.get(TICKET_ID)?.labels).not.toContain('pipenzo:interrupted');
   });
 
-  it('does not claim written when the transition settled on a different label', async () => {
+  it('does not claim written when the settled label set lacks pipenzo:interrupted', async () => {
     // A transition can return without throwing and still land elsewhere -- a racing writer's label
     // outranking ours, ambiguous labels, no label at all. `written` means "GitHub carries
     // pipenzo:interrupted too", so it must not be claimed for a set that does not contain it.
-    const { github, recovery } = harness();
+    // The real machine always writes the label it was asked for, so only a stand-in can produce a
+    // settled set that lacks it -- the case `transitionDivergenceFor` documents against live GitHub.
+    const { tickets, recovery } = harness({
+      machine: {
+        transition: async (ticketId) => {
+          const ticket = tickets.get(ticketId)!;
+          const settled = { ...ticket, lane: 'ready-for-review' as const, labels: ['pipenzo:ready-for-review' as const] };
+          tickets.update(ticketId, settled);
+          return { ticket: settled, divergence: null, previousLane: ticket.lane, observedLabels: settled.labels, changed: true } as never;
+        },
+      },
+    });
     recovery.park({ interruptedSessionIds: [SESSION_ID], quarantinedTicketRecordCount: 0 });
-    github.seedIssue(makeIssue(['pipenzo:ready-for-review']));
 
     const report = await recovery.writeLabels();
 
-    if (!report.parked[0]?.labels.includes('pipenzo:interrupted')) {
-      expect(report.parked[0]?.labelWrite).not.toBe('written');
-    }
+    expect(report.parked[0]?.labels).not.toContain('pipenzo:interrupted');
+    expect(report.parked[0]?.labelWrite).toBe('superseded');
+  });
+
+  it('reports the lane the stores actually hold after an abandoned write', async () => {
+    // The entry was built from the snapshot `park()` wrote. Reporting that stale snapshot would make
+    // the recovery screen the one surface claiming a state neither store holds.
+    const { tickets, recovery } = harness();
+    recovery.park({ interruptedSessionIds: [SESSION_ID], quarantinedTicketRecordCount: 0 });
+
+    const parked = tickets.get(TICKET_ID);
+    tickets.update(TICKET_ID, { ...parked!, lane: 'queued', labels: ['pipenzo:queued'] });
+
+    const report = await recovery.writeLabels();
+
+    expect(report.parked[0]?.labelWrite).toBe('superseded');
+    expect(report.parked[0]?.lane).toBe('queued');
+    expect(report.parked[0]?.labels).toEqual(['pipenzo:queued']);
+  });
+
+  it('reports the lane the stores actually hold after a failed write', async () => {
+    const { github, tickets, recovery } = harness();
+    recovery.park({ interruptedSessionIds: [SESSION_ID], quarantinedTicketRecordCount: 0 });
+
+    // The issue moved on, so `read()` reconciles the park away, and then the write fails.
+    github.seedIssue(makeIssue(['pipenzo:working']));
+    github.failNext('setIssueLabels', new GitHubClientError('rate_limited', 'rate limited'));
+
+    const report = await recovery.writeLabels();
+
+    expect(report.parked[0]?.labelWrite).toBe('failed');
+    expect(report.parked[0]?.lane).toBe(tickets.get(TICKET_ID)?.lane);
+    expect(report.parked[0]?.labels).toEqual(tickets.get(TICKET_ID)?.labels);
   });
 
   it('abandons the label write when a human moved the ticket out of the park first', async () => {

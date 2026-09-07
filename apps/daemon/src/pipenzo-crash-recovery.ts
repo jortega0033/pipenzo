@@ -13,6 +13,18 @@ import type { PipenzoPhaseEventBus } from './pipenzo-phase-events.js';
 import { isConditionLabel, type PipenzoPhaseMachine } from './pipenzo-phase-machine.js';
 
 /**
+ * The one thing recovery asks of the phase machine, narrowed the same way the two store
+ * dependencies are.
+ *
+ * Narrowed for the usual reason -- recovery must be unable to reach anything that dispatches -- and
+ * because it makes the `written`-versus-`superseded` branch reachable from a test: the real machine
+ * always writes the label it was asked for, so a settled set that lacks it can only be produced by
+ * a stand-in. That branch guards a case `transitionDivergenceFor` documents as real against a live
+ * GitHub (a racing writer whose label outranks ours), so it needs to be exercised somewhere.
+ */
+export type RecoveryPhaseWriter = Pick<PipenzoPhaseMachine, 'transition'>;
+
+/**
  * Crash recovery for the half nothing owned (Pipenzo issue #190).
  *
  * The inherited half already worked and then stopped. `FileExecutionGraphStore` marks every
@@ -84,7 +96,7 @@ export interface PipenzoCrashRecoveryOptions {
    * client still parks every interrupted ticket locally, which is the half that matters for not
    * losing the ticket. Without it the parked entries simply stay `pending`.
    */
-  machine?: PipenzoPhaseMachine;
+  machine?: RecoveryPhaseWriter;
   /**
    * The phase stream (#189). Recovery moving a lane is exactly the kind of transition that stream
    * exists to carry: the board is very often opened for the first time right after a restart, and a
@@ -118,7 +130,7 @@ export class PipenzoCrashRecovery {
   readonly #executions: RecoveryExecutionLookup;
   readonly #sessions: RecoveryCompatSessionLookup;
   readonly #logger: Logger;
-  readonly #machine: PipenzoPhaseMachine | undefined;
+  readonly #machine: RecoveryPhaseWriter | undefined;
   readonly #events: PipenzoPhaseEventBus | undefined;
   #report: PipenzoRecoveryReportV1 = EMPTY_REPORT;
 
@@ -149,9 +161,14 @@ export class PipenzoCrashRecovery {
     // several `attempts[]` -- a tier escalation, sibling executions -- and without this the loop
     // would park the same ticket twice: two cards for one ticket on the recovery screen, and a
     // second phase-stream event whose `fromLane` was read from a pre-park snapshot and so names a
-    // lane the ticket had already left. The first interrupted session is the one reported, matching
-    // `#sessionToTicket`'s first-wins rule.
-    const parkedTicketIds = new Set<string>();
+    // lane the ticket had already left.
+    //
+    // Which of a ticket's sessions is reported is not arbitrary, because it decides `resumable`. The
+    // incoming ids arrive in store-merge order, which says nothing about attempt order, so a first-
+    // wins pick could report `resumable: false` off an aged-out attempt while a later one still held
+    // a `continuationScope` -- withholding a Resume button that would have worked. A resumable
+    // session therefore wins over a non-resumable one; ties keep the first.
+    const parkedByTicket = new Map<string, number>();
 
     for (const sessionId of sessionIds) {
       const ticket = index.get(sessionId);
@@ -162,10 +179,17 @@ export class PipenzoCrashRecovery {
         unmatched += 1;
         continue;
       }
-      if (parkedTicketIds.has(ticket.ticketId)) continue;
+      const seen = parkedByTicket.get(ticket.ticketId);
+      if (seen !== undefined) {
+        const existing = parked[seen];
+        if (existing && !existing.resumable && this.#resumable(sessionId)) {
+          parked[seen] = { ...existing, sessionId, resumable: true };
+        }
+        continue;
+      }
       const record = this.#parkTicket(ticket, sessionId);
       if (record) {
-        parkedTicketIds.add(ticket.ticketId);
+        parkedByTicket.set(ticket.ticketId, parked.length);
         parked.push(record);
       }
     }
@@ -235,7 +259,7 @@ export class PipenzoCrashRecovery {
       // human, and re-asserting `interrupted` after they made it would be this module overruling the
       // human it exists to defer to, which is the same harm as the auto-resume it refuses outright.
       if (!this.#stillParked(entry.ticketId)) {
-        updated.push({ ...entry, labelWrite: 'superseded' });
+        updated.push({ ...this.#refreshed(entry), labelWrite: 'superseded' });
         continue;
       }
       try {
@@ -279,15 +303,40 @@ export class PipenzoCrashRecovery {
         // real. Restoring blind discarded genuine human progress and left the local record and the
         // phase stream claiming a lane GitHub disagreed with: a divergence recovery invented.
         //
-        // Leaving it alone keeps both sides telling the same story, and costs nothing that matters:
-        // the interruption is still reported here with `labelWrite: 'failed'`, which is the surface
-        // the recovery screen reads, and the next read or transition reconciles anyway.
-        updated.push({ ...entry, labelWrite: 'failed' });
+        // Leaving it alone keeps both sides telling the same story. The entry is refreshed from the
+        // record so the report says the same thing they do -- reporting the lane recovery *asked*
+        // for would make this surface the only one claiming a state neither store holds, which is
+        // the failure the `written` path above is careful to avoid.
+        //
+        // **This is where an interrupted ticket can end up with no owner, and it is not fixed here.**
+        // `pipenzo:interrupted` is now on neither side, this report is in memory only, and a session
+        // once reported interrupted is terminal in both stores (`execution-graph-store.ts`'s
+        // `isTerminal` skip, `session-store.ts`'s starting/running-only sweep) so the next daemon
+        // start will not report it again. The ticket is then exactly the un-owned thing #190 exists
+        // to eliminate. Recovery still does not re-park, because the alternative -- writing over a
+        // record a human may have just moved -- is the worse of the two, and it was measured doing
+        // real damage. Closing the gap properly needs a durable marker rather than process memory,
+        // which is its own ticket.
+        updated.push({ ...this.#refreshed(entry), labelWrite: 'failed' });
       }
     }
 
     this.#report = { ...this.#report, parked: updated };
     return this.report();
+  }
+
+  /**
+   * The entry with `lane` and `labels` re-read from the store.
+   *
+   * Used on both non-`written` exits. The entry was built from the snapshot `park()` wrote, and by
+   * the time a write is abandoned or fails the record has usually moved on -- a human acted, or the
+   * machine's label-wins reconciliation rewrote it. Reporting the stale snapshot would leave the
+   * recovery screen drawing a card in a column neither store agrees with.
+   */
+  #refreshed(entry: PipenzoParkedTicketV1): PipenzoParkedTicketV1 {
+    const current = this.#tickets.get(entry.ticketId);
+    if (!current) return entry;
+    return { ...entry, lane: current.lane, labels: [...current.labels] };
   }
 
   /**
@@ -355,7 +404,7 @@ export class PipenzoCrashRecovery {
     };
     try {
       this.#tickets.update(ticket.ticketId, parked);
-    } catch {
+    } catch (error) {
       // The store's own message is deliberately not forwarded. It bottoms out in `atomicWriteJson`,
       // which does not wrap Node's fs errors, so an EACCES or ENOSPC would put the absolute record
       // path -- and with it the state directory layout, the OS username and the pid -- into the
@@ -363,8 +412,11 @@ export class PipenzoCrashRecovery {
       // the phase machine's `persist()` makes, for the same reason: recovery has no more business
       // publishing the daemon's on-disk layout than the phase surface does. The ticket id is enough
       // to act on, and the store has already reported the failure through its own quarantine path.
+      // The errno is kept: it is what tells EACCES from ENOSPC from a schema refusal, and it carries
+      // no path, username or pid of its own.
       this.#logger.warn('could not park an interrupted ticket in the ticket store', {
         ticketId: ticket.ticketId,
+        ...(isErrnoLike(error) ? { code: error.code } : {}),
       });
       return undefined;
     }
@@ -467,7 +519,25 @@ const PIPENZO_HUMAN_GATE_LABELS: ReadonlySet<PipenzoLabelV1> = new Set<PipenzoLa
   'pipenzo:needs-pre-scoping',
   'pipenzo:awaiting-stack-approval',
   'pipenzo:merge-conflict',
+  // `ready-for-review` is here for the same reason and not for the other one: it is README's push
+  // gate, an outstanding "a human is being waited on", so writing over it destroys a decision nobody
+  // has made. Unlike the three above it is *not* already in the Needs-human lane, so skipping the
+  // park does leave it outside the lane #190 names. That is the better trade: a ticket sitting at
+  // Ready-for-review is by definition already in front of a person, and the recovery report still
+  // reports it with its session, worktree and `resumable`, whereas overwriting the gate loses the
+  // fact that its work finished and nothing downstream re-raises it.
+  'pipenzo:ready-for-review',
 ]);
+
+/** A Node `fs` error's `code`, which names the failure without naming the file. */
+function isErrnoLike(error: unknown): error is { code: string } {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    typeof (error as { code: unknown }).code === 'string'
+  );
+}
 
 /**
  * Whether the ticket is already waiting on a human, in which case recovery leaves its labels alone.

@@ -224,13 +224,26 @@ has already left the park (`labelWrite: 'superseded'`), and a failure leaves bot
 same story (`labelWrite: 'failed'`). The recovery report, not the lane, is what guarantees an
 interrupted ticket stays visible.
 
-For the same reason, a ticket already holding an unanswered human gate — `pipenzo:awaiting-stack-approval`,
-`pipenzo:needs-pre-scoping`, `pipenzo:merge-conflict` — is reported but never parked
-(`labelWrite: 'skipped'`). `setIssueLabels` replaces the whole `pipenzo:` namespace, so writing
-`interrupted` over one of those would destroy a question nobody has answered, and nothing downstream
-would raise it again: after a Resume the ticket would proceed straight past an approval that was
-never given. Such a ticket is already in the Needs-human lane, already in front of the person whose
-answer it is waiting on, so leaving it alone costs nothing the park was there to provide.
+**Known limit, not yet closed.** When a write fails *after* the machine's read reconciled the park
+away, `pipenzo:interrupted` ends up on neither side. The recovery report still names the ticket, but
+that report lives in daemon memory, and a session reported interrupted is terminal in both stores —
+`FileExecutionGraphStore` skips terminal records on load and `FileSessionStore` sweeps only
+`starting`/`running` — so the next daemon start will not report it again. The ticket is then the
+un-owned thing this section exists to eliminate. Recovery still does not re-park, because writing
+over a record a human may have just moved is the worse of the two failures and was measured doing
+real damage. Closing the gap properly needs a durable marker rather than process memory, and is
+tracked separately.
+
+For the same reason, a ticket already holding an unanswered human decision —
+`pipenzo:awaiting-stack-approval`, `pipenzo:needs-pre-scoping`, `pipenzo:merge-conflict`,
+`pipenzo:ready-for-review` — is reported but never parked (`labelWrite: 'skipped'`).
+`setIssueLabels` replaces the whole `pipenzo:` namespace, so writing `interrupted` over one of those
+would destroy a question nobody has answered, and nothing downstream would raise it again: after a
+Resume the ticket would proceed straight past an approval that was never given. The first three are
+already in the Needs-human lane, so leaving them alone costs nothing the park was there to provide.
+`ready-for-review` is the one that is not, and it is included anyway: it is README's push gate, so a
+ticket carrying it is already in front of a person, and overwriting it would lose the fact that the
+work finished.
 
 One ticket parks once, however many of its sessions the crash interrupted — a ticket carries several
 `attempts[]` across a tier escalation, and parking per session would put two cards on the recovery

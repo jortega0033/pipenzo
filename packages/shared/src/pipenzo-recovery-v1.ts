@@ -60,18 +60,29 @@ import {
  *
  * - `pending` — the local park is committed and the label write has not been attempted yet.
  * - `written` — GitHub carries `pipenzo:interrupted` too; both sides agree.
- * - `failed` — the attempt failed and was logged. The ticket is still parked locally, and the next
- *   `read()`/`transition()` on it reconciles the two sides.
- * - `superseded` — a human moved the ticket out of the park before the label write reached it, so
- *   the write was abandoned rather than performed. The route serving this report is live while the
- *   writes are still running, so this is a normal outcome, not a failure: recovery parks a ticket to
- *   put a decision in front of someone, and once they have made it, re-asserting `interrupted` over
- *   the top would be recovery overruling the human it was built to defer to.
- * - `skipped` — the ticket was already holding an unanswered human gate (`awaiting-stack-approval`,
- *   `needs-pre-scoping`, `merge-conflict`), so neither side's labels were touched. It is already in
- *   the Needs-human lane the park would have moved it to, and `setIssueLabels` replaces the whole
- *   `pipenzo:` namespace, so writing `interrupted` over it would destroy a question nobody has
- *   answered yet. `labels` on this entry is the ticket's real, untouched set.
+ * - `failed` — the attempt failed and was logged. The local record is left as the failed transition
+ *   left it, which is often *not* parked: the phase machine reconciles before it writes, and
+ *   reconciliation is label-wins, so a successful issue read followed by a failed label write puts
+ *   the record back in the lane the ticket crashed in. Recovery does not re-assert the park on top
+ *   of that, because nothing in the record distinguishes that case from a human having moved the
+ *   ticket while the write was in flight. **`lane` and `labels` on this entry are re-read from the
+ *   store, so they describe where the ticket actually is, not where the park tried to put it.**
+ *   Note that this report lives in daemon memory and a session is reported interrupted only once,
+ *   so a ticket in this state is not re-parked by the next daemon start either.
+ * - `superseded` — recovery did not leave `pipenzo:interrupted` on the ticket, for one of two
+ *   reasons: a human moved it out of the park before the write reached it (the write was abandoned
+ *   unperformed), or the write landed but the transition settled on a different label — a racing
+ *   writer whose label outranks ours, ambiguous labels, none at all. Either way the entry's `lane`
+ *   and `labels` describe the state the two sides actually hold. The route serving this report is
+ *   live while the writes are still running, so this is a normal outcome rather than a failure:
+ *   once a human has made the decision, re-asserting `interrupted` over the top would be recovery
+ *   overruling the human it was built to defer to.
+ * - `skipped` — the ticket was already holding an unanswered human decision
+ *   (`awaiting-stack-approval`, `needs-pre-scoping`, `merge-conflict`, `ready-for-review`), so
+ *   neither side's labels were touched. `setIssueLabels` replaces the whole `pipenzo:` namespace, so
+ *   writing `interrupted` over one of those would destroy a question nobody has answered and nothing
+ *   downstream would raise it again. Such a ticket is already in front of a human either way.
+ *   `labels` on this entry is the ticket's real, untouched set.
  */
 export const PIPENZO_RECOVERY_LABEL_WRITES = [
   'pending',
