@@ -55,6 +55,7 @@ import {
   PendingInteractiveCreates,
   relayInteractiveSessionEvents,
 } from './interactive-session-lifecycle.js';
+import { relayPipenzoPhaseEvents } from './pipenzo-phase-stream.js';
 import { InteractionBroker, type RendererInteractionResolution } from './interaction-broker.js';
 import {
   externalUrlLogSummary,
@@ -96,6 +97,12 @@ const activeSessionIds = new Set<string>();
 const streamAborts = new Map<string, AbortController>();
 const activeInteractiveSessionIds = new Set<string>();
 const interactiveStreamAborts = new Map<string, AbortController>();
+/**
+ * The single phase-stream subscription (#189). One per daemon connection, not one per ticket: the
+ * daemon serves every ticket's transitions on one stream, and the renderer filters. Held here so a
+ * daemon restart can tear the old one down before starting the next.
+ */
+let phaseStreamAbort: AbortController | undefined;
 const pendingInteractiveCreates = new PendingInteractiveCreates();
 const interactionBroker = new InteractionBroker();
 // Startup may use the 30-second handshake bound plus graceful and hard-stop reap windows.
@@ -153,6 +160,11 @@ function spawnDaemon(): void {
     for (const controller of interactiveStreamAborts.values()) controller.abort();
     interactiveStreamAborts.clear();
     activeInteractiveSessionIds.clear();
+    // The next daemon is a new process with a new, empty phase buffer, so the old cursor names a
+    // sequence that will never exist again. Aborting the relay discards it: the cursor is relay-
+    // local, and the next daemon gets a fresh `forwardPipenzoPhaseEvents` call.
+    phaseStreamAbort?.abort();
+    phaseStreamAbort = undefined;
     sendStatus({
       state: 'unavailable',
       error: `daemon process exited unexpectedly (code ${code ?? 'null'}, signal ${signal ?? 'null'})`,
@@ -229,6 +241,9 @@ async function waitForDaemonReady(spawnedAt: number, timeoutMs = 15_000): Promis
         // as both the readiness check and the version-compatibility check in one call.
         await candidate.health();
         client = candidate;
+        // Subscribed once here rather than on a renderer request: the board must not miss a
+        // transition that happens between the daemon coming up and a window being opened.
+        forwardPipenzoPhaseEvents();
         sendStatus({ state: 'ready' });
         return;
       } catch {
@@ -277,6 +292,45 @@ function forwardSessionEvents(sessionId: string): void {
       if (streamAborts.get(sessionId) === controller) streamAborts.delete(sessionId);
     }
   })();
+}
+
+/**
+ * Relays the daemon's phase-change stream (#189) to the renderer.
+ *
+ * The reconnect and cursor logic lives in `relayPipenzoPhaseEvents` so it is testable outside
+ * Electron; this only supplies the client and forwards what comes out. A `replay_gap` is logged
+ * rather than swallowed: it means transitions were lost, so a board reading these events should
+ * treat its lanes as stale and re-read.
+ */
+function forwardPipenzoPhaseEvents(): void {
+  if (!client) return;
+  phaseStreamAbort?.abort();
+  const controller = new AbortController();
+  phaseStreamAbort = controller;
+  const activeClient = client;
+
+  void relayPipenzoPhaseEvents({
+    signal: controller.signal,
+    events: (options) => activeClient.v2.pipenzo.ticketEvents(options),
+    onEvent: (event) => sendToRenderer(mainWindow, 'daemon:pipenzo-phase-event', event),
+    onReplayGap: (window) => {
+      console.warn(
+        `phase event stream fell behind the daemon's replay window; transitions were lost${
+          window === undefined ? '' : ` (resuming from ${window.earliestSequence})`
+        }`,
+      );
+    },
+    onRetry: (error, lastEventId) => {
+      console.warn(
+        `phase event stream reconnecting${lastEventId === undefined ? '' : ` after ${lastEventId}`}: ${boundedErrorMessage(error)}`,
+      );
+    },
+    onFatal: (error) => {
+      console.error(`phase event stream stopped: ${boundedErrorMessage(error)}`);
+    },
+  }).finally(() => {
+    if (phaseStreamAbort === controller) phaseStreamAbort = undefined;
+  });
 }
 
 /** Streams validated protocol-v2 envelopes without changing the existing v1 renderer flow. */
@@ -492,6 +546,8 @@ async function killDaemon(): Promise<void> {
     clearInteractionSession(sessionId, 'shutdown');
   }
   for (const controller of interactiveStreamAborts.values()) controller.abort();
+  phaseStreamAbort?.abort();
+  phaseStreamAbort = undefined;
   await pendingInteractiveCreates.waitForPending(INTERACTIVE_CREATE_SHUTDOWN_TIMEOUT_MS);
   const activeClient = client;
   if (activeClient) {

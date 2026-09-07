@@ -37,6 +37,7 @@ function realBridge(): AgentDockBridge {
     draftPipenzoIssue: vi.fn(),
     pipenzoTicketRead: vi.fn(),
     pipenzoTicketTransition: vi.fn(),
+    onPipenzoPhaseEvent: vi.fn(() => () => {}),
     selectAndUploadAttachments: vi.fn().mockResolvedValue([]),
     validateStructuredOutput: vi.fn(),
     createSession: vi.fn(),

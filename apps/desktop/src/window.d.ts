@@ -60,6 +60,7 @@ import type {
   PipenzoTicketReadRequestV1,
   PipenzoTicketTransitionRequestV1,
   PipenzoTicketReconciliationV1,
+  PipenzoPhaseEventV1,
 } from '@agent-dock/shared';
 import type {
   RendererInteraction,
@@ -193,6 +194,17 @@ export interface AgentDockBridge {
   pipenzoTicketTransition(
     input: PipenzoTicketTransitionRequestV1,
   ): Promise<PipenzoTicketReconciliationV1>;
+  /**
+   * Subscribes to live phase changes (issue #189).
+   *
+   * One stream carries every ticket, so the board subscribes once and a single-ticket view filters
+   * on `ticketId` rather than opening its own connection. Events arrive for a transition the app
+   * asked for *and* for a label a human edited on GitHub that a later read reconciled — both are
+   * real lane changes, and the label is authoritative for both.
+   *
+   * Returns its own unsubscribe; call it on unmount.
+   */
+  onPipenzoPhaseEvent(callback: (event: PipenzoPhaseEventV1) => void): () => void;
   selectAndUploadAttachments(sessionId?: string): Promise<AttachmentMetadataV2[]>;
   validateStructuredOutput(input: StructuredWorkflowRequestV2): Promise<StructuredWorkflowResultV2>;
   createSession(input: CreateSessionInput): Promise<AgentSession>;

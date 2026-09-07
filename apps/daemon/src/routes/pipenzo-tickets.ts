@@ -13,6 +13,10 @@ import {
   type PipenzoPhaseMachine,
   type PipenzoTicketReconciliation,
 } from '../pipenzo-phase-machine.js';
+import {
+  BoundedPipenzoPhaseSseWriter,
+  type PipenzoPhaseEventBus,
+} from '../pipenzo-phase-events.js';
 
 /**
  * The phase-machine routes (Pipenzo issue #188).
@@ -112,9 +116,33 @@ function toReconciliationBody(result: PipenzoTicketReconciliation) {
   };
 }
 
+/**
+ * `Last-Event-ID` for the phase stream, resolved to the first sequence the subscriber still needs.
+ *
+ * A present id means "everything after this one", hence the `+ 1`. An absent header resolves to 0,
+ * which is a *first* subscription, not a general-purpose reset: 0 is accepted only while the
+ * daemon has not yet evicted anything, and is refused with `replay_gap` once the ring buffer has
+ * wrapped and `earliestSequence` has moved off zero. That refusal is the point -- answering it with
+ * a silently truncated history would leave the board rendering lanes it never saw the moves for --
+ * so a reconnecting subscriber that gets a 409 must resubscribe at a sequence inside the window the
+ * refusal reports back, not simply drop its cursor and retry bare (which is refused identically,
+ * forever). Same parser and same contract as the v2 session stream's, deliberately: a renderer that
+ * already knows how to reconnect to one stream should not have to learn a second set of cursor
+ * rules. Anything not a plain non-negative integer is a client bug and is refused rather than
+ * coerced.
+ */
+function parsePhaseLastEventId(header: string | string[] | undefined): number | undefined {
+  const value = Array.isArray(header) ? header[0] : header;
+  if (value === undefined) return 0;
+  if (!/^\d+$/.test(value)) return undefined;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed < Number.MAX_SAFE_INTEGER ? parsed + 1 : undefined;
+}
+
 export function registerPipenzoTicketRoutes(
   app: FastifyInstance,
   machine: PipenzoPhaseMachine,
+  events?: PipenzoPhaseEventBus,
 ): void {
   const limits = { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } };
 
@@ -150,5 +178,63 @@ export function registerPipenzoTicketRoutes(
     // now, so a response-shape mismatch must not be reported as a failure to transition -- the
     // operator's natural retry would be judged against a state that has already moved.
     reply.send(pipenzoTicketReconciliationV1Schema.parse(toReconciliationBody(result)));
+  });
+
+  if (!events) return;
+
+  /**
+   * The phase-change stream (#189).
+   *
+   * Deliberately *not* under the `limits` above. Those exist because each of the two routes costs a
+   * GitHub read against a quota; this one costs a socket and no upstream call at all, and rate-
+   * limiting a stream a renderer reconnects to after every daemon restart would lock the board out
+   * of live data at precisely the wrong moment. It stays behind the same bearer token and the same
+   * reject-any-Origin guard as everything else on this surface.
+   */
+  app.get('/v2/pipenzo/tickets/events', async (req, reply) => {
+    const sinceSequence = parsePhaseLastEventId(req.headers['last-event-id']);
+    if (sinceSequence === undefined) {
+      reply.code(400).send({ error: 'invalid Last-Event-ID', code: 'invalid_last_event_id' });
+      return;
+    }
+
+    const window = events.replayWindow();
+    if (sinceSequence < window.earliestSequence || sinceSequence > window.nextSequence) {
+      // The buffer is bounded, so a cursor outside it cannot be served honestly. Reporting the
+      // window back lets the caller resubscribe at a sequence that exists instead of guessing.
+      reply.code(409).send({
+        error: 'requested phase history is unavailable',
+        code: 'replay_gap',
+        details: window,
+      });
+      return;
+    }
+
+    reply.hijack();
+    reply.raw.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+    });
+
+    let unsubscribe: (() => void) | undefined;
+    let cleanupRequested = false;
+    const cleanup = (): void => {
+      if (!unsubscribe) {
+        // Replay can close the writer synchronously, before `subscribe` has returned its disposer.
+        cleanupRequested = true;
+        return;
+      }
+      const release = unsubscribe;
+      unsubscribe = undefined;
+      release();
+    };
+
+    const writer = new BoundedPipenzoPhaseSseWriter(reply.raw, cleanup);
+    reply.raw.once('close', () => writer.close());
+    writer.start();
+
+    unsubscribe = events.subscribe(sinceSequence, (event) => writer.write(event));
+    if (cleanupRequested) cleanup();
   });
 }

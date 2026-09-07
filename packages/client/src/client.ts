@@ -118,6 +118,7 @@ import {
   pipenzoTicketReadRequestV1Schema,
   pipenzoTicketTransitionRequestV1Schema,
   pipenzoTicketReconciliationV1Schema,
+  pipenzoPhaseEventOrStreamErrorV1Schema,
   type PipenzoRefineRequestV1,
   type PipenzoRefineResultV1,
   type PipenzoImplementRequestV1,
@@ -137,6 +138,7 @@ import {
   type PipenzoTicketReadRequestV1,
   type PipenzoTicketTransitionRequestV1,
   type PipenzoTicketReconciliationV1,
+  type PipenzoPhaseEventV1,
 } from '@agent-dock/shared';
 import {
   DaemonError,
@@ -175,6 +177,12 @@ export interface SessionEventsOptions {
 
 export interface SessionRequestOptions {
   signal?: AbortSignal;
+}
+
+export interface PipenzoTicketEventsOptions {
+  signal?: AbortSignal;
+  /** Resume after this SSE `id:` (a phase-event `sequence`), instead of the retained window. */
+  lastEventId?: string;
 }
 
 export interface AuditReadOptions {
@@ -383,6 +391,19 @@ export class AgentDockClient {
       transitionTicket: (
         input: PipenzoTicketTransitionRequestV1,
       ): Promise<PipenzoTicketReconciliationV1> => this.transitionPipenzoTicketV1(input),
+      /**
+       * The phase-change stream (issue #189): one daemon-wide stream carrying every ticket's
+       * transitions, so a board needs one connection rather than one per card.
+       *
+       * No reconnect logic, exactly like `sessions.events()`: this opens one stream and the
+       * generator ends or throws when it closes. Pass the last `sequence` you saw back as
+       * `lastEventId` to resume from a cursor; the daemon refuses a cursor older than its bounded
+       * window rather than replaying a truncated history, so treat that refusal as "resync from a
+       * fresh read" instead of retrying the same cursor.
+       */
+      ticketEvents: (
+        options?: PipenzoTicketEventsOptions,
+      ): AsyncGenerator<PipenzoPhaseEventV1, void, void> => this.streamPipenzoTicketEventsV1(options),
     },
     integrations: {
       mcp: {
@@ -533,7 +554,7 @@ export class AgentDockClient {
       if (!bodyRead) body = await res.json().catch(() => undefined);
       const message = daemonErrorMessage(body) ?? `daemon request failed with status ${res.status}`;
       if (res.status === 400) throw new ValidationError(message);
-      throw new DaemonError(message, res.status, daemonErrorCode(body));
+      throw new DaemonError(message, res.status, daemonErrorCode(body), daemonErrorDetails(body));
     }
     return res;
   }
@@ -1200,6 +1221,94 @@ export class AgentDockClient {
     }
   }
 
+  /**
+   * The phase-change stream (issue #189).
+   *
+   * Simpler than the v2 session stream in the two ways that stream is complicated: there is no
+   * responder lease to claim (nobody answers a phase event) and no session id to check each frame
+   * against (the stream is daemon-wide by design). What it keeps is the part that catches a real
+   * desync -- the SSE `id:` must agree with the envelope's `sequence`, and sequences must advance,
+   * because a cursor built from a sequence the daemon never sent would silently resume in the wrong
+   * place on the next reconnect.
+   */
+  private async *streamPipenzoTicketEventsV1(
+    options: PipenzoTicketEventsOptions = {},
+  ): AsyncGenerator<PipenzoPhaseEventV1, void, void> {
+    if (options.lastEventId !== undefined && !/^\d+$/.test(options.lastEventId)) {
+      throw new ValidationError('lastEventId must be a non-negative integer sequence');
+    }
+    let previousSequence =
+      options.lastEventId === undefined ? undefined : Number(options.lastEventId);
+    await this.ensureProtocolVersion(PROTOCOL_V2);
+
+    const headers: Record<string, string> = { Authorization: `Bearer ${this.token}` };
+    if (options.lastEventId !== undefined) headers['Last-Event-ID'] = options.lastEventId;
+
+    let res: Response;
+    try {
+      res = await this.fetchImpl(`${this.baseUrl}/v2/pipenzo/tickets/events`, {
+        headers,
+        signal: options.signal,
+      });
+    } catch (err) {
+      if (options.signal?.aborted) return;
+      throw new DaemonUnavailableError(
+        `could not reach the daemon at ${this.baseUrl}: ${errorMessage(err)}`,
+        { cause: err },
+      );
+    }
+
+    if (res.status === 401) throw new UnauthorizedError();
+    if (!res.ok) {
+      const body = await res.json().catch(() => undefined);
+      const message =
+        daemonErrorMessage(body) ?? `failed to open the phase stream (status ${res.status})`;
+      if (res.status === 400) throw new ValidationError(message);
+      // 409 is `replay_gap`: the cursor is outside the daemon's bounded window. Surfaced as a plain
+      // DaemonError carrying the status *and* the window the daemon reported, because the status
+      // alone is not enough to recover: a caller that only knows "the cursor was refused" can do
+      // nothing but drop it and reconnect from zero, which is refused again the moment the window
+      // has moved off zero. The window says which cursors would be accepted.
+      throw new DaemonError(message, res.status, daemonErrorCode(body), daemonErrorDetails(body));
+    }
+    if (!res.body) {
+      throw new ValidationError('daemon returned a phase stream without a response body');
+    }
+
+    for await (const event of parseSseStream(res.body, {
+      schema: pipenzoPhaseEventOrStreamErrorV1Schema,
+      label: 'Pipenzo phase event',
+      signal: options.signal,
+      maxFrameBytes: MAX_V2_SSE_FRAME_BYTES,
+      fatalUtf8: true,
+      rejectUnterminatedFrame: true,
+      validateEvent: (event, frame) => {
+        if (event.type === 'stream.error') return;
+        if (frame.id === undefined) {
+          throw new ValidationError('received a Pipenzo phase event SSE frame without an id');
+        }
+        if (frame.id !== String(event.sequence)) {
+          throw new ValidationError(
+            `received Pipenzo phase event SSE id ${frame.id} for sequence ${event.sequence}`,
+          );
+        }
+        if (previousSequence !== undefined && event.sequence <= previousSequence) {
+          throw new ValidationError(
+            `received non-monotonic Pipenzo phase event sequence ${event.sequence} after ${previousSequence}`,
+          );
+        }
+        previousSequence = event.sequence;
+      },
+    })) {
+      if (event.type === 'stream.error') {
+        const cursor =
+          event.lastSequence === undefined ? '' : ` after sequence ${event.lastSequence}`;
+        throw new DaemonError(`the Pipenzo phase stream overflowed${cursor}`, 429);
+      }
+      yield event;
+    }
+  }
+
   private async sendSessionCommandV2(command: AgentCommandV2): Promise<CommandAcknowledgementV2> {
     const parsedCommand = validateInput(agentCommandV2Schema, command, 'protocol-v2 agent command');
     const acknowledgement = await this.requestV2(
@@ -1379,6 +1488,12 @@ function daemonErrorMessage(body: unknown): string | undefined {
     if (typeof message === 'string') return message;
   }
   return undefined;
+}
+
+/** The daemon's `details` payload, if it sent one. Deliberately unvalidated -- the caller parses it. */
+function daemonErrorDetails(body: unknown): unknown {
+  if (!body || typeof body !== 'object') return undefined;
+  return (body as { details?: unknown }).details;
 }
 
 function daemonErrorCode(body: unknown): string | undefined {

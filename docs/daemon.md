@@ -149,6 +149,25 @@ than shipping none: it would return lanes that look authoritative and are not, t
 whose entire purpose is that the label wins. See the module comment in
 `apps/daemon/src/routes/pipenzo-tickets.ts` for the full reasoning.
 
+**Every committed change is announced on the phase stream.** `PipenzoPhaseEventBus`
+(`apps/daemon/src/pipenzo-phase-events.ts`) is a bounded, daemon-wide ring buffer the machine
+publishes to after — never before — both sides have committed, and `GET /v2/pipenzo/tickets/events`
+serves it as SSE (issue #189). Publishing after the write is what makes the stream a report rather
+than a promise: a subscriber that acted on an event for a write that then failed to land would be
+holding a lane neither GitHub nor the store agrees with. Both causes are published — a transition
+this daemon performed, and a read that reconciled because a human edited the label on GitHub — since
+both are real lane changes and the label is authoritative for both. A read that found the two sides
+already in agreement writes nothing and so announces nothing.
+
+The bus is bounded and drops its oldest events, because a daemon running for a week would otherwise
+retain every transition it ever made while a board only ever needs enough history to cover a dropped
+connection. A subscriber asking to resume from a cursor older than the retained window is refused
+with `replay_gap` rather than handed a silently truncated history — a board that quietly missed
+three transitions renders a lane that is wrong, and nothing downstream could tell. A subscriber too
+slow to drain its socket is cut loose by the shared bounded writer (`apps/daemon/src/sse-writer.ts`,
+the same state machine protocol v2's session stream uses) rather than allowed to grow the daemon's
+memory without bound.
+
 ## Session admission
 
 `POST /sessions` and `POST /v2/sessions` (including resume/fork) share one daemon-wide admission

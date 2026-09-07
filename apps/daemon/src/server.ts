@@ -25,6 +25,7 @@ import type { PipenzoPhaseService } from './pipenzo-phase-service.js';
 import { registerPipenzoPhaseRoutes } from './routes/pipenzo-phases.js';
 import type { PipenzoPhaseMachine } from './pipenzo-phase-machine.js';
 import { registerPipenzoTicketRoutes } from './routes/pipenzo-tickets.js';
+import type { PipenzoPhaseEventBus } from './pipenzo-phase-events.js';
 
 export interface BuildServerOptions {
   registry: ProviderRegistry;
@@ -50,6 +51,12 @@ export interface BuildServerOptions {
   phaseService?: PipenzoPhaseService;
   /** Pipenzo's phase machine (issue #188). Optional for the same reason `phaseService` is. */
   phaseMachine?: PipenzoPhaseMachine;
+  /**
+   * The phase-change stream (issue #189). Optional, and independently so: without it the two
+   * ticket routes still serve, they just have no live counterpart, which is what a daemon built for
+   * a route test wants.
+   */
+  phaseEvents?: PipenzoPhaseEventBus;
 }
 
 /**
@@ -129,7 +136,8 @@ export function buildServer(opts: BuildServerOptions): FastifyInstance {
     registerV2AgentWorktreeRoutes(app, opts.subagentStore, opts.worktreeManager);
     if (opts.publishService) registerPipenzoPublishRoutes(app, opts.publishService);
     if (opts.phaseService) registerPipenzoPhaseRoutes(app, opts.phaseService);
-    if (opts.phaseMachine) registerPipenzoTicketRoutes(app, opts.phaseMachine);
+    if (opts.phaseMachine)
+      registerPipenzoTicketRoutes(app, opts.phaseMachine, opts.phaseEvents);
     if (opts.attachmentStore)
       registerV2MultimodalRoutes(app, opts.attachmentStore, opts.sessionManager);
   });

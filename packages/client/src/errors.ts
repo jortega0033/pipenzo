@@ -58,12 +58,23 @@ export class ProviderUnavailableError extends AgentDockClientError {
   }
 }
 
-/** Any other daemon-declared failure: preserves the daemon's own status, code, and message. */
+/**
+ * Any other daemon-declared failure: preserves the daemon's own status, code, message, and
+ * `details`.
+ *
+ * `details` is the unvalidated `details` field of the daemon's error body, carried through rather
+ * than discarded because some refusals are only actionable with it. The `replay_gap` a bounded
+ * event stream answers with is the motivating case: the daemon reports the window it *can* still
+ * serve, and a caller that never sees it has no way to pick a cursor that would be accepted, so it
+ * can only retry the same rejected cursor forever. Typed as `unknown` on purpose -- it crosses the
+ * wire, so a caller parses it against the schema it expects instead of trusting the shape.
+ */
 export class DaemonError extends AgentDockClientError {
   constructor(
     message: string,
     public readonly status: number,
     public readonly code?: string,
+    public readonly details?: unknown,
   ) {
     super(message);
     this.name = 'DaemonError';

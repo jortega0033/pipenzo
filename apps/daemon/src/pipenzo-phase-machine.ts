@@ -14,6 +14,7 @@ import {
   type RepoRef,
 } from './github-client.js';
 import type { FileTicketStore } from './pipenzo-ticket-store.js';
+import type { PipenzoPhaseEventBus } from './pipenzo-phase-events.js';
 
 /**
  * The phase machine (Pipenzo issue #188): the implementation of README's one precedence rule.
@@ -357,6 +358,11 @@ export interface PipenzoPhaseMachineOptions {
   tickets: FileTicketStore;
   /** Built lazily from a token read at call time, so no authenticated client is retained. */
   github?: () => GitHubClient;
+  /**
+   * The phase-change stream (#189). Optional: a machine built without one still transitions and
+   * reconciles, it just has nowhere to announce it, which is what every existing test wants.
+   */
+  events?: PipenzoPhaseEventBus;
 }
 
 /* --------------------------------------------------------------- the machine */
@@ -364,10 +370,30 @@ export interface PipenzoPhaseMachineOptions {
 export class PipenzoPhaseMachine {
   readonly #tickets: FileTicketStore;
   readonly #github: (() => GitHubClient) | undefined;
+  readonly #events: PipenzoPhaseEventBus | undefined;
 
   constructor(options: PipenzoPhaseMachineOptions) {
     this.#tickets = options.tickets;
     this.#github = options.github;
+    this.#events = options.events;
+  }
+
+  /**
+   * Announces a change that has already been committed to both sides.
+   *
+   * Called only after `persist()`, never before: the stream is a report of what happened, and a
+   * subscriber that acted on an event for a write that then failed to land would be reading a lane
+   * neither GitHub nor the store agrees with. Publishing cannot throw (`publish` isolates its
+   * listeners), so this stays out of the caller's error path.
+   */
+  #announce(previous: PipenzoTicketRecordV1, next: PipenzoTicketRecordV1): void {
+    this.#events?.publish({
+      ticketId: next.ticketId,
+      fromLane: previous.lane,
+      toLane: next.lane,
+      phase: next.phase,
+      labels: next.labels,
+    });
   }
 
   /**
@@ -449,6 +475,10 @@ export class PipenzoPhaseMachine {
       labels: pipenzoLabelsOf(resulting),
     };
     persist(() => this.#tickets.update(ticketId, next));
+    // Unconditional: a transition always rewrote both sides, and a move between two Needs-human
+    // labels keeps the lane while changing which card the board draws (#80), so gating this on a
+    // lane change would drop exactly the events the five Needs-human variants exist to distinguish.
+    this.#announce(current.ticket, next);
 
     return {
       ticket: next,
@@ -517,6 +547,11 @@ export class PipenzoPhaseMachine {
       labels: storedLabels,
     };
     persist(() => this.#tickets.update(ticketId, reconciled));
+    // A reconciliation is a real change to announce, not just a transition: this is the path a
+    // label edited by a human on GitHub travels, and it is the whole point of "the label wins" that
+    // the board follows it. Reached only when the record was actually rewritten -- the agree-on-
+    // both-counts case returned above without persisting, so it publishes nothing.
+    this.#announce(ticket, reconciled);
 
     return {
       ticket: reconciled,

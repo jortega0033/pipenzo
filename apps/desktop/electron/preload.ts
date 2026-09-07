@@ -67,6 +67,7 @@ import {
   pipenzoTicketReadRequestV1Schema,
   pipenzoTicketTransitionRequestV1Schema,
   pipenzoTicketReconciliationV1Schema,
+  pipenzoPhaseEventV1Schema,
   providerIdSchema,
   type AgentCommandV2,
   type AgentEvent,
@@ -130,6 +131,7 @@ import {
   type PipenzoTicketReadRequestV1,
   type PipenzoTicketTransitionRequestV1,
   type PipenzoTicketReconciliationV1,
+  type PipenzoPhaseEventV1,
 } from '@agent-dock/shared';
 import type {
   RendererInteraction,
@@ -218,6 +220,11 @@ export interface AgentDockBridge {
   /** The phase machine's ticket surface (issue #188): the label is authoritative for the lane. */
   pipenzoTicketRead(input: PipenzoTicketReadRequestV1): Promise<PipenzoTicketReconciliationV1>;
   pipenzoTicketTransition(input: PipenzoTicketTransitionRequestV1): Promise<PipenzoTicketReconciliationV1>;
+  /**
+   * Live phase changes for every ticket (issue #189). One subscription serves the whole board;
+   * filter on `ticketId` for a single card. Returns its own unsubscribe.
+   */
+  onPipenzoPhaseEvent(callback: (event: PipenzoPhaseEventV1) => void): () => void;
   selectAndUploadAttachments(sessionId?: string): Promise<AttachmentMetadataV2[]>;
   validateStructuredOutput(input: StructuredWorkflowRequestV2): Promise<StructuredWorkflowResultV2>;
   createSession(input: CreateSessionInput): Promise<AgentSession>;
@@ -814,6 +821,18 @@ const api: AgentDockBridge = {
   async pipenzoTicketTransition(input) {
     const parsed = pipenzoTicketTransitionRequestV1Schema.parse(input);
     return pipenzoTicketReconciliationV1Schema.parse(await ipcRenderer.invoke('daemon:pipenzo-ticket-transition', parsed));
+  },
+  onPipenzoPhaseEvent(callback) {
+    const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => {
+      // Validated on this side too, not just in main: the renderer is the one place in this app
+      // that never gets to assume a payload is well formed, and a malformed one is dropped rather
+      // than handed to the board.
+      const parsed = pipenzoPhaseEventV1Schema.safeParse(payload);
+      if (!parsed.success) return;
+      callback(parsed.data);
+    };
+    ipcRenderer.on('daemon:pipenzo-phase-event', listener);
+    return () => ipcRenderer.removeListener('daemon:pipenzo-phase-event', listener);
   },
   async selectAndUploadAttachments(sessionId) {
     const parsedSessionId = sessionId === undefined ? undefined : sessionIdParamSchema.parse({ sessionId }).sessionId;

@@ -86,6 +86,7 @@ provider-control error when the selected provider does not implement the operati
 | `POST /v2/workflows/structured/validate`                 |   `200` | Validate caller-supplied output against a bounded JSON Schema                   |
 | `POST /v2/pipenzo/tickets/read`                          |   `200` | Reconcile a Pipenzo ticket against its issue's `pipenzo:` labels (issue #188); see below |
 | `POST /v2/pipenzo/tickets/transition`                    |   `200` | Write a new `pipenzo:` label, then reconcile the same way (issue #188); see below |
+| `GET /v2/pipenzo/tickets/events`                         |   `200` | SSE stream of every ticket's phase changes (issue #189); see below               |
 
 MCP inspection withholds environment, header, bearer-token, and URL values, exposing only their
 presence/classification. The current adapter returns configured stdio `command` and `args` values
@@ -146,6 +147,72 @@ deliberately no list
 route on this surface; see the module comment in `routes/pipenzo-tickets.ts`
 (`apps/daemon/src/routes`) for why a board-wide list would cost one GitHub read per ticket on every
 open, on an API with a quota, and why shipping it unreconciled would be worse than not shipping it.
+
+### `GET /v2/pipenzo/tickets/events` — the phase stream (issue #189)
+
+A `text/event-stream` of every ticket's phase changes. **One stream serves the whole board**: the
+envelope carries `ticketId`, so a subscriber that wants a single ticket filters, and a board does
+not open one connection per card.
+
+This is a separate stream from `/v2/sessions/:id/events` and cannot be folded into it. A session
+stream belongs to a session; a phase change belongs to a *ticket*, and a ticket spends most of its
+life without a session at all — Refine finishes read-only, with no worktree and no process left to
+stream from, and the ticket then sits in Ready-for-review until a human moves it. Riding the session
+stream would blind the board in exactly the states a human is looking at it.
+
+Each frame's SSE `id:` is the envelope's `sequence`, and `PipenzoPhaseEventV1` is:
+
+```jsonc
+{
+  "type": "ticket.phase_changed",
+  "sequence": 12,           // daemon-wide and monotonic, not per-ticket
+  "ticketId": "…",
+  "fromLane": "queued",
+  "toLane": "working",
+  "phase": "implement",
+  "labels": ["pipenzo:working", "pipenzo:schema-v1"],
+  "at": "2026-01-01T00:00:00.000Z"
+}
+```
+
+`labels` is carried because the lane alone cannot tell a renderer which card to draw: four
+Needs-human variants share one lane, and `pipenzo:interrupted` renders differently from a plain
+`pipenzo:needs-human`. Without it, every one of those arrives as an indistinguishable "moved to
+needs-human". For the same reason a *label-only* move — one that keeps the lane — is still an event.
+
+An event is published only after **both** sides have committed, and for two causes:
+
+- a `transition` this daemon performed, and
+- a `read` that **reconciled** — a human edited the label on GitHub and the local record followed
+  it. A read that found both sides already in agreement publishes nothing.
+
+**Resuming.** `sequence` is daemon-wide rather than per-ticket, because a per-ticket counter cannot
+order two tickets' events against each other, which is exactly what a board replaying a dropped
+connection needs. Send the last sequence you saw as `Last-Event-ID` to resume after it; omit the
+header to receive the whole retained window.
+
+The retained window is bounded, so a cursor older than it cannot be served honestly:
+
+| Status | Code                    | Meaning                                                          |
+| -----: | ----------------------- | ---------------------------------------------------------------- |
+|  `400` | `invalid_last_event_id` | `Last-Event-ID` was not a plain non-negative integer             |
+|  `409` | `replay_gap`            | The cursor is outside the retained window; `details` reports it  |
+
+A `409` carries `details: { earliestSequence, nextSequence }`. Treat it as "resync from a fresh
+read", not as something to retry with the same cursor — and reconnect using the reported window
+(`Last-Event-ID: earliestSequence - 1`, or no header at all when `earliestSequence` is `0`) rather
+than by dropping the cursor. Omitting the header asks for sequence `0`, and `earliestSequence` only
+climbs, so a bare reconnect is refused with this same `409` forever once the buffer has wrapped. A
+subscriber too slow to drain its socket
+receives a final `stream.error` / `stream_overflow` frame naming the last sequence it actually got,
+and is disconnected — the same bounded-writer contract protocol v2's session stream uses, sharing
+the same state machine (`apps/daemon/src/sse-writer.ts`).
+
+Unlike the two routes above, this one is not rate-limited: it costs a socket and no GitHub call, and
+throttling a stream the renderer reconnects to after every daemon restart would lock the board out
+of live data at the worst moment. It sits behind the same bearer token and the same reject-any-Origin
+guard as the rest of the surface. The stream has no terminal event — it ends when the subscriber
+disconnects or the daemon stops.
 
 Protocol v2 has no `cancel-all` route. The unversioned v1 endpoint remains a narrow desktop-shutdown
 mechanism. Command dispatch is available only when the frozen selection includes the command's
