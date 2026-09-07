@@ -69,6 +69,25 @@ describe('routePipenzoStartup', () => {
     expect(route).not.toHaveProperty('unavailableReason');
   });
 
+  /**
+   * `state` and `source` are independent, so an unreadable vault can coexist with a daemon running
+   * on an inherited variable. Pinning the intended answer because it is the combination most likely
+   * to look like a bug later: the reason is dropped on purpose. It exists to explain why
+   * *connecting* cannot work, and this install is not blocked from anything -- it can reach GitHub
+   * right now, and the banner names what it is using.
+   */
+  it('sends an unreadable vault with a working environment token to the app, without the reason', () => {
+    expect(
+      routePipenzoStartup({
+        connection: connection({
+          state: 'unavailable',
+          reason: 'unreadable',
+          source: 'environment',
+        }),
+      }),
+    ).toEqual({ screen: 'app', environmentCredential: true });
+  });
+
   describe('step selection', () => {
     const tokenless = { connection: connection({ state: 'disconnected', source: 'none' }) };
 

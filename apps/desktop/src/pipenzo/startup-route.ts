@@ -90,6 +90,12 @@ export function routePipenzoStartup(input: PipenzoStartupInput): PipenzoStartupR
   const hasCredential = connection.source !== 'none';
   const reposSatisfied = connectedRepos === 'not-tracked' || connectedRepos > 0;
 
+  // Note what this does *not* do for `state: 'unavailable'` with a working `source`: the vault
+  // being unreadable while a development daemon runs on an inherited variable routes to the app,
+  // and `unavailableReason` is dropped. That is intended. The reason exists to explain why
+  // connecting cannot work, and this install is not trying to connect — it can already reach
+  // GitHub, and the banner names what it is using. Surfacing a vault error to someone who is not
+  // blocked by it is noise.
   if (hasCredential && reposSatisfied) {
     return { screen: 'app', environmentCredential: connection.source === 'environment' };
   }

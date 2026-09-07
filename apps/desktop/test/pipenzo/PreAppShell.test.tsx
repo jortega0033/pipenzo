@@ -52,9 +52,11 @@ describe('ConnectStepBar', () => {
       <ConnectStepBar step="device-code" canChooseRepos onStepChange={vi.fn()} />,
     );
 
-    expect(container.querySelector('.seg')).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: '1 · Device code' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: '2 · Choose repos' })).toBeInTheDocument();
+    // `.steps` alongside `.seg`: the shared pill's visuals, this component's own disabled rule.
+    // Unscoped, the next `Segmented`-based switch to gain a disabled option would inherit it.
+    expect(container.querySelector('.seg.steps')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '1 · Device code' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '2 · Choose repos' })).toBeInTheDocument();
   });
 
   /**
@@ -65,20 +67,40 @@ describe('ConnectStepBar', () => {
   it('marks the current step as the current step', () => {
     render(<ConnectStepBar step="choose-repos" canChooseRepos onStepChange={vi.fn()} />);
 
-    const step2 = screen.getByRole('tab', { name: '2 · Choose repos' });
+    const step2 = screen.getByRole('button', { name: '2 · Choose repos' });
     expect(step2).toHaveAttribute('aria-current', 'step');
-    expect(step2).toHaveAttribute('aria-selected', 'true');
     expect(step2.className).toBe('active');
-    expect(screen.getByRole('tab', { name: '1 · Device code' })).not.toHaveAttribute(
+    expect(screen.getByRole('button', { name: '1 · Device code' })).not.toHaveAttribute(
       'aria-current',
     );
+  });
+
+  /**
+   * It looks like a tab bar and it is not one. `role="tablist"`/`role="tab"` is a commitment to the
+   * ARIA tabs pattern -- `aria-controls` onto a real `role="tabpanel"`, plus roving-tabindex arrow
+   * navigation -- and claiming the role without implementing the pattern is worse than not claiming
+   * it: a screen reader announces "tab 1 of 2" and then the arrow keys do nothing. This is a wizard
+   * step indicator, so it is a plain button group carrying `aria-current="step"`.
+   *
+   * Asserted as an absence because that is the shape of the mistake: the roles read as an
+   * improvement to whoever adds them back.
+   */
+  it('does not claim the tabs pattern it does not implement', () => {
+    const { container } = render(
+      <ConnectStepBar step="device-code" canChooseRepos onStepChange={vi.fn()} />,
+    );
+
+    expect(container.querySelector('[role="tablist"]')).toBeNull();
+    expect(container.querySelector('[role="tab"]')).toBeNull();
+    expect(container.querySelector('[aria-selected]')).toBeNull();
+    expect(screen.getByRole('group', { name: 'Connect steps' })).toBeInTheDocument();
   });
 
   it('makes step 2 unreachable, not merely unstyled, without a credential', () => {
     const onStepChange = vi.fn();
     render(<ConnectStepBar step="device-code" canChooseRepos={false} onStepChange={onStepChange} />);
 
-    const step2 = screen.getByRole('tab', { name: '2 · Choose repos' });
+    const step2 = screen.getByRole('button', { name: '2 · Choose repos' });
     expect(step2).toBeDisabled();
     fireEvent.click(step2);
     expect(onStepChange).not.toHaveBeenCalled();
@@ -88,7 +110,7 @@ describe('ConnectStepBar', () => {
     const onStepChange = vi.fn();
     render(<ConnectStepBar step="choose-repos" canChooseRepos onStepChange={onStepChange} />);
 
-    fireEvent.click(screen.getByRole('tab', { name: '1 · Device code' }));
+    fireEvent.click(screen.getByRole('button', { name: '1 · Device code' }));
     expect(onStepChange).toHaveBeenCalledWith('device-code');
   });
 });

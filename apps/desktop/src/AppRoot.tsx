@@ -50,7 +50,7 @@ function PipenzoStartup({
   enterDemoMode: () => void;
   exitDemoMode: () => void;
 }) {
-  const { connection } = useGitHubConnection();
+  const connection = useGitHubConnection();
   const route = routePipenzoStartup({ connection });
 
   // Nothing at all until the credential state is known. A spinner here would be worse than blank:
@@ -61,7 +61,12 @@ function PipenzoStartup({
     return <div className="preapp" role="status" aria-label="Checking your GitHub connection" />;
   }
 
-  if (route.screen === 'pre-app') return <ConnectScreen route={route} />;
+  // `onEnterDemo` is passed only when not already in demo mode, for the same reason `App` hides
+  // its own "Try a demo": a demo bridge that answered `disconnected` would otherwise offer to
+  // enter a demo it is already inside.
+  if (route.screen === 'pre-app') {
+    return <ConnectScreen route={route} {...(demoMode ? {} : { onEnterDemo: enterDemoMode })} />;
+  }
 
   return (
     <>

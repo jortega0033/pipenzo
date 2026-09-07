@@ -14,7 +14,7 @@ const CONNECTED: PipenzoGitHubConnectionV1 = {
 const DISCONNECTED: PipenzoGitHubConnectionV1 = { state: 'disconnected', source: 'none' };
 
 function Probe() {
-  const { connection } = useGitHubConnection();
+  const connection = useGitHubConnection();
   return <span data-testid="state">{connection ? connection.state : 'unread'}</span>;
 }
 
@@ -88,6 +88,39 @@ describe('useGitHubConnection', () => {
     emitStatus({ state: 'ready' } as DaemonStatus);
     await waitFor(() => expect(read).toHaveBeenCalledTimes(2));
     expect(screen.getByTestId('state').textContent).toBe('connected');
+  });
+
+  /**
+   * Two reads can overlap: main sends `ready` both after a credential restart and from
+   * `did-finish-load` when a client already exists, so a reload landing near a restart starts a
+   * second read before the first settles. Promises give no ordering between them, so without a
+   * generation counter the *older* answer can land last and win -- producing a stale state that
+   * looks entirely plausible and persists until the next `ready` happens to correct it.
+   *
+   * The unmount flag does not cover this; it only guards resolutions arriving after teardown.
+   */
+  it('ignores a stale read that settles after a newer one', async () => {
+    const settle: ((value: PipenzoGitHubConnectionV1) => void)[] = [];
+    const read = vi.fn(
+      () =>
+        new Promise<PipenzoGitHubConnectionV1>((resolve) => {
+          settle.push(resolve);
+        }),
+    );
+    const { emitStatus } = installBridge(read);
+    render(<Probe />);
+
+    // Two reads in flight: the mount read, then one started by a `ready` before it answered.
+    emitStatus({ state: 'ready' } as DaemonStatus);
+    expect(settle).toHaveLength(2);
+
+    // The newer one answers first, then the older one answers with a different, stale value.
+    settle[1]?.(DISCONNECTED);
+    await waitFor(() => expect(screen.getByTestId('state').textContent).toBe('disconnected'));
+    settle[0]?.(CONNECTED);
+
+    await waitFor(() => expect(read).toHaveBeenCalledTimes(2));
+    expect(screen.getByTestId('state').textContent).toBe('disconnected');
   });
 
   it('unsubscribes on unmount', async () => {

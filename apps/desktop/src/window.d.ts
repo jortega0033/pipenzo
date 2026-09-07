@@ -213,8 +213,14 @@ export interface AgentDockBridge {
    * were out of step until #113 needed to call these from React.
    *
    * There is deliberately no counterpart that *sets* a token: the device-code flow runs entirely in
-   * Electron main, so a `repo`-scoped credential never crosses this bridge in either direction, and
-   * `disconnectGitHub` is the only write there is — it only forgets.
+   * Electron main, so a `repo`-scoped credential never crosses this bridge in either direction.
+   *
+   * `disconnectGitHub` is the only write there is, and it is not as small as "forget a token"
+   * sounds. The daemon is handed its credential once at spawn, so forgetting one **restarts the
+   * daemon** — a `kill()` that is `TerminateProcess` on the packaging platform, which drops every
+   * in-flight session uncancelled rather than going through `killDaemon`'s graceful path (see
+   * `restartDaemonForCredentialChange` in `main.ts` for the full argument). Call it from a
+   * deliberate human action, not from a retry or a lifecycle effect.
    */
   pipenzoGitHubConnection(): Promise<PipenzoGitHubConnectionV1>;
   disconnectGitHub(): Promise<PipenzoGitHubConnectionV1>;

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { PipenzoGitHubConnectionV1 } from '@agent-dock/shared';
 import { getBridge } from '../bridge.js';
 
@@ -17,23 +17,36 @@ import { getBridge } from '../bridge.js';
  *
  * `undefined` means "not read yet", and is distinct from every real state — see
  * `routePipenzoStartup`, which turns it into its own screen rather than guessing.
+ *
+ * A read that never settles would leave the caller on that "not read yet" state forever, with no
+ * timeout here to rescue it. That is accepted rather than overlooked: the channel behind it is a
+ * *synchronous* main-process handler (`main.ts`'s `pipenzo:github-connection` returns
+ * `gitHubConnectionStatus()` directly), so it cannot be slow on its own — a hang means main itself
+ * is wedged, at which point every other channel this window depends on is gone too and a retry
+ * button here would be a button that does nothing.
  */
-export function useGitHubConnection(): {
-  connection: PipenzoGitHubConnectionV1 | undefined;
-  refresh: () => void;
-} {
+export function useGitHubConnection(): PipenzoGitHubConnectionV1 | undefined {
   const [connection, setConnection] = useState<PipenzoGitHubConnectionV1 | undefined>(undefined);
-  const [revision, setRevision] = useState(0);
-
-  const refresh = useCallback(() => setRevision((value) => value + 1), []);
 
   useEffect(() => {
+    // Two reads can be in flight at once -- the mount read, and one started by a `ready` that
+    // arrives before it settles (main sends `ready` both after a credential restart and from
+    // `did-finish-load` when a client already exists, so a reload landing near a restart produces
+    // exactly that overlap). Promises have no ordering guarantee between them, so without a
+    // generation counter the *older* answer can land last and win. The result would be a stale
+    // `connected`/`disconnected` that looks entirely plausible and persists until the next `ready`
+    // happens to correct it. `cancelled` alone does not cover this: it only guards unmount.
+    let latest = 0;
     let cancelled = false;
+
     const read = (): void => {
+      latest += 1;
+      const generation = latest;
       void getBridge()
         .pipenzoGitHubConnection()
         .then((next) => {
-          if (!cancelled) setConnection(next);
+          if (cancelled || generation !== latest) return;
+          setConnection(next);
         })
         .catch(() => {
           // A failed read is not a disconnected vault, and reporting it as one would send a
@@ -51,7 +64,7 @@ export function useGitHubConnection(): {
       cancelled = true;
       unsubscribe();
     };
-  }, [revision]);
+  }, []);
 
-  return { connection, refresh };
+  return connection;
 }

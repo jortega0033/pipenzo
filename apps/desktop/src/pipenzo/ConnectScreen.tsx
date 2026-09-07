@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Button } from '../components/primitives/Button.js';
 import { Notice } from '../components/primitives/Notice.js';
 import { ConnectPane, PreAppShell } from './PreAppShell.js';
 import type { PipenzoStartupRoute, PreAppStep } from './startup-route.js';
@@ -23,8 +24,16 @@ const UNAVAILABLE_COPY: Record<string, string> = {
  */
 export function ConnectScreen({
   route,
+  onEnterDemo,
 }: {
   route: Extract<PipenzoStartupRoute, { screen: 'pre-app' }>;
+  /**
+   * "Try a demo" lives inside `App`, which this screen replaces — so without an entry point here, a
+   * token-less install (the entire audience for a demo) would be the one install that cannot reach
+   * it. It sits on step 1's action row rather than in the topbar because it is an alternative to
+   * connecting, not a piece of the shell.
+   */
+  onEnterDemo?: () => void;
 }) {
   // The route decides which step is *shown by default* and which are reachable; this holds the
   // user's own navigation on top of that. It is not lifted into the router because it is genuinely
@@ -41,7 +50,21 @@ export function ConnectScreen({
       {step === 'device-code' ? (
         <ConnectPane
           title="Connect GitHub"
-          subtitle="Pipenzo reads your issues, writes its own labels and opens pull requests as you. It needs a GitHub token to do any of that, and it keeps that token in this machine's own credential store — never in a file it wrote, and never in the environment of any agent it runs."
+          // "encrypted by", not "in". The ciphertext really is a file Pipenzo wrote, under this
+          // app's own data directory -- the OS credential store supplies the *key*, not the
+          // storage, and the vault's own `clear()` comment depends on that file existing. A user
+          // who read this as "the token lives in Keychain and nothing in the app's folder carries
+          // it" would treat backups and profile sync differently than they should.
+          //
+          // (Naming the Electron API here would trip `github-token-boundary.test.ts`'s renderer
+          // scan, which does not strip comments. That is the scan working: it cannot tell prose
+          // from an import, and a false alarm someone investigates beats a blind spot nobody sees.)
+          subtitle="Pipenzo reads your issues, writes its own labels and opens pull requests as you. It needs a GitHub token to do any of that, and it keeps that token encrypted by this machine's own credential store — never in plaintext, and never in the environment of any agent it runs."
+          actions={
+            onEnterDemo && (
+              <Button onClick={onEnterDemo}>Try a demo</Button>
+            )
+          }
         >
           {route.unavailableReason && (
             <Notice tone="danger" icon="warning" title="This machine cannot store a token">

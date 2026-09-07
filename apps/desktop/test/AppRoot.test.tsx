@@ -109,12 +109,18 @@ describe('AppRoot demo-mode lifecycle', () => {
   });
 
   /**
-   * Demo mode must never be gated behind a real GitHub account. Nothing about a fixture needs a
-   * credential, and a "Try a demo" that opens "Connect GitHub" is the worst possible first
-   * impression -- so the demo bridge answers `connected`, and this asserts that the gate honours it
-   * rather than reading through to the real install's state.
+   * Demo mode must never be gated behind a real GitHub account -- nothing about a fixture needs a
+   * credential, and a token-less install is the entire audience for a demo. Two things have to hold
+   * for that, and both are asserted here against the real path rather than assumed:
+   *
+   * 1. The pre-app offers the demo at all. "Try a demo" otherwise lives only inside `App`, which
+   *    the gate replaces, making a token-less install the one install that cannot reach it.
+   * 2. The gate re-runs against the *demo* bridge after the swap and honours its `connected`
+   *    answer. If it read through to the real install's state, entering the demo would bounce
+   *    straight back to "Connect GitHub" -- which is why `demo-bridge.ts` answers this method
+   *    rather than throwing like the rest of its Pipenzo block.
    */
-  it('shows the demo instead of the pre-app when the real install is token-less', async () => {
+  it('reaches demo mode from a token-less install, and stays there', async () => {
     (window as unknown as { agentDock: AgentDockBridge }).agentDock = realBridge({
       state: 'disconnected',
       source: 'none',
@@ -122,11 +128,15 @@ describe('AppRoot demo-mode lifecycle', () => {
     render(<AppRoot />);
 
     expect(await screen.findByRole('heading', { name: 'Connect GitHub' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Try a demo' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Try a demo' }));
 
-    // The pre-app has no "Try a demo" button of its own (that lives in AgentDock's header), so
-    // reaching demo mode from a token-less install is a separate ticket. What matters here is that
-    // the demo bridge's own answer is what decides, which the next case proves directly.
+    // Past the gate on the demo bridge's own answer, not the real install's.
+    expect(await screen.findByText(/demo mode/i)).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Connect GitHub' })).not.toBeInTheDocument();
+
+    // And back to the pre-app on exit, because the real install is still token-less.
+    fireEvent.click(screen.getByRole('button', { name: 'Exit demo' }));
+    expect(await screen.findByRole('heading', { name: 'Connect GitHub' })).toBeInTheDocument();
   });
 });
 
@@ -142,8 +152,8 @@ describe('AppRoot pre-app gate (issue #113)', () => {
     // The app behind the gate is genuinely not rendered -- not merely hidden.
     expect(screen.queryByRole('heading', { name: 'AgentDock' })).not.toBeInTheDocument();
 
-    const step1 = screen.getByRole('tab', { name: '1 · Device code' });
-    const step2 = screen.getByRole('tab', { name: '2 · Choose repos' });
+    const step1 = screen.getByRole('button', { name: '1 · Device code' });
+    const step2 = screen.getByRole('button', { name: '2 · Choose repos' });
     expect(step1).toHaveAttribute('aria-current', 'step');
     // A repo picker with no credential behind it has nothing to list.
     expect(step2).toBeDisabled();
@@ -156,7 +166,7 @@ describe('AppRoot pre-app gate (issue #113)', () => {
     render(<AppRoot />);
 
     expect(await screen.findByRole('button', { name: 'Try a demo' })).toBeInTheDocument();
-    expect(screen.queryByRole('tab', { name: '1 · Device code' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '1 · Device code' })).not.toBeInTheDocument();
     expect(screen.queryByText(/PIPENZO_GITHUB_TOKEN/)).not.toBeInTheDocument();
   });
 
@@ -178,9 +188,12 @@ describe('AppRoot pre-app gate (issue #113)', () => {
   });
 
   /**
-   * Neither real screen may be rendered before the answer arrives. Flashing the board at a
-   * token-less install leaks a screen it has no access to; flashing "Connect GitHub" at every
-   * correctly-connected user on every launch reads as the app having lost their account.
+   * Neither real screen may be rendered before the answer arrives. Both flashes are wrong and
+   * neither is a security failure -- this gate is presentation, and the enforcement is one process
+   * down, where a daemon with no credential answers `token_missing` to every GitHub call whatever
+   * the renderer painted. Flashing the board at a token-less install shows a surface that cannot
+   * do anything; flashing "Connect GitHub" at a correctly-connected user on every launch reads as
+   * the app having lost their account.
    */
   it('renders neither screen until the connection has actually been read', async () => {
     let resolveConnection: ((value: PipenzoGitHubConnectionV1) => void) | undefined;

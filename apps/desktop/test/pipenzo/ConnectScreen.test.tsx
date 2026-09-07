@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ConnectScreen } from '../../src/pipenzo/ConnectScreen.js';
 
 /**
@@ -40,10 +40,10 @@ describe('ConnectScreen', () => {
       <ConnectScreen route={{ screen: 'pre-app', step: 'choose-repos', canChooseRepos: true }} />,
     );
 
-    fireEvent.click(screen.getByRole('tab', { name: '1 · Device code' }));
+    fireEvent.click(screen.getByRole('button', { name: '1 · Device code' }));
     expect(screen.getByRole('heading', { name: 'Connect GitHub' })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('tab', { name: '2 · Choose repos' }));
+    fireEvent.click(screen.getByRole('button', { name: '2 · Choose repos' }));
     expect(
       screen.getByRole('heading', { name: 'Choose the repos Pipenzo manages' }),
     ).toBeInTheDocument();
@@ -58,13 +58,53 @@ describe('ConnectScreen', () => {
     const { rerender } = render(
       <ConnectScreen route={{ screen: 'pre-app', step: 'choose-repos', canChooseRepos: true }} />,
     );
-    fireEvent.click(screen.getByRole('tab', { name: '2 · Choose repos' }));
+    fireEvent.click(screen.getByRole('button', { name: '2 · Choose repos' }));
 
     rerender(
       <ConnectScreen route={{ screen: 'pre-app', step: 'device-code', canChooseRepos: false }} />,
     );
     expect(screen.getByRole('heading', { name: 'Connect GitHub' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: '2 · Choose repos' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '2 · Choose repos' })).toBeDisabled();
+  });
+
+  /**
+   * "Try a demo" otherwise lives only inside `App`, which the pre-app replaces -- making a
+   * token-less install, the entire audience for a demo, the one install that cannot reach it.
+   */
+  it('offers the demo when it is given a way to enter one, and omits the control otherwise', () => {
+    const onEnterDemo = vi.fn();
+    const { rerender } = render(
+      <ConnectScreen
+        route={{ screen: 'pre-app', step: 'device-code', canChooseRepos: false }}
+        onEnterDemo={onEnterDemo}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Try a demo' }));
+    expect(onEnterDemo).toHaveBeenCalledTimes(1);
+
+    // Already in a demo: no control at all, rather than one that re-enters the demo it is inside.
+    rerender(
+      <ConnectScreen route={{ screen: 'pre-app', step: 'device-code', canChooseRepos: false }} />,
+    );
+    expect(screen.queryByRole('button', { name: 'Try a demo' })).not.toBeInTheDocument();
+  });
+
+  /**
+   * The vault writes a ciphertext file under this app's own data directory -- `safeStorage` supplies
+   * the key, not the storage, and `github-token-vault.ts`'s own `clear()` comment depends on that
+   * file existing. An earlier draft of this copy said "never in a file it wrote", which a user would
+   * reasonably read as "nothing in the app's folder carries the credential" and act on when
+   * thinking about backups or profile sync.
+   */
+  it('does not claim the token is absent from disk', () => {
+    render(
+      <ConnectScreen route={{ screen: 'pre-app', step: 'device-code', canChooseRepos: false }} />,
+    );
+
+    const sub = document.querySelector('.pane-sub')?.textContent ?? '';
+    expect(sub).toContain('encrypted by');
+    expect(sub).not.toMatch(/never in a file/i);
   });
 
   it('names the specific reason a machine cannot hold a credential', () => {
