@@ -55,6 +55,7 @@ import {
   PendingInteractiveCreates,
   relayInteractiveSessionEvents,
 } from './interactive-session-lifecycle.js';
+import { relayPipenzoPhaseEvents } from './pipenzo-phase-stream.js';
 import { InteractionBroker, type RendererInteractionResolution } from './interaction-broker.js';
 import {
   externalUrlLogSummary,
@@ -102,8 +103,6 @@ const interactiveStreamAborts = new Map<string, AbortController>();
  * daemon restart can tear the old one down before starting the next.
  */
 let phaseStreamAbort: AbortController | undefined;
-/** The last sequence forwarded to the renderer, so a reconnect resumes rather than replays. */
-let lastPhaseSequence: number | undefined;
 const pendingInteractiveCreates = new PendingInteractiveCreates();
 const interactionBroker = new InteractionBroker();
 // Startup may use the 30-second handshake bound plus graceful and hard-stop reap windows.
@@ -161,11 +160,11 @@ function spawnDaemon(): void {
     for (const controller of interactiveStreamAborts.values()) controller.abort();
     interactiveStreamAborts.clear();
     activeInteractiveSessionIds.clear();
+    // The next daemon is a new process with a new, empty phase buffer, so the old cursor names a
+    // sequence that will never exist again. Aborting the relay discards it: the cursor is relay-
+    // local, and the next daemon gets a fresh `forwardPipenzoPhaseEvents` call.
     phaseStreamAbort?.abort();
     phaseStreamAbort = undefined;
-    // The next daemon is a new process with a new, empty phase buffer, so the old cursor names a
-    // sequence that will never exist again. Dropping it makes the next subscribe start clean.
-    lastPhaseSequence = undefined;
     sendStatus({
       state: 'unavailable',
       error: `daemon process exited unexpectedly (code ${code ?? 'null'}, signal ${signal ?? 'null'})`,
@@ -298,11 +297,10 @@ function forwardSessionEvents(sessionId: string): void {
 /**
  * Relays the daemon's phase-change stream (#189) to the renderer.
  *
- * Reconnects on failure, resuming from the last sequence actually forwarded, because the board's
- * correctness depends on not missing a transition: a card left in the wrong lane looks exactly like
- * a card in the right one. A `replay_gap` (the cursor fell out of the daemon's bounded window) is
- * the one failure a cursor cannot fix, so it drops the cursor and resubscribes from the window the
- * daemon still has -- the renderer re-reads the tickets it cares about on reconnect anyway.
+ * The reconnect and cursor logic lives in `relayPipenzoPhaseEvents` so it is testable outside
+ * Electron; this only supplies the client and forwards what comes out. A `replay_gap` is logged
+ * rather than swallowed: it means transitions were lost, so a board reading these events should
+ * treat its lanes as stale and re-read.
  */
 function forwardPipenzoPhaseEvents(): void {
   if (!client) return;
@@ -311,27 +309,28 @@ function forwardPipenzoPhaseEvents(): void {
   phaseStreamAbort = controller;
   const activeClient = client;
 
-  void (async () => {
-    while (!controller.signal.aborted) {
-      try {
-        for await (const event of activeClient.v2.pipenzo.ticketEvents({
-          signal: controller.signal,
-          ...(lastPhaseSequence === undefined
-            ? {}
-            : { lastEventId: String(lastPhaseSequence) }),
-        })) {
-          lastPhaseSequence = event.sequence;
-          sendToRenderer(mainWindow, 'daemon:pipenzo-phase-event', event);
-        }
-      } catch (err) {
-        if (controller.signal.aborted) return;
-        // 409 is the daemon refusing a cursor it no longer holds. Retrying it would fail forever.
-        if (err instanceof DaemonError && err.status === 409) lastPhaseSequence = undefined;
-      }
-      if (controller.signal.aborted) return;
-      await new Promise((resolve) => setTimeout(resolve, 1_000));
-    }
-  })();
+  void relayPipenzoPhaseEvents({
+    signal: controller.signal,
+    events: (options) => activeClient.v2.pipenzo.ticketEvents(options),
+    onEvent: (event) => sendToRenderer(mainWindow, 'daemon:pipenzo-phase-event', event),
+    onReplayGap: (window) => {
+      console.warn(
+        `phase event stream fell behind the daemon's replay window; transitions were lost${
+          window === undefined ? '' : ` (resuming from ${window.earliestSequence})`
+        }`,
+      );
+    },
+    onRetry: (error, lastEventId) => {
+      console.warn(
+        `phase event stream reconnecting${lastEventId === undefined ? '' : ` after ${lastEventId}`}: ${boundedErrorMessage(error)}`,
+      );
+    },
+    onFatal: (error) => {
+      console.error(`phase event stream stopped: ${boundedErrorMessage(error)}`);
+    },
+  }).finally(() => {
+    if (phaseStreamAbort === controller) phaseStreamAbort = undefined;
+  });
 }
 
 /** Streams validated protocol-v2 envelopes without changing the existing v1 renderer flow. */

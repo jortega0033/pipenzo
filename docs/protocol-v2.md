@@ -199,7 +199,11 @@ The retained window is bounded, so a cursor older than it cannot be served hones
 |  `409` | `replay_gap`            | The cursor is outside the retained window; `details` reports it  |
 
 A `409` carries `details: { earliestSequence, nextSequence }`. Treat it as "resync from a fresh
-read", not as something to retry with the same cursor. A subscriber too slow to drain its socket
+read", not as something to retry with the same cursor — and reconnect using the reported window
+(`Last-Event-ID: earliestSequence - 1`, or no header at all when `earliestSequence` is `0`) rather
+than by dropping the cursor. Omitting the header asks for sequence `0`, and `earliestSequence` only
+climbs, so a bare reconnect is refused with this same `409` forever once the buffer has wrapped. A
+subscriber too slow to drain its socket
 receives a final `stream.error` / `stream_overflow` frame naming the last sequence it actually got,
 and is disconnected — the same bounded-writer contract protocol v2's session stream uses, sharing
 the same state machine (`apps/daemon/src/sse-writer.ts`).

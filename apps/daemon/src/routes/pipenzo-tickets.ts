@@ -119,11 +119,17 @@ function toReconciliationBody(result: PipenzoTicketReconciliation) {
 /**
  * `Last-Event-ID` for the phase stream, resolved to the first sequence the subscriber still needs.
  *
- * Absent means "from the start of whatever window you still hold" (0), and a present id means
- * "everything after this one", hence the `+ 1`. Same parser and same contract as the v2 session
- * stream's, deliberately: a renderer that already knows how to reconnect to one stream should not
- * have to learn a second set of cursor rules. Anything not a plain non-negative integer is a
- * client bug and is refused rather than coerced.
+ * A present id means "everything after this one", hence the `+ 1`. An absent header resolves to 0,
+ * which is a *first* subscription, not a general-purpose reset: 0 is accepted only while the
+ * daemon has not yet evicted anything, and is refused with `replay_gap` once the ring buffer has
+ * wrapped and `earliestSequence` has moved off zero. That refusal is the point -- answering it with
+ * a silently truncated history would leave the board rendering lanes it never saw the moves for --
+ * so a reconnecting subscriber that gets a 409 must resubscribe at a sequence inside the window the
+ * refusal reports back, not simply drop its cursor and retry bare (which is refused identically,
+ * forever). Same parser and same contract as the v2 session stream's, deliberately: a renderer that
+ * already knows how to reconnect to one stream should not have to learn a second set of cursor
+ * rules. Anything not a plain non-negative integer is a client bug and is refused rather than
+ * coerced.
  */
 function parsePhaseLastEventId(header: string | string[] | undefined): number | undefined {
   const value = Array.isArray(header) ? header[0] : header;

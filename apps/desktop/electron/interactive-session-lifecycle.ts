@@ -1,5 +1,6 @@
 import type { AgentEventV2Envelope, AgentSessionV2 } from '@agent-dock/shared';
-import { DaemonError, DaemonUnavailableError, type SessionEventsOptions } from '@agent-dock/client';
+import { DaemonError, type SessionEventsOptions } from '@agent-dock/client';
+import { abortableDelay, isRetryableStreamError } from './stream-relay.js';
 
 const DEFAULT_RECONNECT_DELAY_MS = 250;
 
@@ -124,14 +125,6 @@ export class PendingInteractiveCreates {
   }
 }
 
-function isRetryableStreamError(error: unknown): boolean {
-  if (error instanceof DaemonUnavailableError) return true;
-  return (
-    error instanceof DaemonError &&
-    (error.status === 408 || error.status === 425 || error.status === 429 || error.status >= 500)
-  );
-}
-
 function isTerminalSessionEvent(event: AgentEventV2Envelope): boolean {
   return (
     event.type === 'session.completed' ||
@@ -139,18 +132,4 @@ function isTerminalSessionEvent(event: AgentEventV2Envelope): boolean {
     event.type === 'session.cancelled' ||
     event.type === 'session.interrupted'
   );
-}
-
-async function abortableDelay(delayMs: number, signal: AbortSignal): Promise<void> {
-  if (signal.aborted || delayMs <= 0) return;
-  await new Promise<void>((resolve) => {
-    const timer = setTimeout(done, delayMs);
-    signal.addEventListener('abort', done, { once: true });
-
-    function done(): void {
-      clearTimeout(timer);
-      signal.removeEventListener('abort', done);
-      resolve();
-    }
-  });
 }

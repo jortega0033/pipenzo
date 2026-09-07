@@ -212,9 +212,23 @@ generator ends or throws when it closes. Pass the last `sequence` you saw back a
 resume after it.
 
 Two failures are worth handling distinctly. A `DaemonError` with status `409` is the daemon
-refusing a cursor older than its bounded retained window — retrying the same cursor will fail
-forever, so drop it and resubscribe without one, then re-read the tickets you care about. A
-`DaemonError` with status `429` is the overflow signal: this subscriber was too slow to drain the
+refusing a cursor outside its bounded retained window. Recover using the window it reports on
+`error.details` — parse it with `pipenzoPhaseReplayWindowV1Schema` and resubscribe with
+`lastEventId` set to `earliestSequence - 1` (or omit it entirely when `earliestSequence` is `0`),
+then re-read the tickets you care about, because transitions were genuinely lost:
+
+```ts
+const window = pipenzoPhaseReplayWindowV1Schema.safeParse(error.details);
+lastEventId =
+  !window.success || window.data.earliestSequence === 0
+    ? undefined
+    : String(window.data.earliestSequence - 1);
+```
+
+Do **not** simply drop the cursor and resubscribe without one. An absent `lastEventId` asks to
+resume from sequence `0`, and `earliestSequence` only ever climbs as the daemon evicts old events,
+so once the buffer has wrapped that bare resubscribe is refused with the same `409` — permanently.
+A `DaemonError` with status `429` is the overflow signal: this subscriber was too slow to drain the
 socket and was disconnected. Frames are validated against `pipenzoPhaseEventV1Schema`, and the SSE
 `id:` is checked against the envelope's `sequence` with sequences required to advance, so a desync
 surfaces as a `ValidationError` rather than as a cursor that silently resumes in the wrong place.

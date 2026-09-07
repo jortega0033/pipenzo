@@ -554,7 +554,7 @@ export class AgentDockClient {
       if (!bodyRead) body = await res.json().catch(() => undefined);
       const message = daemonErrorMessage(body) ?? `daemon request failed with status ${res.status}`;
       if (res.status === 400) throw new ValidationError(message);
-      throw new DaemonError(message, res.status, daemonErrorCode(body));
+      throw new DaemonError(message, res.status, daemonErrorCode(body), daemonErrorDetails(body));
     }
     return res;
   }
@@ -1264,10 +1264,12 @@ export class AgentDockClient {
       const message =
         daemonErrorMessage(body) ?? `failed to open the phase stream (status ${res.status})`;
       if (res.status === 400) throw new ValidationError(message);
-      // 409 is `replay_gap`: the cursor is older than the daemon's bounded window. Surfaced as a
-      // plain DaemonError carrying the status so a caller can tell it apart and resync rather than
-      // retry the same cursor forever.
-      throw new DaemonError(message, res.status);
+      // 409 is `replay_gap`: the cursor is outside the daemon's bounded window. Surfaced as a plain
+      // DaemonError carrying the status *and* the window the daemon reported, because the status
+      // alone is not enough to recover: a caller that only knows "the cursor was refused" can do
+      // nothing but drop it and reconnect from zero, which is refused again the moment the window
+      // has moved off zero. The window says which cursors would be accepted.
+      throw new DaemonError(message, res.status, daemonErrorCode(body), daemonErrorDetails(body));
     }
     if (!res.body) {
       throw new ValidationError('daemon returned a phase stream without a response body');
@@ -1486,6 +1488,12 @@ function daemonErrorMessage(body: unknown): string | undefined {
     if (typeof message === 'string') return message;
   }
   return undefined;
+}
+
+/** The daemon's `details` payload, if it sent one. Deliberately unvalidated -- the caller parses it. */
+function daemonErrorDetails(body: unknown): unknown {
+  if (!body || typeof body !== 'object') return undefined;
+  return (body as { details?: unknown }).details;
 }
 
 function daemonErrorCode(body: unknown): string | undefined {
