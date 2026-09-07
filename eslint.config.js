@@ -34,6 +34,9 @@ export default tseslint.config(
     },
     plugins: { 'react-hooks': reactHooks },
     rules: {
+      // Only the two classic hooks rules, not the plugin's full `recommended`/`recommended-latest`
+      // presets -- those now also bundle the React Compiler correctness rules (v6+), which this
+      // codebase has never been linted against and could surface a large, unrelated backlog.
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
     },

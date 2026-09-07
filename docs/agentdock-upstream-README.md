@@ -1,4 +1,4 @@
-![AgentDock desktop runtime](./docs/images/social/readme-hero.webp)
+![AgentDock desktop runtime](./images/social/readme-hero.webp)
 
 <p align="center"><strong>Open-source Electron and local-daemon boilerplate for desktop apps that use Claude Agent, the Claude CLI, or Codex CLI.</strong></p>
 
@@ -20,7 +20,7 @@ generic workflow, product copy, and visual identity.
 
 - You are building a desktop workflow where an agent inspects a real workspace, streams progress,
   and produces a reviewable result -- with pause-for-approval on the transports that support it
-  (Claude Agent SDK and Codex app-server; see the [capability matrix](docs/capability-matrix.md)).
+  (Claude Agent SDK and Codex app-server; see the [capability matrix](capability-matrix.md)).
 - You want a normalized Claude and Codex integration contract (one event shape, one negotiated
   capability model across providers) without exposing daemon credentials to a renderer -- the
   contract is shared, but capability support still varies by provider and transport.
@@ -51,7 +51,7 @@ fixtures and tests before promising support in a downstream product.
 
 1. Fork the repository, install dependencies, and run the reference desktop.
 2. Define one focused workflow, or review the
-   [product ideas for AgentDock forks](docs/use-cases/README.md).
+   [product ideas for AgentDock forks](use-cases/README.md).
 3. Choose the provider transports and capabilities that workflow requires; verify their support.
 4. Replace the reference workflow, `appId`, `productName`, copy, and assets.
 5. Preserve the trust boundary: renderer code never receives daemon credentials or calls the daemon
@@ -84,7 +84,7 @@ rights (Windows) or `sudo` (Linux/macOS) unless Node came from a per-user versio
 fnm, volta). `pnpm install`'s first step runs `node scripts/preflight.mjs` automatically, which
 checks your active Node and pnpm versions against what's actually supported and fails with a clear
 fix before touching your `node_modules` if either is wrong. See
-[docs/troubleshooting.md#corepack-enable-fails-with-command-not-found](docs/troubleshooting.md#corepack-enable-fails-with-command-not-found)
+[docs/troubleshooting.md#corepack-enable-fails-with-command-not-found](troubleshooting.md#corepack-enable-fails-with-command-not-found)
 for more.
 
 Configure at least one provider path. The Claude Agent SDK path uses the pinned Windows asset plus
@@ -109,11 +109,11 @@ pnpm daemon
 ```
 
 It prints its loopback URL and discovery-file location at startup. See
-[the daemon guide](docs/daemon.md) for health checks and lifecycle details.
+[the daemon guide](daemon.md) for health checks and lifecycle details.
 
 ## Architecture
 
-![AgentDock runtime flow](./docs/images/architecture/runtime-flow.svg)
+![AgentDock runtime flow](./images/architecture/runtime-flow.svg)
 
 The renderer never calls the daemon directly. Electron main uses the private workspace package
 `@agent-dock/client`, which owns bearer authentication, protocol compatibility, HTTP requests, and
@@ -126,8 +126,8 @@ React renderer → typed IPC → Electron main → @agent-dock/client → local 
                                                                   └→ Codex adapter  → app-server or `codex exec`
 ```
 
-Read [the architecture guide](docs/architecture.md) for component ownership and
-[SECURITY.md](SECURITY.md) for the threat model and local-auth mechanism.
+Read [the architecture guide](architecture.md) for component ownership and
+[SECURITY.md](../SECURITY.md) for the threat model and local-auth mechanism.
 
 ### Claude transport modes
 
@@ -138,7 +138,7 @@ never treats Claude.ai/subscription OAuth or `CLAUDE_CODE_OAUTH_TOKEN` as SDK cr
 session also requires a trusted workspace. `auto` uses the Claude CLI compatibility transport when
 an SDK gate is unmet before transport selection; `sdk` fails closed. After the SDK is selected, an import, startup,
 or query failure does not replay the session through the CLI. See
-[the provider guide](docs/providers.md#claude-transport-modes) for the full gate and credential
+[the provider guide](providers.md#claude-transport-modes) for the full gate and credential
 rules.
 
 ### Codex transport modes
@@ -150,7 +150,7 @@ selected, `auto` may use the Codex exec compatibility transport only if that fal
 passes; otherwise
 it fails closed. Forced `app-server` mode fails closed when its gates do not pass, and AgentDock
 never replays accepted work through another transport. See
-[the provider guide](docs/providers.md#historical-v02-decision-and-current-v2-transport).
+[the provider guide](providers.md#historical-v02-decision-and-current-v2-transport).
 
 ## Repository map
 
@@ -178,8 +178,8 @@ pnpm assets:validate   # validate dimensions, formats, and SVG safety
 ```
 
 The asset commands require Python 3.11+ and the pinned packages in
-[`scripts/assets/requirements.txt`](scripts/assets/requirements.txt). See
-[the asset guide](docs/assets.md) before changing the identity or regenerating images. With those
+[`scripts/assets/requirements.txt`](../scripts/assets/requirements.txt). See
+[the asset guide](assets.md) before changing the identity or regenerating images. With those
 dependencies installed, the committed checkout passes `pnpm assets:validate`; treat any failure as
 a release blocker.
 
@@ -201,7 +201,7 @@ dist-packages/
 ```
 
 Windows is the only verified packaging target today. Builds are unsigned, so Windows SmartScreen
-may warn on first launch. See [the packaging guide](docs/packaging.md) for the packaged runtime
+may warn on first launch. See [the packaging guide](packaging.md) for the packaged runtime
 layout and verification checklist.
 
 ## Client SDK
@@ -249,9 +249,9 @@ accepts the session.
 
 Failures are typed (`DaemonUnavailableError`, `UnauthorizedError`,
 `ProtocolMismatchError`, `ProviderUnavailableError`, and others), so consumers can branch without
-parsing error strings. See [the client guide](docs/client-sdk.md) and
-[protocol v1](docs/protocol-v1.md). The additive capability-negotiated contract is documented in
-[protocol v2](docs/protocol-v2.md).
+parsing error strings. See [the client guide](client-sdk.md) and
+[protocol v1](protocol-v1.md). The additive capability-negotiated contract is documented in
+[protocol v2](protocol-v2.md).
 
 ## Adding a provider
 
@@ -259,30 +259,30 @@ Adding another CLI means extending the shared provider ID, implementing detectio
 parsing, and the adapter, passing the shared contract suite, and registering it with the daemon.
 The protocol and client remain provider-neutral; the reference desktop needs one selector option.
 
-Follow [the provider guide](docs/providers.md#adding-a-new-provider) for the complete checklist.
+Follow [the provider guide](providers.md#adding-a-new-provider) for the complete checklist.
 
 ## Documentation
 
-- [Development](DEVELOPMENT.md): setup, code map, and architectural rules
-- [Architecture](docs/architecture.md): runtime flow, responsibilities, and trust boundaries
-- [Product ideas for AgentDock forks](docs/use-cases/README.md): researched app directory, MVP wedges, and current implementation caveats
-- [Security](SECURITY.md): threat model, loopback auth, and process hygiene
-- [Protocol v1](docs/protocol-v1.md): normalized events and wire guarantees
-- [Protocol v2](docs/protocol-v2.md): capability negotiation, correlated content, and versioned routes
-- [Client SDK](docs/client-sdk.md): full client API and errors
-- [Providers](docs/providers.md): adapters, detection, parsers, and contract tests
-- [Provider capability matrix](docs/capability-matrix.md): what each provider/transport actually
+- [Development](../DEVELOPMENT.md): setup, code map, and architectural rules
+- [Architecture](architecture.md): runtime flow, responsibilities, and trust boundaries
+- [Product ideas for AgentDock forks](use-cases/README.md): researched app directory, MVP wedges, and current implementation caveats
+- [Security](../SECURITY.md): threat model, loopback auth, and process hygiene
+- [Protocol v1](protocol-v1.md): normalized events and wire guarantees
+- [Protocol v2](protocol-v2.md): capability negotiation, correlated content, and versioned routes
+- [Client SDK](client-sdk.md): full client API and errors
+- [Providers](providers.md): adapters, detection, parsers, and contract tests
+- [Provider capability matrix](capability-matrix.md): what each provider/transport actually
   supports, at the exact pinned version tested
-- [Capability and security model for protocol v2](docs/capability-security-v2.md): the full
+- [Capability and security model for protocol v2](capability-security-v2.md): the full
   negotiation, evidence, and security decision record the matrix above summarizes
-- [Daemon](docs/daemon.md): standalone operation, routes, and lifecycle
-- [Electron](docs/electron.md): renderer/main/daemon boundary
-- [Packaging](docs/packaging.md): electron-builder and NSIS details
-- [Assets](docs/assets.md): brand sources, generated files, and replacement guide
-- [Troubleshooting](docs/troubleshooting.md): common failures and diagnostics
-- [Release checklist](docs/release-checklist.md): what backs a "release candidate" or a public "verified" provider claim
-- [Contributing](CONTRIBUTING.md): workflow and pull-request checklist
+- [Daemon](daemon.md): standalone operation, routes, and lifecycle
+- [Electron](electron.md): renderer/main/daemon boundary
+- [Packaging](packaging.md): electron-builder and NSIS details
+- [Assets](assets.md): brand sources, generated files, and replacement guide
+- [Troubleshooting](troubleshooting.md): common failures and diagnostics
+- [Release checklist](release-checklist.md): what backs a "release candidate" or a public "verified" provider claim
+- [Contributing](../CONTRIBUTING.md): workflow and pull-request checklist
 
 ## License
 
-[Apache-2.0](LICENSE)
+[Apache-2.0](../LICENSE)
