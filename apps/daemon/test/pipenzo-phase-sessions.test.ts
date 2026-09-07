@@ -4,6 +4,7 @@ import {
   FakeProvider,
   ProviderRegistry,
   noopLogger,
+  type StartSessionOptions,
 } from '@agent-dock/agent-runtime';
 import { SessionManager } from '../src/session-manager.js';
 import {
@@ -72,6 +73,80 @@ describe('AwaitedPhaseSessions', () => {
       new AwaitedPhaseSessions({ sessionManager: manager }).run(request),
     ).rejects.toBeInstanceOf(PhaseSessionError);
     await manager.cancelAll(500, 1);
+  });
+});
+
+/**
+ * Issue #191. The phase adapters used to hand `SessionManager.create` `undefined` for its eighth
+ * positional parameter, the sandbox. `create` spreads that field only when truthy, so no
+ * `--sandbox` flag reached `codex exec` and it fell back to its own default of read-only —
+ * making Implement structurally incapable of writing a file while still reporting success.
+ *
+ * These assert the dispatched scope rather than the observable behaviour on purpose: the fake
+ * provider writes nothing either way, so an end-to-end assertion here would pass against the bug.
+ * The scope *is* the contract.
+ */
+function recordingManager(scenario: 'success' | 'failure'): {
+  manager: SessionManager;
+  starts: StartSessionOptions[];
+} {
+  const starts: StartSessionOptions[] = [];
+  const provider = new FakeProvider(
+    'claude',
+    {
+      id: 'claude',
+      name: 'Fake Provider',
+      installed: true,
+      authenticated: 'authenticated',
+      capabilities: FAKE_PROVIDER_CAPABILITIES,
+    },
+    scenario,
+  );
+  const start = provider.startSession.bind(provider);
+  (provider as unknown as { startSession: (o: StartSessionOptions) => unknown }).startSession = (
+    options: StartSessionOptions,
+  ) => {
+    starts.push(options);
+    return start(options);
+  };
+  const registry = new ProviderRegistry();
+  registry.register(provider);
+  return { manager: new SessionManager(registry, noopLogger), starts };
+}
+
+describe('phase sandbox scope', () => {
+  it('gives Implement the workspace-write scope it needs to change a file at all', async () => {
+    const { manager, starts } = recordingManager('success');
+    await new DispatchOnlyPhaseSessions({ sessionManager: manager }).run(request);
+    expect(starts).toHaveLength(1);
+    expect(starts[0]?.sandbox).toBe('workspace-write');
+    await manager.cancelAll(500, 1);
+  });
+
+  /**
+   * The half that matters after the bug is fixed. Refine (#179) is read-only *by construction*, and
+   * before this it was read-only only because codex happened to default that way — an upstream
+   * change to that default would have handed it write access to the operator's worktree silently.
+   */
+  it('pins Refine and Review read-only instead of inheriting a provider default', async () => {
+    const { manager, starts } = recordingManager('success');
+    await new AwaitedPhaseSessions({ sessionManager: manager }).run(request);
+    expect(starts).toHaveLength(1);
+    expect(starts[0]?.sandbox).toBe('read-only');
+    await manager.cancelAll(500, 1);
+  });
+
+  // The regression in its most direct form: absence is what the bug actually was.
+  it('never dispatches a phase without stating a sandbox', async () => {
+    const dispatch = recordingManager('success');
+    await new DispatchOnlyPhaseSessions({ sessionManager: dispatch.manager }).run(request);
+    const awaited = recordingManager('success');
+    await new AwaitedPhaseSessions({ sessionManager: awaited.manager }).run(request);
+    for (const options of [...dispatch.starts, ...awaited.starts]) {
+      expect(options.sandbox).toBeDefined();
+    }
+    await dispatch.manager.cancelAll(500, 1);
+    await awaited.manager.cancelAll(500, 1);
   });
 });
 

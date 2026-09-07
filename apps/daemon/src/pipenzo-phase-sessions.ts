@@ -4,6 +4,7 @@ import {
   type CreateSessionV2Request,
   type ReviewFindingV1,
 } from '@agent-dock/shared';
+import type { StartSessionOptions } from '@agent-dock/agent-runtime';
 import { z } from 'zod';
 import type { SessionManager } from './session-manager.js';
 import type { RefineSessionOutcome, RefineSessionPort } from './refine-subagent.js';
@@ -92,16 +93,41 @@ export class PhaseSessionError extends Error {
   }
 }
 
-function startSession(manager: SessionManager, request: CreateSessionV2Request): string {
+/**
+ * The provider sandbox scope a phase runs under, stated at every call site rather than inherited
+ * from whatever the provider CLI happens to default to (issue #191).
+ *
+ * Both values below used to be one missing argument. `SessionManager.create` takes the sandbox as
+ * its eighth positional parameter and spreads it only when truthy, so the `undefined` this helper
+ * used to pass arrived at `buildCodexArgs` as "emit no `--sandbox` flag" and `codex exec` fell back
+ * to its own default, which is read-only. Implement could therefore never write a file: it planned
+ * correctly, produced a correct patch, and had every `apply_patch` refused -- silently, because a
+ * phase that writes nothing still terminates successfully and still returns a session id. Observed
+ * end to end against this repository's own issue #78, which ran for fifteen minutes and left its
+ * worktree byte-for-byte clean.
+ *
+ * Pinning Refine and Review is the half that outlives the bug. They were read-only before this only
+ * because codex's default happened to agree with them -- a change to that default upstream would
+ * have handed the read-only Refine subagent (#179) write access to the operator's worktree without
+ * a line of Pipenzo changing. A scope that decides whether an agent can edit the working tree is
+ * stated, not inherited.
+ */
+type PhaseSandbox = NonNullable<StartSessionOptions['sandbox']>;
+
+function startSession(
+  manager: SessionManager,
+  request: CreateSessionV2Request,
+  sandbox: PhaseSandbox,
+): string {
   const session = manager.create(
     request.provider,
     request.cwd,
     request.prompt ?? '',
-    undefined,
-    1,
-    undefined,
-    undefined,
-    undefined,
+    undefined, // resumeProviderSessionId
+    1, // protocolVersion
+    undefined, // workspace
+    undefined, // providerStatus
+    sandbox,
     request.model,
   );
   return session.id;
@@ -115,8 +141,9 @@ export class DispatchOnlyPhaseSessions implements ImplementSessionPort {
     this.#manager = options.sessionManager;
   }
 
+  /** The one phase that exists to change files, and so the one that asks for write scope. */
   async run(request: CreateSessionV2Request): Promise<ImplementSessionOutcome> {
-    return { sessionId: startSession(this.#manager, request) };
+    return { sessionId: startSession(this.#manager, request, 'workspace-write') };
   }
 }
 
@@ -150,7 +177,9 @@ export class AwaitedPhaseSessions implements RefineSessionPort, ReviewSessionPor
   }
 
   async #await(request: CreateSessionV2Request): Promise<AwaitedSession> {
-    const sessionId = startSession(this.#manager, request);
+    // Refine and Review both only read: Refine produces a spec, Review produces findings and a
+    // verdict, and neither is allowed to edit the tree it is judging. Pinned rather than inherited.
+    const sessionId = startSession(this.#manager, request, 'read-only');
     const toolsUsed: string[] = [];
     const texts: string[] = [];
     return new Promise<AwaitedSession>((resolve, reject) => {
