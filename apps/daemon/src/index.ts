@@ -221,8 +221,21 @@ async function main() {
   process.on('SIGTERM', () => void shutdown('SIGTERM'));
 }
 
-main().catch(() => {
-  console.error('daemon failed to start');
+main().catch((error: unknown) => {
+  // Say *why*, not just *that*. Every throw reachable from `main()` is daemon-authored and written
+  // to be read by the operator who has to act on it: `assertNoLiveDaemon` names the pid already
+  // holding the discovery file, `ensureSecureRuntimeDir` names the directory and the mode it
+  // refused, `resolveMaxActiveSessions` names the value it rejected, and `app.listen` reports
+  // `EADDRINUSE`. Discarding all of that left "daemon failed to start" as the entire diagnostic --
+  // an operator (and, observed here, an agent driving the daemon) had to bisect the startup path by
+  // hand to recover a message the process already had in its hands.
+  //
+  // The message only, never the stack: a stack is noise on a startup failure whose causes are all
+  // named above, and this runs before any provider session exists, so nothing provider-controlled
+  // (which `run-session.ts` is careful never to decode or log) can reach this string.
+  console.error(
+    `daemon failed to start: ${error instanceof Error ? error.message : String(error)}`,
+  );
   process.exit(1);
 });
 
