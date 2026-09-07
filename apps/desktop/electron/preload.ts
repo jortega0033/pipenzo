@@ -64,6 +64,9 @@ import {
   pipenzoCaptureCapabilityV1Schema,
   pipenzoIdeaDraftRequestV1Schema,
   pipenzoIdeaDraftResultV1Schema,
+  pipenzoTicketReadRequestV1Schema,
+  pipenzoTicketTransitionRequestV1Schema,
+  pipenzoTicketReconciliationV1Schema,
   providerIdSchema,
   type AgentCommandV2,
   type AgentEvent,
@@ -124,6 +127,9 @@ import {
   type PipenzoCaptureCapabilityV1,
   type PipenzoIdeaDraftRequestV1,
   type PipenzoIdeaDraftResultV1,
+  type PipenzoTicketReadRequestV1,
+  type PipenzoTicketTransitionRequestV1,
+  type PipenzoTicketReconciliationV1,
 } from '@agent-dock/shared';
 import type {
   RendererInteraction,
@@ -209,6 +215,9 @@ export interface AgentDockBridge {
   createPipenzoIssue(input: PipenzoIssueCreateRequestV1): Promise<PipenzoIssueCreateResultV1>;
   pipenzoCaptureCapabilities(input: PipenzoCaptureCapabilityRequestV1): Promise<PipenzoCaptureCapabilityV1>;
   draftPipenzoIssue(input: PipenzoIdeaDraftRequestV1): Promise<PipenzoIdeaDraftResultV1>;
+  /** The phase machine's ticket surface (issue #188): the label is authoritative for the lane. */
+  pipenzoTicketRead(input: PipenzoTicketReadRequestV1): Promise<PipenzoTicketReconciliationV1>;
+  pipenzoTicketTransition(input: PipenzoTicketTransitionRequestV1): Promise<PipenzoTicketReconciliationV1>;
   selectAndUploadAttachments(sessionId?: string): Promise<AttachmentMetadataV2[]>;
   validateStructuredOutput(input: StructuredWorkflowRequestV2): Promise<StructuredWorkflowResultV2>;
   createSession(input: CreateSessionInput): Promise<AgentSession>;
@@ -797,6 +806,14 @@ const api: AgentDockBridge = {
   async pipenzoCaptureCapabilities(input) {
     const parsed = pipenzoCaptureCapabilityRequestV1Schema.parse(input);
     return pipenzoCaptureCapabilityV1Schema.parse(await ipcRenderer.invoke('daemon:pipenzo-capabilities', parsed));
+  },
+  async pipenzoTicketRead(input) {
+    const parsed = pipenzoTicketReadRequestV1Schema.parse(input);
+    return pipenzoTicketReconciliationV1Schema.parse(await ipcRenderer.invoke('daemon:pipenzo-ticket-read', parsed));
+  },
+  async pipenzoTicketTransition(input) {
+    const parsed = pipenzoTicketTransitionRequestV1Schema.parse(input);
+    return pipenzoTicketReconciliationV1Schema.parse(await ipcRenderer.invoke('daemon:pipenzo-ticket-transition', parsed));
   },
   async selectAndUploadAttachments(sessionId) {
     const parsedSessionId = sessionId === undefined ? undefined : sessionIdParamSchema.parse({ sessionId }).sessionId;

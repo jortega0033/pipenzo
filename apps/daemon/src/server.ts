@@ -23,6 +23,8 @@ import type { PublishService } from './publish-service.js';
 import { registerPipenzoPublishRoutes } from './routes/pipenzo-publish.js';
 import type { PipenzoPhaseService } from './pipenzo-phase-service.js';
 import { registerPipenzoPhaseRoutes } from './routes/pipenzo-phases.js';
+import type { PipenzoPhaseMachine } from './pipenzo-phase-machine.js';
+import { registerPipenzoTicketRoutes } from './routes/pipenzo-tickets.js';
 
 export interface BuildServerOptions {
   registry: ProviderRegistry;
@@ -46,6 +48,8 @@ export interface BuildServerOptions {
    * rather than routes that fail at call time.
    */
   phaseService?: PipenzoPhaseService;
+  /** Pipenzo's phase machine (issue #188). Optional for the same reason `phaseService` is. */
+  phaseMachine?: PipenzoPhaseMachine;
 }
 
 /**
@@ -125,6 +129,7 @@ export function buildServer(opts: BuildServerOptions): FastifyInstance {
     registerV2AgentWorktreeRoutes(app, opts.subagentStore, opts.worktreeManager);
     if (opts.publishService) registerPipenzoPublishRoutes(app, opts.publishService);
     if (opts.phaseService) registerPipenzoPhaseRoutes(app, opts.phaseService);
+    if (opts.phaseMachine) registerPipenzoTicketRoutes(app, opts.phaseMachine);
     if (opts.attachmentStore)
       registerV2MultimodalRoutes(app, opts.attachmentStore, opts.sessionManager);
   });

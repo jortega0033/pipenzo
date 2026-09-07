@@ -57,6 +57,9 @@ import type {
   PipenzoCaptureCapabilityV1,
   PipenzoIdeaDraftRequestV1,
   PipenzoIdeaDraftResultV1,
+  PipenzoTicketReadRequestV1,
+  PipenzoTicketTransitionRequestV1,
+  PipenzoTicketReconciliationV1,
 } from '@agent-dock/shared';
 import type {
   RendererInteraction,
@@ -174,6 +177,22 @@ export interface AgentDockBridge {
    * filing the draft is a separate `createPipenzoIssue` a human clicks.
    */
   draftPipenzoIssue(input: PipenzoIdeaDraftRequestV1): Promise<PipenzoIdeaDraftResultV1>;
+  /**
+   * Reads a ticket through the phase machine (issue #188): reconciles the local record against
+   * the issue's `pipenzo:` labels before returning it, so what comes back always reflects the
+   * label rather than a possibly-stale local lane.
+   */
+  pipenzoTicketRead(input: PipenzoTicketReadRequestV1): Promise<PipenzoTicketReconciliationV1>;
+  /**
+   * Moves a ticket to a new `pipenzo:` label (issue #188). The label is the authoritative value —
+   * this names the label, not the lane, because several labels share a lane and only the label
+   * says why. GitHub is written first, the local record second; see
+   * `apps/daemon/src/pipenzo-phase-machine.ts`'s module comment for why that order is self-healing
+   * across a crash between the two writes.
+   */
+  pipenzoTicketTransition(
+    input: PipenzoTicketTransitionRequestV1,
+  ): Promise<PipenzoTicketReconciliationV1>;
   selectAndUploadAttachments(sessionId?: string): Promise<AttachmentMetadataV2[]>;
   validateStructuredOutput(input: StructuredWorkflowRequestV2): Promise<StructuredWorkflowResultV2>;
   createSession(input: CreateSessionInput): Promise<AgentSession>;

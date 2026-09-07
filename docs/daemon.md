@@ -107,6 +107,48 @@ dispatch accepted interactive commands through
 and rollback path. The complete v2 route, status, and wire-shape tables live in
 [protocol-v2.md](protocol-v2.md).
 
+## Pipenzo ticket phase machine
+
+`PipenzoPhaseMachine` (`apps/daemon/src/pipenzo-phase-machine.ts`) is a daemon-internal component
+behind two of the routes documented in [protocol-v2.md](protocol-v2.md):
+`POST /v2/pipenzo/tickets/read` and `POST /v2/pipenzo/tickets/transition`. It is the implementation
+of Pipenzo's one precedence rule — **GitHub labels are authoritative for a ticket's lane; the local
+JSON ticket store is authoritative for everything GitHub cannot hold; and when the two disagree,
+the label wins.**
+
+**Write order: GitHub first, the local record second.** A transition looks backwards at first
+glance, because the slow, failure-prone, over-the-network write happens before the fast local one.
+The reason is what a crash between the two writes leaves behind. Label-first means GitHub already
+has the new lane and the local record has the old one — the authoritative side is correct, and the
+next read reconciles the stale local record to it, so the system heals itself. Record-first would
+mean the local record claims a lane GitHub never agreed to; reconciliation would then treat that
+local claim as stale and quietly revert it, undoing completed work. A crash between the two writes
+is not the unlikely case here either: the label write is a network round trip to a rate-limited
+API, which is precisely the step most likely to be interrupted.
+
+**Label-wins reconciliation runs on every read.** Before either route acts, and before a
+transition is validated against the ticket's current lane, the machine re-fetches the issue's
+labels and compares them against the local record. Agreement is a no-op. A disagreement rewrites
+the local lane and label set to match GitHub and reports `lane_reconciled`. An issue carrying more
+than one lane-bearing label resolves to one lane by a fixed precedence that always prefers the lane
+that halts automation (`needs-human` over everything, `ready-for-review` over `working`) and
+reports `ambiguous_labels`, because a person put a second label on that issue and should be told
+the machine had to pick. An issue with no lane-bearing `pipenzo:` label at all keeps the local lane
+rather than clearing it and reports `unlabelled` — an absent label states nothing to reconcile to,
+and clearing the record would turn a human deleting a label into silent data loss on the side that
+holds the worktree, attempt lineage, and budget. A transition is validated against this reconciled
+lane, not the local record's possibly-stale one, so an illegal move can't slip through just because
+the local copy hadn't caught up yet.
+
+**There is deliberately no list route.** A kanban board needs every ticket, and reconciling one
+ticket costs one GitHub read; reconciling a board costs one read per ticket, every time anyone
+opens it, against an API with a quota. The reconciler that makes a list affordable is the polling
+layer with `If-None-Match` conditional requests (build step 4, issue #161), which issue #188
+explicitly puts out of scope. Shipping an unreconciled list route in the meantime would be worse
+than shipping none: it would return lanes that look authoritative and are not, through a surface
+whose entire purpose is that the label wins. See the module comment in
+`apps/daemon/src/routes/pipenzo-tickets.ts` for the full reasoning.
+
 ## Session admission
 
 `POST /sessions` and `POST /v2/sessions` (including resume/fork) share one daemon-wide admission

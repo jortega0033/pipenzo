@@ -84,6 +84,8 @@ provider-control error when the selected provider does not implement the operati
 | `DELETE /v2/attachments/:id`                              |   `204` | Delete one staged attachment                                                    |
 | `POST /v2/attachments/reference`                         |   `200` | Bind staged attachments to an existing session                                  |
 | `POST /v2/workflows/structured/validate`                 |   `200` | Validate caller-supplied output against a bounded JSON Schema                   |
+| `POST /v2/pipenzo/tickets/read`                          |   `200` | Reconcile a Pipenzo ticket against its issue's `pipenzo:` labels (issue #188); see below |
+| `POST /v2/pipenzo/tickets/transition`                    |   `200` | Write a new `pipenzo:` label, then reconcile the same way (issue #188); see below |
 
 MCP inspection withholds environment, header, bearer-token, and URL values, exposing only their
 presence/classification. The current adapter returns configured stdio `command` and `args` values
@@ -96,6 +98,54 @@ contract documented in [capability-security-v2.md](capability-security-v2.md#wor
 untrusted, revoked, or replaced source returns `409 workspace_untrusted` before any Git command
 runs, trust is re-derived from disk immediately before the lease, the mutating Git command, and the
 include-copy phase, and a newly created worktree begins untrusted itself.
+
+**Pipenzo's ticket phase machine** (issue #188) adds the two `/v2/pipenzo/tickets/*` routes above.
+Both address a ticket by `ticketId` and answer with the same shape,
+`PipenzoTicketReconciliationV1`: `{ ticket, divergence, previousLane, observedLabels, changed }`,
+where `ticket` is a `PipenzoTicketViewV1` — the stored ticket record with `worktree.path` removed,
+because a filesystem path is exactly what the worktree routes above are careful never to hand the
+renderer, and a ticket route that returned it verbatim would reopen that boundary through a surface
+nobody thinks of as the worktree surface (see the module comment in `pipenzo-phase-machine-v1.ts`,
+`packages/shared/src`).
+
+- `POST /v2/pipenzo/tickets/read` — body `{ ticketId }`. Reconciles the local record against the
+  issue's `pipenzo:` labels and returns the result. Never writes to GitHub.
+- `POST /v2/pipenzo/tickets/transition` — body `{ ticketId, label }`, where `label` is a
+  lane-bearing `pipenzo:` label. The request names the label rather than the lane: five different
+  labels share the Needs-human lane, so only the label says *why* a ticket needs a human, and
+  naming it keeps the authoritative value the one the caller states (see `pipenzo-phase-machine.ts`,
+  `apps/daemon/src`). GitHub is written first and the local record second — self-healing if the
+  process dies between the two writes, because the next `read()` reconciles the stale local record
+  to what GitHub already has — then the response is the same reconciliation shape the read route
+  returns.
+
+Both routes map their closed `PipenzoTicketErrorCodeV1` union to statuses as follows:
+
+| Status | Code                   | Meaning                                                                        |
+| -----: | ---------------------- | ------------------------------------------------------------------------------- |
+|  `400` | `invalid_request`      | Malformed body, or (transition only) a label that carries no lane               |
+|  `404` | `ticket_not_found`     | No local ticket with that id                                                    |
+|  `404` | `issue_not_found`      | The ticket's GitHub issue does not exist, or is inaccessible                    |
+|  `409` | `illegal_transition`   | The requested label's lane is not reachable from the ticket's current lane      |
+|  `412` | `token_missing`        | No GitHub credential is configured for this daemon                              |
+|  `412` | `invalid_repository`   | The ticket's stored `repo` ref does not parse                                   |
+|  `429` | `github_rate_limited`  | GitHub's API rate limit was hit                                                 |
+|  `502` | `github_unauthorized`  | GitHub rejected the daemon's credential — never mirrored as `401`, see below    |
+|  `502` | `github_forbidden`     | GitHub denied the request for the authenticated identity                        |
+|  `502` | `github_failed`        | Any other GitHub failure: network, invalid response, or an unclassified error   |
+|  `500` | `store_failed`         | The daemon's local ticket store refused the write                               |
+
+GitHub's own `401`/`403` are reported as `502` here, never mirrored: those statuses on this route
+mean the *daemon's own* bearer token was wrong, and an upstream GitHub credential failure wearing
+the same status would send an operator looking in the wrong place. `store_failed` is kept separate
+from `github_failed` for the same kind of reason: by the time `transition()` can hit it, the GitHub
+label write has already succeeded, so reporting a local disk failure as an upstream one would send
+an operator to check their network and their token for what is actually a filesystem problem on the
+daemon's own side — and would hide that the authoritative side has already moved. There is
+deliberately no list
+route on this surface; see the module comment in `routes/pipenzo-tickets.ts`
+(`apps/daemon/src/routes`) for why a board-wide list would cost one GitHub read per ticket on every
+open, on an API with a quota, and why shipping it unreconciled would be worse than not shipping it.
 
 Protocol v2 has no `cancel-all` route. The unversioned v1 endpoint remains a narrow desktop-shutdown
 mechanism. Command dispatch is available only when the frozen selection includes the command's

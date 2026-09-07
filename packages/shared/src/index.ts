@@ -18,4 +18,5 @@ export * from './pipenzo-capture-v1.js';
 export * from './pipenzo-adjudication-v1.js';
 export * from './pipenzo-idea-v1.js';
 export * from './pipenzo-ticket-v1.js';
+export * from './pipenzo-phase-machine-v1.js';
 

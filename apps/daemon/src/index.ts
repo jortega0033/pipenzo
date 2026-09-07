@@ -29,6 +29,7 @@ import {
 } from './pipenzo-phase-sessions.js';
 import { ExecFileGateCommands } from './gate-commands.js';
 import { OctokitGitHubClient } from './github-client.js';
+import { PipenzoPhaseMachine } from './pipenzo-phase-machine.js';
 
 async function settlesWithin(promise: Promise<unknown>, timeoutMs: number): Promise<boolean> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -104,9 +105,8 @@ async function main() {
   // hold (worktree id/path, attempt lineage, budget, risk score, pre-commitment events, poll
   // ETags — README's *Ticket store* section). Constructed here, beside the other durable stores,
   // for the same reason they are: `stateDirectory()` is the one root every durable store hangs off
-  // of, and `tickets-v1` keeps this store's on-disk layout parallel to `sessions-v1`. Nothing reads
-  // from or writes to it yet — the phase machine that will is #188 — so today this only proves the
-  // store loads (or refuses to, and says why) on daemon start.
+  // of, and `tickets-v1` keeps this store's on-disk layout parallel to `sessions-v1`. The phase
+  // machine below (#188) is what reads and writes it.
   const ticketStore = new FileTicketStore(join(durableStateDirectory, 'tickets-v1'));
 
   const sessionRecovery = sessionStore.getRecoveryReport();
@@ -165,6 +165,16 @@ async function main() {
     commands: new ExecFileGateCommands({ probeCwd: durableStateDirectory }),
   });
 
+  // Pipenzo's phase machine (issue #188): README's precedence rule made executable -- GitHub labels
+  // are authoritative for a ticket's lane, the ticket store for everything GitHub cannot hold, and
+  // when the two disagree the label wins. Same GitHub boundary as the phase service above: the
+  // client is built lazily from a token read at call time, so no authenticated client is retained
+  // between requests and nothing in the agent-runtime path holds a reference to it.
+  const phaseMachine = new PipenzoPhaseMachine({
+    tickets: ticketStore,
+    github: () => OctokitGitHubClient.fromEnvironment(),
+  });
+
   const app = buildServer({
     registry,
     sessionManager,
@@ -177,6 +187,7 @@ async function main() {
     attachmentStore,
     publishService,
     phaseService,
+    phaseMachine,
   });
 
   const requestedPort = Number(process.env.AGENT_DOCK_PORT ?? '0');
