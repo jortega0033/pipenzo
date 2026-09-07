@@ -57,16 +57,6 @@ import {
   resolveDaemonGitHubToken,
   type DaemonGitHubTokenSource,
 } from './daemon-environment.js';
-
-/**
- * Substituted by the bundler (see `vite.config.ts`'s electron-main `define`). `false` — refuse the
- * development credential fallback — is the safe answer, so a missing substitution fails closed
- * rather than quietly re-enabling it. See `resolveDaemonGitHubToken` for why `app.isPackaged`
- * alone is not enough.
- */
-declare const __PIPENZO_DEVELOPMENT_BUILD__: boolean | undefined;
-const IS_DEVELOPMENT_BUILD =
-  typeof __PIPENZO_DEVELOPMENT_BUILD__ === 'boolean' ? __PIPENZO_DEVELOPMENT_BUILD__ : false;
 import { resolveWindowIcon } from './resolve-window-icon.js';
 import { sendToRenderer } from './send-to-renderer.js';
 import {
@@ -83,6 +73,16 @@ import {
   resolveOAuthLaunch,
 } from './allowed-external-url.js';
 import { isFromMainWindowFrame } from './ipc-sender-guard.js';
+
+/**
+ * Substituted by the bundler (see `vite.config.ts`'s electron-main `define`). `false` — refuse the
+ * development credential fallback — is the safe answer, so a missing substitution fails closed
+ * rather than quietly re-enabling it. See `resolveDaemonGitHubToken` for why `app.isPackaged`
+ * alone is not enough.
+ */
+declare const __PIPENZO_DEVELOPMENT_BUILD__: boolean | undefined;
+const IS_DEVELOPMENT_BUILD =
+  typeof __PIPENZO_DEVELOPMENT_BUILD__ === 'boolean' ? __PIPENZO_DEVELOPMENT_BUILD__ : false;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -230,17 +230,32 @@ function spawnDaemon(): void {
   daemonChild.stderr?.on('data', (chunk: Buffer) => {
     console.error(`[daemon] ${chunk.toString('utf8').trim()}`);
   });
+  // Spawn itself can fail — a missing entry point, a permissions problem — and an unhandled
+  // `error` on a ChildProcess is a hard crash. Newly reachable at runtime now that a credential
+  // change respawns, rather than only at startup.
+  child.on('error', (error: Error) => {
+    if (daemonChild !== child) return;
+    sendStatus({ state: 'unavailable', error: `daemon could not be started: ${error.message}` });
+  });
+
   child.on('exit', (code, signal) => {
     const wasReady = client !== undefined;
     const wasAwaitingRespawn = respawnAfterExit === child;
     if (wasAwaitingRespawn) respawnAfterExit = undefined;
-    client = undefined;
-    // Only if this is still the current child: a slow-exiting predecessor must not blank out the
-    // handle to the daemon that has already replaced it.
-    if (daemonChild === child) daemonChild = undefined;
-    // Teardown runs unconditionally now that a restart can be deliberate: every collection below is
-    // empty on a daemon that never became ready, so clearing them costs nothing, and skipping them
-    // on a restart path would leak an aborted stream's controller into the next daemon's lifetime.
+    // Both handles are guarded by the same identity check, for the same reason: a slow-exiting
+    // predecessor must not blank out the client or the handle belonging to the daemon that has
+    // already replaced it.
+    const isCurrent = daemonChild === child;
+    if (isCurrent) {
+      client = undefined;
+      daemonChild = undefined;
+    }
+    // Teardown is for *this* child's state. It runs whether or not the daemon ever became ready —
+    // every collection below is empty in that case, so clearing costs nothing, and skipping it on
+    // a restart path would leak an aborted stream's controller into the next daemon's lifetime —
+    // but never for a child that has already been replaced, whose collections now belong to its
+    // successor.
+    if (!isCurrent) return;
     for (const controller of streamAborts.values()) controller.abort();
     streamAborts.clear();
     activeSessionIds.clear();
@@ -276,7 +291,8 @@ function spawnDaemon(): void {
     });
   });
 
-  waitForDaemonReady(spawnedAt).catch((err: Error) => {
+  waitForDaemonReady(child, spawnedAt).catch((err: Error) => {
+    if (daemonChild !== child) return; // a replacement is already reporting for itself
     sendStatus({ state: 'unavailable', error: `daemon failed to start: ${err.message}` });
   });
 }
@@ -330,11 +346,26 @@ function forwardInteractiveEvent(event: AgentEventV2Envelope): void {
   }
 }
 
-async function waitForDaemonReady(spawnedAt: number, timeoutMs = 15_000): Promise<void> {
+/**
+ * Polls the discovery file until the daemon answers, then adopts it as the live client.
+ *
+ * Takes the `child` it is waiting for, and stops the moment that child stops being the current one.
+ * Without that, a credential-change restart landing before the first daemon became ready would
+ * leave this loop polling for a dead process all the way to its own deadline — and then reporting
+ * `unavailable` *after* the replacement had already reported `ready`, leaving the UI wrongly
+ * broken. It could also adopt a discovery file the new daemon had just written, as the old child's
+ * client.
+ */
+async function waitForDaemonReady(
+  child: ChildProcess,
+  spawnedAt: number,
+  timeoutMs = 15_000,
+): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   const file = discoveryFilePath();
 
   while (Date.now() < deadline) {
+    if (daemonChild !== child) return; // superseded; the current child has its own waiter
     if (existsSync(file) && statSync(file).mtimeMs >= spawnedAt - 1000) {
       try {
         const parsed = JSON.parse(readFileSync(file, 'utf8')) as { port: number; token: string };
@@ -345,6 +376,8 @@ async function waitForDaemonReady(spawnedAt: number, timeoutMs = 15_000): Promis
         // health() also verifies protocol compatibility (see @agent-dock/client); this doubles
         // as both the readiness check and the version-compatibility check in one call.
         await candidate.health();
+        // Re-checked after the await: the restart could have landed while `health()` was in flight.
+        if (daemonChild !== child) return;
         client = candidate;
         // Subscribed once here rather than on a renderer request: the board must not miss a
         // transition that happens between the daemon coming up and a window being opened.
@@ -846,12 +879,18 @@ function gitHubConnectionStatus(): PipenzoGitHubConnectionV1 {
 /**
  * Restarts the daemon so it picks up a changed credential.
  *
- * The daemon reads its GitHub token from the environment it was spawned with, and that is on
- * purpose: the alternative — a daemon route that accepts a credential at runtime — would put a
- * credential-writing endpoint inside the exact process the publish boundary rests on, reachable by
- * anything holding the local bearer token. A process restart has no such surface. It is also
- * cheap at the only moment it happens: connecting or disconnecting GitHub is a pre-app action,
- * before any ticket is running.
+ * The daemon is handed its GitHub token once, on stdin at spawn, and that is on purpose: the
+ * alternative — a daemon route that accepts a credential at runtime — would put a credential-
+ * writing endpoint inside the exact process the publish boundary rests on, reachable by anything
+ * holding the local bearer token. A process restart has no such surface.
+ *
+ * **A credential change hard-cancels running work, and does not go through `killDaemon`'s graceful
+ * path.** `child.kill()` is SIGTERM on POSIX but maps to `TerminateProcess` on Windows — the
+ * platform this app packages for — so the bounded HTTP `sessions.cancelAll` that `killDaemon`
+ * exists to perform does not happen here. Provider trees are still reaped by the Job Object host,
+ * but in-flight sessions die uncancelled. That is acceptable because connecting or disconnecting
+ * GitHub is a pre-app action taken before any ticket is running; it would not be if this were ever
+ * reachable mid-run.
  */
 function restartDaemonForCredentialChange(): void {
   // A restart during shutdown is how an orphaned, credential-holding daemon outlives the app.
@@ -869,7 +908,7 @@ function restartDaemonForCredentialChange(): void {
   respawnAfterExit = child;
   sendStatus({ state: 'connecting' });
   child.kill();
-  // The daemon handles SIGTERM with a graceful shutdown that cancels in-flight sessions, so it can
+  // On POSIX the daemon handles SIGTERM with a graceful shutdown of its own, so exiting can
   // legitimately take seconds. If it takes far longer than that it is wedged, and waiting forever
   // would leave the UI stuck on `connecting` with the *old* credential still serving requests.
   const hardStop = setTimeout(() => {

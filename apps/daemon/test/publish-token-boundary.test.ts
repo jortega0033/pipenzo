@@ -120,8 +120,9 @@ describe('the GitHub token never reaches a provider subprocess', () => {
   it('is never written back into the daemon\u2019s own environment once injected', async () => {
     const source = await readFile(join(daemonSrc, 'github-credential.ts'), 'utf8');
     const code = stripComments(source);
-    expect(code).not.toMatch(/process\.env\[[^\]]*\]\s*=/);
-    expect(code).not.toMatch(/process\.env\.\w+\s*=/);
+    // `=(?!=)` so an ordinary comparison is not mistaken for an assignment.
+    expect(code).not.toMatch(/process\.env\[[^\]]*\]\s*=(?!=)/);
+    expect(code).not.toMatch(/process\.env\.\w+\s*=(?!=)/);
     // Sanity: the module being scanned is the one that actually holds the credential.
     expect(code).toMatch(/class DaemonGitHubCredential/);
   });

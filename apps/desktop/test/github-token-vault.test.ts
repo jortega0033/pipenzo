@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -95,6 +95,27 @@ describe('GitHubTokenVault', () => {
     expect(() => vaultWith().clear()).not.toThrow();
   });
 
+  /**
+   * A crash between the write and the rename leaves a temporary file holding a full ciphertext
+   * copy, and nothing else in the app would ever remove it. Both `store()` and `clear()` sweep.
+   */
+  it('sweeps ciphertext left behind by a crashed write', () => {
+    const stale = join(directory, `${GITHUB_TOKEN_VAULT_FILE}.deadbeefdeadbeef.tmp`);
+    const unrelated = join(directory, 'something-else.json');
+    writeFileSync(stale, 'a leftover ciphertext', 'utf8');
+    writeFileSync(unrelated, 'not ours', 'utf8');
+
+    vaultWith().store({ token: TOKEN, login: 'jortega0033' });
+
+    expect(readdirSync(directory).filter((name) => name.endsWith('.tmp'))).toEqual([]);
+    // Only this vault's own leftovers, never a neighbour's file.
+    expect(readdirSync(directory)).toContain('something-else.json');
+
+    writeFileSync(stale, 'another leftover', 'utf8');
+    vaultWith().clear();
+    expect(readdirSync(directory).filter((name) => name.endsWith('.tmp'))).toEqual([]);
+  });
+
   it('replaces a stored token rather than accumulating records', () => {
     const vault = vaultWith();
     vault.store({ token: TOKEN, login: 'jortega0033' });
@@ -141,11 +162,49 @@ describe('GitHubTokenVault', () => {
     });
 
     it('but accepts a real Linux keyring backend', () => {
+      for (const backend of ['gnome_libsecret', 'kwallet', 'kwallet5', 'kwallet6']) {
+        const vault = vaultWith(
+          fakeSafeStorage({ getSelectedStorageBackend: () => backend }),
+          'linux',
+        );
+        expect(vault.store({ token: TOKEN, login: 'jortega0033' }).state).toBe('connected');
+        vault.clear();
+      }
+    });
+
+    /**
+     * The whole reason the check is an allowlist rather than a denylist on `basic_text`. `unknown`
+     * means Electron could not identify the backend — an accessor that exists and is telling us it
+     * does not know, which is not a credential store to claim protection from.
+     */
+    it('refuses a backend Electron cannot identify, and any name it does not vouch for', () => {
+      for (const backend of ['unknown', 'basic_text', 'some_future_backend', '']) {
+        const vault = vaultWith(
+          fakeSafeStorage({ getSelectedStorageBackend: () => backend }),
+          'linux',
+        );
+        expect(vault.status()).toEqual({ state: 'unavailable', reason: 'plaintext_backend' });
+        expect(catchError(() => vault.store({ token: TOKEN, login: 'jortega0033' }))).toBeInstanceOf(
+          GitHubTokenVaultError,
+        );
+      }
+    });
+
+    /**
+     * The macOS Keychain case the round-trip check exists for: encryption *succeeds* and decryption
+     * returns something else, rather than throwing. Without the check the user would be told
+     * "connected as X" — `status()` never decrypts — while the daemon ran with no credential.
+     */
+    it('refuses to store when the round trip comes back different rather than failing', () => {
       const vault = vaultWith(
-        fakeSafeStorage({ getSelectedStorageBackend: () => 'gnome_libsecret' }),
-        'linux',
+        fakeSafeStorage({ decryptString: () => fakeToken('aDifferentValueEntirely1') }),
       );
-      expect(vault.store({ token: TOKEN, login: 'jortega0033' }).state).toBe('connected');
+      const error = catchError(() => vault.store({ token: TOKEN, login: 'jortega0033' }));
+
+      expect((error as GitHubTokenVaultError).code).toBe('write_failed');
+      expect((error as Error).message).not.toContain(TOKEN);
+      expect(vault.status()).toEqual({ state: 'disconnected' });
+      expect(() => readFileSync(join(directory, GITHUB_TOKEN_VAULT_FILE))).toThrow();
     });
 
     /**
@@ -230,6 +289,29 @@ describe('GitHubTokenVault', () => {
      * The file is writable by anyone who is already this OS user, and its decrypted contents become
      * an environment variable. A value that does not look like a token is not handed onward.
      */
+    /**
+     * A `storedAt` this vault accepts but the wire contract does not would make
+     * `pipenzo:github-connection` throw in the preload on every call, permanently, instead of
+     * degrading to `unreadable` and offering a reconnect. The file is writable by anything running
+     * as this user, so it is re-validated on the way in rather than trusted.
+     */
+    it('refuses a timestamp the connection contract would reject', () => {
+      for (const storedAt of ['2026-09-07', 'yesterday', '2026-09-07T00:00:00', '']) {
+        write(
+          JSON.stringify({ schemaVersion: 1, ciphertext: 'v1:x', login: 'jortega0033', storedAt }),
+        );
+        expect(vaultWith().status()).toEqual({ state: 'unavailable', reason: 'unreadable' });
+      }
+      // And the one the vault itself writes round-trips, which is what makes the rule safe.
+      const vault = vaultWith();
+      vault.store({ token: TOKEN, login: 'jortega0033' });
+      const status = vault.status();
+      expect(status.state).toBe('connected');
+      expect(new Date((status as { storedAt: string }).storedAt).toISOString()).toBe(
+        (status as { storedAt: string }).storedAt,
+      );
+    });
+
     it('refuses a decrypted value that is not token-shaped', () => {
       const storage = fakeSafeStorage({ decryptString: () => 'has a space in it' });
       vaultWith().store({ token: TOKEN, login: 'jortega0033' });

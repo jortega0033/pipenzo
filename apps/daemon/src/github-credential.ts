@@ -17,11 +17,26 @@ import { GitHubClientError, resolveGitHubToken } from './github-client.js';
  * `/proc/<pid>/environ` is the copy made at `exec` and `unsetenv` never touches it.
  *
  * So the credential arrives over **stdin**, once, at startup, and is held in a module-private
- * field. A pipe between two processes is not a third process's to read, and a heap value has no
- * well-known address the way an environment block does. It is not absolute — anything running as
- * this user could still attach a debugger — but on Linux the default `yama` policy already stops a
- * child from `ptrace`ing its parent, so the trivially-scriptable path is closed rather than merely
- * discouraged.
+ * field. A pipe between two processes is not a third process's to read.
+ *
+ * ## Exactly what that buys, per platform, because it is not the same everywhere
+ *
+ * The mechanism is **not** "a heap value is hard to find" — `/proc/<pid>/maps` hands out addresses.
+ * It is that reading a process's environment and reading its memory require different permissions:
+ *
+ * - **Linux.** `/proc/<pid>/environ` needs only `PTRACE_MODE_READ`, which Yama does not gate;
+ *   `/proc/<pid>/mem` needs `PTRACE_MODE_ATTACH`, which it does. Where
+ *   `kernel.yama.ptrace_scope >= 1` (the Debian/Ubuntu default, though the kernel's own default is
+ *   `0` and Fedora/Arch/RHEL commonly leave it there) a child cannot attach to its parent at all.
+ *   This is the platform where the change turns a one-line `cat` into something that may be
+ *   impossible.
+ * - **macOS.** `sysctl kern.procargs2` reads another process's environment; reading its memory
+ *   needs `task_for_pid`, which is restricted. Same shape of improvement.
+ * - **Windows.** Reading another same-user process's PEB environment block and reading its heap are
+ *   the *same* operation — `OpenProcess(PROCESS_VM_READ | PROCESS_QUERY_INFORMATION)` plus
+ *   `ReadProcessMemory`, with no debug privilege needed at equal integrity. Moving the token out of
+ *   the environment buys **nothing** here. It is defence in depth, not a boundary, and saying
+ *   otherwise would be the kind of claim this codebase is supposed to refuse to make.
  *
  * ## The environment path still exists, and is still correct, for one caller
  *
@@ -55,12 +70,16 @@ export interface DaemonCredentialMessageV1 {
 }
 
 /**
- * The same shape rule the vault applies before storing: printable, non-whitespace, bounded.
+ * The same shape rule the vault and the sender apply — printable, non-whitespace, at least 20
+ * characters (every GitHub token format is at least 36), bounded at 512.
  *
- * Re-checked on arrival rather than trusted from the sender. The value is about to be used as an
- * HTTP `Authorization` header, and a header value containing a newline is request splitting.
+ * Deliberately identical to `daemon-environment.ts`'s and the vault's rather than looser: the rule
+ * that decides what this process actually *uses* must not be the most permissive of the three, or
+ * the strictness upstream is decoration. Re-checked on arrival rather than trusted from the sender
+ * because the value is about to become an HTTP `Authorization` header, and a header value
+ * containing a newline is request splitting.
  */
-const TOKEN_PATTERN = /^[\x21-\x7e]{8,512}$/;
+const TOKEN_PATTERN = /^[\x21-\x7e]{20,512}$/;
 
 export function isTokenShaped(value: unknown): value is string {
   return typeof value === 'string' && TOKEN_PATTERN.test(value);
@@ -109,8 +128,13 @@ export function readCredentialMessage(
       stream.removeListener('data', onData);
       stream.removeListener('end', finish);
       stream.removeListener('error', finish);
-      // Nothing else is ever sent on this stream, and a listening stdin keeps the event loop alive.
+      // Nothing else is ever sent on this stream, and a stdin the loop is still watching keeps the
+      // process alive. `pause()` alone does not achieve that: on Windows `uv_read_stop` on a pipe
+      // leaves the pending overlapped read holding the handle active, so a paused-but-not-unrefed
+      // stdin still blocks exit for as long as the writer keeps its end open. Measured, not
+      // assumed — `pause()` alone never exits; `unref()` exits in ~400ms.
       stream.pause();
+      (stream as NodeJS.ReadableStream & { unref?: () => void }).unref?.();
       resolve(Buffer.concat(chunks).toString('utf8'));
     };
     const onData = (chunk: Buffer | string): void => {

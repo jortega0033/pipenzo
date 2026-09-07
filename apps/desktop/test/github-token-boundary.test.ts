@@ -97,19 +97,19 @@ describe('the plaintext is produced once, and delivered over a pipe', () => {
    * The property the whole redesign turns on. If the credential is ever put back into the daemon's
    * environment, a provider subprocess can read it out of its own parent and no allowlist helps.
    */
-  it('cannot put a credential in the daemon environment, because there is no parameter for one', () => {
+  it('puts no credential-shaped variable in the daemon environment except the marker', () => {
     const env = buildDaemonEnvironment(
       { PATH: '/usr/bin' },
       { appId: 'pipenzo', credentialOnStdin: true },
     );
-    // The marker says a message is coming. The message is not here.
+    // The marker says a message is coming. The message is not here. Asserted as an exact list
+    // rather than "at least one such key exists", which would stay green if the token variable were
+    // put straight back alongside it.
+    expect(Object.keys(env).filter((key) => /token|credential|secret/i.test(key))).toEqual([
+      CREDENTIAL_ON_STDIN_ENV_KEY,
+    ]);
     expect(env[CREDENTIAL_ON_STDIN_ENV_KEY]).toBe('1');
     expect(env[DAEMON_GITHUB_TOKEN_ENV_KEY]).toBeUndefined();
-    expect(Object.keys(env).some((key) => /token|credential|secret/i.test(key))).toBe(
-      // The marker is the only match, and it carries no value of its own.
-      true,
-    );
-    expect(Object.values(env)).not.toContain(undefined);
   });
 
   it('writes the credential to the child’s stdin and closes it', async () => {
@@ -168,9 +168,10 @@ describe('the plaintext is produced once, and delivered over a pipe', () => {
     );
     expect(credential).toContain(`'${CREDENTIAL_ON_STDIN_ENV_KEY}'`);
     // The injected credential is never written back into the process environment, which would undo
-    // the entire point by putting it somewhere a child can read.
-    expect(credential).not.toMatch(/process\.env\[[^\]]*\]\s*=/);
-    expect(credential).not.toMatch(/process\.env\.\w+\s*=/);
+    // the entire point by putting it somewhere a child can read. `=(?!=)` so an ordinary
+    // comparison (`process.env.X === '1'`) is not mistaken for an assignment.
+    expect(credential).not.toMatch(/process\.env\[[^\]]*\]\s*=(?!=)/);
+    expect(credential).not.toMatch(/process\.env\.\w+\s*=(?!=)/);
   });
 });
 
@@ -338,14 +339,19 @@ describe('which credential the daemon runs on is decided once, and named', () =>
     ).toEqual({ token: undefined, source: 'none' });
   });
 
-  /** Both gates are read in main, not just the filename-derived one. */
+  /**
+   * Both gates are read in main, not just the filename-derived one. That the *fallback* fails
+   * closed when the substitution is missing is asserted behaviourally above
+   * ("ignores the environment when the build-time development flag is false"); all this checks is
+   * that main actually feeds both inputs in, which no unit test of a pure function can see.
+   */
   it('is called by main with both gates', async () => {
     const main = await readElectron('main.ts');
     expect(main).toMatch(/isPackaged:\s*app\.isPackaged/);
     expect(main).toMatch(/isDevelopmentBuild:\s*IS_DEVELOPMENT_BUILD/);
-    // And a missing bundler substitution fails closed.
-    expect(main).toMatch(/typeof __PIPENZO_DEVELOPMENT_BUILD__ === 'boolean'/);
-    expect(main).toMatch(/:\s*false;?\s*$/m);
+    expect(main).toMatch(
+      /typeof __PIPENZO_DEVELOPMENT_BUILD__ === 'boolean'\s*\?\s*__PIPENZO_DEVELOPMENT_BUILD__\s*:\s*false/,
+    );
   });
 });
 
@@ -408,9 +414,17 @@ describe('nothing on the renderer bridge can obtain the token', () => {
     const main = await readElectron('main.ts');
     expect(main).toMatch(/const wasStoringSomething = tokenVault\.status\(\)\.state !== 'disconnected'/);
     expect(main).toMatch(/if \(wasStoringSomething\) restartDaemonForCredentialChange\(\)/);
-    // And a restart already in flight is not restarted again.
-    expect(main).toMatch(/if \(credentialRestartPending\) return;/);
+
+    // The next two guards are scoped to the restart function's own body. `if (isQuitting) return;`
+    // also appears in the window-close handler, so a whole-file match would stay green with the
+    // guard deleted from exactly the place it matters.
+    const start = main.indexOf('function restartDaemonForCredentialChange');
+    expect(start).toBeGreaterThan(-1);
+    const body = main.slice(start, main.indexOf('\n}', start));
+    // A restart already in flight is not restarted again — an unbounded restart loop is a
+    // renderer-reachable way to terminate every running session.
+    expect(body).toMatch(/if \(credentialRestartPending\) return;/);
     // Nor is one started while the app is shutting down, which is how a daemon is orphaned.
-    expect(main).toMatch(/if \(isQuitting\) return;/);
+    expect(body).toMatch(/if \(isQuitting\) return;/);
   });
 });

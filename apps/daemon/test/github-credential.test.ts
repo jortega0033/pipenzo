@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import { Readable } from 'node:stream';
 import { describe, expect, it } from 'vitest';
 import {
@@ -165,4 +166,87 @@ describe('DaemonGitHubCredential', () => {
     expect(DaemonGitHubCredential.withToken('short').injected).toBe(false);
     expect(DaemonGitHubCredential.withToken(TOKEN).resolve({})).toBe(TOKEN);
   });
+});
+
+/**
+ * The one property none of the tests above can reach.
+ *
+ * Every case so far feeds a `Readable.from(...)` or a hand-rolled stream, which is a JavaScript
+ * object — it never exercises the reader against a real libuv pipe handle, and that is exactly
+ * where the only real hazard lives: a stdin the event loop is still watching keeps the process
+ * alive, and `pause()` alone does not release it on Windows. A unit test cannot observe that. A
+ * child process either exits or it does not.
+ */
+describe('over a real pipe, which is the only thing that proves the handoff', () => {
+  // A `file:` URL, not a path: `import()` of a bare `D:\…` is `ERR_UNSUPPORTED_ESM_URL_SCHEME`.
+  const READER = `
+    const { DaemonGitHubCredential } = await import(${JSON.stringify(
+      new URL('../src/github-credential.ts', import.meta.url).href,
+    )});
+    const credential = await DaemonGitHubCredential.fromStartup({ stdin: process.stdin });
+    process.stdout.write(JSON.stringify({ injected: credential.injected, token: credential.tryResolve({}) }));
+  `;
+
+  function runReader(
+    write: (stdin: NodeJS.WritableStream) => void,
+    env: Record<string, string>,
+  ): Promise<{ stdout: string; exited: boolean }> {
+    return new Promise((resolve, reject) => {
+      const child = spawn(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', READER], {
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: { ...process.env, ...env },
+        windowsHide: true,
+      });
+      let stdout = '';
+      let stderr = '';
+      child.stdout.on('data', (chunk: Buffer) => (stdout += chunk.toString('utf8')));
+      child.stderr.on('data', (chunk: Buffer) => (stderr += chunk.toString('utf8')));
+      // The point of the test: the child must exit on its own once it has read the message. A
+      // reader that leaves stdin watched would sit here until this timer fires.
+      const timer = setTimeout(() => {
+        child.kill('SIGKILL');
+        resolve({ stdout, exited: false });
+      }, 20_000);
+      child.on('error', reject);
+      child.on('exit', (code) => {
+        clearTimeout(timer);
+        if (code !== 0) {
+          reject(new Error(`reader exited ${String(code)}: ${stderr.slice(0, 2_000)}`));
+          return;
+        }
+        resolve({ stdout, exited: true });
+      });
+      write(child.stdin);
+    });
+  }
+
+  it('receives the token and then lets the process exit', async () => {
+    const result = await runReader(
+      (stdin) => stdin.end(`${JSON.stringify({ githubToken: TOKEN })}\n`, 'utf8'),
+      { PIPENZO_CREDENTIAL_ON_STDIN: '1' },
+    );
+    expect(result.exited).toBe(true);
+    expect(JSON.parse(result.stdout)).toEqual({ injected: true, token: TOKEN });
+  }, 30_000);
+
+  /**
+   * The harder half: the parent writes the line but leaves the pipe **open**. The reader settles on
+   * the newline rather than on EOF, and must then release the handle so the process can still exit.
+   * With `pause()` alone and no `unref()`, this hangs.
+   */
+  it('exits even when the writer never closes the pipe', async () => {
+    const result = await runReader(
+      (stdin) => stdin.write(`${JSON.stringify({ githubToken: TOKEN })}\n`, 'utf8'),
+      { PIPENZO_CREDENTIAL_ON_STDIN: '1' },
+    );
+    expect(result.exited).toBe(true);
+    expect(JSON.parse(result.stdout)).toEqual({ injected: true, token: TOKEN });
+  }, 30_000);
+
+  /** And without the marker it must not read, or touch, a stdin it does not own. */
+  it('ignores an open stdin entirely when the marker is absent', async () => {
+    const result = await runReader(() => {}, { PIPENZO_CREDENTIAL_ON_STDIN: '' });
+    expect(result.exited).toBe(true);
+    expect(JSON.parse(result.stdout)).toEqual({ injected: false });
+  }, 30_000);
 });

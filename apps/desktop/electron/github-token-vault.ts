@@ -10,7 +10,7 @@ import {
   readdirSync,
   renameSync,
   rmSync,
-  writeSync,
+  writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
 
@@ -42,9 +42,13 @@ import { join } from 'node:path';
  *    is public knowledge. Files written that way are obfuscated, not encrypted, and treating them
  *    as encrypted is precisely the "silently store plaintext" failure this ticket must not have.
  *
- * Both are refused. `store()` throws `GitHubTokenVaultError` and writes nothing; the connect flow
- * surfaces that rather than pretending the token was protected. A user on such a machine gets a
- * clear "this machine has no OS credential store" instead of a file they believe is safe.
+ * Both are refused: `store()` throws `GitHubTokenVaultError` and writes nothing, so a user on such
+ * a machine gets a clear "this machine has no OS credential store" instead of a file they believe
+ * is safe. The second refusal depends on `getSelectedStorageBackend()`, which every Electron this
+ * app builds against has; on a hypothetical Linux build whose Electron lacks the accessor entirely
+ * the vault falls back to trusting `isEncryptionAvailable()`, which would say yes to `basic_text`.
+ * See `encryptionAvailability()` for why that fallback is still the better answer than refusing
+ * the whole platform.
  *
  * ## What is deliberately *not* encrypted
  *
@@ -69,6 +73,16 @@ import { join } from 'node:path';
  * is a credential that expires: a GitHub App installation token or an OAuth token with refresh,
  * rather than a long-lived `repo` PAT. That is a decision for the device-flow ticket (#114), and it
  * is recorded here so it is a choice rather than an oversight.
+ *
+ * ## Nothing calls `store()` yet, and that has a consequence worth naming
+ *
+ * The device-code flow that will (#114) is not built. Until it is, a **packaged** build has no way
+ * to obtain a credential at all — `resolveDaemonGitHubToken` can only answer
+ * `{ token: undefined, source: 'none' }` there, and every GitHub call fails `token_missing`. That
+ * is the intended end state of this ticket rather than a regression to fix here (a packaged build
+ * silently inheriting the launching shell's PAT is exactly what it set out to stop), but it does
+ * mean **#114 has to land before a packaged build is useful**, and packaging is its own epic (#8).
+ * Development builds are unaffected: they still read `PIPENZO_GITHUB_TOKEN`.
  */
 
 /** The file name under the vault directory. Versioned so a future format change is a new name. */
@@ -169,6 +183,20 @@ function assertToken(token: string): void {
       'a GitHub token must be 20-512 printable, non-whitespace characters',
     );
   }
+}
+
+/**
+ * Exactly the timestamp shape the wire contract accepts, not merely one `Date.parse` will take.
+ *
+ * The looser check let a hand-edited `"storedAt": "2026-09-07"` read back as `connected` here and
+ * then fail `pipenzoGitHubConnectionV1Schema.parse` in the preload — so the connection channel
+ * would throw on every call, permanently, instead of degrading to `unreadable` and offering a
+ * reconnect. This file is writable by anything running as this user, which is the whole reason it
+ * is re-validated on the way in rather than trusted.
+ */
+function isIsoTimestamp(value: string): boolean {
+  const parsed = new Date(value);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString() === value;
 }
 
 /** Constant-time, so verifying the round trip is not itself a timing oracle on the token. */
@@ -304,7 +332,10 @@ export class GitHubTokenVault {
     try {
       const handle = openSync(temporaryPath, 'wx', 0o600);
       try {
-        writeSync(handle, JSON.stringify(record), null, 'utf8');
+        // `writeFileSync` on the fd, not `writeSync`: a bare `writeSync` returns a byte count and
+        // does not guarantee it wrote everything, so a short write would publish a truncated
+        // record that reads back as `unreadable`.
+        writeFileSync(handle, JSON.stringify(record), 'utf8');
         // Durability before the rename, not after: without it a crash can publish a zero-length
         // file over a perfectly good record, and the user's only symptom is having to reconnect.
         fsyncSync(handle);
@@ -312,9 +343,11 @@ export class GitHubTokenVault {
         closeSync(handle);
       }
       // `open`'s mode is masked by umask and ignored where the file already exists; an explicit
-      // chmod is what actually guarantees the mode on every platform that has one.
+      // chmod is what actually guarantees the mode on the platforms that have one. (On Windows it
+      // only toggles the read-only bit — the real protection there is the user-profile ACL.)
       chmodSync(temporaryPath, 0o600);
       renameSync(temporaryPath, this.#path);
+      this.#syncDirectory();
     } catch (error) {
       try {
         rmSync(temporaryPath, { force: true });
@@ -343,6 +376,32 @@ export class GitHubTokenVault {
   clear(): void {
     rmSync(this.#path, { force: true });
     this.#sweepTemporaryFiles();
+  }
+
+  /**
+   * Makes the rename itself durable.
+   *
+   * `fsync` on the file only guarantees its *contents*; the directory entry that publishes the new
+   * name is a separate write, and without this a crash can leave the old record — or no record —
+   * despite a successful `renameSync`. POSIX only: Windows cannot `open` a directory, and NTFS
+   * journals the metadata anyway, so failing here is expected rather than a problem.
+   */
+  #syncDirectory(): void {
+    let handle: number | undefined;
+    try {
+      handle = openSync(this.#directory, 'r');
+      fsyncSync(handle);
+    } catch {
+      // Windows, or a filesystem that will not fsync a directory. Nothing to do and nothing lost.
+    } finally {
+      if (handle !== undefined) {
+        try {
+          closeSync(handle);
+        } catch {
+          // Already closed, or never really opened.
+        }
+      }
+    }
   }
 
   /** Removes crashed-write leftovers. Each one holds a ciphertext copy nothing else would clean. */
@@ -427,7 +486,7 @@ export class GitHubTokenVault {
       typeof record.login !== 'string' ||
       !LOGIN_PATTERN.test(record.login) ||
       typeof record.storedAt !== 'string' ||
-      !Number.isFinite(Date.parse(record.storedAt))
+      !isIsoTimestamp(record.storedAt)
     ) {
       return 'unreadable';
     }
