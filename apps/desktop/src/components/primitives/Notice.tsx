@@ -32,7 +32,13 @@ export function Notice({
   tone?: NoticeTone;
   quiet?: boolean;
   icon: IconName;
-  title?: string;
+  /**
+   * `ReactNode` rather than `string`: the canvas's own notice titles carry inline markup — Connect's
+   * scope disclosure is literally `Pipenzo asks for the <span class="mono">repo</span> scope on
+   * private repositories`, and a plain string would force that word to lose the mono face that
+   * marks it as the literal name of a GitHub scope rather than an English word.
+   */
+  title?: ReactNode;
   children?: ReactNode;
   actions?: NoticeAction[];
   onDismiss?: () => void;

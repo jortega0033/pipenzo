@@ -86,6 +86,12 @@ export function installAssetCaptureBridge(): void {
       source: 'vault' as const,
     }),
     disconnectGitHub: async () => { throw new Error('disconnecting GitHub is not available while capturing assets'); },
+    // Asset capture reports a stored credential above, so the connect flow never renders. Refusing
+    // rather than returning a plausible fixture keeps a device code out of any screenshot.
+    startGitHubDeviceFlow: async () => { throw new Error('signing in to GitHub is not available while capturing assets'); },
+    openGitHubDeviceVerification: async () => { throw new Error('signing in to GitHub is not available while capturing assets'); },
+    cancelGitHubDeviceFlow: async () => {},
+    onGitHubDeviceOutcome: () => () => {},
     selectAndUploadAttachments: async () => [],
     validateStructuredOutput: async (input) => ({ valid: true, normalizedOutput: input.output, errors: [] }),
     createSession: async () => {

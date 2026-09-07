@@ -16,6 +16,10 @@ function realBridge(connection: PipenzoGitHubConnectionV1 = CONNECTED): AgentDoc
   return {
     pipenzoGitHubConnection: vi.fn().mockResolvedValue(connection),
     disconnectGitHub: vi.fn().mockResolvedValue(connection),
+    startGitHubDeviceFlow: vi.fn(),
+    openGitHubDeviceVerification: vi.fn().mockResolvedValue(undefined),
+    cancelGitHubDeviceFlow: vi.fn().mockResolvedValue(undefined),
+    onGitHubDeviceOutcome: vi.fn(() => () => {}),
     getDaemonStatus: vi.fn().mockResolvedValue({ state: 'ready' } satisfies DaemonStatus),
     onDaemonStatus: vi.fn().mockReturnValue(() => {}),
     listProviders: vi.fn().mockResolvedValue([]),

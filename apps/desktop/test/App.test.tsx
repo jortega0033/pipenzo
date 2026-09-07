@@ -175,6 +175,10 @@ function installBridge(overrides: Partial<AgentDockBridge> = {}): {
       source: 'vault',
     } satisfies PipenzoGitHubConnectionV1),
     disconnectGitHub: vi.fn(),
+    startGitHubDeviceFlow: vi.fn(),
+    openGitHubDeviceVerification: vi.fn().mockResolvedValue(undefined),
+    cancelGitHubDeviceFlow: vi.fn().mockResolvedValue(undefined),
+    onGitHubDeviceOutcome: vi.fn(() => () => {}),
     selectAndUploadAttachments: vi.fn().mockResolvedValue([]),
     validateStructuredOutput: vi.fn().mockImplementation(async (input) => ({
       valid: true,

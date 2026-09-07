@@ -363,10 +363,74 @@ describe('nothing on the renderer bridge can obtain the token', () => {
     const credentialChannels = channels.filter((channel) =>
       /github|credential/i.test(channel ?? ''),
     );
+    // An exact list, so a new credential-adjacent channel cannot appear without someone editing
+    // this line and saying why. The four that exist, and what each is allowed to carry:
+    //
+    // - `github-connection`  — the vault's *state*. No token field exists in its schema at any
+    //   depth, which the contract test below enforces separately.
+    // - `disconnect-github`  — no payload at all. Only forgets.
+    // - `github-device-start` — a `user_code`, which is the pairing string a human is meant to read
+    //   out. Never the `device_code`, which for the length of the flow is as good as the token.
+    // - `github-device-cancel` / `-open-verification` — no payload in either direction.
     expect(credentialChannels.sort()).toEqual([
       'pipenzo:disconnect-github',
       'pipenzo:github-connection',
+      'pipenzo:github-device-cancel',
+      'pipenzo:github-device-open-verification',
+      'pipenzo:github-device-start',
     ]);
+  });
+
+  /**
+   * The device-flow half of the same rule (issue #114).
+   *
+   * A device flow briefly holds *two* secrets, and the second one is easy to under-rate. Anyone
+   * holding the `device_code` completes the exchange the moment the user authorizes — so it is not
+   * "less sensitive than the token", it is a token with a fifteen-minute life, and it stays in main
+   * for exactly the same reason.
+   */
+  it('never lets the device code reach the renderer', async () => {
+    // Word-bounded, so the *type* name `PipenzoDeviceCodeV1` (the displayable shape, which is
+    // allowed here) does not read as a `deviceCode` field (which is not).
+    const forbiddenField = /\bdevice_?code\b/i;
+    const preload = stripComments(await readElectron('preload.ts'));
+    expect(preload).not.toMatch(forbiddenField);
+
+    const contract = stripComments(
+      await readFile(fromHere('../../../packages/shared/src/pipenzo-credential-v1.ts'), 'utf8'),
+    );
+    expect(contract).toMatch(/pipenzoDeviceCodeV1Schema/);
+    // `userCode` is the field that may exist; a `deviceCode` beside it is the mistake this guards.
+    expect(contract).not.toMatch(forbiddenField);
+
+    // And the module that holds it is a main-process module the renderer never imports. Matched on
+    // the import itself rather than the bare name, and over comment-free source: a renderer file
+    // that *explains* why the flow lives in main is exactly the comment this rule wants written,
+    // and it must not read as a violation of the rule it is describing.
+    for (const file of await sourceFiles(rendererSrc())) {
+      const code = stripComments(await readFile(file, 'utf8'));
+      expect(code).not.toMatch(/from\s*['"][^'"]*github-device-flow/);
+      expect(code).not.toMatch(/import\s*\(\s*['"][^'"]*github-device-flow/);
+    }
+  });
+
+  /**
+   * The verification page is opened by main, from a URL main validated and pinned to github.com
+   * itself. If the renderer could name the URL, this channel would be a general "open anything in
+   * the user's browser" primitive reachable from a context that renders model-authored text — and
+   * the page it opens is one that asks the user to type a credential-adjacent code.
+   */
+  it('does not let the renderer choose which page the sign-in opens', async () => {
+    const preload = stripComments(await readElectron('preload.ts'));
+    expect(preload).toMatch(/invoke\('pipenzo:github-device-open-verification'\)/);
+
+    const main = stripComments(await readElectron('main.ts'));
+    // Main reads the URL off its own grant, never off the event payload.
+    expect(main).toMatch(/openAllowedExternalUrl\(deviceGrant\.verificationUri/);
+    // And the flow refuses any verification URL that is not on the pinned host in the first place.
+    const flow = stripComments(await readElectron('github-device-flow.ts'));
+    expect(flow).toMatch(/hostname !== GITHUB_VERIFICATION_HOST/);
+    expect(flow).toMatch(/GITHUB_VERIFICATION_HOST = 'github\.com'/);
   });
 
   /**

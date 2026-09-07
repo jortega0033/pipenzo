@@ -159,6 +159,17 @@ export function createDemoBridge(): AgentDockBridge {
     disconnectGitHub: async () => {
       throw new Error('disconnecting GitHub is not available in demo mode');
     },
+    // Demo mode is already past the connect flow (it reports a stored credential above), so these
+    // are unreachable rather than merely unused -- refusing is the honest answer, and a fake code
+    // box would be the one screen in a demo that lies about what it is doing.
+    startGitHubDeviceFlow: async () => {
+      throw new Error('signing in to GitHub is not available in demo mode');
+    },
+    openGitHubDeviceVerification: async () => {
+      throw new Error('signing in to GitHub is not available in demo mode');
+    },
+    cancelGitHubDeviceFlow: async () => {},
+    onGitHubDeviceOutcome: () => () => {},
     selectAndUploadAttachments: async () => [],
     validateStructuredOutput: async (input) => ({ valid: true, normalizedOutput: input.output, errors: [] }),
     createSession: async () => {

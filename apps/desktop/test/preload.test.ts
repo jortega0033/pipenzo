@@ -75,10 +75,18 @@ describe('electron/preload.ts — real bridge (AD-07)', () => {
         'pipenzoTicketRead',
         'pipenzoTicketTransition',
         'onPipenzoPhaseEvent',
-        // The GitHub credential's state and a disconnect (issue #165). There is deliberately no
-        // third member here: nothing on this bridge stores or returns a token.
+        // The GitHub credential's state and a disconnect (issue #165), plus the device-code
+        // sign-in (issue #114). Six members, and not one of them stores or returns a credential:
+        // the state channels carry a schema with no token field at any depth, `start` answers with
+        // the pairing code a human is meant to read out (never the device code, which for the
+        // length of the flow is as good as the token), and the remaining three carry no payload in
+        // either direction. A seventh member here is a review, not a merge.
         'pipenzoGitHubConnection',
         'disconnectGitHub',
+        'startGitHubDeviceFlow',
+        'openGitHubDeviceVerification',
+        'cancelGitHubDeviceFlow',
+        'onGitHubDeviceOutcome',
         'selectAndUploadAttachments',
         'validateStructuredOutput',
         'createSession',

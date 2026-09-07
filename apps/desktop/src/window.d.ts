@@ -61,6 +61,8 @@ import type {
   PipenzoTicketTransitionRequestV1,
   PipenzoTicketReconciliationV1,
   PipenzoPhaseEventV1,
+  PipenzoDeviceCodeV1,
+  PipenzoDeviceOutcomeV1,
   PipenzoGitHubConnectionV1,
 } from '@agent-dock/shared';
 import type {
@@ -224,6 +226,21 @@ export interface AgentDockBridge {
    */
   pipenzoGitHubConnection(): Promise<PipenzoGitHubConnectionV1>;
   disconnectGitHub(): Promise<PipenzoGitHubConnectionV1>;
+  /**
+   * The device-code sign-in (issue #114), which runs entirely in Electron main.
+   *
+   * `startGitHubDeviceFlow` answers with a pairing code the user is *meant* to read out — never the
+   * device code, which for the length of the flow is as good as the token itself. Calling it while
+   * an unexpired code is already outstanding returns that same code rather than minting a new one,
+   * so this is not a way to hammer GitHub's endpoint. `openGitHubDeviceVerification` takes no
+   * argument at all: main opens the URL it validated and pinned to github.com itself, so this
+   * cannot be turned into an open-anything primitive. The outcome arrives on the subscription,
+   * not as a return value, because the human is in another application for most of the flow.
+   */
+  startGitHubDeviceFlow(): Promise<PipenzoDeviceCodeV1>;
+  openGitHubDeviceVerification(): Promise<void>;
+  cancelGitHubDeviceFlow(): Promise<void>;
+  onGitHubDeviceOutcome(callback: (outcome: PipenzoDeviceOutcomeV1) => void): () => void;
   selectAndUploadAttachments(sessionId?: string): Promise<AttachmentMetadataV2[]>;
   validateStructuredOutput(input: StructuredWorkflowRequestV2): Promise<StructuredWorkflowResultV2>;
   createSession(input: CreateSessionInput): Promise<AgentSession>;
