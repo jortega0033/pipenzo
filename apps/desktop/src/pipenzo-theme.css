@@ -907,6 +907,17 @@
     line-height: 1.45;
   }
 
+  /* The Implement dialog's refined-spec review reuses the same block, and is the first thing in it
+     with real lists. The browser default indents a list 40px, which inside a 16px-padded card
+     pushes acceptance-criterion text into a narrow column. */
+  .draft-body ul {
+    margin: 4px 0 8px;
+    padding-left: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
   /* Models & gates rows (issues #123/#124) — ported from Models.dc.html's two gate panels. One
      row shape serves both: a deterministic gate with a locked switch, and an agent-captured
      capability with a real one. The control column never grows, so a long description wraps
