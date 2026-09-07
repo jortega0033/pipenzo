@@ -162,6 +162,36 @@ The v2 namespaces are:
 - `v2.attachments`: `upload`, `list`, `reference`; `v2.structured`: `validate`.
 - `v2.integrations.mcp`: `list`, `configure`, `action`, `catalog`, `oauth`, `invoke`.
 - `v2.integrations.components`: `list`, `manage`, `invoke`.
+- `v2.pipenzo`: among other Pipenzo operations, `readTicket` and `transitionTicket` (issue #188) —
+  see below.
+
+`client.v2.pipenzo.readTicket(input)` and `client.v2.pipenzo.transitionTicket(input)` are the
+client-side entry points to Pipenzo's ticket phase machine. Both resolve to a
+`PipenzoTicketReconciliationV1`: the ticket as reconciled against its issue's `pipenzo:` labels,
+which lane-bearing labels were observed, what the local lane was before the call, and whether
+anything changed as a result of it.
+
+```ts
+const reconciled = await client.v2.pipenzo.readTicket({ ticketId });
+// reconciled.divergence: 'none' | 'lane_reconciled' | 'ambiguous_labels' | 'unlabelled'
+
+const moved = await client.v2.pipenzo.transitionTicket({
+  ticketId,
+  label: 'pipenzo:ready-for-review',
+});
+```
+
+`readTicket` never writes to GitHub; it only reconciles and returns the result. `transitionTicket`
+takes a `label`, not a lane — several `pipenzo:` labels share a lane, and the label is what states
+*why* a ticket is there, so naming the lane instead would force the caller to guess it. The label
+is written to GitHub first and the local record second, so a crash between the two writes leaves
+the authoritative side (GitHub) correct and self-healing on the next read; see
+[daemon.md#pipenzo-ticket-phase-machine](daemon.md#pipenzo-ticket-phase-machine) for the full
+reasoning. Both methods validate their input with the shared Zod request schema and their response
+with `pipenzoTicketReconciliationV1Schema`, exactly like every other v2 method in this table; errors
+surface as the same typed `DaemonError` with the daemon's closed `code` union
+(`ticket_not_found`, `illegal_transition`, `github_rate_limited`, ...) documented in full in
+[protocol-v2.md](protocol-v2.md).
 
 ## Design decisions
 

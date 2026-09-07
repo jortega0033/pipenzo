@@ -68,6 +68,11 @@ export function installAssetCaptureBridge(): void {
       escapeHatch: { configured: false, reason: 'no repository is open while capturing assets' },
       activeTrustClass: null,
     }),
+    // The ticket phase machine's read/transition routes (issue #188). Same reasoning as the phase
+    // routes above: asset capture has no ticket to reconcile and must never write a GitHub label,
+    // so both refuse rather than returning a reconciliation that looks real.
+    pipenzoTicketRead: async () => { throw new Error('ticket read is not available while capturing assets'); },
+    pipenzoTicketTransition: async () => { throw new Error('ticket transition is not available while capturing assets'); },
     selectAndUploadAttachments: async () => [],
     validateStructuredOutput: async (input) => ({ valid: true, normalizedOutput: input.output, errors: [] }),
     createSession: async () => {

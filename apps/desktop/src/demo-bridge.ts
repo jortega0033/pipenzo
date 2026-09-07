@@ -129,6 +129,15 @@ export function createDemoBridge(): AgentDockBridge {
       escapeHatch: { configured: false, reason: 'demo mode does not probe a real repository' },
       activeTrustClass: null,
     }),
+    // The ticket phase machine's read/transition routes (issue #188): same reasoning as the rest
+    // of this Pipenzo block -- demo mode has no real ticket store and no real GitHub remote, so
+    // neither route can honestly reconcile or write a label.
+    pipenzoTicketRead: async () => {
+      throw new Error('ticket read is not available in demo mode');
+    },
+    pipenzoTicketTransition: async () => {
+      throw new Error('ticket transition is not available in demo mode');
+    },
     selectAndUploadAttachments: async () => [],
     validateStructuredOutput: async (input) => ({ valid: true, normalizedOutput: input.output, errors: [] }),
     createSession: async () => {
