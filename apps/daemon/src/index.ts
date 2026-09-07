@@ -161,9 +161,16 @@ async function main() {
 
   // Pipenzo's publish gate (issue #178). It is constructed here, in the daemon process, and is
   // reachable only through `POST /v2/pipenzo/publish` behind the bearer token above. Nothing in
-  // the agent-runtime path receives a reference to it, and the GitHub PAT it reads at call time
-  // never reaches a provider subprocess: every provider spawn builds its environment from the
-  // reviewed OS/runtime allowlist rather than inheriting this process's `process.env`.
+  // the agent-runtime path receives a reference to it.
+  //
+  // This comment used to argue that the PAT never reaches a provider subprocess *because* every
+  // provider spawn builds its environment from the reviewed OS/runtime allowlist rather than
+  // inheriting `process.env`. Issue #165 established that this argument does not hold on its own:
+  // an allowlist stops a child inheriting a variable, not a child reading it out of the parent's
+  // environment block (`/proc/<ppid>/environ`, or the PEB on Windows). The allowlist is still in
+  // force and still worth having; what actually carries the claim now is that the credential is
+  // not in this process's environment at all — it arrives over stdin and lives in
+  // `githubCredential`. See `github-credential.ts` for the full argument.
   const publishService = new PublishService({
     worktrees: worktreeManager,
     logger,

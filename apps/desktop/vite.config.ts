@@ -31,9 +31,16 @@ export default defineConfig(({ command }) => ({
           // The result is stronger than a gate. With the constant folded to `false`, Rollup's
           // dead-code elimination removes the fallback branch from `resolveDaemonGitHubToken`
           // outright: in `dist-electron/main.js` that function reduces to the vault lookup and a
-          // `{ token: undefined, source: 'none' }` return, with no reference to an environment
-          // variable left in the file. A packaged build cannot take a code path it does not
-          // contain. (Verified by inspecting the built output, not inferred.)
+          // `{ token: undefined, source: 'none' }` return, and does not read `environmentToken` at
+          // all. A packaged build cannot take a code path it does not contain.
+          //
+          // What remains in the artifact, stated precisely so this note is not read as more than it
+          // is: the *call site* still evaluates `process.env.PIPENZO_GITHUB_TOKEN` and passes it in
+          // as an argument the callee now ignores, the `source === 'environment'` warning string
+          // survives in a branch that can no longer be reached, and the variable's name is in the
+          // environment-stripping list, where it must be. So the token is still *read* in a
+          // packaged build; it is simply discarded. The eliminated branch is what carries the
+          // guarantee. (Verified by inspecting the built output, not inferred.)
           define: {
             __PIPENZO_DEVELOPMENT_BUILD__: JSON.stringify(command !== 'build'),
           },

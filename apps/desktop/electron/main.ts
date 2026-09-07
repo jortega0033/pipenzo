@@ -235,13 +235,29 @@ function spawnDaemon(): void {
   // change respawns, rather than only at startup.
   child.on('error', (error: Error) => {
     if (daemonChild !== child) return;
+    // A spawn that never started emits `error` and `close`, but not `exit` — so the exit handler
+    // below, which is where every one of these latches is normally released, never runs. Left set,
+    // `daemonChild` names a process with no pid: the next credential change would take it as the
+    // live daemon, arm `credentialRestartPending`, `kill()` nothing, wait for an `exit` that cannot
+    // come, and wedge every later credential change permanently behind a latch nothing clears.
+    daemonChild = undefined;
+    respawnAfterExit = undefined;
+    credentialRestartPending = false;
     sendStatus({ state: 'unavailable', error: `daemon could not be started: ${error.message}` });
   });
 
   child.on('exit', (code, signal) => {
     const wasReady = client !== undefined;
     const wasAwaitingRespawn = respawnAfterExit === child;
-    if (wasAwaitingRespawn) respawnAfterExit = undefined;
+    // Released here rather than further down, beside the respawn itself: everything below the
+    // `!isCurrent` early return is skipped for a child that has already been replaced, and this is
+    // a latch that refuses future credential changes while it is set. A guard that fails *closed*
+    // on a path that forgets to release it is how one superseded child disables the feature for the
+    // rest of the session.
+    if (wasAwaitingRespawn) {
+      respawnAfterExit = undefined;
+      credentialRestartPending = false;
+    }
     // Both handles are guarded by the same identity check, for the same reason: a slow-exiting
     // predecessor must not blank out the client or the handle belonging to the daemon that has
     // already replaced it.
@@ -271,7 +287,6 @@ function spawnDaemon(): void {
     phaseStreamAbort?.abort();
     phaseStreamAbort = undefined;
     if (wasAwaitingRespawn) {
-      credentialRestartPending = false;
       // `isQuitting` is the guard that stops a disconnect racing a quit from leaving an orphaned
       // daemon behind — one still holding a credential, still listening, and still blocking the
       // next launch through the single-instance guard.
@@ -928,9 +943,16 @@ handle('pipenzo:disconnect-github', (): PipenzoGitHubConnectionV1 => {
   // Restarting only when something actually changed. `clear()` on an empty vault succeeds silently,
   // so without this a renderer could loop this channel and kill the daemon — and every running
   // session with it — over and over, while changing nothing at all.
-  const wasStoringSomething = tokenVault.status().state !== 'disconnected';
-  tokenVault.clear();
-  if (wasStoringSomething) restartDaemonForCredentialChange();
+  //
+  // The test for "something changed" is `clear()`'s own report, deliberately not `status()`.
+  // `status()` resolves availability before it looks for a record, so on any machine without a
+  // usable OS credential store — headless Linux, no gnome-keyring/kwallet, a `basic_text` backend,
+  // CI — it returns `unavailable` permanently, no vault file can exist there (`store()` refuses on
+  // exactly those machines), and a guard keyed on `!== 'disconnected'` is therefore always true.
+  // That turned this channel into the unbounded restart loop the guard was written to prevent,
+  // which matters because `restartDaemonForCredentialChange` intentionally bypasses `killDaemon`'s
+  // bounded `sessions.cancelAll`: every repetition kills in-flight sessions uncancelled.
+  if (tokenVault.clear()) restartDaemonForCredentialChange();
   // `source` in this reply still describes the daemon that is on its way out; the restart it just
   // triggered recomputes it. The renderer re-reads the connection when `daemon:status` next goes
   // `ready`, which is the same moment the new daemon's credential actually takes effect.

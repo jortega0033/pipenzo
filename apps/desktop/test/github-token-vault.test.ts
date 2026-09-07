@@ -96,6 +96,44 @@ describe('GitHubTokenVault', () => {
   });
 
   /**
+   * `clear()` reports whether it actually removed a record, and `main.ts`'s
+   * `pipenzo:disconnect-github` handler restarts the daemon only when it did.
+   *
+   * That guard used to be keyed on `status().state !== 'disconnected'` instead, which is wrong in a
+   * way no source-level assertion catches: `status()` resolves encryption availability *before* it
+   * looks for a record, so on a machine with no usable OS credential store it answers `unavailable`
+   * forever — no record present, none storable — and the guard is permanently true. The renderer
+   * could then loop the disconnect channel and restart the daemon without bound, and that restart
+   * path deliberately bypasses the bounded `sessions.cancelAll`, so every repetition kills in-flight
+   * sessions uncancelled.
+   *
+   * Hence the second case below. It is the one that regressed, and it fails if the decision is ever
+   * routed back through `status()`.
+   */
+  describe('reports whether a disconnect actually removed anything', () => {
+    it('false when there was nothing stored, true when there was', () => {
+      const vault = vaultWith();
+      expect(vault.clear()).toBe(false);
+
+      vault.store({ token: TOKEN, login: 'jortega0033' });
+      expect(vault.clear()).toBe(true);
+      // And clearing the same vault again is once more a no-op.
+      expect(vault.clear()).toBe(false);
+    });
+
+    it('false on a machine whose credential store is unavailable, where status() cannot tell', () => {
+      const unavailable = vaultWith(
+        fakeSafeStorage({ isEncryptionAvailable: () => false }),
+        'linux',
+      );
+      // The precondition that made the old guard wrong: status() never says `disconnected` here.
+      expect(unavailable.status().state).toBe('unavailable');
+      expect(unavailable.clear()).toBe(false);
+      expect(unavailable.clear()).toBe(false);
+    });
+  });
+
+  /**
    * A crash between the write and the rename leaves a temporary file holding a full ciphertext
    * copy, and nothing else in the app would ever remove it. Both `store()` and `clear()` sweep.
    */
@@ -183,6 +221,29 @@ describe('GitHubTokenVault', () => {
           fakeSafeStorage({ getSelectedStorageBackend: () => backend }),
           'linux',
         );
+        expect(vault.status()).toEqual({ state: 'unavailable', reason: 'plaintext_backend' });
+        expect(catchError(() => vault.store({ token: TOKEN, login: 'jortega0033' }))).toBeInstanceOf(
+          GitHubTokenVaultError,
+        );
+      }
+    });
+
+    /**
+     * The gap between the test above and the one below it: an accessor that is *present* but
+     * answers `undefined`, or throws. Both are the case the allowlist exists for — an accessor
+     * telling us it cannot name the backend — but reading it through `?.()` collapses them into the
+     * same `undefined` an *absent* accessor produces, and the absent case is deliberately exempt.
+     * Presence therefore has to be tested on the function, not inferred from its return value.
+     */
+    it('refuses a present backend accessor that cannot answer, unlike an absent one', () => {
+      const answers: Array<() => string | undefined> = [
+        () => undefined,
+        () => {
+          throw new Error('backend introspection failed');
+        },
+      ];
+      for (const getSelectedStorageBackend of answers) {
+        const vault = vaultWith(fakeSafeStorage({ getSelectedStorageBackend }), 'linux');
         expect(vault.status()).toEqual({ state: 'unavailable', reason: 'plaintext_backend' });
         expect(catchError(() => vault.store({ token: TOKEN, login: 'jortega0033' }))).toBeInstanceOf(
           GitHubTokenVaultError,

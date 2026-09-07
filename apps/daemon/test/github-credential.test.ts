@@ -141,6 +141,37 @@ describe('DaemonGitHubCredential', () => {
     expect(DaemonGitHubCredential.none().resolve({ PIPENZO_GITHUB_TOKEN: token })).toBe(token);
   });
 
+  /**
+   * The shape rule applies to *both* sources, which is what its own comment claims and what the
+   * environment branch used not to do: `resolveGitHubToken` only trims and rejects empty, so a
+   * value carrying a newline reached `createPipenzoOctokit` and became an `Authorization` header.
+   * Node's HTTP layer rejects CR/LF in a header value, so this was depth rather than live request
+   * splitting — but the desktop side already gates its own environment fallback this way, and a
+   * symmetric rule enforced on one side only is not a rule.
+   */
+  it('applies the same shape rule to the environment fallback as to an injection', () => {
+    const unusable = [
+      `${fakeToken('withATrailingHeader00001')}\r\nX-Injected: 1`,
+      'short',
+      'has a space in it that no token has',
+      'x'.repeat(513),
+    ];
+    for (const value of unusable) {
+      const credential = DaemonGitHubCredential.none();
+      let caught: unknown;
+      try {
+        credential.resolve({ PIPENZO_GITHUB_TOKEN: value });
+      } catch (error) {
+        caught = error;
+      }
+      expect(caught).toBeInstanceOf(GitHubClientError);
+      expect((caught as GitHubClientError).code).toBe('token_missing');
+      // The rejected value must not be echoed into the message that explains the rejection.
+      expect((caught as Error).message).not.toContain(value);
+      expect(credential.tryResolve({ PIPENZO_GITHUB_TOKEN: value })).toBeUndefined();
+    }
+  });
+
   it('reports token_missing when there is neither', () => {
     let caught: unknown;
     try {

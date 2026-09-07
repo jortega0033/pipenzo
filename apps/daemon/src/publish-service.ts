@@ -144,8 +144,12 @@ export interface PublishServiceOptions {
   worktrees: OwnedWorktreeLocator;
   /**
    * The daemon's own environment. Passed explicitly rather than read ambiently so a test can
-   * prove what this service does and does not read, and so there is exactly one place to change
-   * when the token moves from env to the Electron-main vault in build step 4.
+   * prove what this service does and does not read.
+   *
+   * That move from env to the Electron-main vault has now happened (issue #165): in the shipped
+   * app this environment no longer carries a credential, and `resolveGitHubCredential` below is
+   * what actually supplies one. This stays as the fallback source for a daemon nobody injected
+   * into — `pnpm dev`, the live-smoke harness, CI.
    */
   env?: Readonly<Record<string, string | undefined>>;
   /**

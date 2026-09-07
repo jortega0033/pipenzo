@@ -1,4 +1,8 @@
-import { GitHubClientError, resolveGitHubToken } from './github-client.js';
+import {
+  GITHUB_TOKEN_ENV_KEYS,
+  GitHubClientError,
+  resolveGitHubToken,
+} from './github-client.js';
 
 /**
  * How the daemon receives its GitHub credential from Electron main (issue #165).
@@ -218,10 +222,25 @@ export class DaemonGitHubCredential {
    * strips the environment variable from the daemon's environment before spawning it. The
    * environment is consulted only for a daemon nobody injected into — a direct `pnpm dev`, the
    * live-smoke harness, CI — where it is the only source there is.
+   *
+   * Both sources pass `isTokenShaped`, which is the claim that rule's own comment makes and which
+   * the environment branch used not to honour: `resolveGitHubToken` only trims and rejects empty,
+   * so a value carrying a newline reached `createPipenzoOctokit` and became an `Authorization`
+   * header. Node's HTTP layer rejects CR/LF in a header value, so this was a gap in depth rather
+   * than live request splitting — but the desktop side already gates its own environment fallback
+   * this way (`daemon-environment.ts`), and the half of a symmetric rule that gets skipped is the
+   * half that stops being true.
    */
   resolve(env: Readonly<Record<string, string | undefined>> = process.env): string {
     if (this.#injected !== undefined) return this.#injected;
-    return resolveGitHubToken(env);
+    const fromEnvironment = resolveGitHubToken(env);
+    if (!isTokenShaped(fromEnvironment)) {
+      throw new GitHubClientError(
+        'token_missing',
+        `${GITHUB_TOKEN_ENV_KEYS[0]} is set but is not a usable token: expected 20-512 printable, non-whitespace characters`,
+      );
+    }
+    return fromEnvironment;
   }
 
   /** `resolve()`, but answering `undefined` instead of throwing for "not configured". */

@@ -29,8 +29,8 @@ import { ConditionalRequestCache } from './github-conditional-cache.js';
  *
  * Issue #165 closed the other half of that row. The shipped daemon no longer reads its PAT from
  * its own environment: Electron main holds it in a `safeStorage` vault and writes it over stdin,
- * and `fromToken` — not `fromEnvironment` — is what `index.ts` calls. `GITHUB_TOKEN_ENV_KEYS`
- * below documents what is left of the env path and who still uses it.
+ * and `fromToken` — reading a token this module no longer fetches for itself — is what `index.ts`
+ * calls. `GITHUB_TOKEN_ENV_KEYS` below documents what is left of the env path and who still uses it.
  *
  * Issue #161 closed the two rate-limit gaps this comment used to list:
  * - **Conditional requests.** `getIssue` and `listLabels` send `If-None-Match` from a
@@ -671,27 +671,24 @@ export class OctokitGitHubClient implements GitHubClient {
     this.#cache = cache;
   }
 
-  /** Reads the PAT from the environment and builds the client. Throws `token_missing` if unset. */
-  static fromEnvironment(
-    env: Readonly<Record<string, string | undefined>> = process.env,
-    options: OctokitGitHubClientOptions = {},
-  ): OctokitGitHubClient {
-    return new OctokitGitHubClient(createPipenzoOctokit(resolveGitHubToken(env)), options.cache);
-  }
-
   /**
-   * Builds the client from a token the caller already resolved.
+   * Builds the client from a token the caller already resolved. The only credential-bearing
+   * factory this class has.
    *
-   * The path the shipped app takes (issue #165): the credential arrives over stdin at daemon
-   * startup and is held in `DaemonGitHubCredential`, never in this process's environment, so
-   * `fromEnvironment` has nothing to read. Kept separate from `withOctokit` because the caller
-   * still must not have to know how the authenticated instance is configured.
+   * There used to be a `fromEnvironment` beside it that did its own `process.env` read. Issue #165
+   * removed its last caller — `index.ts` resolves through `DaemonGitHubCredential`, which prefers
+   * the credential Electron main wrote to stdin and falls back to the environment itself — and it
+   * is deleted rather than left exported, which is what this module's original comment promised:
+   * *"this read path is deleted, not kept as a fallback."* An exported, untested, zero-caller
+   * factory that reads a PAT out of `process.env` is precisely the thing a later edit picks up by
+   * name and quietly reintroduces the env read with. The environment path itself is not lost; it
+   * lives in `resolveGitHubToken`, which is exported and directly tested.
    *
-   * It takes the same `cache` option as `fromEnvironment` for a reason worth stating: this is the
-   * factory the shipped daemon actually calls, so a version of it that could not be handed the
-   * shared `ConditionalRequestCache` would leave issue #161's conditional-request layer switched
-   * off everywhere except the tests that construct a client directly — present in the source,
-   * absent from the running app, and invisible to anything but a rate-limit graph.
+   * It takes a `cache` option because this is the factory the shipped daemon actually calls, so a
+   * version of it that could not be handed the shared `ConditionalRequestCache` would leave issue
+   * #161's conditional-request layer switched off everywhere except the tests that construct a
+   * client directly — present in the source, absent from the running app, and invisible to
+   * anything but a rate-limit graph.
    */
   static fromToken(
     token: string,

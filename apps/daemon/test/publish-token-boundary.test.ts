@@ -275,6 +275,40 @@ describe('the publish service holds its credential narrowly', () => {
     }
   });
 
+  /**
+   * `index.ts` is where both of the daemon's security-relevant GitHub decisions are actually made,
+   * and until now nothing asserted either one. Every unit test in this area constructs its subject
+   * directly, so `index.ts` could be reverted to reading `process.env` — or quietly stop passing
+   * the shared ETag cache — and the whole suite would stay green.
+   *
+   * That is not hypothetical. Rebasing this branch onto issue #161 produced exactly the second
+   * failure: git merged both sides cleanly into a `fromToken` that took no cache argument, which
+   * would have shipped #161's conditional-request layer switched off in the running app while all
+   * of its own tests passed. A conflict resolution is precisely where this class of bug hides, so
+   * the wiring gets a tripwire of its own.
+   */
+  it('builds its GitHub clients from the injected credential and the shared ETag cache', async () => {
+    const code = stripComments(await readFile(join(daemonSrc, 'index.ts'), 'utf8'));
+
+    // The credential is read once, at startup, from the stdin channel — not from this process's
+    // environment (issue #165).
+    expect(code).toMatch(/DaemonGitHubCredential\.fromStartup\(/);
+    expect(code).toMatch(/resolveGitHubCredential:\s*\(env\)\s*=>\s*githubCredential\.resolve\(env\)/);
+
+    // Both client factories resolve through that credential, and each is handed the one per-daemon
+    // conditional-request cache (issue #161). Two call sites: the phase service and the phase
+    // machine.
+    expect(code).toMatch(/const githubConditionalCache = new ConditionalRequestCache\(\)/);
+    const wired = code.match(
+      /OctokitGitHubClient\.fromToken\(\s*githubCredential\.resolve\(\),\s*\{\s*cache:\s*githubConditionalCache,?\s*\}/g,
+    );
+    expect(wired).toHaveLength(2);
+
+    // And no path here reads a credential out of the environment for itself.
+    expect(code).not.toMatch(/fromEnvironment\(/);
+    expect(code).not.toMatch(/resolveGitHubToken\(/);
+  });
+
   it('routes every string that can escape through the redactor', async () => {
     const source = await readFile(join(daemonSrc, 'publish-service.ts'), 'utf8');
     // Error messages: PublishServiceError redacts in its own constructor.

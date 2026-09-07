@@ -412,8 +412,15 @@ describe('nothing on the renderer bridge can obtain the token', () => {
    */
   it('does not restart the daemon when a disconnect changes nothing', async () => {
     const main = await readElectron('main.ts');
-    expect(main).toMatch(/const wasStoringSomething = tokenVault\.status\(\)\.state !== 'disconnected'/);
-    expect(main).toMatch(/if \(wasStoringSomething\) restartDaemonForCredentialChange\(\)/);
+    // The decision itself is `clear()`'s return value, and it is covered behaviourally in
+    // `github-token-vault.test.ts` ("reports whether a disconnect actually removed anything"),
+    // including the machine-without-a-credential-store case that made the previous
+    // `status().state !== 'disconnected'` form of this guard permanently true. What is asserted
+    // here is only the wiring: that the handler gates on that return value and on nothing else.
+    expect(main).toMatch(/if \(tokenVault\.clear\(\)\) restartDaemonForCredentialChange\(\)/);
+    // And specifically not on `status()`, which cannot distinguish "nothing stored" from "cannot
+    // tell" and so answers the same on every machine where the loop was reachable.
+    expect(main).not.toMatch(/tokenVault\.status\(\)[^;]*!==\s*'disconnected'/);
 
     // The next two guards are scoped to the restart function's own body. `if (isQuitting) return;`
     // also appears in the window-close handler, so a whole-file match would stay green with the

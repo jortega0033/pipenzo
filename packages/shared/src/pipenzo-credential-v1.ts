@@ -39,10 +39,16 @@ export type PipenzoCredentialUnavailableReasonV1 = z.infer<
 /**
  * Where the daemon's credential actually came from this run.
  *
- * Reported rather than assumed, because a development build may still fall back to an inherited
- * `PIPENZO_GITHUB_TOKEN` when the vault is empty (see `daemon-environment.ts`). "You are publishing
- * with a shell variable, not with the account shown here" has to be a *visible* state — the rule
- * against credential fallbacks is really a rule against **silent** precedence.
+ * Carried on the wire rather than left to inference, because a development build may still fall
+ * back to an inherited `PIPENZO_GITHUB_TOKEN` when the vault is empty (see `daemon-environment.ts`).
+ * "You are publishing with a shell variable, not with the account shown here" has to be a *visible*
+ * state — the rule against credential fallbacks is really a rule against **silent** precedence.
+ *
+ * Two honest limits on that, so this field is not mistaken for more than it is. It is not yet
+ * rendered anywhere (#113 owns the pre-app shell that will show it), and it describes what Electron
+ * main *sent*, not what the daemon resolved — a stdin handoff that failed would still be reported
+ * here as `vault`. Closing that second gap means having the daemon report its own resolved source
+ * back over the health channel.
  */
 export const pipenzoCredentialSourceV1Schema = z.enum(['vault', 'environment', 'none']);
 

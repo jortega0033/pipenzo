@@ -104,8 +104,15 @@ export interface SafeStorageLike {
   /**
    * Present on Linux from Electron 15 on, absent elsewhere. `'basic_text'` means the "encryption"
    * is a published constant key — see the module comment.
+   *
+   * Typed as possibly answering `undefined` even though Electron's own declaration does not. This
+   * is a hand-written shim over another process's API, not a contract this module can enforce, and
+   * the code that reads it has to handle an unhelpful answer anyway (it is treated as
+   * `plaintext_backend`, the same as an unrecognised name). Declaring the narrower `string` here
+   * would only prevent a test from constructing the case the implementation deliberately defends
+   * against.
    */
-  getSelectedStorageBackend?(): string;
+  getSelectedStorageBackend?(): string | undefined;
 }
 
 export type GitHubTokenVaultUnavailableReason =
@@ -169,8 +176,10 @@ const REAL_LINUX_BACKENDS = new Set(['gnome_libsecret', 'kwallet', 'kwallet5', '
  * What may be stored as a token.
  *
  * The character rule is the load-bearing part, and it is about the *destination*, not about GitHub:
- * this value is handed to the daemon as an environment variable, and a value containing a newline
- * or a NUL is a value that can terminate or inject an entry in some environment representations.
+ * this value is written to the daemon over a newline-terminated stdin message (issue #165 — it is
+ * deliberately *not* an environment variable any more), and it ends up as an HTTP `Authorization`
+ * header. A value containing a newline would frame a second message or split a request; a NUL or
+ * other separator would do the same to whatever consumes it next.
  * Printable, non-whitespace ASCII covers every token format GitHub has ever issued (`ghp_`,
  * `gho_`, `github_pat_`, and the 40-hex classic) and excludes every separator.
  */
@@ -254,12 +263,6 @@ export class GitHubTokenVault {
     }
     if (!available) return { available: false, reason: 'os_encryption_unavailable' };
     if (this.#platform === 'linux') {
-      let backend: string | undefined;
-      try {
-        backend = this.#safeStorage.getSelectedStorageBackend?.();
-      } catch {
-        backend = undefined;
-      }
       // An *absent* accessor (older Electron) is not a failure: refusing every Linux machine
       // because an introspection call does not exist would make the vault unusable on the platform,
       // which is a worse answer than trusting the `isEncryptionAvailable()` the platform does give.
@@ -269,8 +272,24 @@ export class GitHubTokenVault {
       // same epistemic state as the missing accessor except that here the accessor exists and is
       // telling us it does not know. A credential store that cannot say what it is, is not one to
       // claim protection from.
-      if (backend !== undefined && !REAL_LINUX_BACKENDS.has(backend)) {
-        return { available: false, reason: 'plaintext_backend' };
+      //
+      // Which is why presence is tested on the *function*, not on its return value. Reading the
+      // answer through `?.()` collapses "there is no accessor" and "the accessor answered
+      // `undefined`" — and a throwing accessor — into one `undefined`, and then the allowlist check
+      // below skips all three. That takes the two cases this comment calls failures and gives them
+      // the exemption written for the third. `REAL_LINUX_BACKENDS` is an allowlist precisely so an
+      // unrecognised answer fails closed; an unrecognised answer includes no answer at all.
+      const accessor = this.#safeStorage.getSelectedStorageBackend;
+      if (typeof accessor === 'function') {
+        let backend: string | undefined;
+        try {
+          backend = accessor.call(this.#safeStorage);
+        } catch {
+          backend = undefined;
+        }
+        if (!REAL_LINUX_BACKENDS.has(backend ?? '')) {
+          return { available: false, reason: 'plaintext_backend' };
+        }
       }
     }
     return { available: true };
@@ -372,10 +391,18 @@ export class GitHubTokenVault {
    * a credential that expires. That is a reason to move to a GitHub App installation token or an
    * OAuth token with refresh rather than a long-lived `repo` PAT, and it is recorded here rather
    * than papered over with a shred that does not shred.
+   *
+   * Returns whether a record was actually removed, which the caller needs and cannot get from
+   * `status()`. `status()` answers availability before it looks for a record, so on a machine with
+   * no usable OS credential store it reports `unavailable` whether or not a vault file exists —
+   * meaning "did this call change anything?" is unanswerable from the status enum on exactly the
+   * machines where it is asked most. `existsSync` before the unlink is the only honest answer.
    */
-  clear(): void {
+  clear(): boolean {
+    const existed = existsSync(this.#path);
     rmSync(this.#path, { force: true });
     this.#sweepTemporaryFiles();
+    return existed;
   }
 
   /**
@@ -464,8 +491,8 @@ export class GitHubTokenVault {
       return undefined;
     }
     // A decrypted value that does not look like a token is not handed onward: the file is
-    // attacker-writable by anyone who is already this OS user, and this value goes into an
-    // environment variable.
+    // attacker-writable by anyone who is already this OS user, and this value goes onto the
+    // daemon's stdin as a newline-framed message and from there into an `Authorization` header.
     return TOKEN_PATTERN.test(token) ? token : undefined;
   }
 

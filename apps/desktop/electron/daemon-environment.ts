@@ -120,9 +120,13 @@ export function isTokenShaped(value: string | undefined): value is string {
  * Both must agree before an inherited credential is used.
  *
  * The ambiguity the rule against fallbacks exists to prevent is *silent* precedence. This returns
- * `source` precisely so nothing about it is silent: main logs it, and the connection status the
- * renderer sees carries it, so "you are running on a shell variable, not the account you connected"
- * is a visible state rather than an inference.
+ * `source` so that precedence is reportable: main logs it, and it is carried on the
+ * `PipenzoGitHubConnectionV1` the `pipenzo:github-connection` channel answers with.
+ *
+ * Reportable is not yet the same as reported. No renderer code reads that field today — the
+ * pre-app shell that will show it is #113 — so at the moment "you are running on a shell variable,
+ * not the account you connected" reaches a console warning and nothing a user sees. The field is
+ * the mechanism; the surface is still owed.
  */
 export function resolveDaemonGitHubToken(input: {
   readonly vaultToken: string | undefined;
