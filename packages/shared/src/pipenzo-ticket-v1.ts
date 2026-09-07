@@ -71,10 +71,16 @@ export const pipenzoLabelV1Schema = z.enum(PIPENZO_LABELS);
 /**
  * The marker README's *Schema versioning* section names: an issue carrying this label was written
  * by a v1-schema Pipenzo, so an instance that meets a newer marker on the same repo knows to go
- * read-only rather than write v1 semantics over v2 state. Typed against `PipenzoLabelV1` rather
+ * read-only rather than write v1 semantics over v2 state. Checked against `PipenzoLabelV1` rather
  * than declared as a bare string so it cannot drift from the entry in `PIPENZO_LABELS` above.
+ *
+ * `as const satisfies` rather than the `: PipenzoLabelV1` annotation this used to carry. The
+ * annotation widened the constant from its literal type to the whole ten-member union, which made
+ * `Exclude<PipenzoLabelV1, typeof PIPENZO_SCHEMA_V1_MARKER_LABEL>` — how the phase machine (#188)
+ * names "a label that actually carries a lane" — exclude the union from itself and quietly evaluate
+ * to `never`. `satisfies` keeps the drift check this comment is about and leaves the literal intact.
  */
-export const PIPENZO_SCHEMA_V1_MARKER_LABEL: PipenzoLabelV1 = 'pipenzo:schema-v1';
+export const PIPENZO_SCHEMA_V1_MARKER_LABEL = 'pipenzo:schema-v1' as const satisfies PipenzoLabelV1;
 
 /**
  * The four real lanes a ticket can occupy on the board. Smaller than `PIPENZO_LABELS` on purpose:
