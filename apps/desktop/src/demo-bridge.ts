@@ -14,6 +14,11 @@ const DEMO_CWD = 'demo-workspace';
 
 const DEMO_APPROVAL_HANDLE = 'demo-approval-handle-1234567890123456789012';
 
+/** Same rule as `DEMO_CWD`: recognisably not a real account, since demo mode ships to every user. */
+const DEMO_LOGIN = 'demo-user';
+/** Fixed rather than `new Date()`, so two demo runs never render differently. */
+const DEMO_CREDENTIAL_STORED_AT = '2025-01-01T00:00:00.000Z';
+
 /** Deterministic, always-"completed" interactive bridge for the shipped "Try a demo" mode. Reuses
  * the same provider/sandbox/trust fixtures as `asset-capture-bridge.ts` (see
  * `fixtures/provider-fixtures.ts`) so the two can't silently drift, but plays a richer script: it
@@ -140,6 +145,20 @@ export function createDemoBridge(): AgentDockBridge {
     },
     // Demo mode has no daemon to stream from; subscribing is inert rather than an error.
     onPipenzoPhaseEvent: () => () => {},
+    // Reports a credential so the pre-app gate (issue #113) lets the demo through. This is the one
+    // Pipenzo method in this file that answers rather than throwing, and the reason is that a
+    // throw here is not neutral: a failed read routes to "Connect GitHub", and demo mode would
+    // become a screen asking the viewer to connect a real GitHub account in order to see a fixture.
+    // `DEMO_LOGIN` is obviously-fake for the same reason `DEMO_CWD` is.
+    pipenzoGitHubConnection: async () => ({
+      state: 'connected' as const,
+      login: DEMO_LOGIN,
+      storedAt: DEMO_CREDENTIAL_STORED_AT,
+      source: 'vault' as const,
+    }),
+    disconnectGitHub: async () => {
+      throw new Error('disconnecting GitHub is not available in demo mode');
+    },
     selectAndUploadAttachments: async () => [],
     validateStructuredOutput: async (input) => ({ valid: true, normalizedOutput: input.output, errors: [] }),
     createSession: async () => {

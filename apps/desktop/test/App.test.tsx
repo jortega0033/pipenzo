@@ -4,6 +4,7 @@ import type {
   AgentEventV2Envelope,
   AgentSessionV2,
   CapabilitySupportRecord,
+  PipenzoGitHubConnectionV1,
   ProviderCapabilities,
   ProviderStatus,
   ProviderStatusV2,
@@ -167,6 +168,13 @@ function installBridge(overrides: Partial<AgentDockBridge> = {}): {
     pipenzoTicketRead: vi.fn(),
     pipenzoTicketTransition: vi.fn(),
     onPipenzoPhaseEvent: vi.fn(() => () => {}),
+    pipenzoGitHubConnection: vi.fn().mockResolvedValue({
+      state: 'connected',
+      login: 'octocat',
+      storedAt: '2026-01-01T00:00:00.000Z',
+      source: 'vault',
+    } satisfies PipenzoGitHubConnectionV1),
+    disconnectGitHub: vi.fn(),
     selectAndUploadAttachments: vi.fn().mockResolvedValue([]),
     validateStructuredOutput: vi.fn().mockImplementation(async (input) => ({
       valid: true,

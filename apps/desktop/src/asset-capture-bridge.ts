@@ -76,6 +76,16 @@ export function installAssetCaptureBridge(): void {
     // No daemon and no phase stream while capturing assets: a no-op unsubscribe, not a throw,
     // because a component that subscribes on mount should still render.
     onPipenzoPhaseEvent: () => () => {},
+    // Answers `connected` so the pre-app gate (issue #113) does not route every capture to the
+    // Connect screen. Deterministic values, like everything else in this fixture -- a `storedAt` of
+    // `new Date()` would make every screenshot differ from the last one by a timestamp.
+    pipenzoGitHubConnection: async () => ({
+      state: 'connected' as const,
+      login: 'pipenzo-capture',
+      storedAt: '2025-01-01T00:00:00.000Z',
+      source: 'vault' as const,
+    }),
+    disconnectGitHub: async () => { throw new Error('disconnecting GitHub is not available while capturing assets'); },
     selectAndUploadAttachments: async () => [],
     validateStructuredOutput: async (input) => ({ valid: true, normalizedOutput: input.output, errors: [] }),
     createSession: async () => {
