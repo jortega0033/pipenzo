@@ -289,6 +289,9 @@ describe('runProviderSession (spawns real node child processes via fixtures)', (
     // The tiny output carried by an oversized tool call id -- the half a payload-only bound misses.
     if (completed[1]?.type !== 'tool.completed') throw new Error('unreachable');
     expect(Buffer.byteLength(completed[1].toolCallId ?? '', 'utf8')).toBeLessThanOrEqual(256);
+    // Its 3-byte output is not collateral damage: bounding the id is not a reason to drop content.
+    expect(completed[1].result).toMatchObject({ output: 'ok\n', exitCode: 0 });
+    expect(completed[1].result).not.toHaveProperty('truncated');
 
     // Every envelope the daemon would have to serialize now fits under its 1 MiB ceiling.
     for (const event of events) {

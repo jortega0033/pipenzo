@@ -126,10 +126,39 @@ function boundIdentifier(value: string | undefined): string | undefined {
 }
 
 /**
+ * One measurement, with no *second* Buffer copy on top of the string `JSON.stringify` already
+ * builds: the daemon serializes this event again anyway, and paying for a full Buffer copy of
+ * every tool payload here would be worse than the problem. An event that cannot be serialized at
+ * all reports as not fitting, which routes it to the bounded path where the failure can still be
+ * described rather than thrown.
+ */
+function fitsWholeEvent(event: AgentEvent): boolean {
+  const serialized = serialize(event);
+  return serialized !== undefined && Buffer.byteLength(serialized, 'utf8') <= MAX_TOOL_EVENT_BYTES;
+}
+
+/**
  * Passes every event through untouched -- the same object reference, so nothing is rebuilt --
  * except a `tool.started` / `tool.completed` that is either over `MAX_TOOL_EVENT_BYTES` serialized
- * or carrying an over-long identifier. That one is rebuilt with its identifiers bounded and its
- * payload, if it had one, replaced by an explicit truncation marker.
+ * or carrying an over-long identifier. That one is rebuilt with its identifiers bounded, and its
+ * payload replaced by an explicit truncation marker only if keeping the payload whole would still
+ * leave the event over budget.
+ *
+ * ## A bounded identifier is not a licence to truncate content
+ *
+ * The two reasons to rebuild are independent. An over-long identifier -- a verbose MCP tool name,
+ * a long `item.id` -- says nothing about the size of the `input`/`result` sitting next to it, and
+ * an event that only ever needed its `toolName` capped keeps a payload that was never oversized.
+ * Truncating it anyway would throw away the whole point of the transcript and label a 17-byte
+ * shell result `oversized_provider_payload`, which is simply false. So the rebuild is attempted
+ * with the payload intact first, and the marker is reached only when that still does not fit.
+ *
+ * That payload-intact attempt costs a second serialization in one case: an event whose identifier
+ * *and* payload are both oversized is measured whole, then its payload is serialized again to build
+ * the marker. The trade is deliberate. Avoiding it means sizing the payload alone and adding an
+ * estimate of the surrounding fields, which is exactly the field-by-field accounting "Measured
+ * whole, not field by field" above rejects -- and it would buy nothing on the path that matters,
+ * since every ordinary event still takes the single-measurement fast path untouched.
  */
 export function boundToolEventPayload(event: AgentEvent): AgentEvent {
   if (event.type !== 'tool.started' && event.type !== 'tool.completed') return event;
@@ -141,22 +170,42 @@ export function boundToolEventPayload(event: AgentEvent): AgentEvent {
   // actually changed.
   const toolName = boundIdentifier(event.toolName);
   const toolCallId = boundIdentifier(event.toolCallId);
+  const identifiersChanged = toolName !== event.toolName || toolCallId !== event.toolCallId;
 
-  // One measurement on the fast path, with no *second* Buffer copy on top of the string
-  // `JSON.stringify` already builds: the daemon serializes this event again anyway, and paying for
-  // a full Buffer copy of every tool payload here would be worse than the problem. An event that
-  // cannot be serialized at all takes the bounded path, where the failure can still be described.
-  if (toolName === event.toolName && toolCallId === event.toolCallId) {
-    const serialized = serialize(event);
-    if (serialized !== undefined && Buffer.byteLength(serialized, 'utf8') <= MAX_TOOL_EVENT_BYTES) {
-      return event;
-    }
+  // When nothing needed capping, an event that fits is delivered as-is. When it does not fit, its
+  // own content is the only thing that can be over budget, so there is no payload-intact rebuild
+  // worth measuring -- fall straight through to the marker.
+  if (!identifiersChanged) {
+    if (fitsWholeEvent(event)) return event;
+    return rebuild(event, toolName, toolCallId, 'truncate');
   }
 
-  // Rebuilt field by field rather than spread, so the result is bounded by construction: every
-  // field it can carry is either a literal, an identifier capped at 256 bytes, a boolean, or the
-  // ~8 KiB marker. Nothing a future parser hangs off the event can ride along unmeasured, which is
-  // the whole reason the fast path above measures the event rather than one field of it.
+  // An identifier was capped, which on its own can free up as much as a megabyte. Measure the
+  // rebuild that keeps the real payload before reaching for the marker; only content that is
+  // genuinely too large to carry gets replaced.
+  const withPayload = rebuild(event, toolName, toolCallId, 'keep');
+  if (fitsWholeEvent(withPayload)) return withPayload;
+  return rebuild(event, toolName, toolCallId, 'truncate');
+}
+
+/**
+ * Rebuilt field by field rather than spread, so the truncating variant is bounded by construction:
+ * every field it can carry is either a literal, an identifier capped at 256 bytes, a boolean, or
+ * the ~8 KiB marker. Nothing a future parser hangs off the event can ride along unmeasured, which
+ * is the whole reason the checks above measure the event rather than one field of it. The `keep`
+ * variant is bounded by the measurement its caller performs on the result.
+ */
+function rebuild(
+  event: Extract<AgentEvent, { type: 'tool.started' | 'tool.completed' }>,
+  toolName: string | undefined,
+  toolCallId: string | undefined,
+  payload: 'keep' | 'truncate',
+): AgentEvent {
+  // Only a payload that was actually present gets a marker: fabricating one for an absent field
+  // would label "the parser never set this" as "the provider sent something unreadable".
+  const bound = (value: unknown): unknown =>
+    payload === 'keep' || value === undefined ? value : truncatedPayload(value);
+
   if (event.type === 'tool.started') {
     return {
       type: 'tool.started',
@@ -164,16 +213,14 @@ export function boundToolEventPayload(event: AgentEvent): AgentEvent {
       // helper's `tool.completed`-driven `string | undefined` return.
       toolName: toolName ?? event.toolName,
       toolCallId,
-      // Only a payload that was actually present gets a marker: fabricating one for an absent
-      // field would label "the parser never set this" as "the provider sent something unreadable".
-      input: event.input === undefined ? undefined : truncatedPayload(event.input),
+      input: bound(event.input),
     };
   }
   return {
     type: 'tool.completed',
     toolName,
     toolCallId,
-    result: event.result === undefined ? undefined : truncatedPayload(event.result),
+    result: bound(event.result),
     isError: event.isError,
   };
 }

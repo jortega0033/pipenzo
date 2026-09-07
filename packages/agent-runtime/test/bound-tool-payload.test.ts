@@ -105,28 +105,87 @@ describe('boundToolEventPayload', () => {
   // The half a payload-only fix would have missed: `toolCallId` comes from `item.id` / `b.id` and
   // `toolName` from a third-party MCP server's `item.tool`, both unbounded in the legacy parsers.
   it('bounds a tool call id large enough to blow the ceiling on its own', () => {
+    const result = { output: 'ok\n' };
     const event: AgentEvent = {
       type: 'tool.completed',
       toolName: 'shell',
       toolCallId: 'i'.repeat(DAEMON_ENVELOPE_CEILING),
-      result: { output: 'ok\n' },
+      result,
     };
     const bounded = boundToolEventPayload(event);
     if (bounded.type !== 'tool.completed') throw new Error('unreachable');
     expect(Buffer.byteLength(bounded.toolCallId ?? '', 'utf8')).toBeLessThanOrEqual(256);
     expect(eventBytes(bounded)).toBeLessThan(DAEMON_ENVELOPE_CEILING);
+    // Capping the id says nothing about the 17-byte result beside it: see below.
+    expect(bounded.result).toBe(result);
   });
 
   it('bounds an oversized MCP tool name', () => {
+    const input = { a: 1 };
     const event: AgentEvent = {
       type: 'tool.started',
       toolName: 'm'.repeat(DAEMON_ENVELOPE_CEILING),
-      input: { a: 1 },
+      input,
     };
     const bounded = boundToolEventPayload(event);
     if (bounded.type !== 'tool.started') throw new Error('unreachable');
     expect(Buffer.byteLength(bounded.toolName, 'utf8')).toBeLessThanOrEqual(256);
     expect(eventBytes(bounded)).toBeLessThan(DAEMON_ENVELOPE_CEILING);
+    expect(bounded.input).toBe(input);
+  });
+
+  // The rebuild has two independent triggers -- an over-long identifier and an over-budget event --
+  // and only the second one is about the payload. An earlier version of this ran both through a
+  // single gate, so a verbose MCP tool name was enough to replace a perfectly small `input`/`result`
+  // with a marker reading `oversized_provider_payload`, which for a 17-byte payload is just false.
+  // Asserting on identifier length and total event size (as the two tests above did alone) passes
+  // either way; only the payload itself distinguishes them.
+  describe('does not truncate a payload merely because an identifier needed bounding', () => {
+    it('keeps a tiny result whole under an oversized toolCallId', () => {
+      const result = { command: 'echo ok', output: 'ok\n', exitCode: 0 };
+      const bounded = boundToolEventPayload({
+        type: 'tool.completed',
+        toolName: 'shell',
+        toolCallId: 'i'.repeat(DAEMON_ENVELOPE_CEILING),
+        result,
+        isError: false,
+      });
+      if (bounded.type !== 'tool.completed') throw new Error('unreachable');
+      expect(bounded.result).toEqual(result);
+      expect(bounded.result).not.toHaveProperty('truncated');
+      // Everything else the event carries still survives the rebuild.
+      expect(bounded.toolName).toBe('shell');
+      expect(bounded.isError).toBe(false);
+    });
+
+    it('keeps a tiny input whole under an oversized toolName', () => {
+      const input = { path: 'a.ts' };
+      const bounded = boundToolEventPayload({
+        type: 'tool.started',
+        toolName: `mcp__${'n'.repeat(400)}__read`,
+        toolCallId: 'call_1',
+        input,
+      });
+      if (bounded.type !== 'tool.started') throw new Error('unreachable');
+      expect(bounded.input).toEqual(input);
+      expect(bounded.input).not.toHaveProperty('truncated');
+      expect(bounded.toolCallId).toBe('call_1');
+    });
+
+    // The flip side, so the fix cannot be "never truncate": once the payload really is what puts
+    // the event over budget, capping the identifier does not save it and the marker is correct.
+    it('still truncates when the payload is what will not fit', () => {
+      const bounded = boundToolEventPayload({
+        type: 'tool.completed',
+        toolName: 'shell',
+        toolCallId: 'i'.repeat(DAEMON_ENVELOPE_CEILING),
+        result: { output: 'x'.repeat(DAEMON_ENVELOPE_CEILING) },
+      });
+      if (bounded.type !== 'tool.completed') throw new Error('unreachable');
+      expect((bounded.result as Record<string, unknown>).truncated).toBe(true);
+      expect(Buffer.byteLength(bounded.toolCallId ?? '', 'utf8')).toBeLessThanOrEqual(256);
+      expect(eventBytes(bounded)).toBeLessThanOrEqual(MAX_TOOL_EVENT_BYTES);
+    });
   });
 
   // `claude/parser.ts` emits `tool.completed` with no `toolName` at all -- the field is optional on
