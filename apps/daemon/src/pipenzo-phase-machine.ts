@@ -126,6 +126,22 @@ export function laneForLabel(label: PipenzoLaneBearingLabelV1): PipenzoLaneV1 {
  * - **`working` → `queued`**, and **`ready-for-review` → `queued`**, are an abandoned attempt
  *   returned to the queue: the first when the attempt is given up mid-flight, the second when a
  *   human rejects finished work outright and wants a fresh attempt rather than a fix on top of it.
+ *
+ * ## The one prohibition is reachable in two steps, and that is not a hole
+ *
+ * `queued` → `needs-human` → `ready-for-review` arrives at the state `queued` → `ready-for-review`
+ * refuses, for a ticket that was never implemented. That is deliberate, because of what the middle
+ * state means: **`needs-human` is the lane where a human is the one deciding.** The refusal above
+ * exists to stop *automation* from marking work reviewable that it never did. A ticket only reaches
+ * `needs-human` because something asked a person to look at it, and a person who then says the
+ * ticket is ready for review is not bypassing a guard — they are exercising the judgement the lane
+ * exists to hand them.
+ *
+ * A guard against the two-step path would have to refuse a human's explicit decision, and the
+ * obvious implementation — requiring recorded `attempts` before `ready-for-review` — would also
+ * refuse every legitimate transition today, since nothing populates `attempts[]` yet. Refusing real
+ * operator actions to close a path that needs two deliberate human acts to walk would cost more
+ * than it protects.
  */
 export const PIPENZO_LEGAL_LANE_TRANSITIONS: Readonly<
   Record<PipenzoLaneV1, readonly PipenzoLaneV1[]>
@@ -198,6 +214,13 @@ export function isConditionLabel(label: PipenzoLabelV1): boolean {
  * alternative is Pipenzo continuing to dispatch work on a ticket a human has just stopped. By the
  * same reasoning `ready-for-review` outranks `working`: it waits for a person, `working` dispatches.
  *
+ * `queued` outranks `working` for the same reason and not the intuitive one. It is tempting to order
+ * these by progress, putting `working` above `queued` as the "further along" state — but progress is
+ * not what this list is about. `working` is the one lane that actively dispatches a session;
+ * `queued` dispatches nothing. So a teammate who adds `pipenzo:queued` beside `pipenzo:working` on
+ * github.com to mean "stop and requeue this" is asking for exactly the halt this ordering exists to
+ * honour, and an order that read it as `working` would override the request and keep dispatching.
+ *
  * It applies to state labels only. Condition labels are consulted for a lane just once, as a
  * fallback when no state label is present at all — see `PIPENZO_CONDITION_LABELS`.
  *
@@ -208,8 +231,8 @@ export function isConditionLabel(label: PipenzoLabelV1): boolean {
 const LANE_PRECEDENCE: readonly PipenzoLaneV1[] = Object.freeze([
   'needs-human',
   'ready-for-review',
-  'working',
   'queued',
+  'working',
 ] as const);
 
 /* ---------------------------------------------------------------------- errors */
@@ -225,6 +248,13 @@ export const PIPENZO_PHASE_MACHINE_ERROR_CODES = [
   'github_forbidden',
   'github_rate_limited',
   'github_failed',
+  /**
+   * The local ticket store refused a write. Distinct from `github_failed` on purpose: by the time
+   * this can happen in `transition()` the GitHub label is already written, so reporting a disk
+   * failure as an upstream one would send an operator to check their network and their token for
+   * what is a local filesystem problem — and would hide that the authoritative side already moved.
+   */
+  'store_failed',
 ] as const;
 
 export type PipenzoPhaseMachineErrorCode = (typeof PIPENZO_PHASE_MACHINE_ERROR_CODES)[number];
@@ -257,6 +287,24 @@ const GITHUB_CODES: Record<GitHubClientError['code'], PipenzoPhaseMachineErrorCo
   invalid_response: 'github_failed',
   network: 'github_failed',
 };
+
+/**
+ * Wraps a local ticket-store write so a disk failure is reported as one.
+ *
+ * The message is this module's own, never the store's: a store error can carry a filesystem path,
+ * and while paths are not secrets here, the phase surface has no reason to be the thing that
+ * publishes the daemon's state directory layout to a renderer.
+ */
+function persist(write: () => void): void {
+  try {
+    write();
+  } catch {
+    throw new PipenzoPhaseMachineError(
+      'store_failed',
+      'the ticket store refused the write; the GitHub label may already have changed',
+    );
+  }
+}
 
 function toMachineError(error: unknown): PipenzoPhaseMachineError {
   if (error instanceof PipenzoPhaseMachineError) return error;
@@ -387,7 +435,7 @@ export class PipenzoPhaseMachine {
       lane: reconciledLane,
       labels: pipenzoLabelsOf(resulting),
     };
-    this.#tickets.update(ticketId, next);
+    persist(() => this.#tickets.update(ticketId, next));
 
     return {
       ticket: next,
@@ -455,7 +503,7 @@ export class PipenzoPhaseMachine {
       lane: authoritativeLane,
       labels: storedLabels,
     };
-    this.#tickets.update(ticketId, reconciled);
+    persist(() => this.#tickets.update(ticketId, reconciled));
 
     return {
       ticket: reconciled,

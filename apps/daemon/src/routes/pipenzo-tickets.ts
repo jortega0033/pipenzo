@@ -55,6 +55,8 @@ const TICKET_ERROR_STATUS: Record<PipenzoTicketErrorCodeV1, number> = {
   github_forbidden: 502,
   github_rate_limited: 429,
   github_failed: 502,
+  // The daemon's own disk, not an upstream: a 5xx that is genuinely this process's fault.
+  store_failed: 500,
 };
 
 function fail(reply: FastifyReply, error: PipenzoPhaseMachineError): void {

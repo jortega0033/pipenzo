@@ -304,6 +304,31 @@ describe('PipenzoPhaseMachine.read reconciliation', () => {
     expect(result.observedLabels).toHaveLength(2);
   });
 
+  it('prefers queued over working, because working is the lane that dispatches', async () => {
+    const { machine } = harness({
+      ticket: { lane: 'working', labels: ['pipenzo:working'] },
+      issueLabels: ['pipenzo:working', 'pipenzo:queued'],
+    });
+
+    // A teammate adding `queued` beside `working` on github.com is asking for a halt. Ordering
+    // these by progress rather than by which one dispatches would override that request.
+    expect((await machine.read(TICKET_ID)).ticket.lane).toBe('queued');
+  });
+
+  it('reports a local store failure as store_failed, not as a GitHub error', async () => {
+    const { machine, tickets } = harness({
+      ticket: { lane: 'working', labels: ['pipenzo:working'] },
+      issueLabels: ['pipenzo:needs-human'],
+    });
+    tickets.update = () => {
+      throw new Error('disk is full');
+    };
+
+    // The reconciliation itself succeeded; it is the local write that failed. Reporting that as
+    // github_failed would send an operator to check their network and their token.
+    await expect(machine.read(TICKET_ID)).rejects.toMatchObject({ code: 'store_failed' });
+  });
+
   it('prefers ready-for-review over working for the same reason', async () => {
     const { machine } = harness({
       ticket: { lane: 'working', labels: ['pipenzo:working'] },

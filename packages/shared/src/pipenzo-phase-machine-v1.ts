@@ -162,6 +162,13 @@ export const PIPENZO_TICKET_ERROR_CODES = [
   'github_forbidden',
   'github_rate_limited',
   'github_failed',
+  /**
+   * The daemon's local ticket store refused a write. Separate from `github_failed` because by the
+   * time a transition can hit it the GitHub label is already written: reporting a disk failure as an
+   * upstream one would send an operator to check their network for a filesystem problem, and would
+   * hide that the authoritative side has already moved.
+   */
+  'store_failed',
 ] as const;
 
 export const pipenzoTicketErrorV1Schema = z

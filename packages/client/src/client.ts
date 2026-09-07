@@ -115,6 +115,9 @@ import {
   pipenzoCaptureCapabilityV1Schema,
   pipenzoIdeaDraftRequestV1Schema,
   pipenzoIdeaDraftResultV1Schema,
+  pipenzoTicketReadRequestV1Schema,
+  pipenzoTicketTransitionRequestV1Schema,
+  pipenzoTicketReconciliationV1Schema,
   type PipenzoRefineRequestV1,
   type PipenzoRefineResultV1,
   type PipenzoImplementRequestV1,
@@ -131,6 +134,9 @@ import {
   type PipenzoCaptureCapabilityV1,
   type PipenzoIdeaDraftRequestV1,
   type PipenzoIdeaDraftResultV1,
+  type PipenzoTicketReadRequestV1,
+  type PipenzoTicketTransitionRequestV1,
+  type PipenzoTicketReconciliationV1,
 } from '@agent-dock/shared';
 import {
   DaemonError,
@@ -363,6 +369,20 @@ export class AgentDockClient {
       /** Free text in, a structured draft out (issue #84). Creates nothing. */
       draftIssue: (input: PipenzoIdeaDraftRequestV1): Promise<PipenzoIdeaDraftResultV1> =>
         this.draftPipenzoIssueV1(input),
+      /**
+       * The phase machine's ticket surface (issue #188). `readTicket` reconciles a ticket against
+       * its issue's labels and returns the result; `transitionTicket` writes a new `pipenzo:` label
+       * to GitHub first, then reconciles the same way `readTicket` does. In both cases the label is
+       * authoritative for the lane — see `pipenzo-phase-machine-v1.ts` and
+       * `apps/daemon/src/pipenzo-phase-machine.ts` for why a transition names a label rather than a
+       * lane, and why divergence between the two stores resolves in the label's favour.
+       */
+      readTicket: (
+        input: PipenzoTicketReadRequestV1,
+      ): Promise<PipenzoTicketReconciliationV1> => this.readPipenzoTicketV1(input),
+      transitionTicket: (
+        input: PipenzoTicketTransitionRequestV1,
+      ): Promise<PipenzoTicketReconciliationV1> => this.transitionPipenzoTicketV1(input),
     },
     integrations: {
       mcp: {
@@ -906,6 +926,36 @@ export class AgentDockClient {
       '/v2/pipenzo/capabilities',
       pipenzoCaptureCapabilityV1Schema,
       'pipenzo capability report',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) },
+      { expectedStatus: 200 },
+    );
+  }
+
+  private async readPipenzoTicketV1(
+    input: PipenzoTicketReadRequestV1,
+  ): Promise<PipenzoTicketReconciliationV1> {
+    const parsed = validateInput(pipenzoTicketReadRequestV1Schema, input, 'pipenzo ticket read request');
+    return this.requestV2(
+      '/v2/pipenzo/tickets/read',
+      pipenzoTicketReconciliationV1Schema,
+      'pipenzo ticket reconciliation',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) },
+      { expectedStatus: 200 },
+    );
+  }
+
+  private async transitionPipenzoTicketV1(
+    input: PipenzoTicketTransitionRequestV1,
+  ): Promise<PipenzoTicketReconciliationV1> {
+    const parsed = validateInput(
+      pipenzoTicketTransitionRequestV1Schema,
+      input,
+      'pipenzo ticket transition request',
+    );
+    return this.requestV2(
+      '/v2/pipenzo/tickets/transition',
+      pipenzoTicketReconciliationV1Schema,
+      'pipenzo ticket reconciliation',
       { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) },
       { expectedStatus: 200 },
     );

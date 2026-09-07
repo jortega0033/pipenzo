@@ -37,6 +37,8 @@ import {
   pipenzoIssueCreateRequestV1Schema,
   pipenzoCaptureCapabilityRequestV1Schema,
   pipenzoIdeaDraftRequestV1Schema,
+  pipenzoTicketReadRequestV1Schema,
+  pipenzoTicketTransitionRequestV1Schema,
   structuredWorkflowRequestV2Schema,
   providerIdSchema,
   type AgentCommandV2,
@@ -798,6 +800,19 @@ handle('daemon:pipenzo-capabilities', async (_event, input: unknown) => {
   return client.v2.pipenzo.captureCapabilities(
     pipenzoCaptureCapabilityRequestV1Schema.parse(input),
   );
+});
+// The phase machine's ticket surface (issue #188): reading a ticket reconciles it against its
+// issue's labels, and transitioning writes a new label to GitHub first, then reconciles the same
+// way. Same boundary as the handlers above -- main-process only, invoked by a renderer click --
+// and same reasoning for why there is no worktree path in the request: neither route needs one,
+// since the ticket is addressed by ticket id, not by the worktree it may own.
+handle('daemon:pipenzo-ticket-read', async (_event, input: unknown) => {
+  if (!client) throw new Error('daemon is not ready yet');
+  return client.v2.pipenzo.readTicket(pipenzoTicketReadRequestV1Schema.parse(input));
+});
+handle('daemon:pipenzo-ticket-transition', async (_event, input: unknown) => {
+  if (!client) throw new Error('daemon is not ready yet');
+  return client.v2.pipenzo.transitionTicket(pipenzoTicketTransitionRequestV1Schema.parse(input));
 });
 
 handle('dialog:select-and-upload-attachments', async (_event, input: unknown) => {
