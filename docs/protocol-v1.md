@@ -121,6 +121,19 @@ Upheld by `SessionManager` and enforced structurally by `runProviderSession()` (
   wire independently (`MAX_V1_SSE_FRAME_BYTES` in `packages/client/src/client.ts`), so a
   daemon that somehow put an oversized frame on the wire would still be rejected client-side with a
   `ValidationError` rather than accepted.
+- Reaching that ceiling should be rare, because the events that routinely carry megabytes are
+  bounded before they get there. A `tool.started` or `tool.completed` whose serialized form exceeds
+  256 KiB is rebuilt by `boundToolEventPayload`
+  (`packages/agent-runtime/src/providers/common/bound-tool-payload.ts`): `toolName` and
+  `toolCallId` are capped at 256 bytes each (unconditionally, so the same id is bounded the same
+  way on every event that carries it), and a present `input` / `result` arrives as
+  `{ truncated: true, reason, originalBytes }`, plus `sha256` and an ~8 KiB `preview` when the
+  payload could be serialized, instead of the original value. The
+  session continues. Without it, one shell command with a megabyte of output ended the whole
+  session (issue #185) -- and so did a megabyte-sized tool call id, which is why the measurement is
+  of the whole event rather than of its payload field. Nothing else is bounded this way: an
+  `assistant.message` over 1 MiB still fails the session, deliberately, because shortening it would
+  corrupt a result rather than a transcript.
 - Each subscriber's own SSE connection is bounded independently to 256 queued frames and 4 MiB
   (`apps/daemon/src/v1-sse-writer.ts`, sharing its bounded-queue/backpressure implementation with
   protocol v2's writer): the daemon never calls `write()` again on a connection that reported

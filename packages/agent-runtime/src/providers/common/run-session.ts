@@ -7,6 +7,7 @@ import { buildLegacyProviderEnvironment } from '../../process/provider-environme
 import { findExecutable } from '../../detect-executable.js';
 import type { Logger } from '../../logger.js';
 import type { ProviderSessionHandle, StartSessionOptions } from '../../types.js';
+import { boundToolEventPayload } from './bound-tool-payload.js';
 
 export interface ParsedLine {
   events: AgentEvent[];
@@ -157,7 +158,10 @@ export function runProviderSession(
         const parsed = config.parseLine(raw, logger);
         if (parsed.providerSessionId) providerSessionId = parsed.providerSessionId;
         for (const event of parsed.events) {
-          if (!channel.push(event)) {
+          // Issue #185: bound the provider-controlled content a tool event carries before it can
+          // reach the daemon's 1 MiB envelope ceiling, which fails the whole session rather than
+          // dropping a frame. Every other event is passed through exactly as parsed.
+          if (!channel.push(boundToolEventPayload(event))) {
             overflowed = true;
             break;
           }

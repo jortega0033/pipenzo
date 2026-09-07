@@ -176,7 +176,10 @@ available when supported; it is not cancellation or close.
 events **or** 16 MiB of serialized envelopes per session (`MAX_STORED_EVENTS_PER_SESSION`,
 `MAX_STORED_EVENT_BYTES_PER_SESSION`), whichever is hit first. A single normalized v1 envelope over
 1 MiB (`MAX_LEGACY_EVENT_ENVELOPE_BYTES`) fails the whole session with a synthetic
-`session.failed` rather than being buffered or streamed. `GET /sessions/:id/events`:
+`session.failed` rather than being buffered or streamed. Tool events are bounded upstream of that,
+so ordinary tool output cannot trigger it; every other event type still can -- see
+[protocol-v1.md](protocol-v1.md#ordering-guarantees) for the exact shape a truncated tool payload
+arrives in. `GET /sessions/:id/events`:
 
 1. Writes the standard `text/event-stream` headers, then an SSE `:ok` comment immediately.
 2. Replays every buffered event from `sequence` 0 (or from `Last-Event-ID + 1`, if that header was

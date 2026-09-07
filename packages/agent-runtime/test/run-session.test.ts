@@ -258,6 +258,47 @@ describe('runProviderSession (spawns real node child processes via fixtures)', (
     });
   });
 
+  // Issue #185: one megabyte-sized shell output used to take the whole session down at the
+  // daemon's envelope ceiling. It now arrives as an explicit truncation marker and the session
+  // still delivers the answer that came after it.
+  it('bounds an oversized tool payload instead of losing the rest of the session', async () => {
+    const handle = runProviderSession(
+      {
+        providerId: 'codex',
+        executableNames: [process.execPath],
+        buildArgs: () => [join(fixturesDir, 'fake-codex-oversized-tool-output.mjs')],
+        parseLine: parseCodexLine,
+      },
+      { sessionId: 'test-session-oversized', cwd, prompt: 'hello' },
+      noopLogger,
+    );
+
+    const events = await collectEvents(handle.events);
+
+    const completed = events.filter((event) => event.type === 'tool.completed');
+    expect(completed).toHaveLength(2);
+
+    // The oversized shell output.
+    if (completed[0]?.type !== 'tool.completed') throw new Error('unreachable');
+    expect(completed[0].toolName).toBe('shell');
+    expect(completed[0].result).toMatchObject({
+      truncated: true,
+      reason: 'oversized_provider_payload',
+    });
+
+    // The tiny output carried by an oversized tool call id -- the half a payload-only bound misses.
+    if (completed[1]?.type !== 'tool.completed') throw new Error('unreachable');
+    expect(Buffer.byteLength(completed[1].toolCallId ?? '', 'utf8')).toBeLessThanOrEqual(256);
+
+    // Every envelope the daemon would have to serialize now fits under its 1 MiB ceiling.
+    for (const event of events) {
+      expect(Buffer.from(JSON.stringify(event), 'utf8').byteLength).toBeLessThan(1024 * 1024);
+    }
+
+    expect(events).toContainEqual({ type: 'assistant.message', text: 'done anyway' });
+    expect(events.at(-1)).toMatchObject({ type: 'session.completed' });
+  });
+
   it('rejects a nonexistent working directory without spawning anything', async () => {
     const handle = runProviderSession(
       {
