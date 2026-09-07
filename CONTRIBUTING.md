@@ -131,7 +131,7 @@ authentication mode. AgentDock already includes local file-backed session/execut
 Claude Agent SDK transports for reviewed commercial auth sources, and Codex app-server support;
 changes to those surfaces need migration and security review. Hosted user accounts, product
 telemetry, and a product backend remain downstream concerns; see
-[What AgentDock is](README.md#what-agentdock-is).
+[What AgentDock is](docs/agentdock-upstream-README.md#what-agentdock-is).
 
 ## License
 
