@@ -1,6 +1,9 @@
 import { Octokit } from '@octokit/core';
 import { paginateRest, type PaginateInterface } from '@octokit/plugin-paginate-rest';
+import { retry } from '@octokit/plugin-retry';
+import { throttling } from '@octokit/plugin-throttling';
 import { PIPENZO_LABEL_NAMESPACE, isPipenzoLabel } from '@agent-dock/shared';
+import { ConditionalRequestCache } from './github-conditional-cache.js';
 
 /**
  * Pipenzo's GitHub API client (issue #177).
@@ -24,11 +27,16 @@ import { PIPENZO_LABEL_NAMESPACE, isPipenzoLabel } from '@agent-dock/shared';
  * Walking-skeleton simplifications, all owned by later build-order steps:
  * - The PAT is read from the environment. The Electron-main token vault and device-flow OAuth are
  *   build step 4; step 2 and step 3 both read a PAT from env by design.
- * - No conditional-request/ETag *caching* layer. Reads surface the response ETag so the ticket
- *   store (build step 3) can start sending `If-None-Match` without this module changing shape,
- *   but nothing here stores or replays one yet.
- * - No `@octokit/plugin-throttling` / `plugin-retry` ladder yet (README's rate-limit row). Rate
- *   limiting surfaces as a typed `rate_limited` error with the reset time rather than a retry.
+ *
+ * Issue #161 closed the two rate-limit gaps this comment used to list:
+ * - **Conditional requests.** `getIssue` and `listLabels` send `If-None-Match` from a
+ *   per-`(repo, resource)` ETag store (`github-conditional-cache.ts`) and serve the stored body on
+ *   a `304`, which costs no rate-limit quota at all. See `#conditional` below.
+ * - **The throttling/retry ladder.** `@octokit/plugin-throttling` honours `Retry-After` and
+ *   GitHub's secondary-limit signal, and `@octokit/plugin-retry` retries transient 5xx. What is
+ *   deliberately *not* retried is a primary-limit window longer than
+ *   `MAX_RATE_LIMIT_SLEEP_SECONDS` — see `pipenzoThrottleOptions` for why sleeping through an
+ *   hour-long reset inside a daemon request is worse than surfacing `rate_limited`.
  */
 
 /**
@@ -316,9 +324,106 @@ export function resolveConfiguredRepo(
 
 type PipenzoOctokit = Octokit & { paginate: PaginateInterface };
 
-const OctokitWithPagination = Octokit.plugin(paginateRest);
+/**
+ * Exported so a test can compose the same client and assert each plugin is genuinely installed.
+ * Without the list, "does this client throttle?" is only checkable by observing that construction
+ * does not throw — which stays true if `throttling` is dropped, because an unrecognised `throttle`
+ * option is simply ignored.
+ */
+export const PIPENZO_OCTOKIT_PLUGINS = Object.freeze([paginateRest, retry, throttling] as const);
+
+const OctokitWithPagination = Octokit.plugin(...PIPENZO_OCTOKIT_PLUGINS);
 
 export const PIPENZO_USER_AGENT = 'pipenzo/0.1 (+https://github.com/jortega0033/pipenzo)';
+
+/**
+ * The longest `Retry-After`/reset wait this client will sleep through rather than fail (issue #161).
+ *
+ * GitHub's *secondary* limits are short — seconds to a minute — and sleeping through one is exactly
+ * right: the alternative is a spurious failure the caller would have retried anyway. A *primary*
+ * limit is different. Its reset can be up to an hour away, and every one of these calls happens
+ * inside a daemon HTTP request that a renderer is awaiting; sleeping for fifty minutes would look
+ * to the user like Pipenzo had hung, with no way to tell that from a real deadlock. Past this bound
+ * the error is allowed through instead, where `toGitHubClientError` turns it into a `rate_limited`
+ * carrying `retryAfterMs` — which is precisely what the "degrade, don't fail" surface (#75) needs
+ * in order to widen poll intervals and say "syncing slowly" rather than spin.
+ */
+export const MAX_RATE_LIMIT_SLEEP_SECONDS = 60;
+
+/** How many times a limit that *is* short enough to wait out may be retried before giving up. */
+export const MAX_RATE_LIMIT_RETRIES = 2;
+
+/**
+ * The whole retry-or-surface decision, as a pure function so it can be asserted without a network.
+ *
+ * A non-finite or negative `retryAfter` (a malformed `Retry-After`, a reset already in the past) is
+ * treated as not-retryable rather than as "wait zero seconds and hammer": the plugin would loop
+ * immediately against a limit GitHub has not actually lifted, which is how a client earns a
+ * secondary-limit block on top of the primary one it already had.
+ */
+export function shouldRetryRateLimit(retryAfterSeconds: number, retryCount: number): boolean {
+  if (!Number.isFinite(retryAfterSeconds) || retryAfterSeconds < 0) return false;
+  if (!Number.isFinite(retryCount) || retryCount >= MAX_RATE_LIMIT_RETRIES) return false;
+  return retryAfterSeconds <= MAX_RATE_LIMIT_SLEEP_SECONDS;
+}
+
+export interface PipenzoThrottleObserver {
+  /**
+   * Called each time GitHub reports a limit, whether or not the request is retried. The
+   * rate-limit degradation surface (#75) subscribes here; nothing in this module reacts to it.
+   */
+  onRateLimit?(event: {
+    kind: 'primary' | 'secondary';
+    retryAfterSeconds: number;
+    retrying: boolean;
+    method: string;
+    url: string;
+  }): void;
+}
+
+interface ThrottleRequestOptions {
+  method?: string;
+  url?: string;
+}
+
+/**
+ * The `@octokit/plugin-throttling` policy, in one place so the publish service and the read client
+ * cannot drift apart on it. Both handlers are mandatory — the plugin throws at construction if
+ * either is missing, which is a design choice of its own worth keeping: there is no silent default.
+ */
+function pipenzoThrottleOptions(observer: PipenzoThrottleObserver | undefined): {
+  onRateLimit: (retryAfter: number, options: unknown, octokit: unknown, retryCount: number) => boolean;
+  onSecondaryRateLimit: (
+    retryAfter: number,
+    options: unknown,
+    octokit: unknown,
+    retryCount: number,
+  ) => boolean;
+} {
+  const decide = (
+    kind: 'primary' | 'secondary',
+    retryAfter: number,
+    options: unknown,
+    retryCount: number,
+  ): boolean => {
+    const request = (options ?? {}) as ThrottleRequestOptions;
+    const retrying = shouldRetryRateLimit(retryAfter, retryCount);
+    observer?.onRateLimit?.({
+      kind,
+      retryAfterSeconds: retryAfter,
+      retrying,
+      method: request.method ?? 'GET',
+      url: request.url ?? '',
+    });
+    return retrying;
+  };
+  return {
+    onRateLimit: (retryAfter, options, _octokit, retryCount) =>
+      decide('primary', retryAfter, options, retryCount),
+    onSecondaryRateLimit: (retryAfter, options, _octokit, retryCount) =>
+      decide('secondary', retryAfter, options, retryCount),
+  };
+}
 
 /**
  * Builds the one configured octokit instance.
@@ -327,18 +432,92 @@ export const PIPENZO_USER_AGENT = 'pipenzo/0.1 (+https://github.com/jortega0033/
  * PR-open half and must not grow a second, differently-configured auth path — but note that it
  * builds its *own* instance from its *own* token read. The two never share a live object, so
  * there is no handle a caller of this module could follow to the publish service's credential.
+ *
+ * Note what the retry plugin will and will not retry, because it matters for a publishing surface:
+ * its `doNotRetry` list covers 400/401/403/404/410/422/451, so a rejected token, a missing repo and
+ * a validation failure all surface immediately. Only transient 5xx and 408 are retried, and a
+ * 403/429 carrying a limit signal is handled by the throttling plugin above instead.
  */
-export function createPipenzoOctokit(token: string): PipenzoOctokit {
+export function createPipenzoOctokit(
+  token: string,
+  options: { throttleObserver?: PipenzoThrottleObserver } = {},
+): PipenzoOctokit {
   return new OctokitWithPagination({
     auth: token,
     userAgent: PIPENZO_USER_AGENT,
+    throttle: pipenzoThrottleOptions(options.throttleObserver),
+    log: redactingOctokitLog(),
   }) as PipenzoOctokit;
+}
+
+/**
+ * Octokit's own logger, routed through `redactSecrets`.
+ *
+ * This module's stated rule is that redaction happens once, at `GitHubClientError` construction,
+ * rather than at each call site that might forget — and `octokit.log` is the one path that escapes
+ * it. Left unset, `@octokit/core` defaults `warn`/`error` straight to `console.warn`/`console.error`,
+ * and `@octokit/plugin-throttling` calls exactly that (`octokit.log.warn("Error in
+ * throttling-plugin limit handler", e)`) whenever a rate-limit handler throws — including the
+ * degradation-surface observer this module invites callers to supply. That error object never
+ * passes through `GitHubClientError`, so nothing else would scrub it.
+ *
+ * `debug` and `info` are dropped rather than redacted: they are per-request chatter with no
+ * consumer here, and a log line that is never emitted cannot leak.
+ */
+function redactingOctokitLog(): {
+  debug: (...args: unknown[]) => void;
+  info: (...args: unknown[]) => void;
+  warn: (...args: unknown[]) => void;
+  error: (...args: unknown[]) => void;
+} {
+  const scrub = (value: unknown): unknown => {
+    if (typeof value === 'string') return redactSecrets(value);
+    if (value instanceof Error) return redactSecrets(`${value.name}: ${value.message}`);
+    try {
+      return redactSecrets(JSON.stringify(value) ?? String(value));
+    } catch {
+      // A circular or unserializable argument: name its type rather than risk printing it raw.
+      return `[unserializable ${typeof value}]`;
+    }
+  };
+  return {
+    debug: () => {},
+    info: () => {},
+    warn: (...args: unknown[]) => console.warn(...args.map(scrub)),
+    error: (...args: unknown[]) => console.error(...args.map(scrub)),
+  };
+}
+
+/**
+ * Whether a paginated response says there is another page.
+ *
+ * Reads GitHub's `Link` header rather than counting items: a full page is not the same thing as a
+ * next page (GitHub omits `rel="next"` when the last page is exactly full), and guessing from the
+ * item count is how a list silently loses its tail.
+ */
+function hasNextPage(headers: Record<string, unknown> | undefined): boolean {
+  const link = headers?.link;
+  return typeof link === 'string' && /;\s*rel="next"/.test(link);
 }
 
 function statusOf(error: unknown): number | undefined {
   if (!error || typeof error !== 'object') return undefined;
   const status = (error as { status?: unknown }).status;
   return typeof status === 'number' ? status : undefined;
+}
+
+/**
+ * The response headers carried by a thrown octokit error.
+ *
+ * A `304` is raised rather than returned, so this is the only way to read the headers of the one
+ * response shape whose headers still matter — `Link` above all, which says whether a paginated
+ * resource has grown a page since it was cached.
+ */
+function responseHeadersOf(error: unknown): Record<string, unknown> | undefined {
+  if (!error || typeof error !== 'object') return undefined;
+  const response = (error as { response?: { headers?: unknown } }).response;
+  const headers = response?.headers;
+  return headers && typeof headers === 'object' ? (headers as Record<string, unknown>) : undefined;
 }
 
 function headerOf(error: unknown, name: string): string | undefined {
@@ -455,45 +634,156 @@ function normalizeCheckConclusion(value: unknown): GitHubCheckConclusion | undef
     : 'unknown';
 }
 
+/** What `#conditional` needs from an octokit response; narrower than octokit's own generics. */
+interface ConditionalResponse {
+  readonly data: unknown;
+  readonly headers?: Record<string, unknown> | undefined;
+}
+
+export interface OctokitGitHubClientOptions {
+  /**
+   * The per-`(repo, resource)` ETag store (issue #161). Optional, and shared rather than owned:
+   * `index.ts` builds one authenticated client *per request* from a token read at call time (that
+   * is the token-boundary rule), so a cache the client constructed for itself would be discarded
+   * before it ever served a validator. Omitting it turns conditional requests off entirely, which
+   * is what the unit tests that assert unconditional behaviour want.
+   */
+  readonly cache?: ConditionalRequestCache;
+}
+
 /** The one real implementation. Everything network-facing in Pipenzo's GitHub surface is here. */
 export class OctokitGitHubClient implements GitHubClient {
   readonly #octokit: PipenzoOctokit;
+  readonly #cache: ConditionalRequestCache | undefined;
 
-  private constructor(octokit: PipenzoOctokit) {
+  private constructor(octokit: PipenzoOctokit, cache: ConditionalRequestCache | undefined) {
     this.#octokit = octokit;
+    this.#cache = cache;
   }
 
   /** Reads the PAT from the environment and builds the client. Throws `token_missing` if unset. */
   static fromEnvironment(
     env: Readonly<Record<string, string | undefined>> = process.env,
+    options: OctokitGitHubClientOptions = {},
   ): OctokitGitHubClient {
-    return new OctokitGitHubClient(createPipenzoOctokit(resolveGitHubToken(env)));
+    return new OctokitGitHubClient(createPipenzoOctokit(resolveGitHubToken(env)), options.cache);
   }
 
   /** Injection seam for tests and for a caller that already holds a configured octokit. */
-  static withOctokit(octokit: PipenzoOctokit): OctokitGitHubClient {
-    return new OctokitGitHubClient(octokit);
+  static withOctokit(
+    octokit: PipenzoOctokit,
+    options: OctokitGitHubClientOptions = {},
+  ): OctokitGitHubClient {
+    return new OctokitGitHubClient(octokit, options.cache);
+  }
+
+  /**
+   * One conditional GET: send the stored validator, serve the stored body on a `304`.
+   *
+   * `@octokit/request` raises a `304` as a `RequestError` rather than returning it, which is why the
+   * cache hit is handled in the `catch`. That is not a workaround — it is the reason this has to be
+   * one shared helper: a call site that forgot the 304 branch would turn every unchanged poll into
+   * a thrown `network` error, and the failure would only appear the *second* time a resource was
+   * read, which is the worst possible shape for a bug to have.
+   *
+   * `normalize` runs outside the `try` on purpose. It raises `invalid_response` for a body GitHub
+   * answered 200 with but that does not have the fields this client requires, and that must not be
+   * rewritten into a `network` error by the transport's own error mapper. It receives the whole
+   * response rather than just the body, and may return `undefined` to mean **this response is not
+   * one this resource may cache** — see `listLabels`, where a paginated first page is only storable
+   * when it is also the last page.
+   *
+   * Two things make a `304` insufficient on its own, and both are checked before the stored body is
+   * served:
+   *
+   * - **The entry may have been invalidated while this request was in flight.** The cache is shared
+   *   between the reconciler and request-scoped clients, so a write can land mid-read; GitHub's
+   *   eventually-consistent replicas can then answer the pre-write validator with a `304`, and
+   *   returning the pre-write body would not self-heal — every later poll would get the same
+   *   agreeing `304`. Comparing the cache's generation across the await turns that into a miss.
+   * - **A `304` carries headers too**, and for a paginated resource they can say the list has grown
+   *   a second page. `acceptNotModified` is where a caller inspects them; see `listLabels`.
+   *
+   * Either check failing costs one unconditional re-read, which is why the loop runs at most twice:
+   * the second pass sends no validator, so it cannot produce another `304`.
+   */
+  async #conditional<T>(
+    ref: RepoRef,
+    resource: string,
+    operation: string,
+    send: (headers: Record<string, string>) => Promise<ConditionalResponse>,
+    normalize: (response: ConditionalResponse, etag: string | undefined) => T | undefined,
+    acceptNotModified?: (headers: Record<string, unknown> | undefined) => boolean,
+  ): Promise<T | undefined> {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const cached = attempt === 0 ? this.#cache?.get<T>(ref, resource) : undefined;
+      const generation = this.#cache?.generation;
+      let response: ConditionalResponse;
+      try {
+        response = await send(cached ? { 'if-none-match': cached.etag } : {});
+      } catch (error) {
+        if (cached !== undefined && statusOf(error) === 304) {
+          const headers = responseHeadersOf(error);
+          if (
+            this.#cache?.generation === generation &&
+            (acceptNotModified?.(headers) ?? true)
+          ) {
+            this.#cache?.noteNotModified();
+            return cached.value;
+          }
+          this.#cache?.invalidate(ref, resource);
+          continue;
+        }
+        throw toGitHubClientError(error, operation);
+      }
+      const rawEtag = response.headers?.etag;
+      const etag = typeof rawEtag === 'string' ? rawEtag : undefined;
+      const value = normalize(response, etag);
+      if (etag !== undefined && value !== undefined) {
+        this.#cache?.set(ref, resource, etag, value);
+      } else {
+        // No validator, or a response this resource may not cache. Anything already stored describes
+        // a state that no longer holds, so it is dropped rather than replayed later.
+        this.#cache?.invalidate(ref, resource);
+      }
+      return value;
+    }
+    /* c8 ignore next 4 -- the second pass sends no validator, so it cannot loop again. */
+    throw new GitHubClientError(
+      'network',
+      `${operation}: a conditional read did not settle`,
+    );
   }
 
   async getIssue(ref: RepoRef, issueNumber: number): Promise<GitHubIssue> {
     const operation = `getIssue ${ref.owner}/${ref.repo}#${issueNumber}`;
     assertPositiveInteger(issueNumber, 'issue number', operation);
-    let response;
-    try {
-      response = await this.#octokit.request('GET /repos/{owner}/{repo}/issues/{issue_number}', {
-        owner: ref.owner,
-        repo: ref.repo,
-        issue_number: issueNumber,
-      });
-    } catch (error) {
-      throw toGitHubClientError(error, operation);
+    const issue = await this.#conditional<GitHubIssue>(
+      ref,
+      `issue:${issueNumber}`,
+      operation,
+      (headers) =>
+        this.#octokit.request('GET /repos/{owner}/{repo}/issues/{issue_number}', {
+          owner: ref.owner,
+          repo: ref.repo,
+          issue_number: issueNumber,
+          headers,
+        }),
+      (response, etag) => {
+        const data = response.data as Record<string, unknown>;
+        if (data.pull_request !== undefined) {
+          throw new GitHubClientError('not_found', `${operation}: reference is a pull request`);
+        }
+        return normalizeIssue(ref, data, etag, operation);
+      },
+    );
+    // Unreachable: this resource's `normalize` either returns an issue or throws. The check is here
+    // so that a future edit which starts returning `undefined` fails loudly instead of handing the
+    // phase machine an issue-shaped hole.
+    if (issue === undefined) {
+      throw new GitHubClientError('invalid_response', `${operation}: no issue in the response`);
     }
-    const data = response.data as Record<string, unknown>;
-    if (data.pull_request !== undefined) {
-      throw new GitHubClientError('not_found', `${operation}: reference is a pull request`);
-    }
-    const etag = response.headers.etag;
-    return normalizeIssue(ref, data, typeof etag === 'string' ? etag : undefined, operation);
+    return issue;
   }
 
   /**
@@ -526,6 +816,10 @@ export class OctokitGitHubClient implements GitHubClient {
       );
     } catch (error) {
       throw toGitHubClientError(error, operation);
+    } finally {
+      // `finally`, not the success path: a write that timed out may still have landed, and a
+      // conditional read afterwards must not be answered from a body recorded before it.
+      this.#cache?.invalidate(ref, `issue:${issueNumber}`);
     }
     const data = response.data as Record<string, unknown>;
     if (data.pull_request !== undefined) {
@@ -570,12 +864,70 @@ export class OctokitGitHubClient implements GitHubClient {
       });
     } catch (error) {
       throw toGitHubClientError(error, operation);
+    } finally {
+      // Creating an issue *with labels* can create the labels: GitHub's issue-create endpoint adds
+      // any name that does not exist yet (for a caller with push access, which the daemon always
+      // has). So this is a write to the repository label list as well as to the issue, and leaving
+      // the cached list in place would let a subsequent `listLabels` miss a label Pipenzo itself
+      // just caused to exist.
+      if (input.labels && input.labels.length > 0) this.#cache?.invalidate(ref, 'labels');
     }
     return normalizeIssue(ref, response.data as Record<string, unknown>, undefined, operation);
   }
 
+  /**
+   * Every label on a repository.
+   *
+   * ## Why a paginated read gets a *conditional first page* rather than a conditional list
+   *
+   * An ETag validates one response, and one response is one page. A cache keyed on "the label list"
+   * but validated by page one's ETag would answer `304` — and serve a stale list — whenever a
+   * change landed on page two only. So the fast path is taken **only when the whole list fits in
+   * one page**: page one is requested with `If-None-Match`, and its ETag is stored only if the
+   * response carries no `rel="next"` link.
+   *
+   * That rule is sound rather than merely lucky. Reaching a second page requires the list to grow
+   * past 100, and growing past 100 necessarily changes page one's contents (an insert shifts it, an
+   * append fills the last free slot), which changes page one's ETag, which produces a `200` and a
+   * re-evaluation of the single-page test. There is no path from "cached as single-page" to "silently
+   * multi-page".
+   *
+   * When the list really is multi-page the first request is spent for nothing and the read falls
+   * through to `paginate`. That costs one extra point on a call that is already spending several,
+   * on a repository shape Pipenzo does not otherwise optimise for — the right side of the trade for
+   * a hot path (`getIssue`) that is *always* single-response.
+   */
   async listLabels(ref: RepoRef): Promise<readonly GitHubLabel[]> {
     const operation = `listLabels ${ref.owner}/${ref.repo}`;
+    if (this.#cache !== undefined) {
+      const singlePage = await this.#conditional<readonly GitHubLabel[]>(
+        ref,
+        'labels',
+        operation,
+        (headers) =>
+          this.#octokit.request('GET /repos/{owner}/{repo}/labels', {
+            owner: ref.owner,
+            repo: ref.repo,
+            per_page: 100,
+            headers,
+          }),
+        (response) => {
+          if (hasNextPage(response.headers)) return undefined;
+          if (!Array.isArray(response.data)) {
+            throw new GitHubClientError('invalid_response', `${operation}: labels was not an array`);
+          }
+          return response.data.map((label) =>
+            normalizeLabel(label as Record<string, unknown>, operation),
+          );
+        },
+        // The same test on the `304` path, where `normalize` never runs. GitHub sends `Link` on a
+        // 304 too, so a list that has grown a second page since it was cached says so here — and
+        // this is what makes the fast path safe without depending on GitHub's (undocumented) label
+        // ordering to guarantee that growth always disturbs page one.
+        (headers) => !hasNextPage(headers),
+      );
+      if (singlePage !== undefined) return singlePage;
+    }
     try {
       const labels = await this.#octokit.paginate('GET /repos/{owner}/{repo}/labels', {
         owner: ref.owner,
@@ -623,6 +975,10 @@ export class OctokitGitHubClient implements GitHubClient {
         void lookupError;
         throw mapped;
       }
+    } finally {
+      // The repository label list this may have just changed. Invalidated whatever the outcome, for
+      // the same reason `assignIssue` does: a failed write is not proof of an unchanged resource.
+      this.#cache?.invalidate(ref, 'labels');
     }
   }
 
@@ -688,6 +1044,8 @@ export class OctokitGitHubClient implements GitHubClient {
       return labelNames(response.data);
     } catch (error) {
       throw toGitHubClientError(error, operation);
+    } finally {
+      this.#cache?.invalidate(ref, `issue:${issueNumber}`);
     }
   }
 
@@ -721,6 +1079,8 @@ export class OctokitGitHubClient implements GitHubClient {
       const mapped = toGitHubClientError(error, operation);
       if (mapped.code === 'not_found') return;
       throw mapped;
+    } finally {
+      this.#cache?.invalidate(ref, `issue:${issueNumber}`);
     }
   }
 
