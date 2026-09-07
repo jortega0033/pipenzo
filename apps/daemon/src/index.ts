@@ -29,6 +29,7 @@ import {
 } from './pipenzo-phase-sessions.js';
 import { ExecFileGateCommands } from './gate-commands.js';
 import { OctokitGitHubClient } from './github-client.js';
+import { ConditionalRequestCache } from './github-conditional-cache.js';
 import { PipenzoPhaseMachine } from './pipenzo-phase-machine.js';
 import { PipenzoPhaseEventBus } from './pipenzo-phase-events.js';
 import { PipenzoCrashRecovery } from './pipenzo-crash-recovery.js';
@@ -158,12 +159,21 @@ async function main() {
   // routes behind the bearer token. The GitHub client is built lazily from a token read at call
   // time, so no authenticated client is retained between requests, and the gate commands run on
   // `buildGitEnvironment()`'s reviewed floor rather than inheriting this process's environment.
+  // The per-`(repo, resource)` ETag store (issue #161). One per daemon, deliberately outside the
+  // two client factories below: each of those builds a *fresh* authenticated client per request
+  // (that is the token-boundary rule — no authenticated client is retained between requests), so a
+  // cache each client owned would be thrown away before it ever served a validator. The cache holds
+  // no credential, only response bodies and ETags, so sharing it across those short-lived clients
+  // costs nothing the boundary was protecting.
+  const githubConditionalCache = new ConditionalRequestCache();
+
   const phaseService = new PipenzoPhaseService({
     refineSessions: new AwaitedPhaseSessions({ sessionManager }),
     reviewSessions: new AwaitedPhaseSessions({ sessionManager }),
     implementSessions: new DispatchOnlyPhaseSessions({ sessionManager }),
     worktrees: worktreeManager,
-    github: () => OctokitGitHubClient.fromEnvironment(),
+    github: () =>
+      OctokitGitHubClient.fromEnvironment(process.env, { cache: githubConditionalCache }),
     commands: new ExecFileGateCommands({ probeCwd: durableStateDirectory }),
   });
 
@@ -178,7 +188,8 @@ async function main() {
   const phaseEvents = new PipenzoPhaseEventBus();
   const phaseMachine = new PipenzoPhaseMachine({
     tickets: ticketStore,
-    github: () => OctokitGitHubClient.fromEnvironment(),
+    github: () =>
+      OctokitGitHubClient.fromEnvironment(process.env, { cache: githubConditionalCache }),
     events: phaseEvents,
   });
 

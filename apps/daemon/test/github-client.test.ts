@@ -5,15 +5,20 @@ import {
 import {
   GITHUB_TOKEN_ENV_KEYS,
   GitHubClientError,
+  MAX_RATE_LIMIT_RETRIES,
+  MAX_RATE_LIMIT_SLEEP_SECONDS,
   OctokitGitHubClient,
+  createPipenzoOctokit,
   parseRepoRef,
   redactSecrets,
   resolveConfiguredRepo,
   resolveGitHubToken,
+  shouldRetryRateLimit,
   toGitHubClientError,
   type GitHubClient,
   type RepoRef,
 } from '../src/github-client.js';
+import { ConditionalRequestCache } from '../src/github-conditional-cache.js';
 
 const REF: RepoRef = { owner: 'jortega0033', repo: 'pipenzo' };
 
@@ -735,5 +740,257 @@ describe('getAuthenticatedLogin', () => {
   it('is mirrored by the fake, which a test can point at either side of a race', async () => {
     const fake: GitHubClient = new FakeGitHubClient().seedAuthenticatedLogin('someone-else');
     await expect(fake.getAuthenticatedLogin()).resolves.toBe('someone-else');
+  });
+});
+
+/**
+ * Issue #161: the conditional-request layer. What is asserted here is the *quota* property, not
+ * merely that the right value comes back — a poll that costs a rate-limit point every cycle is the
+ * bug this exists to prevent, and only the request headers can show whether it does.
+ */
+describe('conditional requests (issue #161)', () => {
+  const ISSUE_BODY = {
+    number: 161,
+    title: 'ETag + conditional-request layer',
+    body: 'body',
+    state: 'open',
+    labels: ['pipenzo:queued'],
+    assignees: [],
+    html_url: 'https://github.com/jortega0033/pipenzo/issues/161',
+    updated_at: '2026-09-07T00:00:00Z',
+  };
+
+  /** A 304 as `@octokit/request` actually raises it: a thrown error, never a returned response. */
+  const notModified = (): Error => httpError(304, 'Not modified');
+
+  const conditionalHeader = (call: StubCall | undefined): string | undefined =>
+    (call?.params.headers as Record<string, string> | undefined)?.['if-none-match'];
+
+  it('sends no validator on a cold read, and stores the one it gets back', async () => {
+    const cache = new ConditionalRequestCache();
+    const { octokit, calls } = stubOctokit({
+      request: async () => ({ headers: { etag: 'W/"v1"' }, data: ISSUE_BODY }),
+    });
+
+    await OctokitGitHubClient.withOctokit(octokit, { cache }).getIssue(REF, 161);
+
+    expect(conditionalHeader(calls[0])).toBeUndefined();
+    expect(cache.get(REF, 'issue:161')?.etag).toBe('W/"v1"');
+  });
+
+  it('sends the stored validator next time and serves the stored body on a 304', async () => {
+    const cache = new ConditionalRequestCache();
+    let responses = 0;
+    const { octokit, calls } = stubOctokit({
+      request: async () => {
+        responses += 1;
+        if (responses === 1) return { headers: { etag: 'W/"v1"' }, data: ISSUE_BODY };
+        throw notModified();
+      },
+    });
+    const client = OctokitGitHubClient.withOctokit(octokit, { cache });
+
+    const first = await client.getIssue(REF, 161);
+    const second = await client.getIssue(REF, 161);
+
+    expect(conditionalHeader(calls[1])).toBe('W/"v1"');
+    expect(second).toEqual(first);
+    expect(cache.stats.notModified).toBe(1);
+  });
+
+  /**
+   * The failure mode a per-call-site implementation would have: a 304 with nothing to serve is a
+   * transport error, not an empty issue. It must never be swallowed into a synthesized value.
+   */
+  it('does not swallow a 304 that arrives with nothing cached to serve', async () => {
+    const cache = new ConditionalRequestCache();
+    const { octokit } = stubOctokit({
+      request: async () => {
+        throw notModified();
+      },
+    });
+    const error = await catchAsync(() =>
+      OctokitGitHubClient.withOctokit(octokit, { cache }).getIssue(REF, 161),
+    );
+    expect(error).toBeInstanceOf(GitHubClientError);
+    expect((error as GitHubClientError).status).toBe(304);
+  });
+
+  it('is off entirely when no cache is supplied', async () => {
+    const { octokit, calls } = stubOctokit({
+      request: async () => ({ headers: { etag: 'W/"v1"' }, data: ISSUE_BODY }),
+    });
+    const client = OctokitGitHubClient.withOctokit(octokit);
+    await client.getIssue(REF, 161);
+    await client.getIssue(REF, 161);
+    for (const call of calls) expect(conditionalHeader(call)).toBeUndefined();
+  });
+
+  it('leaves a response with no ETag uncached rather than storing an unvalidatable entry', async () => {
+    const cache = new ConditionalRequestCache();
+    const { octokit } = stubOctokit({ request: async () => ({ headers: {}, data: ISSUE_BODY }) });
+    await OctokitGitHubClient.withOctokit(octokit, { cache }).getIssue(REF, 161);
+    expect(cache.get(REF, 'issue:161')).toBeUndefined();
+  });
+
+  describe('writes drop what they may have changed', () => {
+    it('setIssueLabels invalidates the issue it wrote to', async () => {
+      const cache = new ConditionalRequestCache();
+      cache.set(REF, 'issue:161', 'W/"stale"', { number: 161 });
+      const { octokit } = stubOctokit({
+        request: async () => ({ headers: {}, data: [{ name: 'pipenzo:working' }] }),
+        paginate: async () => [],
+      });
+      await OctokitGitHubClient.withOctokit(octokit, { cache }).setIssueLabels(REF, 161, [
+        'pipenzo:working',
+      ]);
+      expect(cache.get(REF, 'issue:161')).toBeUndefined();
+    });
+
+    it('removeIssueLabel invalidates even on the 404-is-success path', async () => {
+      const cache = new ConditionalRequestCache();
+      cache.set(REF, 'issue:161', 'W/"stale"', { number: 161 });
+      const { octokit } = stubOctokit({
+        request: async () => {
+          throw httpError(404, 'Not Found');
+        },
+      });
+      await OctokitGitHubClient.withOctokit(octokit, { cache }).removeIssueLabel(
+        REF,
+        161,
+        'pipenzo:queued',
+      );
+      expect(cache.get(REF, 'issue:161')).toBeUndefined();
+    });
+
+    /**
+     * A write that *failed* is not evidence the resource is unchanged: GitHub may have applied it
+     * and then the response may have been lost. Invalidating only on success would leave a
+     * validator answering 304 for a state that no longer exists.
+     */
+    it('assignIssue invalidates even when the write throws', async () => {
+      const cache = new ConditionalRequestCache();
+      cache.set(REF, 'issue:161', 'W/"stale"', { number: 161 });
+      const { octokit } = stubOctokit({
+        request: async () => {
+          throw httpError(500, 'Internal Server Error');
+        },
+      });
+      await catchAsync(() =>
+        OctokitGitHubClient.withOctokit(octokit, { cache }).assignIssue(REF, 161, 'jortega0033'),
+      );
+      expect(cache.get(REF, 'issue:161')).toBeUndefined();
+    });
+
+    it('createLabel invalidates the repository label list', async () => {
+      const cache = new ConditionalRequestCache();
+      cache.set(REF, 'labels', 'W/"stale"', []);
+      const { octokit } = stubOctokit({
+        request: async () => ({ headers: {}, data: { name: 'pipenzo:queued', color: 'aabbcc' } }),
+      });
+      await OctokitGitHubClient.withOctokit(octokit, { cache }).createLabel(REF, {
+        name: 'pipenzo:queued',
+        color: 'aabbcc',
+        description: '',
+      });
+      expect(cache.get(REF, 'labels')).toBeUndefined();
+    });
+  });
+
+  /**
+   * The paginated-read rule, which is the part of this layer that could quietly serve a stale list.
+   * An ETag validates one page, so the fast path is taken only when the first page is also the last.
+   */
+  describe('listLabels takes the conditional fast path only when the list is one page', () => {
+    const PAGE = [{ name: 'pipenzo:queued', color: 'AABBCC', description: 'Accepted' }];
+
+    it('caches and revalidates a single-page list', async () => {
+      const cache = new ConditionalRequestCache();
+      let responses = 0;
+      const { octokit, calls } = stubOctokit({
+        request: async () => {
+          responses += 1;
+          if (responses === 1) return { headers: { etag: 'W/"labels"' }, data: PAGE };
+          throw notModified();
+        },
+        paginate: async () => {
+          throw new Error('a single-page list must not fall through to paginate');
+        },
+      });
+      const client = OctokitGitHubClient.withOctokit(octokit, { cache });
+
+      const first = await client.listLabels(REF);
+      const second = await client.listLabels(REF);
+
+      expect(first).toEqual([{ name: 'pipenzo:queued', color: 'aabbcc', description: 'Accepted' }]);
+      expect(second).toEqual(first);
+      expect(conditionalHeader(calls[1])).toBe('W/"labels"');
+    });
+
+    it('falls through to pagination and stores no validator when a next page exists', async () => {
+      const cache = new ConditionalRequestCache();
+      const { octokit } = stubOctokit({
+        request: async () => ({
+          headers: { etag: 'W/"page1"', link: '<https://api.github.com/x?page=2>; rel="next"' },
+          data: PAGE,
+        }),
+        paginate: async () => [...PAGE, { name: 'pipenzo:working' }],
+      });
+      const labels = await OctokitGitHubClient.withOctokit(octokit, { cache }).listLabels(REF);
+
+      expect(labels).toHaveLength(2);
+      expect(cache.get(REF, 'labels')).toBeUndefined();
+    });
+
+    it('is unconditional, and purely paginated, when no cache is supplied', async () => {
+      const { octokit, calls } = stubOctokit({ paginate: async () => PAGE });
+      await OctokitGitHubClient.withOctokit(octokit).listLabels(REF);
+      expect(calls).toHaveLength(1);
+    });
+  });
+});
+
+/**
+ * Issue #161's other half: the throttling/retry ladder. The policy is asserted as a pure decision
+ * rather than by driving a real limiter — what matters is *which* limits are waited out and which
+ * are surfaced, and that is a rule, not a timing.
+ */
+describe('rate-limit retry policy (issue #161)', () => {
+  it('waits out a short limit', () => {
+    expect(shouldRetryRateLimit(1, 0)).toBe(true);
+    expect(shouldRetryRateLimit(MAX_RATE_LIMIT_SLEEP_SECONDS, 0)).toBe(true);
+  });
+
+  /**
+   * A primary-limit reset can be the better part of an hour away. Every call here happens inside a
+   * daemon request a renderer is awaiting, so a long sleep is indistinguishable from a hang — the
+   * error is surfaced instead, and `toGitHubClientError` turns it into `rate_limited` carrying the
+   * reset time, which is what the degradation surface (#75) widens poll intervals from.
+   */
+  it('refuses to sleep through a long one', () => {
+    expect(shouldRetryRateLimit(MAX_RATE_LIMIT_SLEEP_SECONDS + 1, 0)).toBe(false);
+    expect(shouldRetryRateLimit(3600, 0)).toBe(false);
+  });
+
+  it('gives up after a bounded number of attempts', () => {
+    expect(shouldRetryRateLimit(1, MAX_RATE_LIMIT_RETRIES - 1)).toBe(true);
+    expect(shouldRetryRateLimit(1, MAX_RATE_LIMIT_RETRIES)).toBe(false);
+  });
+
+  /** A malformed `Retry-After` must not become "retry immediately, forever". */
+  it('treats a nonsensical retry-after as not retryable', () => {
+    for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, -1]) {
+      expect(shouldRetryRateLimit(bad, 0)).toBe(false);
+    }
+  });
+
+  /**
+   * `@octokit/plugin-throttling` throws at construction if either handler is missing. Building a
+   * real instance is therefore the cheapest possible proof that both plugins are installed on the
+   * client every Pipenzo GitHub call goes through — the publish service's included, since it builds
+   * its own instance from this same factory.
+   */
+  it('is actually installed: the configured octokit constructs with both handlers', () => {
+    expect(() => createPipenzoOctokit(`${gh('p')}notARealTokenForTests000`)).not.toThrow();
   });
 });
