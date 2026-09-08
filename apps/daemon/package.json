@@ -24,7 +24,7 @@
     "@octokit/plugin-throttling": "^9.6.1",
     "ajv": "^8.20.0",
     "fastify": "^5.2.1",
-    "zod": "^3.24.1"
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@agent-dock/client": "workspace:*",
