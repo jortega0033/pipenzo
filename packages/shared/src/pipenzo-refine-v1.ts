@@ -87,6 +87,25 @@ export const refineEstimateV1Schema = z
   })
   .strict();
 
+/**
+ * README's own numbers for the diff-size gate (issue #270), in one place both sides of the
+ * boundary read from — `apps/daemon/src/refine-gate.ts`'s `evaluateDiffSizeGate` (the decision)
+ * and `apps/desktop/src/pipenzo/RefusalPanel.tsx`'s `trippedBy` (the display of that decision)
+ * both import these rather than each hardcoding README's 100/10/400/20. Two literal copies of a
+ * product rule in two different packages is exactly the "two places free to disagree" shape this
+ * codebase avoids elsewhere (see `PipenzoGitHubQuotaV1.degraded`, #230); a shared constant closes
+ * that gap with a compiled import instead of a comment asking two files to stay in sync by hand.
+ */
+export const PIPENZO_DIFF_SIZE_THRESHOLDS = Object.freeze({
+  /** At or under both: one PR, proceed normally. */
+  onePrMaxLines: 100,
+  onePrMaxFiles: 10,
+  /** At or under both (with `layered: true`): a dependency-ordered stack of 2–4 PRs. Past either,
+   * or inside this band without `layered`: refuse. */
+  stackMaxLines: 400,
+  stackMaxFiles: 20,
+});
+
 /** A repo-relative POSIX path. Never absolute, never a traversal — this is a prediction, not a target. */
 const repoRelativePathSchema = z
   .string()
