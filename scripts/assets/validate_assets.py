@@ -90,8 +90,12 @@ PUBLIC_IMAGES = {
     SOCIAL_ROOT / "readme-hero.webp": ((1600, 520), "WEBP"),
     SOCIAL_ROOT / "github-social-preview.png": ((1280, 640), "PNG"),
     SOCIAL_ROOT / "open-graph.png": ((1200, 630), "PNG"),
-    SOCIAL_ROOT / "portfolio-project.png": ((1440, 900), "PNG"),
+    # Pipenzo's own portfolio card (#246) is a plain resize of the 2:1 social-preview composition,
+    # a different aspect ratio than the AgentDock version it replaced.
+    SOCIAL_ROOT / "portfolio-project.png": ((1440, 720), "PNG"),
     SOCIAL_ROOT / "asset-system-preview.png": ((1600, 1040), "PNG"),
+    # docs/daemon.md's phase-machine illustration (#246), reused verbatim from the approved pack.
+    SOCIAL_ROOT / "pipenzo-workflow-roles.png": ((1800, 650), "PNG"),
     SOCIAL_ROOT / "icon-size-preview.png": ((1180, 430), "PNG"),
 }
 

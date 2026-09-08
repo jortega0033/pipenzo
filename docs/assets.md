@@ -73,9 +73,10 @@ docs/images/
                                                apps/desktop/assets/pipenzo/marketing/)
     github-social-preview.png     1280 × 640
     open-graph.png                1200 × 630
-    portfolio-project.png         1440 × 900
-    asset-system-preview.png      1600 × 1040
-    icon-size-preview.png         1180 × 430
+    portfolio-project.png         1440 × 720  (Pipenzo, #246)
+    asset-system-preview.png      1600 × 1040 (Pipenzo, #246)
+    icon-size-preview.png         1180 × 430  (Pipenzo, #246)
+    pipenzo-workflow-roles.png    1800 × 650  (#246; embedded in docs/daemon.md)
 ```
 
 The screenshots come from the real renderer through a development-only capture bridge. It accepts

@@ -76,3 +76,25 @@ audits; not meant to be surfaced on any product/public page.
 `ASSET_INDEX.md`, `BRAND_USAGE.md`, `QA_REPORT.md`, and `qa-contact-*.jpg` are the pack's own
 review record, carried over as-is for provenance. `BRAND.md` and this file are the repo's own
 usage docs, layered on top.
+
+## Secondary public surfaces ([#246](https://github.com/jortega0033/pipenzo/issues/246))
+
+`scripts/assets/generate_public_assets.py` derives a few more committed files from the pack above,
+none of them redrawn:
+
+| Generated file | Source | Use |
+|---|---|---|
+| `docs/images/social/portfolio-project.png` | plain resize of `pipenzo-github-social-preview-1280x640` | External portfolio/project-card listings |
+| `docs/images/social/asset-system-preview.png` | icon + lockups + `mascot/mini/*` pasted in verbatim | Contributor-facing map of the real committed files |
+| `docs/images/social/icon-size-preview.png` | `app-icons/png/pipenzo-icon-*` | The icon family at production sizes |
+| `docs/images/social/pipenzo-workflow-roles.png` | `illustrations/pipenzo-workflow-roles-1800x650` | Embedded in [docs/daemon.md](../daemon.md)'s phase-machine section |
+
+Release announcements (GitHub Releases, `docs/release-checklist.md`) reuse
+`pipenzo-github-social-preview-1280x640` directly rather than a separate generated file — see that
+doc for the exact guidance on keeping the version/date as real text alongside it, never baked into
+the image.
+
+**Tray / native-notification icons**: not implemented yet, gated on
+[#151](https://github.com/jortega0033/pipenzo/issues/151)'s behavior-scope decision. When that
+lands, the icon source is the `app-icons/` helmet+`p` family above, at whatever size the OS tray
+API wants — never the full mascot at tray/notification-icon sizes.
