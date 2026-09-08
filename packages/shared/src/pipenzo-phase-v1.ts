@@ -80,8 +80,28 @@ export const pipenzoRefineRequestV1Schema = z
     repositoryPath: z.string().min(1).max(4_096),
     provider: providerIdSchema,
     model: z.string().min(1).max(256).optional(),
+    /**
+     * Which ticket this refine is for (issue #270). Optional, the same way the review request's
+     * `ticketId` is (#144/#266): every existing caller and test omits it, and a refine run without
+     * one still reports its spec exactly as before. Its only effect is consequential — when the
+     * diff-size gate (`refine-gate.ts`) refuses and a ticket id is present, the daemon transitions
+     * that ticket to `pipenzo:needs-pre-scoping` and posts the estimate as a comment.
+     */
+    ticketId: pipenzoTicketIdV1Schema.optional(),
   })
   .strict();
+
+/**
+ * The diff-size gate's own verdict (issue #270), reported on the wire rather than left for a
+ * renderer to re-derive from `spec.estimate` against README's thresholds -- the same reason
+ * `PipenzoGitHubQuotaV1.degraded` (#230) carries the reconciler's decision instead of a fraction a
+ * consumer would have to compare against a threshold of its own: two places computing the same
+ * verdict are two places free to disagree the moment either one is tuned. `refine-gate.ts` is the
+ * one place that decides; this is that decision, reported.
+ */
+export const REFINE_GATE_VERDICTS = ['single', 'stack', 'refuse'] as const;
+export const refineGateVerdictV1Schema = z.enum(REFINE_GATE_VERDICTS);
+export type RefineGateVerdictV1 = (typeof REFINE_GATE_VERDICTS)[number];
 
 export const pipenzoRefineResultV1Schema = z
   .object({
@@ -89,6 +109,7 @@ export const pipenzoRefineResultV1Schema = z
     spec: refineSpecV1Schema,
     /** Every tool the session actually used, as the daemon observed it. Always inside the allowlist. */
     toolsUsed: z.array(z.string().min(1).max(128)).max(64),
+    gateVerdict: refineGateVerdictV1Schema,
   })
   .strict();
 

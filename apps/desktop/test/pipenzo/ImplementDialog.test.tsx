@@ -48,6 +48,7 @@ const REFINED: PipenzoRefineResultV1 = {
   sessionId: 'refine-session-1',
   spec: SPEC,
   toolsUsed: ['Grep'],
+  gateVerdict: 'single',
 };
 
 const IMPLEMENTED: PipenzoImplementResultV1 = {
