@@ -13,6 +13,7 @@ import {
   createPipenzoOctokit,
   parseRepoRef,
   redactSecrets,
+  registerKnownSecret,
   resolveConfiguredRepo,
   resolveGitHubToken,
   shouldRetryRateLimit,
@@ -197,9 +198,59 @@ describe('redactSecrets', () => {
       'pull request #12 has 3 failing checks',
     );
     // A deliberate limit, recorded rather than re-litigated: a pre-2021 40-hex classic PAT cannot
-    // be matched without also redacting every commit sha this module puts in a message.
+    // be matched *by pattern* without also redacting every commit sha this module puts in a
+    // message. `registerKnownSecret` (issue #211) closes this for a token this daemon actually
+    // resolved, tested in its own describe block below -- an *unregistered* 40-hex value, which is
+    // what every commit sha this module ever interpolates is, must still pass through untouched.
     const sha = 'a'.repeat(40);
     expect(redactSecrets(`pushed ${sha}`)).toBe(`pushed ${sha}`);
+  });
+});
+
+/**
+ * Issue #211: `redactSecrets`'s pattern rules cannot recognize a pre-2021 40-hex classic PAT (see
+ * its own doc comment for why a 40-hex pattern rule is not the fix). Once the daemon holds its
+ * resolved token in a first-class object rather than re-reading the environment at each call site,
+ * registering that exact value closes the gap for the one token this daemon was actually handed --
+ * `apps/daemon/src/index.ts` does so once, at startup.
+ */
+describe('registerKnownSecret', () => {
+  // A 40-hex value shaped exactly like a pre-2021 classic PAT, and exactly what no pattern rule
+  // above can recognize -- chosen distinct from the commit-sha fixture above (`'a'.repeat(40)`) so
+  // registering it cannot be mistaken for accidentally also matching that one.
+  const classicPat = '1234567890abcdef1234567890abcdef12345678';
+
+  it('lets redactSecrets scrub a value no pattern rule can recognize, once registered', () => {
+    // Deliberately not near the word "token" or "authorization": this must be a string none of
+    // the pattern rules above would touch on their own, so the assertion below actually exercises
+    // the new exact-match rule rather than an existing one that happens to also fire.
+    expect(redactSecrets(`classic pat resolved: ${classicPat}`)).toContain(classicPat);
+    registerKnownSecret(classicPat);
+    const scrubbed = redactSecrets(`classic pat resolved: ${classicPat}`);
+    expect(scrubbed).not.toContain(classicPat);
+    expect(scrubbed).toContain('[redacted]');
+  });
+
+  it('does not touch a different, unregistered value of the same shape', () => {
+    registerKnownSecret(classicPat);
+    // A commit sha this module interpolates is exactly this shape and must survive registering a
+    // *different* 40-hex value -- an exact-match rule, not a shape rule, is the whole point.
+    const otherSha = 'fedcba0987654321fedcba0987654321fedcba09';
+    expect(redactSecrets(`pushed ${otherSha}`)).toBe(`pushed ${otherSha}`);
+  });
+
+  it('refuses to register a value under the minimum length', () => {
+    registerKnownSecret('short');
+    // Never redacted as a whole word, and specifically not reduced to matching everything: a
+    // no-op registration must not make `redactSecrets` scrub the substring "short" out of
+    // unrelated prose that happens to contain it.
+    expect(redactSecrets('this run was short on time')).toBe('this run was short on time');
+  });
+
+  it('is additive: registering twice is the same as registering once', () => {
+    registerKnownSecret(classicPat);
+    registerKnownSecret(classicPat);
+    expect(redactSecrets(`a ${classicPat} b ${classicPat} c`)).toBe('a [redacted] b [redacted] c');
   });
 });
 

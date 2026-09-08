@@ -29,7 +29,7 @@ import {
   DispatchOnlyPhaseSessions,
 } from './pipenzo-phase-sessions.js';
 import { ExecFileGateCommands } from './gate-commands.js';
-import { OctokitGitHubClient } from './github-client.js';
+import { OctokitGitHubClient, registerKnownSecret } from './github-client.js';
 import { ConditionalRequestCache } from './github-conditional-cache.js';
 import { GitHubRateLimitTracker } from './github-rate-limit.js';
 import { DaemonGitHubCredential } from './github-credential.js';
@@ -70,6 +70,14 @@ async function main() {
   logger.info('github credential source', {
     source: githubCredential.injected ? 'injected' : 'environment-or-absent',
   });
+  // Issue #211: `redactSecrets` cannot recognize a pre-2021 40-hex classic PAT by shape alone (see
+  // its own doc comment) -- but now that the token is resolved once, here, into a first-class
+  // object rather than re-read from the environment at each call site, registering the exact value
+  // is cheap and format-independent. `tryResolve()`, not `resolve()`: a daemon with no credential
+  // at all has nothing to register, and that is an ordinary, already-handled state, not a startup
+  // failure.
+  const resolvedGithubToken = githubCredential.tryResolve();
+  if (resolvedGithubToken) registerKnownSecret(resolvedGithubToken);
   const registry = buildProviderRegistry(logger);
   const durableStateDirectory = stateDirectory({ appId });
   // Every subdirectory below is created independently, some via ensureStateDirectory() (which
