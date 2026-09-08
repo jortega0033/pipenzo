@@ -66,10 +66,15 @@ describe('private attachment staging', () => {
 
   it('reserves quota before concurrent staging so the global file limit cannot race', async () => {
     const root = await mkdtemp(join(tmpdir(), 'agent-dock-attachments-race-'));
-    const store = new AttachmentStore(join(root, 'staged'), join(root, 'manifest.json'), undefined, {
-      ...ATTACHMENT_LIMITS_V2,
-      maxGlobalFiles: 1,
-    });
+    const store = new AttachmentStore(
+      join(root, 'staged'),
+      join(root, 'manifest.json'),
+      undefined,
+      {
+        ...ATTACHMENT_LIMITS_V2,
+        maxGlobalFiles: 1,
+      },
+    );
     await store.load();
     const uploads = Array.from({ length: 2 }, (_, index) =>
       store.stage({ fileName: `${index}.txt`, declaredSize: 1, stream: chunks(Buffer.from('x')) }),
@@ -84,15 +89,21 @@ describe('private attachment staging', () => {
     const root = await mkdtemp(join(tmpdir(), 'agent-dock-attachments-session-'));
     const store = new AttachmentStore(join(root, 'staged'), join(root, 'manifest.json'));
     await store.load();
-    const attachments = [];
-    for (let index = 0; index <= ATTACHMENT_LIMITS_V2.maxSessionFiles; index += 1)
-      attachments.push(
-        await store.stage({
+    // Staged concurrently rather than one at a time. This test is about the *reference* quota, not
+    // about staging order, and each stage() is an fsync -- 21 of them in series is ~200 ms on an
+    // idle disk and was overrunning the 5 s budget outright under full parallel load on Windows
+    // (issue #219). Concurrent staging is a supported operation with its own coverage above
+    // ("reserves quota before concurrent staging..."), and Promise.all preserves input order, so
+    // the slice and at(-1) below still address the attachments they always did.
+    const attachments = await Promise.all(
+      Array.from({ length: ATTACHMENT_LIMITS_V2.maxSessionFiles + 1 }, (_unused, index) =>
+        store.stage({
           fileName: `${index}.txt`,
           declaredSize: 1,
           stream: chunks(Buffer.from('x')),
         }),
-      );
+      ),
+    );
     const sessionId = '123e4567-e89b-42d3-a456-426614174000';
     await store.reference(
       attachments.slice(0, ATTACHMENT_LIMITS_V2.maxSessionFiles).map((item) => item.id),
@@ -123,13 +134,17 @@ describe('private attachment staging', () => {
     expect(record!.mimeType).toBe('image/png');
 
     const otherSessionId = '123e4567-e89b-42d3-a456-426614174002';
-    await expect(store.referenceForDispatch([attachment.id], otherSessionId)).rejects.toMatchObject({
-      code: 'attachment_not_found',
-    } satisfies Partial<AttachmentStoreError>);
+    await expect(store.referenceForDispatch([attachment.id], otherSessionId)).rejects.toMatchObject(
+      {
+        code: 'attachment_not_found',
+      } satisfies Partial<AttachmentStoreError>,
+    );
 
     await expect(
       store.referenceForDispatch(['00000000-0000-4000-8000-000000000000'], sessionId),
-    ).rejects.toMatchObject({ code: 'attachment_not_found' } satisfies Partial<AttachmentStoreError>);
+    ).rejects.toMatchObject({
+      code: 'attachment_not_found',
+    } satisfies Partial<AttachmentStoreError>);
   });
 
   it('deleteAttachments immediately removes referenced files, recovering quota without waiting for the TTL sweep', async () => {
@@ -224,12 +239,24 @@ describe('private attachment staging', () => {
 
     // Simulate the crash window directly: a real .bin file on disk with no manifest entry, and a
     // leftover temp file from an interrupted upload.
-    const store = new AttachmentStore(staged, join(root, 'manifest.json'), undefined, undefined, spyLogger);
+    const store = new AttachmentStore(
+      staged,
+      join(root, 'manifest.json'),
+      undefined,
+      undefined,
+      spyLogger,
+    );
     await store.load();
     await writeFile(join(staged, '11111111-1111-4111-8111-111111111111.bin'), 'orphaned');
     await writeFile(join(staged, '.22222222-2222-4222-8222-222222222222.tmp'), 'leftover');
 
-    const recovered = new AttachmentStore(staged, join(root, 'manifest.json'), undefined, undefined, spyLogger);
+    const recovered = new AttachmentStore(
+      staged,
+      join(root, 'manifest.json'),
+      undefined,
+      undefined,
+      spyLogger,
+    );
     await recovered.load();
 
     expect(warnings).toHaveLength(1);

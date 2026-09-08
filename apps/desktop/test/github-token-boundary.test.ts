@@ -57,24 +57,58 @@ function stripComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 }
 
-async function sourceFiles(root: string): Promise<string[]> {
-  const found: string[] = [];
-  const walk = async (directory: string): Promise<void> => {
-    for (const entry of await readdir(directory, { withFileTypes: true })) {
-      const path = join(directory, entry.name);
-      if (entry.isDirectory()) await walk(path);
-      else if (entry.name.endsWith('.ts') || entry.name.endsWith('.tsx')) found.push(path);
-    }
-  };
-  await walk(root);
-  // Every scan below is a "no offenders" assertion, which an empty file list satisfies vacuously.
-  // A moved or renamed directory must fail loudly here rather than turn a guard into a no-op.
-  if (found.length === 0) throw new Error(`no source files found under ${root}`);
-  return found;
+/**
+ * These scans walk three source trees and read every file in them, and several of them walk the
+ * same tree over again. On an idle POSIX box that is free; on a loaded Windows runner every open
+ * goes through the filesystem filter stack, and this file was overrunning its per-test budget
+ * under full parallel load because of it (issue #219, same shape as
+ * apps/daemon/test/publish-token-boundary.test.ts). The trees do not change during a run, so each
+ * directory is walked once and each file read once. Every assertion sees exactly the bytes it saw
+ * before.
+ */
+const treeCache = new Map<string, Promise<string[]>>();
+const sourceCache = new Map<string, Promise<string>>();
+const strippedCache = new Map<string, string>();
+
+function sourceFiles(root: string): Promise<string[]> {
+  const cached = treeCache.get(root);
+  if (cached) return cached;
+  const walked = (async () => {
+    const found: string[] = [];
+    const walk = async (directory: string): Promise<void> => {
+      for (const entry of await readdir(directory, { withFileTypes: true })) {
+        const path = join(directory, entry.name);
+        if (entry.isDirectory()) await walk(path);
+        else if (entry.name.endsWith('.ts') || entry.name.endsWith('.tsx')) found.push(path);
+      }
+    };
+    await walk(root);
+    // Every scan below is a "no offenders" assertion, which an empty file list satisfies vacuously.
+    // A moved or renamed directory must fail loudly here rather than turn a guard into a no-op.
+    if (found.length === 0) throw new Error(`no source files found under ${root}`);
+    return found;
+  })();
+  treeCache.set(root, walked);
+  return walked;
 }
 
-const readElectron = async (name: string): Promise<string> =>
-  stripComments(await readFile(join(electronSrc(), name), 'utf8'));
+function readSource(file: string): Promise<string> {
+  const cached = sourceCache.get(file);
+  if (cached) return cached;
+  const read = readFile(file, 'utf8');
+  sourceCache.set(file, read);
+  return read;
+}
+
+async function stripped(file: string): Promise<string> {
+  const cached = strippedCache.get(file);
+  if (cached !== undefined) return cached;
+  const code = stripComments(await readSource(file));
+  strippedCache.set(file, code);
+  return code;
+}
+
+const readElectron = (name: string): Promise<string> => stripped(join(electronSrc(), name));
 
 describe('the plaintext is produced once, and delivered over a pipe', () => {
   it('has exactly one caller of readToken(), and it is the daemon spawn', async () => {
@@ -82,7 +116,7 @@ describe('the plaintext is produced once, and delivered over a pipe', () => {
     expect(files.length).toBeGreaterThan(5);
     const callers: string[] = [];
     for (const file of files) {
-      const code = stripComments(await readFile(file, 'utf8'));
+      const code = await stripped(file);
       // The declaration lives in the vault module; every *call* is `.readToken(`.
       if (/\.readToken\(/.test(code)) callers.push(relative(electronSrc(), file));
     }
@@ -135,7 +169,7 @@ describe('the plaintext is produced once, and delivered over a pipe', () => {
     const files = await sourceFiles(electronSrc());
     const spawners: string[] = [];
     for (const file of files) {
-      const code = stripComments(await readFile(file, 'utf8'));
+      const code = await stripped(file);
       if (/\b(?:spawn|spawnSync|fork|execFile|execFileSync|exec|execSync)\s*\(/.test(code)) {
         spawners.push(relative(electronSrc(), file));
       }
@@ -153,7 +187,7 @@ describe('the plaintext is produced once, and delivered over a pipe', () => {
     expect(files.length).toBeGreaterThan(10);
     const offenders: string[] = [];
     for (const file of files) {
-      const text = await readFile(file, 'utf8');
+      const text = await readSource(file);
       if (/github-token-vault|GitHubTokenVault|safeStorage|readToken/.test(text)) {
         offenders.push(relative(rendererSrc(), file));
       }
@@ -408,7 +442,7 @@ describe('nothing on the renderer bridge can obtain the token', () => {
     // that *explains* why the flow lives in main is exactly the comment this rule wants written,
     // and it must not read as a violation of the rule it is describing.
     for (const file of await sourceFiles(rendererSrc())) {
-      const code = stripComments(await readFile(file, 'utf8'));
+      const code = await stripped(file);
       expect(code).not.toMatch(/from\s*['"][^'"]*github-device-flow/);
       expect(code).not.toMatch(/import\s*\(\s*['"][^'"]*github-device-flow/);
     }

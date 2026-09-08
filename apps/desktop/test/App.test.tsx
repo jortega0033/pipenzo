@@ -305,9 +305,7 @@ describe('App security flow', () => {
     expect(
       screen.getByText(/Configuration and inspection only, for either provider/),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(/never sent to a provider from this panel/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/never sent to a provider from this panel/)).toBeInTheDocument();
     expect(screen.getByText(/Select a session to see its child-agent state/)).toBeInTheDocument();
   });
 
@@ -789,7 +787,18 @@ describe('App security flow', () => {
 
     await screen.findByRole('dialog', { name: /answer to continue/i });
     fireEvent.click(screen.getByRole('checkbox', { name: /safe mode/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'Send answers' }));
+
+    // "Send answers" is `disabled={busy || !answers}`, and `answers` is only built once the
+    // checkbox selection is in state. A click on a disabled button is swallowed by the DOM and is
+    // never retried, so clicking it straight after the checkbox made the submission depend on the
+    // selection having already been committed and re-rendered -- and when it had not been, the
+    // failure surfaced a full second later as `answerQuestions` with "Number of calls: 0", which
+    // reads like a broken bridge rather than a lost click (issue #204). Waiting for the button to
+    // be enabled waits for exactly the state change the submission needs, so the click can no
+    // longer land on a control that is not ready to receive it.
+    const send = screen.getByRole('button', { name: 'Send answers' });
+    await waitFor(() => expect(send).toBeEnabled());
+    fireEvent.click(send);
     await waitFor(() =>
       expect(bridge.answerQuestions).toHaveBeenCalledWith(interactionHandle, [
         {

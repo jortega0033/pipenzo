@@ -59,21 +59,55 @@ const SECRET_VALUES = [
 ];
 
 /** Strips comments, so prose *about* a forbidden pattern never reads as an occurrence of it. */
-function stripComments(source: string): string {
+function rawStripComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 }
 
-async function sourceFiles(root: string): Promise<string[]> {
-  const found: string[] = [];
-  const walk = async (directory: string): Promise<void> => {
-    for (const entry of await readdir(directory, { withFileTypes: true })) {
-      const path = join(directory, entry.name);
-      if (entry.isDirectory()) await walk(path);
-      else if (entry.name.endsWith('.ts')) found.push(path);
-    }
-  };
-  await walk(root);
-  return found;
+/**
+ * Six of the assertions below each walked a source tree and re-read every file in it. Between
+ * them that is ~400 opens of ~2.3 MB, four times over, inside single tests -- cheap on an idle
+ * POSIX box and not cheap at all on a loaded Windows runner, where every open goes through the
+ * filesystem filter stack. It is also pure waste: the trees do not change during a run. Reading
+ * each file once and reusing it keeps every assertion byte-for-byte identical while removing the
+ * reason this file kept exceeding its budget under full parallel load (issue #219).
+ */
+const treeCache = new Map<string, Promise<string[]>>();
+const sourceCache = new Map<string, Promise<string>>();
+const strippedCache = new Map<string, string>();
+
+function sourceFiles(root: string): Promise<string[]> {
+  const cached = treeCache.get(root);
+  if (cached) return cached;
+  const walked = (async () => {
+    const found: string[] = [];
+    const walk = async (directory: string): Promise<void> => {
+      for (const entry of await readdir(directory, { withFileTypes: true })) {
+        const path = join(directory, entry.name);
+        if (entry.isDirectory()) await walk(path);
+        else if (entry.name.endsWith('.ts')) found.push(path);
+      }
+    };
+    await walk(root);
+    return found;
+  })();
+  treeCache.set(root, walked);
+  return walked;
+}
+
+function readSource(file: string): Promise<string> {
+  const cached = sourceCache.get(file);
+  if (cached) return cached;
+  const read = readFile(file, 'utf8');
+  sourceCache.set(file, read);
+  return read;
+}
+
+async function stripped(file: string): Promise<string> {
+  const cached = strippedCache.get(file);
+  if (cached !== undefined) return cached;
+  const code = rawStripComments(await readSource(file));
+  strippedCache.set(file, code);
+  return code;
 }
 
 describe('the GitHub token never reaches a provider subprocess', () => {
@@ -118,8 +152,7 @@ describe('the GitHub token never reaches a provider subprocess', () => {
    * would put it right back where a child could read it.
    */
   it('is never written back into the daemon\u2019s own environment once injected', async () => {
-    const source = await readFile(join(daemonSrc, 'github-credential.ts'), 'utf8');
-    const code = stripComments(source);
+    const code = await stripped(join(daemonSrc, 'github-credential.ts'));
     // `=(?!=)` so an ordinary comparison is not mistaken for an assignment.
     expect(code).not.toMatch(/process\.env\[[^\]]*\]\s*=(?!=)/);
     expect(code).not.toMatch(/process\.env\.\w+\s*=(?!=)/);
@@ -147,7 +180,7 @@ describe('the GitHub token never reaches a provider subprocess', () => {
     expect(files.length).toBeGreaterThan(10);
     const offenders: string[] = [];
     for (const file of files) {
-      const code = stripComments(await readFile(file, 'utf8'));
+      const code = await stripped(file);
       if (/\{\s*\.\.\.process\.env/.test(code)) offenders.push(relative(daemonSrc, file));
     }
     expect(offenders).toEqual([]);
@@ -158,13 +191,15 @@ describe('the GitHub token never reaches a provider subprocess', () => {
     const spawners: string[] = [];
     const offenders: string[] = [];
     for (const file of files) {
-      const code = stripComments(await readFile(file, 'utf8'));
+      const code = await stripped(file);
       if (!/execFile\(\s*'git'/.test(code) && !/spawn\(\s*'git'/.test(code)) continue;
       spawners.push(relative(daemonSrc, file));
       const hardened =
         /env:\s*buildGitEnvironment\(\)/.test(code) ||
         /env:\s*gitEnvironment\(\)/.test(code) ||
-        /credentialReachable\s*\?\s*buildGitPushEnvironment\(\)\s*:\s*buildGitEnvironment\(\)/.test(code);
+        /credentialReachable\s*\?\s*buildGitPushEnvironment\(\)\s*:\s*buildGitEnvironment\(\)/.test(
+          code,
+        );
       if (!hardened) offenders.push(relative(daemonSrc, file));
     }
     // Sanity: the scan actually found the spawners it is meant to be policing.
@@ -180,7 +215,9 @@ describe('the GitHub token never reaches a provider subprocess', () => {
         { ...SECRET_ENV, AGENT_DOCK_APP_ID: 'pipenzo' },
         { provider },
       );
-      expect(Object.keys(env).some((key) => key.toUpperCase().startsWith('AGENT_DOCK'))).toBe(false);
+      expect(Object.keys(env).some((key) => key.toUpperCase().startsWith('AGENT_DOCK'))).toBe(
+        false,
+      );
     }
   });
 });
@@ -191,7 +228,7 @@ describe('the publish surface is not reachable from agent-runtime', () => {
     expect(files.length).toBeGreaterThan(20);
     const offenders: string[] = [];
     for (const file of files) {
-      const text = await readFile(file, 'utf8');
+      const text = await readSource(file);
       if (/publish-service|PublishService|v2\/pipenzo\/publish|PIPENZO_GITHUB_TOKEN/.test(text)) {
         offenders.push(relative(runtimeSrc, file));
       }
@@ -203,9 +240,13 @@ describe('the publish surface is not reachable from agent-runtime', () => {
     const files = await sourceFiles(runtimeSrc);
     const offenders: string[] = [];
     for (const file of files) {
-      const text = await readFile(file, 'utf8');
+      const text = await readSource(file);
       // Matches a tool-definition-shaped mention, not a comment about the boundary.
-      if (/['"`](?:git_push|gh_pr_create|github_create_pull_request|create_pull_request|publish)['"`]/.test(text)) {
+      if (
+        /['"`](?:git_push|gh_pr_create|github_create_pull_request|create_pull_request|publish)['"`]/.test(
+          text,
+        )
+      ) {
         offenders.push(relative(runtimeSrc, file));
       }
     }
@@ -230,8 +271,7 @@ describe('the publish surface is not reachable from agent-runtime', () => {
     // is asserted here is narrower but true for both — nothing in the argv these builders produce
     // grants a GitHub-write capability, and no `gh` binary is named anywhere in the runtime.
     for (const provider of ['claude', 'codex'] as const) {
-      const args = await readFile(join(runtimeSrc, 'providers', provider, 'build-args.ts'), 'utf8');
-      const code = stripComments(args);
+      const code = await stripped(join(runtimeSrc, 'providers', provider, 'build-args.ts'));
       // Quoted so an ordinary `array.push(...)` is not mistaken for a git subcommand.
       expect(code).not.toMatch(/['"`](?:gh|git)['"`]/);
       expect(code).not.toMatch(/['"`](?:push|pull-request|pr)['"`]/i);
@@ -239,8 +279,10 @@ describe('the publish surface is not reachable from agent-runtime', () => {
     const files = await sourceFiles(runtimeSrc);
     const ghCallers: string[] = [];
     for (const file of files) {
-      const code = stripComments(await readFile(file, 'utf8'));
-      if (/execFile\(\s*['"`]gh['"`]|spawn\(\s*['"`]gh['"`]|execFile\(\s*['"`]git['"`]/.test(code)) {
+      const code = await stripped(file);
+      if (
+        /execFile\(\s*['"`]gh['"`]|spawn\(\s*['"`]gh['"`]|execFile\(\s*['"`]git['"`]/.test(code)
+      ) {
         ghCallers.push(relative(runtimeSrc, file));
       }
     }
@@ -252,7 +294,7 @@ describe('the publish surface is not reachable from agent-runtime', () => {
 
 describe('the publish service holds its credential narrowly', () => {
   it('reads the token in exactly one function, and stores it in no module-level binding', async () => {
-    const source = await readFile(join(daemonSrc, 'publish-service.ts'), 'utf8');
+    const source = await readSource(join(daemonSrc, 'publish-service.ts'));
     // Comments are stripped first: this module *documents* the argv shapes it refuses to use, and
     // a prose mention of `http.extraheader` must not read as an occurrence of it.
     const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
@@ -269,7 +311,7 @@ describe('the publish service holds its credential narrowly', () => {
   });
 
   it('never logs a value derived from the token', async () => {
-    const source = await readFile(join(daemonSrc, 'publish-service.ts'), 'utf8');
+    const source = await readSource(join(daemonSrc, 'publish-service.ts'));
     for (const call of source.match(/#logger\?\.\w+\([\s\S]*?\}\);/g) ?? []) {
       expect(call).not.toMatch(/token/i);
     }
@@ -288,12 +330,14 @@ describe('the publish service holds its credential narrowly', () => {
    * the wiring gets a tripwire of its own.
    */
   it('builds its GitHub clients from the injected credential and the shared ETag cache', async () => {
-    const code = stripComments(await readFile(join(daemonSrc, 'index.ts'), 'utf8'));
+    const code = await stripped(join(daemonSrc, 'index.ts'));
 
     // The credential is read once, at startup, from the stdin channel — not from this process's
     // environment (issue #165).
     expect(code).toMatch(/DaemonGitHubCredential\.fromStartup\(/);
-    expect(code).toMatch(/resolveGitHubCredential:\s*\(env\)\s*=>\s*githubCredential\.resolve\(env\)/);
+    expect(code).toMatch(
+      /resolveGitHubCredential:\s*\(env\)\s*=>\s*githubCredential\.resolve\(env\)/,
+    );
 
     // Both client factories resolve through that credential, and each is handed the one per-daemon
     // conditional-request cache (issue #161). Two call sites: the phase service and the phase
@@ -317,7 +361,7 @@ describe('the publish service holds its credential narrowly', () => {
   });
 
   it('routes every string that can escape through the redactor', async () => {
-    const source = await readFile(join(daemonSrc, 'publish-service.ts'), 'utf8');
+    const source = await readSource(join(daemonSrc, 'publish-service.ts'));
     // Error messages: PublishServiceError redacts in its own constructor.
     expect(source).toMatch(/super\(redactSecrets\(message\)\)/);
     // Git output: `detail()` redacts before anything is interpolated into a message.

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentDockBridge } from '../src/window.js';
 
 // AD-07: the old test here asserted properties of a mock object the test itself constructed, so
@@ -24,13 +24,40 @@ vi.mock('electron', () => ({
   ipcRenderer: { invoke, on, removeListener },
 }));
 
-async function loadPreload(): Promise<Record<string, unknown>> {
-  vi.resetModules();
-  exposedApi = undefined;
-  await import('../electron/preload.js'); // side effect: calls contextBridge.exposeInMainWorld
-  if (!exposedApi) throw new Error('preload.ts did not call exposeInMainWorld');
-  return exposedApi;
+/**
+ * `electron/preload.ts` is ~1,100 lines, and this used to reset the module registry and
+ * re-evaluate it -- and its whole import graph -- on all nineteen calls. That is what made this
+ * file's cost scale with whatever else the worker pool was doing, and what pushed the first two
+ * tests past vitest's 5 s default under full parallel load on Windows (issue #216).
+ *
+ * Loading it once is sound, not merely cheaper. The module's only import-time effect is building
+ * `api` and handing it to `exposeInMainWorld`; it keeps no mutable module-level state (its three
+ * lookup collections are only ever read); and every bridge function closes over the same
+ * `ipcRenderer` mock object no matter how many times the module is evaluated. The per-test
+ * isolation these assertions actually rely on is the `beforeEach` mock reset below, which has
+ * nothing to do with module identity. Nothing any test asserts changes.
+ */
+let loaded: Promise<Record<string, unknown>> | undefined;
+
+function loadPreload(): Promise<Record<string, unknown>> {
+  loaded ??= (async () => {
+    await import('../electron/preload.js'); // side effect: calls contextBridge.exposeInMainWorld
+    if (!exposedApi) throw new Error('preload.ts did not call exposeInMainWorld');
+    return exposedApi;
+  })();
+  return loaded;
 }
+
+/**
+ * The one-time transform is paid here rather than inside whichever test happens to run first,
+ * with a budget sized for it. Measured: ~450 ms idle, and over 5 s on a Windows worker under full
+ * parallel load -- which is how a *transform* came to fail an assertion's 5 s default (issue
+ * #216). This budget covers only the module load; every assertion below keeps the default, so a
+ * bridge check that genuinely hangs still fails fast.
+ */
+beforeAll(async () => {
+  await loadPreload();
+}, 60_000);
 
 beforeEach(() => {
   invoke.mockReset();
