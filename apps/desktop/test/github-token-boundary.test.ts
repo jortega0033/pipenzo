@@ -1,9 +1,11 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { inspect } from 'node:util';
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
   CREDENTIAL_ON_STDIN_ENV_KEY,
+  CREDENTIAL_SHAPED_ENV_KEY_PATTERN,
   DAEMON_GITHUB_TOKEN_ENV_KEY,
   GITHUB_CREDENTIAL_ENV_KEYS,
   buildDaemonCredentialMessage,
@@ -130,7 +132,7 @@ async function warm(root: string): Promise<void> {
  */
 function spawnPlanInput(overrides: Partial<BuildDaemonSpawnPlanInput> = {}): BuildDaemonSpawnPlanInput {
   return {
-    entry: { mainDir: '/app/electron', isDevServer: false, isPackaged: true, resourcesPath: '/app/resources' },
+    entry: { mainDir: '/app/electron', isDevServer: false, resourcesPath: '/app/resources' },
     appId: 'pipenzo',
     parentEnv: { PATH: '/usr/bin' },
     vaultToken: undefined,
@@ -141,6 +143,14 @@ function spawnPlanInput(overrides: Partial<BuildDaemonSpawnPlanInput> = {}): Bui
     ...overrides,
   };
 }
+
+/**
+ * A value that is shaped like a real GitHub token without being one, for tests that need to assert
+ * a specific value never survives somewhere it shouldn't. Module-scoped (rather than local to one
+ * describe block, as it originally was) so every describe below can use the same convention instead
+ * of a one-off string literal.
+ */
+const fakeToken = (suffix: string): string => `${'gh'}${'p'}_${suffix}`;
 
 beforeAll(async () => {
   await Promise.all([warm(electronSrc()), warm(rendererSrc()), warm(daemonSrc())]);
@@ -175,7 +185,7 @@ describe('the plaintext is produced once, and delivered over a pipe', () => {
     // The marker says a message is coming. The message is not here. Asserted as an exact list
     // rather than "at least one such key exists", which would stay green if the token variable were
     // put straight back alongside it.
-    expect(Object.keys(env).filter((key) => /token|credential|secret/i.test(key))).toEqual([
+    expect(Object.keys(env).filter((key) => CREDENTIAL_SHAPED_ENV_KEY_PATTERN.test(key))).toEqual([
       CREDENTIAL_ON_STDIN_ENV_KEY,
     ]);
     expect(env[CREDENTIAL_ON_STDIN_ENV_KEY]).toBe('1');
@@ -194,6 +204,26 @@ describe('the plaintext is produced once, and delivered over a pipe', () => {
     expect(main).toMatch(/stdin\?\.end\(plan\.credentialMessage/);
     // A child that died before the write turns an ordinary EPIPE into an unhandled stream error.
     expect(main).toMatch(/stdin\?\.on\('error'/);
+  });
+
+  /**
+   * `credentialMessage` sits in the same plain, diagnostics-shaped object as `cwd`/`args`/`env` --
+   * nothing about the shape marks it as different from those. Without a redacting `toJSON()` (and a
+   * matching `util.inspect` hook), a future `console.log(plan)` or `JSON.stringify(plan)` on any
+   * unrelated debug or error path would print the token in full. This is the regression three
+   * separate reviewers of issue #213 flagged independently.
+   */
+  it('never lets the plan itself be logged or serialized with the token still in it', () => {
+    const token = 'aRealisticVaultToken00000001';
+    const plan = buildDaemonSpawnPlan(spawnPlanInput({ vaultToken: token }));
+    expect(JSON.stringify(plan)).not.toContain(token);
+    expect(JSON.stringify({ plan })).not.toContain(token);
+    // `util.inspect` (and therefore `console.log`, which calls it on any non-string argument) is a
+    // separate code path from `JSON.stringify` -- `toJSON` alone does not cover it.
+    expect(inspect(plan)).not.toContain(token);
+    // Redacted, not merely absent: a log naming the field should read as "deliberately withheld,"
+    // not as a bug that silently dropped it.
+    expect(JSON.stringify(plan)).toContain('[redacted]');
   });
 
   it('builds a credential message that carries the token and nothing else', () => {
@@ -236,17 +266,23 @@ describe('the plaintext is produced once, and delivered over a pipe', () => {
    * override like that could even be added without also changing this function.
    */
   it('puts no credential-shaped variable in the spawn plan’s environment, only the marker', () => {
+    const smuggledToken = fakeToken('shouldNeverSurvive0001');
     const plan = buildDaemonSpawnPlan(
       spawnPlanInput({
-        parentEnv: { PATH: '/usr/bin', PIPENZO_GITHUB_TOKEN: 'shouldNeverSurvive00000001' },
+        parentEnv: { PATH: '/usr/bin', PIPENZO_GITHUB_TOKEN: smuggledToken },
         vaultToken: 'aRealisticVaultToken00000001',
       }),
     );
-    expect(Object.keys(plan.env).filter((key) => /token|credential|secret/i.test(key))).toEqual([
+    expect(Object.keys(plan.env).filter((key) => CREDENTIAL_SHAPED_ENV_KEY_PATTERN.test(key))).toEqual([
       CREDENTIAL_ON_STDIN_ENV_KEY,
     ]);
     expect(plan.env[DAEMON_GITHUB_TOKEN_ENV_KEY]).toBeUndefined();
     expect(plan.env[CREDENTIAL_ON_STDIN_ENV_KEY]).toBe('1');
+    // The check above is name-only -- it would pass a value smuggled through under an unlisted key
+    // (e.g. `PIPENZO_GH_PAT`) just as easily as the code path it is meant to catch. Assert the
+    // *value* is gone from the whole environment object too, the stronger check the sibling test in
+    // the next describe block already applies to `buildDaemonEnvironment` directly.
+    expect(JSON.stringify(plan.env)).not.toContain(smuggledToken);
   });
 
   it('never imports the vault into the renderer', async () => {
@@ -295,13 +331,24 @@ describe('the plaintext is produced once, and delivered over a pipe', () => {
     }
     expect(offenders).toEqual([]);
 
-    const credential = await readSource(join(daemonSrc(), 'github-credential.ts'));
+    // Restored from this test's pre-#213 form, alongside the tree-wide scan above rather than
+    // instead of it: the tree-wide scan is keyed to `GITHUB_CREDENTIAL_ENV_KEYS` specifically, so a
+    // write under a sixth, unlisted credential-shaped name would pass it silently. These two
+    // assertions are unkeyed and scoped to this one file -- the daemon's actual credential module --
+    // and catch that case the way the original, narrower test always did. `stripped()`, not
+    // `readSource()`, so a comment merely mentioning the marker string cannot spuriously satisfy the
+    // `toContain` check below.
+    const credential = await stripped(join(daemonSrc(), 'github-credential.ts'));
     expect(credential).toContain(`'${CREDENTIAL_ON_STDIN_ENV_KEY}'`);
+    // The injected credential is never written back into the process environment, which would undo
+    // the entire point by putting it somewhere a child can read. `=(?!=)` so an ordinary
+    // comparison (`process.env.X === '1'`) is not mistaken for an assignment.
+    expect(credential).not.toMatch(/process\.env\[[^\]]*\]\s*=(?!=)/);
+    expect(credential).not.toMatch(/process\.env\.\w+\s*=(?!=)/);
   });
 });
 
 describe('no GitHub credential survives into the daemon environment', () => {
-  const fakeToken = (suffix: string): string => `${'gh'}${'p'}_${suffix}`;
   const INHERITED = {
     PIPENZO_GITHUB_TOKEN: fakeToken('inheritedPipenzoSecret01'),
     GITHUB_TOKEN: fakeToken('inheritedActionsSecret02'),

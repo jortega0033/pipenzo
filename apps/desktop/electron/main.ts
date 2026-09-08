@@ -226,7 +226,6 @@ function spawnDaemon(): void {
     entry: {
       mainDir: __dirname,
       isDevServer: !!process.env.VITE_DEV_SERVER_URL,
-      isPackaged: app.isPackaged,
       resourcesPath: process.resourcesPath,
     },
     appId: APP_ID,
