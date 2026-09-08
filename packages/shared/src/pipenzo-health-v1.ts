@@ -52,6 +52,13 @@ import { z } from 'zod';
  * **No error message, and no upstream detail.** A health payload that carried GitHub's own response
  * text would be a redaction surface, and the states below are a closed set precisely so a renderer
  * switches on them rather than pattern-matching prose.
+ *
+ * **No separate rate-limited state**, and the mapping is stated here so a producer does not have to
+ * guess. `github-client.ts` raises `rate_limited` as its own error kind, but a poll that fails on a
+ * quota window has not lost the connection and has not lost the credential: it is `retrying`,
+ * carrying a `quota` whose `degraded` flag says the interval widened. A fifth failing state would
+ * give #70 and #71 a case neither renders differently, while the fact a consumer actually wants —
+ * "we slowed down on purpose" — is already on the quota.
  */
 
 /** Unix milliseconds. Positive, integral, and the only time representation on this type. */
@@ -73,10 +80,20 @@ const timestampV1Schema = z.number().int().positive();
  */
 export const pipenzoGitHubQuotaV1Schema = z
   .object({
-    /** `remaining / limit`, so `0.12` is the state #75 renders as "syncing slowly". */
+    /** `remaining / limit`, so `0.12` is the headroom #75 describes as "syncing slowly". */
     remainingFraction: z.number().min(0).max(1),
     /** When the window refills. After this instant the fraction above says nothing. */
     resetAt: timestampV1Schema,
+    /**
+     * Whether the producer actually widened its poll interval because of this reading.
+     *
+     * The *decision*, not the input to it, and that is deliberate: epic #4's "~15%" is
+     * approximate, and if #75 re-derived the threshold from `remainingFraction` there would be two
+     * places that decide what "degraded" means, free to disagree the moment either is tuned. The
+     * reconciler (#231) owns the threshold because it owns the interval; this reports what it did.
+     * A consumer renders a state rather than recomputing one.
+     */
+    degraded: z.boolean(),
   })
   .strict();
 
@@ -87,9 +104,36 @@ export type PipenzoGitHubQuotaV1 = z.infer<typeof pipenzoGitHubQuotaV1Schema>;
  *
  * Spread rather than intersected so each variant stays a plain `ZodObject` and the union below can
  * stay a `discriminatedUnion` — which is what makes an unknown `state` a parse error naming the
- * discriminator, instead of four stacked "did not match" reports.
+ * discriminator, instead of one stacked "did not match" report per member.
  */
 const quotaField = { quota: pipenzoGitHubQuotaV1Schema.optional() };
+
+/**
+ * Nothing observed yet.
+ *
+ * The state a producer is in before its first poll settles, and the state it stays in when the
+ * connected-repos list is empty — which #231 makes a legitimate steady state, not an error. Without
+ * this variant a starting daemon could fill no member of the union at all: `healthy` demands a
+ * clean poll it has never made, and the three failing states demand a failure run it has not had.
+ * Its only options would be inventing a `lastCleanPollAt` — exactly what the `healthy` variant
+ * below says a producer must never be made to do — or publishing nothing, which silently makes
+ * "absent" a fifth state that five separate banner tickets would each have to invent handling for.
+ *
+ * The same argument the quota above makes: "no information" is not "everything is fine", and a
+ * consumer has to be able to tell them apart.
+ *
+ * It deliberately does not distinguish *not polled yet* from *nothing to poll*. No banner renders
+ * either, so splitting them now would be shape without a consumer; a ticket that needs the
+ * difference can add the variant then.
+ */
+const unknownV1Schema = z
+  .object({
+    state: z.literal('unknown'),
+    /** Present after a restart only if the producer persisted one. Usually absent. */
+    lastCleanPollAt: timestampV1Schema.optional(),
+    ...quotaField,
+  })
+  .strict();
 
 /**
  * Reaching GitHub fine.
@@ -136,17 +180,21 @@ const retryingV1Schema = z
 /**
  * The ladder is exhausted and GitHub is still unreachable. #71's blocking banner.
  *
- * `nextAttemptAt` is still required, because giving up on the *ladder* is not giving up on the
- * *loop* — the reconciler keeps polling at its base interval, which is the only way #73's recovery
- * banner ever gets something to fire on. A state that stopped carrying a next attempt would be
- * describing a daemon that had genuinely stopped trying, and this one has not.
+ * `nextAttemptAt` is **optional** here, unlike on `retrying`, and the difference is a deliberate
+ * refusal to decide something this ticket does not own. Whether a reconciler that has exhausted its
+ * ladder keeps polling at a base interval or waits for a human is #231's call — #70 and #71 both
+ * carry a manual retry affordance, which is what a stopped ladder looks like from the UI side.
+ * Requiring the field would have pinned that decision from the consumer's side and made it
+ * unfillable if #231 chose the other answer; its absence means "nothing is scheduled, only a human
+ * moves this", which is a state a banner can render.
  */
 const unreachableV1Schema = z
   .object({
     state: z.literal('unreachable'),
     consecutiveFailures: z.number().int().positive(),
     firstFailureAt: timestampV1Schema,
-    nextAttemptAt: timestampV1Schema,
+    /** Absent when nothing is scheduled and only a human retry moves this on. */
+    nextAttemptAt: timestampV1Schema.optional(),
     /** The ceiling that was exhausted, so #71 can say what was tried. */
     maxAttempts: z.number().int().positive(),
     lastCleanPollAt: timestampV1Schema.optional(),
@@ -183,12 +231,62 @@ const credentialRejectedV1Schema = z
  * point is that a state's companion fields are *required*: `retrying` without an attempt number
  * must not parse, since #70 renders that number and an optional one reaches the UI as `undefined`.
  */
-export const pipenzoGitHubHealthV1Schema = z.discriminatedUnion('state', [
+const healthUnionV1Schema = z.discriminatedUnion('state', [
+  unknownV1Schema,
   healthyV1Schema,
   retryingV1Schema,
   unreachableV1Schema,
   credentialRejectedV1Schema,
 ]);
+
+/**
+ * The cross-field rules the object shapes above cannot express.
+ *
+ * Applied to the union rather than to its members because `z.discriminatedUnion` rejects a member
+ * that is not a plain object — a refined option throws at construction. Refining the union instead
+ * keeps the discriminator behaviour intact: an unknown `state` still reports one issue at
+ * `['state']` rather than five near-misses, because the union parses first and a failed parse never
+ * reaches this.
+ *
+ * These are here rather than left to the producer because each one is a *rendered* number. "Attempt
+ * 7 of 5" is a banner a user can read, and a wire contract whose job is to stop a consumer seeing
+ * `undefined` has no reason to let it see nonsense instead.
+ */
+export const pipenzoGitHubHealthV1Schema = healthUnionV1Schema.superRefine((health, ctx) => {
+  if (health.state === 'retrying' && health.attempt > health.maxAttempts) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['attempt'],
+      message: 'must not exceed maxAttempts',
+    });
+  }
+  if (
+    (health.state === 'retrying' || health.state === 'unreachable') &&
+    health.nextAttemptAt !== undefined &&
+    health.nextAttemptAt < health.firstFailureAt
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['nextAttemptAt'],
+      message: 'must not precede firstFailureAt',
+    });
+  }
+  // A clean poll recorded *after* the current failure run began would mean the run should have
+  // been reset. #73 subtracts these two to say "working again after N minutes down".
+  const failedAt =
+    health.state === 'retrying' || health.state === 'unreachable'
+      ? health.firstFailureAt
+      : health.state === 'credential_rejected'
+        ? health.rejectedAt
+        : undefined;
+  if (failedAt !== undefined && health.lastCleanPollAt !== undefined && health.lastCleanPollAt > failedAt) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['lastCleanPollAt'],
+      message: 'must not follow the failure it precedes',
+    });
+  }
+});
 
 export type PipenzoGitHubHealthV1 = z.infer<typeof pipenzoGitHubHealthV1Schema>;
 

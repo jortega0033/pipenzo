@@ -21,7 +21,7 @@ describe('pipenzoGitHubHealthV1Schema', () => {
     const withQuota = {
       state: 'healthy',
       lastCleanPollAt: AT,
-      quota: { remainingFraction: 0.8642, resetAt: AT + 3_600_000 },
+      quota: { remainingFraction: 0.8642, resetAt: AT + 3_600_000, degraded: false },
     } as const;
     expect(pipenzoGitHubHealthV1Schema.parse(withQuota)).toEqual(withQuota);
   });
@@ -88,10 +88,6 @@ describe('pipenzoGitHubHealthV1Schema', () => {
         'unreachable without a first failure',
         { state: 'unreachable', consecutiveFailures: 5, nextAttemptAt: AT, maxAttempts: 5 },
       ],
-      [
-        'unreachable without a next attempt -- the loop has not stopped, only the ladder',
-        { state: 'unreachable', consecutiveFailures: 5, firstFailureAt: AT, maxAttempts: 5 },
-      ],
       // #73 has no clean poll to say "working again since".
       ['healthy without a last clean poll', { state: 'healthy' }],
       // #72 cannot say when the credential stopped working.
@@ -126,7 +122,7 @@ describe('pipenzoGitHubHealthV1Schema', () => {
       {
         state: 'healthy',
         lastCleanPollAt: AT,
-        quota: { remainingFraction: 0.5, resetAt: AT, remaining: 2500 },
+        quota: { remainingFraction: 0.5, resetAt: AT, degraded: false, remaining: 2500 },
       },
     ];
     for (const payload of cases) {
@@ -151,12 +147,101 @@ describe('pipenzoGitHubHealthV1Schema', () => {
     }
   });
 
-  it('names the discriminator when the state is unknown, rather than reporting four near-misses', () => {
+  it('names the discriminator for an unrecognised state, rather than one near-miss per member', () => {
     const result = pipenzoGitHubHealthV1Schema.safeParse({ state: 'degraded', lastCleanPollAt: AT });
     expect(result.success).toBe(false);
     if (!result.success) {
+      expect(result.error.issues).toHaveLength(1);
       expect(result.error.issues[0]?.path).toEqual(['state']);
     }
+  });
+
+  /**
+   * The state a starting daemon is actually in, and the one it stays in while the connected-repos
+   * list is empty. Without it a producer could fill no member of the union at all before its first
+   * poll settled: `healthy` demands a clean poll it has never made, and the failing states demand a
+   * failure run it has not had.
+   */
+  it('lets a producer that has observed nothing say so, rather than invent a clean poll', () => {
+    expect(pipenzoGitHubHealthV1Schema.parse({ state: 'unknown' })).toEqual({ state: 'unknown' });
+    const withQuota = {
+      state: 'unknown',
+      quota: { remainingFraction: 1, resetAt: AT, degraded: false },
+    } as const;
+    expect(pipenzoGitHubHealthV1Schema.parse(withQuota)).toEqual(withQuota);
+    // Still strict, and still has no retry ladder to render.
+    expect(pipenzoGitHubHealthV1Schema.safeParse({ state: 'unknown', attempt: 1 }).success).toBe(false);
+  });
+
+  /**
+   * `unreachable` may legitimately schedule nothing -- whether an exhausted ladder keeps polling or
+   * waits for a human is #231's decision, and requiring the field here would have pinned it from
+   * the consumer's side and made the state unfillable if #231 chose the other answer.
+   */
+  it('allows an exhausted ladder with nothing scheduled', () => {
+    const stalled = {
+      state: 'unreachable',
+      consecutiveFailures: 5,
+      firstFailureAt: AT,
+      maxAttempts: 5,
+    } as const;
+    expect(pipenzoGitHubHealthV1Schema.parse(stalled)).toEqual(stalled);
+  });
+
+  /**
+   * The rules the object shapes cannot express. Each one is a *rendered* number: a contract whose
+   * job is to stop a banner showing `undefined` has no reason to let it show nonsense instead.
+   */
+  it('refuses cross-field nonsense the shapes alone would accept', () => {
+    const cases: Array<[string, unknown]> = [
+      [
+        'attempt 7 of 5',
+        {
+          state: 'retrying',
+          attempt: 7,
+          maxAttempts: 5,
+          nextAttemptAt: AT + 1_000,
+          consecutiveFailures: 7,
+          firstFailureAt: AT,
+        },
+      ],
+      [
+        'a next attempt scheduled before the failures began',
+        {
+          state: 'retrying',
+          attempt: 2,
+          maxAttempts: 5,
+          nextAttemptAt: AT - 1_000,
+          consecutiveFailures: 2,
+          firstFailureAt: AT,
+        },
+      ],
+      [
+        'a clean poll after the failure run it supposedly precedes',
+        {
+          state: 'unreachable',
+          consecutiveFailures: 5,
+          firstFailureAt: AT,
+          maxAttempts: 5,
+          lastCleanPollAt: AT + 1_000,
+        },
+      ],
+      [
+        'a clean poll after the credential was rejected',
+        { state: 'credential_rejected', rejectedAt: AT, lastCleanPollAt: AT + 1_000 },
+      ],
+    ];
+    for (const [name, payload] of cases) {
+      expect(pipenzoGitHubHealthV1Schema.safeParse(payload).success, name).toBe(false);
+    }
+    // The boundary is inclusive: equal millisecond stamps are a fast producer, not a contradiction.
+    expect(
+      pipenzoGitHubHealthV1Schema.safeParse({
+        state: 'credential_rejected',
+        rejectedAt: AT,
+        lastCleanPollAt: AT,
+      }).success,
+    ).toBe(true);
   });
 
   it('requires every timestamp to be a positive integer of unix milliseconds', () => {
@@ -173,18 +258,40 @@ describe('pipenzoGitHubQuotaV1Schema', () => {
   it('accepts the two ends of the fraction, since both are real states', () => {
     // Exhausted is the reading a consumer most needs; full is what a fresh daemon sees.
     for (const remainingFraction of [0, 0.15, 1]) {
-      expect(
-        pipenzoGitHubQuotaV1Schema.parse({ remainingFraction, resetAt: AT }),
-      ).toEqual({ remainingFraction, resetAt: AT });
+      const quota = { remainingFraction, resetAt: AT, degraded: remainingFraction < 0.15 };
+      expect(pipenzoGitHubQuotaV1Schema.parse(quota)).toEqual(quota);
     }
   });
 
   it('refuses a fraction outside 0..1, which would be a producer computing it wrong', () => {
-    for (const remainingFraction of [-0.01, 1.01, Number.NaN]) {
+    for (const remainingFraction of [-0.01, 1.01]) {
       expect(
-        pipenzoGitHubQuotaV1Schema.safeParse({ remainingFraction, resetAt: AT }).success,
+        pipenzoGitHubQuotaV1Schema.safeParse({ remainingFraction, resetAt: AT, degraded: false })
+          .success,
         String(remainingFraction),
       ).toBe(false);
     }
+  });
+
+  // Rejected by `z.number()` itself rather than by the bounds -- a different rule, so a
+  // different case, rather than a value smuggled into the loop above under the wrong name.
+  it('refuses a NaN fraction, which is not a number at all', () => {
+    expect(
+      pipenzoGitHubQuotaV1Schema.safeParse({
+        remainingFraction: Number.NaN,
+        resetAt: AT,
+        degraded: false,
+      }).success,
+    ).toBe(false);
+  });
+
+  /**
+   * The producer's decision, not the input to it. If #75 re-derived "~15%" from the fraction there
+   * would be two places deciding what degraded means, free to disagree the moment either is tuned.
+   */
+  it('requires the degraded flag, so the threshold lives in exactly one place', () => {
+    expect(pipenzoGitHubQuotaV1Schema.safeParse({ remainingFraction: 0.1, resetAt: AT }).success).toBe(
+      false,
+    );
   });
 });
