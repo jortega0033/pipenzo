@@ -209,10 +209,10 @@ export function AccountPanel() {
             <span className="f-help">
               The <span className="mono">repo</span> scope is what creating labels and opening pull
               requests need, and no narrower scope grants one without the other. Electron main holds
-              the token and hands it to Pipenzo&apos;s own daemon over a pipe, never through its
-              environment — so no provider subprocess receives it or can read it out of its parent,
-              and it never reaches this window. Pipenzo also never invokes the{' '}
-              <span className="mono">gh</span> binary, so nothing on your{' '}
+              the token and hands it to Pipenzo&apos;s own daemon over a pipe rather than through its
+              environment, so it is never sitting in a variable a subprocess could print. No provider
+              subprocess receives it, and it never reaches this window. Pipenzo also never invokes
+              the <span className="mono">gh</span> binary, so nothing on your{' '}
               <span className="mono">PATH</span> is part of the publish path.
             </span>
           </>
@@ -271,16 +271,22 @@ export function AccountPanel() {
         </span>
       </div>
 
-      {/* Offered only when there is something to clear. `tokenVault.clear()` reports whether it
-          actually removed a record, and `main.ts` restarts the daemon only when it did -- so on a
-          vault that is already empty this button is a guaranteed no-op that would still resolve,
-          close its dialog, and read as though it had done something. */}
-      {connection !== undefined && connection.state === 'connected' && (
+      {/* Hidden only for `disconnected`, which is the one state that guarantees there is nothing to
+          clear: `status()` returns it only after `#readRecord()` has found no file at all.
+          `unavailable` does **not** mean empty -- `status()` resolves availability before it looks
+          for a record, and `unreadable` is returned only once `existsSync` has already passed, so a
+          record is definitely on disk. Gating on `connected` stranded exactly that case: the panel
+          would say "a stored record exists but cannot be decrypted" and then offer nothing to
+          remove it, on a machine where `store()` refuses so nothing could ever overwrite it either.
+          Clearing is the recovery there, not a no-op. */}
+      {connection !== undefined && connection.state !== 'disconnected' && (
         <div className="danger-row">
           <span className="set-sub">
             {inheritedToken
               ? 'Clears the token from the vault. This daemon would restart onto PIPENZO_GITHUB_TOKEN and keep working, because a shell variable is not Pipenzo’s to clear.'
-              : 'Clears the token from the vault, and the daemon restarts without one. Worktrees, branches and the ticket store stay on disk.'}
+              : connection.state === 'unavailable'
+                ? 'Removes the stored record this machine cannot read, so you can sign in again from scratch. Worktrees, branches and the ticket store stay on disk.'
+                : 'Clears the token from the vault, and the daemon restarts without one. Worktrees, branches and the ticket store stay on disk.'}
           </span>
           {/* No `writing.current` check here, deliberately. While a disconnect is in flight the
               dialog is open over this button -- `.scrim` is `position: fixed; inset: 0` and `Dialog`

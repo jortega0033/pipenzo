@@ -129,6 +129,31 @@ describe('AccountPanel', () => {
     expect(screen.getByText(/published constant key/i)).toBeInTheDocument();
   });
 
+  /**
+   * `unavailable` is not `empty`. `status()` resolves availability before it looks for a record, and
+   * `unreadable` is returned only after `existsSync` has already passed -- so that state guarantees
+   * a record IS on disk, and `clear()` would remove it. Hiding the button here left the panel saying
+   * "a stored record exists but cannot be decrypted" beside no way to remove it, on a machine where
+   * `store()` refuses so nothing could overwrite it either. Clearing is the recovery, not a no-op.
+   */
+  it('still offers a disconnect for a record this machine cannot decrypt', async () => {
+    const bridge = installBridge({
+      connection: { state: 'unavailable', reason: 'unreadable', source: 'none' },
+    });
+    render(<AccountPanel />);
+    await screen.findByText(/no usable credential store here/i);
+
+    const button = screen.getByRole('button', { name: /disconnect github/i });
+    expect(button).toBeInTheDocument();
+    expect(screen.getByText(/removes the stored record this machine cannot read/i)).toBeVisible();
+
+    fireEvent.click(button);
+    fireEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: 'Disconnect GitHub' }),
+    );
+    await waitFor(() => expect(bridge.disconnectGitHub).toHaveBeenCalledTimes(1));
+  });
+
   it('lists the providers agentdock detected', async () => {
     installBridge({
       providers: [
@@ -183,8 +208,13 @@ describe('AccountPanel', () => {
     await loaded();
 
     expect(screen.queryByText(/never leaves the electron main process/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/over a pipe, never through its environment/i)).toBeInTheDocument();
+    expect(screen.getByText(/never sitting in a variable a subprocess could print/i)).toBeVisible();
     expect(screen.getByText(/no provider subprocess receives it/i)).toBeInTheDocument();
+    // And it must not derive an impossibility from the pipe. On Windows, reading a same-user
+    // process's environment block and reading its heap are the same OpenProcess +
+    // ReadProcessMemory, so "cannot read it out of its parent" is false on the packaging platform
+    // -- `github-credential.ts` calls the stdin handoff defence in depth, not a boundary.
+    expect(screen.queryByText(/read it out of its parent/i)).not.toBeInTheDocument();
   });
 
   /**
