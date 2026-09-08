@@ -442,6 +442,167 @@ describe('POST /v2/pipenzo/issues', () => {
   });
 });
 
+/**
+ * Issue #228. Epic #4's diff-size gate ends two rows in a comment rather than a lane move: #100
+ * posts the estimate and the proposed split, #144 records real versus predicted.
+ */
+describe('POST /v2/pipenzo/issues/comment', () => {
+  const body = 'Estimate: 620 changed lines across 26 files.\n\nProposed split:\n1. ...';
+
+  it('posts the comment and answers 201 with its id and permalink', async () => {
+    const github = new FakeGitHubClient().seedIssue(issue());
+    const { app } = buildApp({ github });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v2/pipenzo/issues/comment',
+      headers: auth,
+      payload: { issueNumber: 184, body },
+    });
+    expect(response.statusCode).toBe(201);
+    expect(response.json()).toMatchObject({
+      repo: 'jortega0033/pipenzo',
+      issueNumber: 184,
+      htmlUrl: expect.stringContaining('#issuecomment-'),
+    });
+    // What was posted, not merely that something was.
+    expect(github.issueComments({ owner: 'jortega0033', repo: 'pipenzo' }, 184)).toMatchObject([
+      { body },
+    ]);
+  });
+
+  it('does not echo the body back, since the caller already has it and it can be 64KB', async () => {
+    const github = new FakeGitHubClient().seedIssue(issue());
+    const { app } = buildApp({ github });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v2/pipenzo/issues/comment',
+      headers: auth,
+      payload: { issueNumber: 184, body },
+    });
+    expect(response.body).not.toContain('Proposed split');
+  });
+
+  it('refuses a blank or oversized body without reaching GitHub', async () => {
+    const github = new FakeGitHubClient().seedIssue(issue());
+    const { app } = buildApp({ github });
+    for (const candidate of ['', '   \n ', 'x'.repeat(65_537)]) {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/issues/comment',
+        headers: auth,
+        payload: { issueNumber: 184, body: candidate },
+      });
+      expect(response.statusCode).toBe(400);
+      expect(response.json().code).toBe('invalid_request');
+    }
+    expect(github.calls).toHaveLength(0);
+  });
+
+  /**
+   * The regression #228's first cut shipped: the control-character refine rejected `\r`, so a body
+   * stitched out of captured command or git output on Windows — this product's primary platform,
+   * and exactly how #100 and #144 compose theirs — failed with a flat 400 naming no field.
+   */
+  it('accepts a CRLF body and posts it byte for byte, without rewriting the line endings', async () => {
+    const github = new FakeGitHubClient().seedIssue(issue());
+    const { app } = buildApp({ github });
+    const crlf = 'Estimate: 620 changed lines.\r\n\r\n## Proposed split\r\n- one\r\n- two\r\n';
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v2/pipenzo/issues/comment',
+      headers: auth,
+      payload: { issueNumber: 184, body: crlf },
+    });
+    expect(response.statusCode).toBe(201);
+    // Not normalised on the way through: what is published is what the caller wrote.
+    expect(github.issueComments({ owner: 'jortega0033', repo: 'pipenzo' }, 184)).toMatchObject([
+      { body: crlf },
+    ]);
+  });
+
+  /**
+   * GitHub counts characters, so the bound has to as well. Measured in UTF-16 units an emoji-heavy
+   * body would be refused at roughly half GitHub's real allowance — the opposite of the legibility
+   * this early refusal exists for.
+   */
+  it('measures the body in code points, not UTF-16 units', async () => {
+    const github = new FakeGitHubClient().seedIssue(issue());
+    const { app } = buildApp({ github });
+    // 65,536 code points, 131,072 UTF-16 units: at the limit, and accepted.
+    const atLimit = '🙂'.repeat(65_536);
+    const accepted = await app.inject({
+      method: 'POST',
+      url: '/v2/pipenzo/issues/comment',
+      headers: auth,
+      payload: { issueNumber: 184, body: atLimit },
+    });
+    expect(accepted.statusCode).toBe(201);
+    // One code point over the cap, and deliberately *under* twice the cap in UTF-16 units
+    // (130,537), so nothing but the code-point comparison can be what rejects it.
+    const overLimit = `${'🙂'.repeat(65_000)}${'x'.repeat(537)}`;
+    expect([...overLimit]).toHaveLength(65_537);
+    const refused = await app.inject({
+      method: 'POST',
+      url: '/v2/pipenzo/issues/comment',
+      headers: auth,
+      payload: { issueNumber: 184, body: overLimit },
+    });
+    expect(refused.statusCode).toBe(400);
+    expect(refused.json().code).toBe('invalid_request');
+  });
+
+  it('maps a GitHub rate limit onto 429', async () => {
+    const github = new FakeGitHubClient().seedIssue(issue());
+    github.failNext(
+      'createIssueComment',
+      new GitHubClientError('rate_limited', 'rate limit reached'),
+    );
+    const { app } = buildApp({ github });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v2/pipenzo/issues/comment',
+      headers: auth,
+      payload: { issueNumber: 184, body },
+    });
+    expect(response.statusCode).toBe(429);
+    expect(response.json()).toMatchObject({ code: 'github_rate_limited' });
+  });
+
+  /**
+   * The distinction this surface exists to keep: a 401 here would mean the *daemon's* bearer token
+   * was wrong. GitHub rejecting Pipenzo's own credential is an upstream failure and must not wear
+   * the same status, or an operator goes looking in entirely the wrong place.
+   */
+  it('reports a GitHub-rejected credential as 502, never as 401', async () => {
+    const github = new FakeGitHubClient().seedIssue(issue());
+    github.failNext(
+      'createIssueComment',
+      new GitHubClientError('unauthorized', 'GitHub rejected the token'),
+    );
+    const { app } = buildApp({ github });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v2/pipenzo/issues/comment',
+      headers: auth,
+      payload: { issueNumber: 184, body },
+    });
+    expect(response.statusCode).toBe(502);
+    expect(response.json()).toMatchObject({ code: 'github_unauthorized' });
+  });
+
+  it('reports a missing issue as 404', async () => {
+    const { app } = buildApp({ github: new FakeGitHubClient() });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v2/pipenzo/issues/comment',
+      headers: auth,
+      payload: { issueNumber: 184, body },
+    });
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toMatchObject({ code: 'issue_not_found' });
+  });
+});
+
 describe('the phase routes as a surface', () => {
   const routes = [
     '/v2/pipenzo/refine',
@@ -450,6 +611,7 @@ describe('the phase routes as a surface', () => {
     '/v2/pipenzo/review',
     '/v2/pipenzo/issues/claim',
     '/v2/pipenzo/issues',
+    '/v2/pipenzo/issues/comment',
     '/v2/pipenzo/capabilities',
     '/v2/pipenzo/issues/draft',
   ];
@@ -501,6 +663,9 @@ describe('the phase routes as a surface', () => {
       ['/v2/pipenzo/review', { spec: spec(), worktreePath: WORKTREE_PATH, baseCommit: BASE_SHA, headCommit: HEAD_SHA, implementerTier: 'mid', reviewer: { provider: 'claude', model: 'm', tier: 'mid' }, verifier: { provider: 'claude', model: 'm', tier: 'mid' } }],
       ['/v2/pipenzo/issues/claim', { issueNumber: 184, assignee: 'not a login' }],
       ['/v2/pipenzo/issues', { title: '', body: '' }],
+      // A comment body carrying a control character, and one naming a field the schema has not got.
+      ['/v2/pipenzo/issues/comment', { issueNumber: 184, body: 'a\u0000b' }],
+      ['/v2/pipenzo/issues/comment', { issueNumber: 184, body: 'ok', schemaVersion: 1 }],
     ] as const) {
       const response = await app.inject({ method: 'POST', url, headers: auth, payload });
       expect(response.statusCode, url).toBe(400);

@@ -133,6 +133,9 @@ export function createDemoBridge(): AgentDockBridge {
     createPipenzoIssue: async () => {
       throw new Error('creating an issue is not available in demo mode');
     },
+    commentOnPipenzoIssue: async () => {
+      throw new Error('commenting on an issue is not available in demo mode');
+    },
     // A probe rather than an action, so demo mode answers instead of throwing -- and it answers
     // "nothing detected, because this is demo mode", which is true and is what the capability
     // panel is for. Inventing a detected Playwright here would be the mocked-data anti-pattern.

@@ -36,6 +36,26 @@ const noControlCharacters = (value: string): boolean =>
     return code >= 0x20 || code === 0x0a || code === 0x09;
   });
 
+/**
+ * The same rule for a field that is *many* lines of prose rather than one.
+ *
+ * `\r` (0x0d) is permitted here and nowhere else. The fields `noControlCharacters` guards are a
+ * title and a one-line instruction, where a carriage return is a caller bug. A comment body is the
+ * first multi-line field on this surface, and the bodies #100 and #144 compose are stitched out of
+ * captured command and git output on Windows — which is CRLF. Refusing that would fail the
+ * operator with a flat 400 for a line ending they never typed, on this product's primary platform.
+ *
+ * The other public-markdown payload on this surface, `pipenzoIssueCreateRequestV1Schema.body`,
+ * carries no control-character rule at all and bounds its length in UTF-16 units rather than code
+ * points. That is a real divergence and not a shared rule this one is being kept in step with;
+ * bringing it into line changes a shipped route (#84) and is filed as issue #232.
+ */
+const noProseControlCharacters = (value: string): boolean =>
+  [...value].every((character) => {
+    const code = character.charCodeAt(0);
+    return code >= 0x20 || code === 0x0a || code === 0x0d || code === 0x09;
+  });
+
 /** `owner/name`, matching `parseRepoRef()`'s rules so the daemon and the wire agree. */
 export const pipenzoRepoRefV1Schema = z
   .string()
@@ -224,6 +244,124 @@ export const pipenzoIssueCreateResultV1Schema = z
   })
   .strict();
 
+/**
+ * The longest comment body Pipenzo will send, in Unicode code points (issue #228).
+ *
+ * GitHub's own limit on an issue comment is 65,536 characters and it answers a longer one with a
+ * 422. Refusing before that is what makes the failure legible: the caller composing a comment out
+ * of an estimate and a proposed split (#100) learns it was too long, instead of learning that
+ * GitHub rejected an unspecified field of an unspecified request.
+ *
+ * It lives here rather than in the daemon because both ends need it and there is nothing else to
+ * pin them together: raise it on one side only and you get either a body the wire accepts and the
+ * client refuses (a 502 where a 400 belonged) or the reverse.
+ *
+ * Refused, never truncated. A truncated comment is a *wrong* comment — the half of a proposed split
+ * that survived reads as the whole proposal — and it would be posted publicly under the operator's
+ * name with nothing marking it as incomplete.
+ */
+export const MAX_ISSUE_COMMENT_CHARS = 65_536;
+
+/** What is wrong with a comment body, or `undefined` if nothing is. */
+export type IssueCommentBodyProblem = 'blank' | 'too_long' | 'control_characters';
+
+/**
+ * The one comment-body rule, in one place (issue #228).
+ *
+ * The wire schema below and `assertCommentBody` in the daemon's GitHub client both call this, and
+ * the client is the floor: the HTTP route is not the only way in, because a daemon-side caller
+ * (#100's refusal panel, #144's blown-estimate record) reaches `PipenzoPhaseService` and the client
+ * directly and would otherwise get no validation at all. A predicate returning *which* rule failed,
+ * rather than a boolean, is what lets each caller render its own message without a second copy of
+ * the rule drifting behind it.
+ *
+ * Emptiness is tested on the *trimmed* string but the untrimmed value is what gets sent. A comment
+ * of pure whitespace is a caller bug — it renders as an empty box on the issue under the
+ * operator's name — while leading or trailing whitespace inside a real body is the caller's
+ * formatting to keep, and a client that silently rewrote what gets published would be a client
+ * whose output nobody can predict from its input.
+ *
+ * Length is counted in code points, not UTF-16 units, because that is what GitHub's 65,536 counts.
+ * `'x'.repeat(70_000).length` and `[...'🙂'.repeat(70_000)].length` disagree by a factor of two,
+ * and measuring in units would refuse an emoji-heavy body at roughly half GitHub's real allowance —
+ * inverting the whole purpose of refusing early.
+ */
+export function issueCommentBodyProblem(body: string): IssueCommentBodyProblem | undefined {
+  if (typeof body !== 'string' || body.trim().length === 0) return 'blank';
+  // Cheap first: a string over twice the cap in UTF-16 units cannot be under it in code points.
+  if (body.length > MAX_ISSUE_COMMENT_CHARS * 2) return 'too_long';
+  if ([...body].length > MAX_ISSUE_COMMENT_CHARS) return 'too_long';
+  if (!noProseControlCharacters(body)) return 'control_characters';
+  return undefined;
+}
+
+/** Wire-facing wording for each problem. The daemon client phrases its own, with its operation. */
+const ISSUE_COMMENT_BODY_MESSAGES: Record<IssueCommentBodyProblem, string> = {
+  blank: 'must not be blank',
+  too_long: `must be at most ${MAX_ISSUE_COMMENT_CHARS} characters`,
+  control_characters: 'must not contain control characters',
+};
+
+/**
+ * Posting one comment on an issue (issue #228).
+ *
+ * Two rows of epic #4's diff-size gate end in a comment rather than in a lane move: the
+ * "no clean layering at any size" row posts the estimate and the proposed split before handing to
+ * a human (#100), and a blown estimate records real-versus-predicted numbers where a human will
+ * see them (#144). Labels cannot express either, so this is the first write on this surface whose
+ * payload is prose.
+ *
+ * `body` is the one caller-authored string here, and unlike `extraInstructions` it does not reach
+ * a prompt — it reaches the public internet, under the operator's GitHub identity. That is why the
+ * route behind it carries the same human-paced rate limit as the rest of this surface and is not
+ * reachable from any agent-facing tool: a model that could call it could publish arbitrary text as
+ * a human.
+ *
+ * Control characters are refused for the same reason the title fields here refuse them, but under
+ * a rule of this field's own: `noProseControlCharacters` adds a carriage-return exception to the
+ * newline and tab ones, because this is the only multi-line field on the surface. No other field
+ * has that exception, and the issue-create body has no such rule at all — see
+ * `noProseControlCharacters` for why the divergence is deliberate rather than an oversight.
+ */
+export const pipenzoIssueCommentRequestV1Schema = z
+  .object({
+    repo: pipenzoRepoRefV1Schema.optional(),
+    issueNumber: pipenzoIssueNumberV1Schema,
+    // No `.max()` here on purpose. A zod string check that fails marks the result *dirty*, not
+    // aborted, so the `superRefine` below runs regardless and a `.max()` would cap nothing — it
+    // would only add a second issue naming a number (131,072) that is not the documented limit.
+    // The walk is capped inside `issueCommentBodyProblem`, which is also the only guard the
+    // daemon-internal callers get, since they never reach zod at all.
+    body: z
+      .string()
+      .min(1)
+      .superRefine((value, ctx) => {
+        const problem = issueCommentBodyProblem(value);
+        if (problem !== undefined) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: ISSUE_COMMENT_BODY_MESSAGES[problem] });
+        }
+      }),
+  })
+  .strict();
+
+/**
+ * The comment's identity, and nothing else.
+ *
+ * The body is deliberately **not** echoed back. The caller already has it, it can be 64KB, and a
+ * response that repeats a request's largest field is a response whose size doubles for no reader.
+ * What a caller cannot construct for itself is the comment's id and its permalink, so those are
+ * what comes back.
+ */
+export const pipenzoIssueCommentResultV1Schema = z
+  .object({
+    repo: pipenzoRepoRefV1Schema,
+    issueNumber: pipenzoIssueNumberV1Schema,
+    commentId: z.number().int().positive(),
+    htmlUrl: z.string().url(),
+    createdAt: z.string().min(1).max(64),
+  })
+  .strict();
+
 /* ------------------------------------------------------------ error codes */
 
 /**
@@ -285,4 +423,6 @@ export type PipenzoIssueClaimRequestV1 = z.infer<typeof pipenzoIssueClaimRequest
 export type PipenzoIssueClaimResultV1 = z.infer<typeof pipenzoIssueClaimResultV1Schema>;
 export type PipenzoIssueCreateRequestV1 = z.infer<typeof pipenzoIssueCreateRequestV1Schema>;
 export type PipenzoIssueCreateResultV1 = z.infer<typeof pipenzoIssueCreateResultV1Schema>;
+export type PipenzoIssueCommentRequestV1 = z.infer<typeof pipenzoIssueCommentRequestV1Schema>;
+export type PipenzoIssueCommentResultV1 = z.infer<typeof pipenzoIssueCommentResultV1Schema>;
 export type PipenzoPhaseErrorCodeV1 = (typeof PIPENZO_PHASE_ERROR_CODES)[number];

@@ -1100,6 +1100,31 @@ describe('AgentDockClient.v2 pipenzo phases', () => {
     ).resolves.toMatchObject({ issueNumber: 901 });
   });
 
+  /** Issue #228: what #100's refusal panel and #144's blown-estimate record both post through. */
+  it('posts a comment against the 201 the route answers with', async () => {
+    const { client, fetchImpl } = routeClient(201, {
+      repo: 'jortega0033/pipenzo',
+      issueNumber: 184,
+      commentId: 5_579_054_675,
+      htmlUrl: 'https://github.com/jortega0033/pipenzo/issues/184#issuecomment-5579054675',
+      createdAt: '2026-09-08T06:30:00Z',
+    });
+    await expect(
+      client.v2.pipenzo.commentOnIssue({ issueNumber: 184, body: 'Estimate: 620 changed lines.' }),
+    ).resolves.toMatchObject({ commentId: 5_579_054_675 });
+    // Any call, not the first: the client probes `/health` before its first versioned request.
+    const call = fetchImpl.mock.calls.find(([url]) =>
+      String(url).endsWith('/v2/pipenzo/issues/comment'),
+    );
+    expect(call).toBeDefined();
+    // This is the one route whose entire payload *is* the body, so asserting the URL was hit is
+    // not enough: the test would pass with the body dropped on the floor.
+    expect(JSON.parse(String((call?.[1] as RequestInit).body))).toEqual({
+      issueNumber: 184,
+      body: 'Estimate: 620 changed lines.',
+    });
+  });
+
   it('rejects an unvalidated phase request before ever calling fetch', async () => {
     const fetchImpl = vi.fn();
     const client = makeClient(fetchImpl);
@@ -1108,6 +1133,11 @@ describe('AgentDockClient.v2 pipenzo phases', () => {
     ).rejects.toBeInstanceOf(ValidationError);
     await expect(
       client.v2.pipenzo.claimIssue({ issueNumber: 184, assignee: 'not a login' }),
+    ).rejects.toBeInstanceOf(ValidationError);
+    // A blank comment body never reaches the network: the comment is public the moment it lands,
+    // so an empty box under the operator's name is not something to discover from a 4xx.
+    await expect(
+      client.v2.pipenzo.commentOnIssue({ issueNumber: 184, body: '   ' }),
     ).rejects.toBeInstanceOf(ValidationError);
     expect(fetchImpl).not.toHaveBeenCalled();
   });

@@ -59,6 +59,7 @@ export function installAssetCaptureBridge(): void {
     reviewPipenzo: async () => { throw new Error('review is not available while capturing assets'); },
     claimPipenzoIssue: async () => { throw new Error('claiming is not available while capturing assets'); },
     createPipenzoIssue: async () => { throw new Error('issue creation is not available while capturing assets'); },
+    commentOnPipenzoIssue: async () => { throw new Error('commenting is not available while capturing assets'); },
     // A probe, not an action -- so this answers rather than throwing. It answers "nothing
     // detected, and here is why", which is the honest thing for a run with no repository.
     draftPipenzoIssue: async () => { throw new Error('drafting is not available while capturing assets'); },

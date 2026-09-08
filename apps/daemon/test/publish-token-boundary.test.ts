@@ -256,7 +256,14 @@ describe('the publish surface is not reachable from agent-runtime', () => {
     for (const file of files) {
       const text = await readSource(file);
       // Matches a tool-definition-shaped mention, not a comment about the boundary.
-      if (/['"`](?:git_push|gh_pr_create|github_create_pull_request|create_pull_request|publish)['"`]/.test(text)) {
+      // `create_issue_comment` and friends joined the list with issue #228: a comment is world-
+      // visible text published under the operator's GitHub identity, so a model that could name a
+      // tool for it could speak as a human on their own repositories.
+      if (
+        /['"`](?:git_push|gh_pr_create|github_create_pull_request|create_pull_request|publish|create_issue_comment|github_comment|post_comment|comment_on_issue)['"`]/.test(
+          text,
+        )
+      ) {
         offenders.push(relative(runtimeSrc, file));
       }
     }
@@ -268,10 +275,21 @@ describe('the publish surface is not reachable from agent-runtime', () => {
     // covered by the argv assertion below, and the environment assertions above hold for all of
     // them regardless of tool set.
     const options = readFileSync(join(runtimeSrc, 'providers', 'claude', 'sdk-options.ts'), 'utf8');
-    const trusted = /TRUSTED_TOOLS = Object\.freeze\(\[([\s\S]*?)\]/.exec(options)?.[1] ?? '';
+    const trusted = /const TRUSTED_TOOLS = Object\.freeze\(\[([\s\S]*?)\]/.exec(options)?.[1] ?? '';
+    const untrusted = /UNTRUSTED_TOOLS = Object\.freeze\(\[([\s\S]*?)\]/.exec(options)?.[1] ?? '';
     expect(trusted).not.toBe('');
+    expect(untrusted).not.toBe('');
     expect(trusted).toMatch(/'Read'/);
-    expect(trusted).not.toMatch(/Push|PullRequest|Publish|Git/i);
+    // Both lists, not just the trusted one: `sdk-options.ts` picks between them on `trustState`,
+    // so an entry in either reaches a model-driven session and asserting only one is a false pass.
+    //
+    // `Comment` joined the forbidden set with issue #228. The blacklist above scans for
+    // *snake_case* tool names anywhere in the runtime and so cannot see a PascalCase SDK tool name
+    // at all; these two lines are what stop a `Comment`/`IssueComment`/`PostComment` entry — a tool
+    // that could publish text under the operator's GitHub identity — from being handed to a model.
+    for (const list of [trusted, untrusted]) {
+      expect(list).not.toMatch(/Push|PullRequest|Publish|Git|Comment/i);
+    }
     // Bash is explicitly disallowed, which is what stops `git push` reaching the shell that way.
     expect(options).toMatch(/disallowedTools:\s*\[[^\]]*'Bash'/);
   });

@@ -2,7 +2,12 @@ import { Octokit } from '@octokit/core';
 import { paginateRest, type PaginateInterface } from '@octokit/plugin-paginate-rest';
 import { retry } from '@octokit/plugin-retry';
 import { throttling } from '@octokit/plugin-throttling';
-import { PIPENZO_LABEL_NAMESPACE, isPipenzoLabel } from '@agent-dock/shared';
+import {
+  MAX_ISSUE_COMMENT_CHARS,
+  PIPENZO_LABEL_NAMESPACE,
+  isPipenzoLabel,
+  issueCommentBodyProblem,
+} from '@agent-dock/shared';
 import { ConditionalRequestCache } from './github-conditional-cache.js';
 
 /**
@@ -200,6 +205,23 @@ export interface GitHubIssue {
   readonly etag: string | undefined;
 }
 
+/**
+ * One comment Pipenzo posted (issue #228).
+ *
+ * Narrower than GitHub's payload, and narrow in one direction on purpose: this is the echo of a
+ * *write*, not a row in a comment list. There is no author field because there is only ever one
+ * author — whoever the daemon's credential belongs to — and no reactions, no `updated_at`, no
+ * `author_association`, because nothing reads them. Widening this is somebody's later ticket with
+ * a consumer attached to it.
+ */
+export interface GitHubIssueComment {
+  readonly id: number;
+  readonly body: string;
+  readonly htmlUrl: string;
+  /** ISO-8601, as GitHub reports it. */
+  readonly createdAt: string;
+}
+
 export interface GitHubLabel {
   readonly name: string;
   /** Six lowercase hex digits, no leading `#` — GitHub's own wire shape. */
@@ -327,6 +349,29 @@ export interface GitHubClient {
   getAuthenticatedLogin(): Promise<string>;
   /** Creates an issue (issue #184, for #84's "New from idea"). Never opens a pull request. */
   createIssue(ref: RepoRef, input: GitHubIssueDraft): Promise<GitHubIssue>;
+  /**
+   * Posts one comment on an issue (issue #228).
+   *
+   * Epic #4's diff-size gate ends two of its rows in a comment rather than in a lane move: the
+   * "no clean layering at any size" row posts the estimate and the proposed split before handing
+   * to a human (#100), and a blown estimate records real-versus-predicted numbers where a human
+   * will see them (#144). Neither is expressible with labels, which is the only write this client
+   * had.
+   *
+   * Post only. No edit, no delete, no list — each of those is a capability with no caller today,
+   * and an unused write on this interface is an unused write on a credential that can reach every
+   * repository the operator connected.
+   *
+   * **Not idempotent, and cannot be made so.** GitHub has no idempotency key for comments, so a
+   * retried call posts a second comment. Callers that must not double-post gate themselves; this
+   * method will not guess, because guessing means either silently swallowing a real second comment
+   * or reading the comment list on every write.
+   */
+  createIssueComment(
+    ref: RepoRef,
+    issueNumber: number,
+    body: string,
+  ): Promise<GitHubIssueComment>;
   getPullRequestDiff(ref: RepoRef, pullNumber: number): Promise<GitHubPullRequestDiff>;
   listPullRequestChecks(ref: RepoRef, pullNumber: number): Promise<readonly GitHubCheckRun[]>;
 }
@@ -1034,6 +1079,77 @@ export class OctokitGitHubClient implements GitHubClient {
   }
 
   /**
+   * Posts one comment (issue #228).
+   *
+   * ## Why there is no pull-request guard, unlike `getIssue` and `assignIssue`
+   *
+   * Both of those refuse a number that turns out to be a PR, because both read or write the
+   * *issue* GitHub would hand back and a PR is not one. This one deliberately does not, and the
+   * divergence is a decision rather than an oversight: GitHub's comment endpoint genuinely accepts
+   * a PR number and posts to the PR's conversation, and the only way to know beforehand is an extra
+   * `GET` on every comment — a read on the hot path to forbid something the operator asked for by
+   * number. Commenting on a PR is a legitimate thing to do with this route, and the route itself is
+   * human-gated and agent-unreachable, so the guard would buy nothing the boundary does not.
+   *
+   * ## Why this invalidates the cached issue
+   *
+   * A comment is not a field of `GitHubIssue`, so nothing this write produces is stored in the
+   * conditional cache. What it *does* change is the issue's `updated_at`, which is on
+   * `GitHubIssue` and therefore in any cached body — GitHub bumps an issue's timestamp when a
+   * comment lands on it. So the same rule the other writes here state applies unchanged: a write
+   * that timed out may still have landed, and a conditional read afterwards must not be answered
+   * from a body recorded before it.
+   *
+   * What the invalidation costs, written down so a later edit neither "optimises" it away nor
+   * believes it is free:
+   *
+   * - **For this issue, it is very likely free.** A comment bumps `updated_at`, so we expect the
+   *   next conditional read of `issue:<n>` to be answered `200` anyway; dropping the entry mostly
+   *   stops the client sending a validator that could not have matched. "Very likely", not
+   *   "certainly" — GitHub's caching layer is eventually consistent and a post-write `304` from a
+   *   replica is a real, observed behaviour, which is the reason `invalidateRepo` exists at all.
+   * - **It is not free globally.** `ConditionalRequestCache` keeps one `#generation` counter per
+   *   cache instance rather than one per key, and `invalidate()` bumps it — and `index.ts` shares
+   *   a single instance between the phase machine's reconciler and the phase service's
+   *   request-scoped clients, so in the shipped daemon that counter is process-wide. `#conditional` captures the counter
+   *   before its await and refuses a `304` whose generation no longer matches, so a comment landing
+   *   while the reconciler has N conditional reads in flight on *other* resources turns each of
+   *   those free `304`s into a paid `200` and evicts N warm entries.
+   *
+   * That is conservative and correct — a write that may have landed must not be read around — and
+   * it is the price of a shared cache. Making it per-key (a `Map<string, number>` compared in
+   * `#conditional`) is the durable fix and belongs in its own ticket, not here.
+   */
+  async createIssueComment(
+    ref: RepoRef,
+    issueNumber: number,
+    body: string,
+  ): Promise<GitHubIssueComment> {
+    const operation = `createIssueComment ${ref.owner}/${ref.repo}#${issueNumber}`;
+    assertPositiveInteger(issueNumber, 'issue number', operation);
+    assertCommentBody(body, operation);
+    let response;
+    try {
+      response = await this.#octokit.request(
+        'POST /repos/{owner}/{repo}/issues/{issue_number}/comments',
+        {
+          owner: ref.owner,
+          repo: ref.repo,
+          issue_number: issueNumber,
+          body,
+          // Same as the sibling writes: no intermediary may answer a later read from a copy of this.
+          headers: { 'cache-control': 'no-cache' },
+        },
+      );
+    } catch (error) {
+      throw toGitHubClientError(error, operation);
+    } finally {
+      this.#cache?.invalidate(ref, `issue:${issueNumber}`);
+    }
+    return normalizeIssueComment(response.data as Record<string, unknown>, operation);
+  }
+
+  /**
    * Every label on a repository.
    *
    * ## Why a paginated read gets a *conditional first page* rather than a conditional list
@@ -1337,6 +1453,64 @@ function assertIssueDraft(input: GitHubIssueDraft, operation: string): void {
     throw new GitHubClientError('invalid_request', `${operation}: issue body is too long`);
   }
   for (const label of input.labels ?? []) assertLabelName(label, operation);
+}
+
+/**
+ * One comment-body rule, called by both the real client and the fake (issue #228).
+ *
+ * Exported for exactly one reason: `FakeGitHubClient.createIssueComment` calls this, rather than
+ * re-implementing the checks. #100's refusal panel and #144's blown-estimate record are both tested
+ * against the fake, and a fake that re-derived the rule would let a later edit here leave those
+ * tests green against a client that would refuse the identical call.
+ *
+ * The rule itself lives on the wire contract (`issueCommentBodyProblem` in `@agent-dock/shared`),
+ * not here, so that the HTTP route and this client cannot drift apart. What this function adds is
+ * the client's error type and the operation name in the message.
+ *
+ * This is also the *floor*, not a duplicate of the route's check: a daemon-side caller reaching
+ * `PipenzoPhaseService.commentOnIssue` or this method directly never passes through the route's
+ * `safeParse`, and both #100 and #144 are that shape.
+ */
+export function assertCommentBody(body: string, operation: string): void {
+  switch (issueCommentBodyProblem(body)) {
+    case 'blank':
+      throw new GitHubClientError(
+        'invalid_request',
+        `${operation}: a comment body cannot be empty`,
+      );
+    case 'too_long':
+      throw new GitHubClientError(
+        'invalid_request',
+        `${operation}: a comment body must be at most ${MAX_ISSUE_COMMENT_CHARS} characters`,
+      );
+    case 'control_characters':
+      throw new GitHubClientError(
+        'invalid_request',
+        `${operation}: a comment body must not contain control characters`,
+      );
+    default:
+      return;
+  }
+}
+
+function normalizeIssueComment(
+  data: Record<string, unknown>,
+  operation: string,
+): GitHubIssueComment {
+  return {
+    id: requireNumber(data.id, 'id', operation),
+    // Deliberately tolerant, and the only field here that is. `requireString` throws, and this
+    // function runs *after* the POST returned 201 — the comment is already public by then, so a
+    // throw would report a landed write as `github_failed`/502 and invite a retry that posts a
+    // duplicate. That cost buys nothing: nothing reads this field on the real path.
+    // `commentOnIssue` returns only the id, the permalink and the timestamp, and
+    // `pipenzoIssueCommentResultV1Schema` deliberately does not echo the body at all. The three
+    // fields that *are* consumed use `requireString`, because for those a missing value really is
+    // a response this client cannot work with.
+    body: typeof data.body === 'string' ? data.body : '',
+    htmlUrl: requireString(data.html_url, 'html_url', operation),
+    createdAt: requireString(data.created_at, 'created_at', operation),
+  };
 }
 
 function normalizeIssue(

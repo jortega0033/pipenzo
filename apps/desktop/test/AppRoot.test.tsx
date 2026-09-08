@@ -56,6 +56,7 @@ function realBridge(
     reviewPipenzo: vi.fn(),
     claimPipenzoIssue: vi.fn(),
     createPipenzoIssue: vi.fn(),
+    commentOnPipenzoIssue: vi.fn(),
     pipenzoCaptureCapabilities: vi.fn(),
     draftPipenzoIssue: vi.fn(),
     pipenzoTicketRead: vi.fn(),

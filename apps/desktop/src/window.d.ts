@@ -51,6 +51,8 @@ import type {
   PipenzoReviewResultV1,
   PipenzoIssueClaimRequestV1,
   PipenzoIssueClaimResultV1,
+  PipenzoIssueCommentRequestV1,
+  PipenzoIssueCommentResultV1,
   PipenzoIssueCreateRequestV1,
   PipenzoIssueCreateResultV1,
   PipenzoCaptureCapabilityRequestV1,
@@ -171,6 +173,15 @@ export interface AgentDockBridge {
   claimPipenzoIssue(input: PipenzoIssueClaimRequestV1): Promise<PipenzoIssueClaimResultV1>;
   /** Files a drafted issue (issue #84). Call only after a human approves the preview. */
   createPipenzoIssue(input: PipenzoIssueCreateRequestV1): Promise<PipenzoIssueCreateResultV1>;
+  /**
+   * Posts one comment on an issue (issue #228) -- what #100's refusal panel and #144's
+   * blown-estimate record will publish through. Nothing in the renderer calls it yet; it is wired
+   * ahead of those panels so the route is reachable rather than shipped dark. The body becomes
+   * public under the operator's GitHub identity, so like `createPipenzoIssue` it must only ever be
+   * called from a human's click, never on an agent's behalf -- and there is no retry behind it,
+   * because GitHub has no idempotency key for a comment.
+   */
+  commentOnPipenzoIssue(input: PipenzoIssueCommentRequestV1): Promise<PipenzoIssueCommentResultV1>;
   /**
    * What screenshot verification would actually do for a repository right now (issue #124): a
    * real probe of the repository's Playwright and its committed `pipenzo.verify.screenshot`

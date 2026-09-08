@@ -111,6 +111,8 @@ import {
   pipenzoIssueClaimResultV1Schema,
   pipenzoIssueCreateRequestV1Schema,
   pipenzoIssueCreateResultV1Schema,
+  pipenzoIssueCommentRequestV1Schema,
+  pipenzoIssueCommentResultV1Schema,
   pipenzoCaptureCapabilityRequestV1Schema,
   pipenzoCaptureCapabilityV1Schema,
   pipenzoIdeaDraftRequestV1Schema,
@@ -134,6 +136,8 @@ import {
   type PipenzoIssueClaimResultV1,
   type PipenzoIssueCreateRequestV1,
   type PipenzoIssueCreateResultV1,
+  type PipenzoIssueCommentRequestV1,
+  type PipenzoIssueCommentResultV1,
   type PipenzoCaptureCapabilityRequestV1,
   type PipenzoCaptureCapabilityV1,
   type PipenzoIdeaDraftRequestV1,
@@ -373,6 +377,14 @@ export class AgentDockClient {
         this.claimPipenzoIssueV1(input),
       createIssue: (input: PipenzoIssueCreateRequestV1): Promise<PipenzoIssueCreateResultV1> =>
         this.createPipenzoIssueV1(input),
+      /**
+       * Posts one comment on an issue (issue #228), for #100's refusal panel and #144's
+       * blown-estimate record. Not retried anywhere in this client: GitHub has no idempotency key
+       * for a comment, so a retry posts a second one.
+       */
+      commentOnIssue: (
+        input: PipenzoIssueCommentRequestV1,
+      ): Promise<PipenzoIssueCommentResultV1> => this.commentOnPipenzoIssueV1(input),
       /**
        * What screenshot verification would actually do for a repository right now (issue #124).
        * A real probe on the daemon side, not a settings read.
@@ -938,6 +950,23 @@ export class AgentDockClient {
       '/v2/pipenzo/issues',
       pipenzoIssueCreateResultV1Schema,
       'pipenzo created issue',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) },
+      { expectedStatus: 201 },
+    );
+  }
+
+  private async commentOnPipenzoIssueV1(
+    input: PipenzoIssueCommentRequestV1,
+  ): Promise<PipenzoIssueCommentResultV1> {
+    const parsed = validateInput(
+      pipenzoIssueCommentRequestV1Schema,
+      input,
+      'pipenzo issue comment request',
+    );
+    return this.requestV2(
+      '/v2/pipenzo/issues/comment',
+      pipenzoIssueCommentResultV1Schema,
+      'pipenzo posted comment',
       { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) },
       { expectedStatus: 201 },
     );
