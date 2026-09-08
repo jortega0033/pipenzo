@@ -1055,9 +1055,10 @@ handle('pipenzo:github-connection', (): PipenzoGitHubConnectionV1 => gitHubConne
  * flow (#114) runs entirely in main, so a token never crosses the bridge in either direction.
  */
 handle('pipenzo:disconnect-github', (): PipenzoGitHubConnectionV1 => {
-  // Restarting only when something actually changed. `clear()` on an empty vault succeeds silently,
-  // so without this a renderer could loop this channel and kill the daemon — and every running
-  // session with it — over and over, while changing nothing at all.
+  // Restarting only when something actually changed or would change. `clear()` on an empty vault
+  // succeeds silently, so without this half of the guard a renderer could loop this channel and
+  // kill the daemon — and every running session with it — over and over, while changing nothing
+  // at all.
   //
   // The test for "something changed" is `clear()`'s own report, deliberately not `status()`.
   // `status()` resolves availability before it looks for a record, so on any machine without a
@@ -1067,12 +1068,22 @@ handle('pipenzo:disconnect-github', (): PipenzoGitHubConnectionV1 => {
   // That turned this channel into the unbounded restart loop the guard was written to prevent,
   // which matters because `restartDaemonForCredentialChange` intentionally bypasses `killDaemon`'s
   // bounded `sessions.cancelAll`: every repetition kills in-flight sessions uncancelled.
-  if (tokenVault.clear()) {
-    // Issue #210: an explicit disconnect must stick in a development build too, where the vault
-    // being empty would otherwise fall straight back to an inherited `PIPENZO_GITHUB_TOKEN` on the
-    // very next spawn -- silently turning "forget this credential" into "keep using it". Set
-    // before the restart, so the very next `spawnDaemon()` this triggers already honors it.
-    developmentFallbackSuppressed = true;
+  // Issue #210: an explicit disconnect must stick in a development build too, where the vault
+  // being empty would otherwise fall straight back to an inherited `PIPENZO_GITHUB_TOKEN` on the
+  // very next spawn -- silently turning "forget this credential" into "keep using it". Set
+  // unconditionally, before either branch below: harmless when there is nothing to suppress yet,
+  // and it must be in effect before a restart this same click triggers, not after.
+  developmentFallbackSuppressed = true;
+  // Restarting when `clear()` found a real record to remove is the pre-existing guard (its own
+  // comment above explains why an unconditional restart would loop). The `daemonTokenSource ===
+  // 'environment'` half is new: a machine with no working credential store at all (`state:
+  // 'unavailable'`, `os_encryption_unavailable`/`plaintext_backend`) has no vault file `clear()`
+  // could ever find, so without this a daemon already running on the inherited variable would
+  // keep running on it -- the flag above would be set but would do nothing until some unrelated
+  // future restart. This still cannot loop: the second click finds `daemonTokenSource` already
+  // `'none'` (the first restart's own confirmed report, issue #209), so the condition is false and
+  // nothing restarts a second time.
+  if (tokenVault.clear() || daemonTokenSource === 'environment') {
     restartDaemonForCredentialChange();
   }
   // `source` in this reply still describes the daemon that is on its way out; the restart it just

@@ -142,10 +142,12 @@ export function AccountPanel() {
   const chip = connection === undefined ? undefined : connectionChip(connection.state);
   /**
    * The daemon is running on an inherited variable, which changes what a disconnect *does* and not
-   * just what it says. Clearing the vault restarts the daemon, and `resolveDaemonGitHubToken` then
-   * finds the same `PIPENZO_GITHUB_TOKEN` again -- so the honest sentence is "this comes back", not
-   * "this stops". Reachable with `state: 'connected'` too: a daemon spawned before the vault was
-   * written is on the environment while the vault holds a record.
+   * just what it says. Before issue #210, clearing the vault restarted the daemon straight back
+   * onto the same `PIPENZO_GITHUB_TOKEN` -- main now also suppresses that fallback (for the rest
+   * of this run) as part of the same click, so "this stops" is the honest sentence, not "this
+   * comes back". It still never revokes the token on GitHub itself. Reachable with `state:
+   * 'connected'` too: a daemon spawned before the vault was written is on the environment while
+   * the vault holds a record.
    */
   const inheritedToken = connection !== undefined && isRunningOnInheritedToken(connection);
 

@@ -417,16 +417,10 @@ describe('which credential the daemon runs on is decided once, and named', () =>
       ).toEqual({ token: vaultToken, source: 'vault' });
     });
 
-    it('defaults to false, so every existing call site keeps behaving exactly as before', () => {
-      expect(
-        resolveDaemonGitHubToken({
-          vaultToken: undefined,
-          environmentToken,
-          isPackaged: false,
-          isDevelopmentBuild: true,
-        }),
-      ).toEqual({ token: environmentToken, source: 'environment' });
-    });
+    // Defaulting to `false` is already covered by the pre-existing
+    // 'falls back to the environment only when both gates agree, and says so' above, which omits
+    // the parameter entirely -- a second test with the same inputs and expectation would just be
+    // that one under a different name.
   });
 
   /**
@@ -446,17 +440,19 @@ describe('which credential the daemon runs on is decided once, and named', () =>
 
   /**
    * Issue #210: the wiring a pure-function unit test cannot see -- the disconnect handler sets the
-   * process-lifetime flag before triggering the restart it just decided on, and every spawn
-   * (including the very next one, for this restart) feeds it into `resolveDaemonGitHubToken`.
+   * process-lifetime flag unconditionally, and every spawn feeds it into `resolveDaemonGitHubToken`.
    */
   it("is suppressed for the rest of the process's life by an explicit disconnect (issue #210)", async () => {
     const main = await readElectron('main.ts');
     expect(main).toMatch(/let developmentFallbackSuppressed = false;/);
     expect(main).toMatch(/developmentFallbackSuppressed,\s*\n\s*\}\);/);
-    // Set, not read, inside the handler that actually cleared the vault -- and before the restart
-    // it triggers, so the very next spawn already honors it.
+    // Set unconditionally, in the handler -- not only when `tokenVault.clear()` found a record to
+    // remove. A machine with no working credential store at all (`state: 'unavailable'`,
+    // `os_encryption_unavailable`/`plaintext_backend`) has no vault file `clear()` could ever find,
+    // so gating this on `clear()`'s result the way the restart itself is gated would leave a daemon
+    // already running on the inherited variable unsuppressed until some unrelated future restart.
     expect(main).toMatch(
-      /if \(tokenVault\.clear\(\)\) \{[\s\S]{0,200}?developmentFallbackSuppressed = true;[\s\S]{0,100}?restartDaemonForCredentialChange\(\);/,
+      /handle\('pipenzo:disconnect-github'[\s\S]{0,600}?developmentFallbackSuppressed = true;[\s\S]{0,300}?if \(tokenVault\.clear\(\) \|\| daemonTokenSource === 'environment'\) \{\s*\n\s*restartDaemonForCredentialChange\(\);/,
     );
   });
 });
@@ -659,19 +655,23 @@ describe('nothing on the renderer bridge can obtain the token', () => {
 
   /**
    * A renderer-reachable channel that kills the daemon is a renderer-reachable way to terminate
-   * every running session. Disconnecting an already-disconnected vault must change nothing.
+   * every running session. Disconnecting an already-disconnected vault, on a daemon that was not
+   * running on the inherited fallback either, must change nothing.
    */
   it('does not restart the daemon when a disconnect changes nothing', async () => {
     // `stripComments`, like its siblings above: line-comment prose quoting the *old* form of either
     // guard below would otherwise fail this test for saying what the guard used to be.
     const main = stripComments(await readElectron('main.ts'));
-    // The decision itself is `clear()`'s return value, and it is covered behaviourally in
-    // `github-token-vault.test.ts` ("reports whether a disconnect actually removed anything"),
-    // including the machine-without-a-credential-store case that made the previous
-    // `status().state !== 'disconnected'` form of this guard permanently true. What is asserted
-    // here is only the wiring: that the handler gates on that return value and on nothing else.
+    // Two conditions decide the restart (issue #210 added the second): `clear()`'s own report,
+    // covered behaviourally in `github-token-vault.test.ts` ("reports whether a disconnect
+    // actually removed anything"), including the machine-without-a-credential-store case that made
+    // the previous `status().state !== 'disconnected'` form of this guard permanently true; and
+    // `daemonTokenSource === 'environment'`, for the machine-without-a-credential-store case where
+    // `clear()` alone would never fire even though the currently-running daemon is on the inherited
+    // variable. What is asserted here is only the wiring: that the handler gates on exactly these
+    // two and nothing else -- both false is still a true no-op.
     expect(main).toMatch(
-      /if \(tokenVault\.clear\(\)\) \{[\s\S]{0,200}?restartDaemonForCredentialChange\(\);\s*\n\s*\}/,
+      /if \(tokenVault\.clear\(\) \|\| daemonTokenSource === 'environment'\) \{[\s\S]{0,200}?restartDaemonForCredentialChange\(\);\s*\n\s*\}/,
     );
     // And specifically not on `status()`, which cannot distinguish "nothing stored" from "cannot
     // tell" and so answers the same on every machine where the loop was reachable. The quote class
