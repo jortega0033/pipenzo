@@ -6,6 +6,7 @@ import { SyncStatusPill } from './components/primitives/SyncStatusPill.js';
 import { ConnectionHealthBanner } from './pipenzo/ConnectionHealthBanner.js';
 import { ConnectScreen } from './pipenzo/ConnectScreen.js';
 import { EnvironmentCredentialBanner } from './pipenzo/EnvironmentCredentialBanner.js';
+import { PipenzoAppShell } from './pipenzo/PipenzoAppShell.js';
 import { deriveSyncStatus } from './pipenzo/sync-status.js';
 import { routePipenzoStartup } from './pipenzo/startup-route.js';
 import { useConnectedRepos } from './pipenzo/use-connected-repos.js';
@@ -91,27 +92,23 @@ function PipenzoStartup({
   }
 
   const sync = deriveSyncStatus(health);
+  const onRefreshSync = () => void getBridge().pollGitHubHealthNow().catch(() => {});
 
   return (
     <>
       {route.environmentCredential && <EnvironmentCredentialBanner />}
       {/*
-       * The board header's sync pill (#75), on the canvas's own artboard. It belongs in
-       * `MainHead`/`MainHeadRight` (`AppShell.tsx`'s doc comment names it as an example of what
-       * that slot holds), and that header is not mounted anywhere real yet -- the same
-       * shell-wiring gap `BoardScreen.tsx`'s own doc comment describes for `tickets`. Rendered
-       * here, in its own row, rather than left unwired: this is a real value driven by real
-       * health data, and a pill with nowhere to sit is not a reason to leave it disconnected the
-       * way `SyncStatusPill` was before this ticket. Reflow into `MainHeadRight` is shell-wiring's
-       * job once that ticket exists.
+       * The board header's sync pill (#75) lives in `PipenzoAppShell`'s own `MainHead`/
+       * `MainHeadRight` now (issue #274) -- exactly the reflow this comment used to say was
+       * shell-wiring's job once that ticket existed. Demo mode still renders `<App>`, which has no
+       * `MainHead` to reflow into, so the pill keeps its own standalone row there, unchanged from
+       * before #274.
        */}
-      <div className="sync-status-row" style={{ display: 'flex', justifyContent: 'flex-end', padding: '8px 16px 0' }}>
-        <SyncStatusPill
-          status={sync.status}
-          label={sync.label}
-          onRefresh={() => void getBridge().pollGitHubHealthNow().catch(() => {})}
-        />
-      </div>
+      {demoMode && (
+        <div className="sync-status-row" style={{ display: 'flex', justifyContent: 'flex-end', padding: '8px 16px 0' }}>
+          <SyncStatusPill status={sync.status} label={sync.label} onRefresh={onRefreshSync} />
+        </div>
+      )}
       <ConnectionHealthBanner
         health={health}
         loginName={connection?.state === 'connected' ? connection.login : undefined}
@@ -126,7 +123,19 @@ function PipenzoStartup({
         // state, the same way `AccountPanel.tsx`'s identical "Disconnect GitHub" does.
         onReauthenticate={() => getBridge().disconnectGitHub().then(() => {})}
       />
-      <App demoMode={demoMode} onEnterDemo={enterDemoMode} onExitDemo={exitDemoMode} />
+      {/*
+       * `<App>` -- the AgentDock demo shell this product inherited -- is now reachable only through
+       * `demoMode` (issue #274). A real, connected session gets `PipenzoAppShell` instead: `<App>`'s
+       * own "Try a demo" affordance goes with it, since `demo-bridge.ts`'s Pipenzo methods answer
+       * enough to run `<App>` in demo mode but not enough to run the real board -- entering demo
+       * from a real session would land on a board that cannot list tickets. `ConnectScreen`'s own
+       * "Try a demo" (reachable from the pre-app, token-less) is unaffected and remains the way in.
+       */}
+      {demoMode ? (
+        <App demoMode={demoMode} onEnterDemo={enterDemoMode} onExitDemo={exitDemoMode} />
+      ) : (
+        <PipenzoAppShell sync={sync} onRefreshSync={onRefreshSync} />
+      )}
     </>
   );
 }
