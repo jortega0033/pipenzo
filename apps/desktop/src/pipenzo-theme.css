@@ -3875,6 +3875,87 @@
     gap: 8px;
   }
 
+  /* Connect step 1's device-code card (issue #114), ported verbatim from Connect.dc.html. The
+     canvas's own note on why the code is the largest type in the design: it is the one thing on
+     this screen the user has to read out to another surface. */
+  .code-box {
+    background: var(--color-surface);
+    border-radius: var(--radius-pipenzo);
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    align-items: center;
+  }
+
+  /* Scoped to `.code-box`, not the bare `.code` the canvas uses. This stylesheet is global and has
+     no per-screen scope, and `.code` is already taken: `DiffFileList.tsx` renders every diff line
+     into a `td.code`, whose own rule declares only padding/white-space/colour. A bare `.code` here
+     would therefore win on font-size, weight and tracking against a `font-size` the diff table only
+     *inherits* -- rendering the whole diff viewer at 44px bold. */
+  .code-box .code {
+    font-family: var(--font-mono);
+    font-size: 44px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    line-height: 1;
+    /* Balances the trailing letter-spacing, which would otherwise push the code off-centre. */
+    padding-left: 0.18em;
+  }
+
+  .code-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--color-text-faint);
+    line-height: 1;
+  }
+
+  .code-meta .icon-sm {
+    color: var(--color-text-faint);
+  }
+
+  /* The three-step token explainer. Same stacked, corner-clipped shape as .gate-row and .pc-row --
+     the group reads as one block rather than a pile of separately-rounded rectangles. */
+  .why {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .why-row {
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr);
+    gap: 12px;
+    padding: 10px 14px;
+    background: var(--color-surface-2);
+    font-size: 12px;
+    color: var(--color-text-soft);
+    line-height: 1.45;
+  }
+
+  .why-row:first-child {
+    border-radius: var(--radius-pipenzo) var(--radius-pipenzo) 0 0;
+  }
+
+  .why-row:last-child {
+    border-radius: 0 0 var(--radius-pipenzo) var(--radius-pipenzo);
+  }
+
+  .why-row .n {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--color-text-faint);
+    line-height: 1.6;
+  }
+
+  .why-row b {
+    color: var(--color-text);
+    font-weight: 700;
+  }
+
   /* A step the install cannot reach yet (the repo picker with no credential behind it). The canvas
      has no such state -- it is a static preview where both steps are deliberately clickable, as its
      own inline note says -- so this is the one rule here with no canvas counterpart.

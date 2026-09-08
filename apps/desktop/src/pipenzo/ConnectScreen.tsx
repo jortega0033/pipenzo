@@ -1,26 +1,17 @@
 import { useState } from 'react';
-import { Button } from '../components/primitives/Button.js';
 import { Notice } from '../components/primitives/Notice.js';
+import { DeviceCodeStep } from './DeviceCodeStep.js';
 import { ConnectPane, PreAppShell } from './PreAppShell.js';
 import type { PipenzoStartupRoute, PreAppStep } from './startup-route.js';
-
-/** Why a machine cannot hold a credential at all, said in the user's terms rather than the enum's. */
-const UNAVAILABLE_COPY: Record<string, string> = {
-  os_encryption_unavailable:
-    'This machine reports no OS credential store, so there is nowhere to keep a GitHub token safely. On Linux that usually means no keyring (gnome-keyring or kwallet) is running.',
-  plaintext_backend:
-    'The only credential store available here encrypts with a published constant key, which is not encryption. Pipenzo refuses to store a token under it rather than claim protection it would not have.',
-  unreadable:
-    'A stored credential exists but cannot be read on this machine — a keyring that went away, or a record written by a different build. Disconnecting and connecting again replaces it.',
-};
 
 /**
  * The pre-app screen (issue #113): the shell, plus whichever of the two steps the route selected.
  *
- * The step **bodies** are not here. The device-code flow is #114 and the repo picker is #115, and
- * both are substantial enough that stubbing a plausible-looking version of either would be worse
- * than an empty frame — a fake code box is indistinguishable from a broken one. What each step
- * shows today is its real heading from the canvas and a plain statement of what is not built yet.
+ * Step 1 is real as of #114 — `DeviceCodeStep` owns its own pane, because everything in it (the
+ * heading's promise about where the token goes, the scope disclosure, the actions) belongs to the
+ * flow rather than to the frame. Step 2 is still #115's, and shows its real heading from the canvas
+ * with a plain statement of what is not built yet: a plausible-looking stub of a repo picker would
+ * be worse than an empty frame, since a fake list is indistinguishable from a broken one.
  */
 export function ConnectScreen({
   route,
@@ -48,36 +39,10 @@ export function ConnectScreen({
   return (
     <PreAppShell step={step} canChooseRepos={route.canChooseRepos} onStepChange={setRequestedStep}>
       {step === 'device-code' ? (
-        <ConnectPane
-          title="Connect GitHub"
-          // "encrypted by", not "in". The ciphertext really is a file Pipenzo wrote, under this
-          // app's own data directory -- the OS credential store supplies the *key*, not the
-          // storage, and the vault's own `clear()` comment depends on that file existing. A user
-          // who read this as "the token lives in Keychain and nothing in the app's folder carries
-          // it" would treat backups and profile sync differently than they should.
-          //
-          // (Naming the Electron API here would trip `github-token-boundary.test.ts`'s renderer
-          // scan, which does not strip comments. That is the scan working: it cannot tell prose
-          // from an import, and a false alarm someone investigates beats a blind spot nobody sees.)
-          subtitle="Pipenzo reads your issues, writes its own labels and opens pull requests as you. It needs a GitHub token to do any of that, and it keeps that token encrypted by this machine's own credential store — never in plaintext, and never in the environment of any agent it runs."
-          actions={
-            onEnterDemo && (
-              <Button onClick={onEnterDemo}>Try a demo</Button>
-            )
-          }
-        >
-          {route.unavailableReason && (
-            <Notice tone="danger" icon="warning" title="This machine cannot store a token">
-              {UNAVAILABLE_COPY[route.unavailableReason] ??
-                'This machine cannot hold a credential safely, so connecting would complete and then fail to save.'}
-            </Notice>
-          )}
-          <Notice icon="info" title="The device-code flow is not built yet">
-            Connecting is issue #114. Until it lands, a development build can run against a{' '}
-            <code className="mono">PIPENZO_GITHUB_TOKEN</code> in its own environment; a packaged
-            build refuses that fallback and has no other way in yet.
-          </Notice>
-        </ConnectPane>
+        <DeviceCodeStep
+          {...(route.unavailableReason ? { unavailableReason: route.unavailableReason } : {})}
+          {...(onEnterDemo ? { onEnterDemo } : {})}
+        />
       ) : (
         <ConnectPane
           title="Choose the repos Pipenzo manages"

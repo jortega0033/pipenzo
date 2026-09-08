@@ -68,6 +68,8 @@ import {
   pipenzoTicketTransitionRequestV1Schema,
   pipenzoTicketReconciliationV1Schema,
   pipenzoPhaseEventV1Schema,
+  pipenzoDeviceCodeV1Schema,
+  pipenzoDeviceOutcomeV1Schema,
   pipenzoGitHubConnectionV1Schema,
   providerIdSchema,
   type AgentCommandV2,
@@ -133,6 +135,8 @@ import {
   type PipenzoTicketTransitionRequestV1,
   type PipenzoTicketReconciliationV1,
   type PipenzoPhaseEventV1,
+  type PipenzoDeviceCodeV1,
+  type PipenzoDeviceOutcomeV1,
   type PipenzoGitHubConnectionV1,
 } from '@agent-dock/shared';
 import type {
@@ -234,6 +238,21 @@ export interface AgentDockBridge {
    */
   pipenzoGitHubConnection(): Promise<PipenzoGitHubConnectionV1>;
   disconnectGitHub(): Promise<PipenzoGitHubConnectionV1>;
+  /**
+   * The device-code sign-in (issue #114), which runs entirely in Electron main.
+   *
+   * `startGitHubDeviceFlow` answers with a pairing code the user is *meant* to read out — never the
+   * device code, which for the length of the flow is as good as the token itself. Calling it while
+   * an unexpired code is already outstanding returns that same code rather than minting a new one,
+   * so this is not a way to hammer GitHub's endpoint. `openGitHubDeviceVerification` takes no
+   * argument at all: main opens the URL it validated and pinned to github.com itself, so this
+   * cannot be turned into an open-anything primitive. The outcome arrives on the subscription,
+   * not as a return value, because the human is in another application for most of the flow.
+   */
+  startGitHubDeviceFlow(): Promise<PipenzoDeviceCodeV1>;
+  openGitHubDeviceVerification(): Promise<void>;
+  cancelGitHubDeviceFlow(): Promise<void>;
+  onGitHubDeviceOutcome(callback: (outcome: PipenzoDeviceOutcomeV1) => void): () => void;
   selectAndUploadAttachments(sessionId?: string): Promise<AttachmentMetadataV2[]>;
   validateStructuredOutput(input: StructuredWorkflowRequestV2): Promise<StructuredWorkflowResultV2>;
   createSession(input: CreateSessionInput): Promise<AgentSession>;
@@ -852,6 +871,35 @@ const api: AgentDockBridge = {
     };
     ipcRenderer.on('daemon:pipenzo-phase-event', listener);
     return () => ipcRenderer.removeListener('daemon:pipenzo-phase-event', listener);
+  },
+  /**
+   * The device-code sign-in (issue #114). Three verbs, and between them they carry no credential
+   * in either direction: `startGitHubDeviceFlow` answers with a pairing code the user is *meant*
+   * to read out, `openGitHubDeviceVerification` takes no argument at all (main opens the URL it
+   * validated itself, so this cannot be turned into an open-anything primitive), and the outcome
+   * channel reports only that a sign-in ended and how.
+   */
+  async startGitHubDeviceFlow() {
+    return pipenzoDeviceCodeV1Schema.parse(
+      await ipcRenderer.invoke('pipenzo:github-device-start'),
+    );
+  },
+  async openGitHubDeviceVerification() {
+    await ipcRenderer.invoke('pipenzo:github-device-open-verification');
+  },
+  async cancelGitHubDeviceFlow() {
+    await ipcRenderer.invoke('pipenzo:github-device-cancel');
+  },
+  onGitHubDeviceOutcome(callback) {
+    const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => {
+      // Parsed here too, for the same reason the phase stream is: a malformed payload is dropped
+      // rather than handed to a screen that would branch on it.
+      const parsed = pipenzoDeviceOutcomeV1Schema.safeParse(payload);
+      if (!parsed.success) return;
+      callback(parsed.data);
+    };
+    ipcRenderer.on('pipenzo:github-device-outcome', listener);
+    return () => ipcRenderer.removeListener('pipenzo:github-device-outcome', listener);
   },
   async selectAndUploadAttachments(sessionId) {
     const parsedSessionId = sessionId === undefined ? undefined : sessionIdParamSchema.parse({ sessionId }).sessionId;

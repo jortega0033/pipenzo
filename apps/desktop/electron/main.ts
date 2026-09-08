@@ -44,13 +44,22 @@ import {
   type AgentCommandV2,
   type AgentEventV2Envelope,
   type AgentSessionV2,
+  type PipenzoDeviceCodeV1,
+  type PipenzoDeviceFailureReasonV1,
   type PipenzoGitHubConnectionV1,
   type ProviderId,
   type WorkspaceTrustUpdateRequestV2,
 } from '@agent-dock/shared';
 import { AgentDockClient, DaemonError } from '@agent-dock/client';
 import { resolveDaemonEntry } from './resolve-daemon-entry.js';
-import { GitHubTokenVault } from './github-token-vault.js';
+import { GitHubTokenVault, GitHubTokenVaultError } from './github-token-vault.js';
+import {
+  DeviceFlowError,
+  GITHUB_VERIFICATION_HOST,
+  GitHubDeviceFlow,
+} from './github-device-flow.js';
+import { DeviceFlowSession, toWireFailure } from './device-flow-session.js';
+import { GITHUB_OAUTH_CLIENT_ID } from './github-oauth-app.js';
 import {
   buildDaemonCredentialMessage,
   buildDaemonEnvironment,
@@ -147,10 +156,10 @@ function discoveryFilePath(): string {
  * one caller — `spawnDaemon` below — which
  * `apps/desktop/test/github-token-boundary.test.ts` asserts at the source level.
  *
- * Nothing writes to it yet. The device-code flow that will (`vault.store(...)`) runs in main too,
- * for the reason `pipenzo-credential-v1.ts` sets out: main asks GitHub for the code, main polls,
- * main receives the token, so the credential never crosses into the renderer in either direction.
- * That flow is issue #114.
+ * The one writer is the device-code flow (issue #114), which runs in main too, for the reason
+ * `pipenzo-credential-v1.ts` sets out: main asks GitHub for the code, main polls, main receives the
+ * token, so the credential never crosses into the renderer in either direction. See
+ * `device-flow-session.ts` for the rules about when it is allowed to store.
  */
 const tokenVault = new GitHubTokenVault({
   directory: app.getPath('userData'),
@@ -979,6 +988,69 @@ handle('pipenzo:disconnect-github', (): PipenzoGitHubConnectionV1 => {
   return gitHubConnectionStatus();
 });
 
+/**
+ * The device-code sign-in (issue #114), which runs here and only here.
+ *
+ * The renderer's whole part is three verbs with no payloads worth the name: start, open the
+ * verification page, cancel. It never sees the device code, never sees the token, and cannot even
+ * name the URL to open — `openVerification` uses the URL this process validated itself, which is
+ * the same rule the provider-OAuth handler further down already follows.
+ *
+ * The lifecycle lives in `device-flow-session.ts` rather than in variables here, because the rule
+ * that decides whether a `repo`-scoped token is kept has to be something a test can drive. See that
+ * module for the concurrency argument.
+ */
+const deviceFlow = new GitHubDeviceFlow({ clientId: GITHUB_OAUTH_CLIENT_ID });
+
+const deviceSession = new DeviceFlowSession({
+  requestCode: () => deviceFlow.requestCode(),
+  poll: (grant, options) => deviceFlow.poll(grant, options),
+  canStore: () => tokenVault.encryptionAvailability().available,
+  store: (credential) => tokenVault.store(credential),
+  isStorageFailure: (error) =>
+    error instanceof GitHubTokenVaultError && error.code === 'encryption_unavailable',
+  report: (outcome) => sendToRenderer(mainWindow, 'pipenzo:github-device-outcome', outcome),
+  // The daemon is handed its credential once, at spawn, so a new one is a new process.
+  onStored: () => restartDaemonForCredentialChange(),
+});
+
+handle('pipenzo:github-device-start', async (): Promise<PipenzoDeviceCodeV1> => {
+  try {
+    return await deviceSession.start();
+  } catch (error) {
+    // Reported on the outcome channel as well as rejecting the call. `DeviceFlowError.reason` does
+    // not survive IPC — Electron flattens the error and drops the field — so a renderer left to
+    // interpret the rejection alone can only guess, and the guess it used to make was
+    // `not_configured`: the one piece of copy whose whole purpose is to tell the user to stop
+    // retrying, shown to someone whose network was merely down. Main knows the real reason, so
+    // main says it.
+    const reason: PipenzoDeviceFailureReasonV1 =
+      error instanceof DeviceFlowError ? toWireFailure(error.reason) : 'unreachable';
+    sendToRenderer(mainWindow, 'pipenzo:github-device-outcome', { state: 'failed', reason });
+    throw error;
+  }
+});
+
+/**
+ * Opens GitHub's device page in the user's own browser — no embedded browser, which is the whole
+ * point of this grant type. Takes no argument: the renderer cannot supply a URL, so there is no
+ * path by which a compromised renderer turns this into a general "open anything" primitive.
+ *
+ * Re-pinned here rather than trusted to the grant-time check. `openAllowedExternalUrl` validates
+ * the scheme, host presence and userinfo, but it does not know this URL is only ever allowed to be
+ * github.com — so the host check is repeated at the moment of launch, where the consequence lives.
+ */
+handle('pipenzo:github-device-open-verification', (): void => {
+  const uri = deviceSession.verificationUri;
+  if (!uri) return;
+  if (new URL(uri).hostname !== GITHUB_VERIFICATION_HOST) return;
+  openAllowedExternalUrl(uri, (url) => shell.openExternal(url));
+});
+
+handle('pipenzo:github-device-cancel', (): void => {
+  deviceSession.cancel();
+});
+
 handle('daemon:list-providers', async () => {
   if (!client) throw new Error('daemon is not ready yet');
   return client.providers.list();
@@ -1322,6 +1394,10 @@ if (gotSingleInstanceLock) {
 
   app.on('before-quit', (event) => {
     isQuitting = true;
+    // A poll landing after this point would store a credential and then hit
+    // `restartDaemonForCredentialChange`'s own `isQuitting` guard, leaving the token saved but not
+    // delivered until the next launch, while the UI's last frame said it was restarting.
+    deviceSession.abandon();
     if (pendingInteractiveCreates.isClosing || !daemonChild) return;
     pendingInteractiveCreates.beginShutdown();
     event.preventDefault();
