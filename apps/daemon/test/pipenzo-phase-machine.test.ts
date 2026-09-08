@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { PipenzoTicketRecordV1 } from '@agent-dock/shared';
 import { FakeGitHubClient } from '../src/github-client-fake.js';
 import type { GitHubIssue } from '../src/github-client.js';
+import { PipenzoPhaseEventBus } from '../src/pipenzo-phase-events.js';
 import { FileTicketStore } from '../src/pipenzo-ticket-store.js';
 import {
   PIPENZO_LEGAL_LANE_TRANSITIONS,
@@ -73,13 +74,18 @@ function harness(options: {
   ticket?: Partial<PipenzoTicketRecordV1>;
   issueLabels?: readonly string[];
   issueTitle?: string;
+  events?: PipenzoPhaseEventBus;
 } = {}) {
   const tickets = new FileTicketStore(storeDirectory());
   tickets.create(makeTicket(options.ticket));
   const github = new FakeGitHubClient().seedIssue(
     makeIssue(options.issueLabels ?? ['pipenzo:queued'], options.issueTitle),
   );
-  const machine = new PipenzoPhaseMachine({ tickets, github: () => github });
+  const machine = new PipenzoPhaseMachine({
+    tickets,
+    github: () => github,
+    ...(options.events ? { events: options.events } : {}),
+  });
   return { tickets, github, machine };
 }
 
@@ -546,6 +552,25 @@ describe('PipenzoPhaseMachine.read title caching (issue #255)', () => {
     expect(tickets.get(TICKET_ID)?.title).toBe('New title');
     // Reconciliation is local-only, same as every other read() reconciliation.
     expect(github.calls.filter((call) => call.method === 'setIssueLabels')).toHaveLength(0);
+  });
+
+  it('does not announce a title-only change on an otherwise-agreeing read', async () => {
+    const events = new PipenzoPhaseEventBus();
+    const { machine } = harness({
+      ticket: { lane: 'queued', labels: ['pipenzo:queued'], title: 'Old title' },
+      issueLabels: ['pipenzo:queued'],
+      issueTitle: 'Renamed on GitHub',
+      events,
+    });
+
+    const result = await machine.read(TICKET_ID);
+
+    // The write happened (this is the same case covered above), but the phase-event stream (#189)
+    // carries lane transitions, not card content -- a title update with no lane change is not
+    // something a subscriber reconnects to that stream to hear about, so #announce must stay silent.
+    expect(result.changed).toBe(true);
+    expect(result.ticket.title).toBe('Renamed on GitHub');
+    expect(events.retained).toHaveLength(0);
   });
 });
 

@@ -129,7 +129,40 @@ describe('usePipenzoTickets', () => {
       phase: 'implement',
       labels: ['pipenzo:working'],
     } as PipenzoPhaseEventV1);
+    // The event-triggered read is debounced (issue #255 finding 2); waitFor's default 1000ms
+    // window comfortably clears the debounce plus the mocked fetch settling.
     await waitFor(() => expect(count()).toBe('2'));
+  });
+
+  it('debounces a burst of phase events into a single refetch, not one per event', async () => {
+    const listTickets = vi.fn().mockResolvedValue({ tickets: [TICKET] });
+    const { emitPhaseEvent } = installBridge(listTickets);
+    render(<Probe />);
+    await waitFor(() => expect(status()).toBe('ready'));
+    listTickets.mockClear();
+
+    const event = {
+      sequence: 0,
+      ticketId: TICKET.ticketId,
+      fromLane: 'queued',
+      toLane: 'working',
+      phase: 'implement',
+      labels: ['pipenzo:working'],
+    } as PipenzoPhaseEventV1;
+
+    // A reconciler tick that touched five tickets fires five near-simultaneous events.
+    for (let index = 0; index < 5; index += 1) {
+      emitPhaseEvent(event);
+    }
+
+    // Still inside the debounce window: nothing has been refetched yet.
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(listTickets).not.toHaveBeenCalled();
+
+    // Once the burst quiets down, the whole burst collapses into exactly one refetch.
+    await waitFor(() => expect(listTickets).toHaveBeenCalledTimes(1));
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(listTickets).toHaveBeenCalledTimes(1);
   });
 
   it('ignores a stale read that settles after a newer one', async () => {

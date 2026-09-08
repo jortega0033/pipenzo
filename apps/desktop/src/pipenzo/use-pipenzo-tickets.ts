@@ -21,6 +21,22 @@ export type PipenzoTicketListState =
   | { status: 'ready'; tickets: readonly PipenzoTicketViewV1[] }
   | { status: 'error' };
 
+/**
+ * How long a live phase event waits for its siblings before triggering a refetch (issue #255
+ * finding 2).
+ *
+ * The reconciler's own `#pollAll()` (`pipenzo-reconciler.ts`) walks every connected ticket in one
+ * tick and announces each one that changed lane or labels -- a bulk relabel on GitHub, or the
+ * reconciler catching up after downtime, can fan out into a burst of N near-simultaneous events for
+ * a single logical moment. Refetching the whole board once per event in that burst would multiply
+ * one tick into N full `GET /v2/pipenzo/tickets` calls against a route rate-limited to 60/min, and
+ * would still only be re-deriving what the first event in the burst already implied. A trailing
+ * debounce collapses the burst into exactly one `read()` once it quiets down, the same way the
+ * reconciler's own backoff and the SSE writer's queue bounds treat bursts elsewhere in this
+ * codebase.
+ */
+const PHASE_EVENT_DEBOUNCE_MS = 300;
+
 export function usePipenzoTickets(): {
   ticketList: PipenzoTicketListState;
   refresh: () => void;
@@ -35,6 +51,7 @@ export function usePipenzoTickets(): {
   useEffect(() => {
     let cancelled = false;
     let latest = 0;
+    let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 
     const read = (): void => {
       latest += 1;
@@ -57,6 +74,16 @@ export function usePipenzoTickets(): {
         });
     };
 
+    // Debounced, not immediate: see `PHASE_EVENT_DEBOUNCE_MS` above for why a burst of events must
+    // collapse into a single refetch rather than one per event.
+    const debouncedRead = (): void => {
+      if (debounceTimer !== undefined) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        debounceTimer = undefined;
+        read();
+      }, PHASE_EVENT_DEBOUNCE_MS);
+    };
+
     read();
     const unsubscribeStatus = getBridge().onDaemonStatus((status) => {
       if (status.state === 'ready') read();
@@ -65,10 +92,11 @@ export function usePipenzoTickets(): {
     // `pipenzo-phase-machine.ts`'s `read()` keeps a ticket's cached title in sync on every
     // reconciling read too, so re-fetching the whole list on each event picks up both the lane move
     // and whatever title changed alongside it -- there is no separate title-only push channel.
-    const unsubscribeEvents = getBridge().onPipenzoPhaseEvent(() => read());
+    const unsubscribeEvents = getBridge().onPipenzoPhaseEvent(() => debouncedRead());
 
     return () => {
       cancelled = true;
+      if (debounceTimer !== undefined) clearTimeout(debounceTimer);
       unsubscribeStatus();
       unsubscribeEvents();
     };
