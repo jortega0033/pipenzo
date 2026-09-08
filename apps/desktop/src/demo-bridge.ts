@@ -157,6 +157,10 @@ export function createDemoBridge(): AgentDockBridge {
     pipenzoTicketTransition: async () => {
       throw new Error('ticket transition is not available in demo mode');
     },
+    // Same reasoning: demo mode has no real ticket store for a list route to read from.
+    pipenzoListTickets: async () => {
+      throw new Error('ticket list is not available in demo mode');
+    },
     // Demo mode has no daemon to stream from; subscribing is inert rather than an error.
     onPipenzoPhaseEvent: () => () => {},
     onPipenzoGitHubHealth: () => () => {},

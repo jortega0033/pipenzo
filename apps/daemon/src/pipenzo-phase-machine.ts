@@ -503,6 +503,17 @@ export class PipenzoPhaseMachine {
   /**
    * Reads a ticket, reconciling it against the issue's labels first. This is the read path every
    * caller should use: it is where "the label wins" actually happens.
+   *
+   * ## Title caching rides along (issue #255)
+   *
+   * `getIssue` already fetches the whole issue for its `labels`, so `title` costs nothing beyond
+   * what a label reconciliation already pays for -- and the reconciler (#231) calls this once per
+   * ticket every poll, so a title cached here is never more than one interval stale. A title sync is
+   * judged and persisted independently of the lane/label reconciliation below: `applyTitle` folds it
+   * into whichever record each branch was already going to return, so a title-only change persists
+   * even on an otherwise-agreeing read, but does not by itself call `#announce` -- the phase event
+   * stream (#189) carries lane transitions, not card content, and a title update with no lane change
+   * is not the kind of event a subscriber reconnects to that stream to hear about.
    */
   async read(ticketId: string): Promise<PipenzoTicketReconciliation> {
     const ticket = this.#tickets.get(ticketId);
@@ -513,11 +524,18 @@ export class PipenzoPhaseMachine {
     const ref = this.#repoRef(ticket);
     const client = this.#requireGitHub();
     let issueLabels: readonly string[];
+    let issueTitle: string;
     try {
-      issueLabels = (await client.getIssue(ref, ticket.issueNumber)).labels;
+      const issue = await client.getIssue(ref, ticket.issueNumber);
+      issueLabels = issue.labels;
+      issueTitle = issue.title;
     } catch (error) {
       throw toMachineError(error);
     }
+
+    const titleChanged = issueTitle !== ticket.title;
+    const applyTitle = (base: PipenzoTicketRecordV1): PipenzoTicketRecordV1 =>
+      titleChanged ? { ...base, title: issueTitle } : base;
 
     const observedLabels = laneBearingLabelsOf(issueLabels);
     const authoritativeLane = laneFromObserved(observedLabels);
@@ -528,12 +546,14 @@ export class PipenzoPhaseMachine {
     // turn a human deleting a label (or a partially-applied write) into silent data loss on the one
     // side that holds the worktree, attempt lineage and budget.
     if (authoritativeLane === undefined) {
+      const next = applyTitle(ticket);
+      if (next !== ticket) persist(() => this.#tickets.update(ticketId, next));
       return {
-        ticket,
+        ticket: next,
         divergence: 'unlabelled',
         previousLane: ticket.lane,
         observedLabels,
-        changed: false,
+        changed: next !== ticket,
       };
     }
 
@@ -543,20 +563,22 @@ export class PipenzoPhaseMachine {
       storedLabels.length === ticket.labels.length &&
       storedLabels.every((label) => ticket.labels.includes(label));
     if (laneAgrees && labelsAgree) {
+      const next = applyTitle(ticket);
+      if (next !== ticket) persist(() => this.#tickets.update(ticketId, next));
       return {
-        ticket,
+        ticket: next,
         divergence: observedLabels.length > 1 ? 'ambiguous_labels' : 'none',
         previousLane: ticket.lane,
         observedLabels,
-        changed: false,
+        changed: next !== ticket,
       };
     }
 
-    const reconciled: PipenzoTicketRecordV1 = {
+    const reconciled: PipenzoTicketRecordV1 = applyTitle({
       ...ticket,
       lane: authoritativeLane,
       labels: storedLabels,
-    };
+    });
     persist(() => this.#tickets.update(ticketId, reconciled));
     // A reconciliation is a real change to announce, not just a transition: this is the path a
     // label edited by a human on GitHub travels, and it is the whole point of "the label wins" that
@@ -571,6 +593,19 @@ export class PipenzoPhaseMachine {
       observedLabels,
       changed: true,
     };
+  }
+
+  /**
+   * Every ticket the local store knows about, unreconciled (issue #255).
+   *
+   * A synchronous passthrough to `FileTicketStore.list()` -- no GitHub call, no reconciliation --
+   * which is the entire point: `routes/pipenzo-tickets.ts`'s list route exists because the
+   * reconciler (#231) already keeps this local state label-wins reconciled in the background, so a
+   * board open does not have to pay for N live reads to be trustworthy. A caller that needs a single
+   * ticket reconciled *right now* still wants `read()`, not this.
+   */
+  list(): readonly PipenzoTicketRecordV1[] {
+    return this.#tickets.list();
   }
 
   #repoRef(ticket: PipenzoTicketRecordV1): RepoRef {

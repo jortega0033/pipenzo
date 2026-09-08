@@ -62,6 +62,7 @@ import type {
   PipenzoTicketReadRequestV1,
   PipenzoTicketTransitionRequestV1,
   PipenzoTicketReconciliationV1,
+  PipenzoTicketListV1,
   PipenzoPhaseEventV1,
   PipenzoGitHubHealthV1,
   PipenzoConnectReposRequestV1,
@@ -212,6 +213,15 @@ export interface AgentDockBridge {
   pipenzoTicketTransition(
     input: PipenzoTicketTransitionRequestV1,
   ): Promise<PipenzoTicketReconciliationV1>;
+  /**
+   * The board's list route (issue #255): every ticket the daemon's local store knows about,
+   * already label-wins reconciled by the polling reconciler (#231) in the background. Cheaper than
+   * `pipenzoTicketRead` by design — no GitHub call per ticket, so a screen may call this on mount
+   * without the per-ticket rate limit `pipenzoTicketRead`/`pipenzoTicketTransition` carry. A ticket
+   * here can be up to one reconciler interval stale; a caller that needs one ticket reconciled right
+   * now still wants `pipenzoTicketRead`.
+   */
+  pipenzoListTickets(): Promise<PipenzoTicketListV1>;
   /**
    * Subscribes to live phase changes (issue #189).
    *

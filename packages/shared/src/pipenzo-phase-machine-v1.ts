@@ -73,6 +73,13 @@ export const pipenzoTicketViewV1Schema = z
     ticketId: pipenzoTicketIdV1Schema,
     repo: pipenzoRepoRefV1Schema,
     issueNumber: pipenzoIssueNumberV1Schema,
+    /**
+     * The issue title, when this record has cached one (issue #255). Optional for the same reason
+     * `pipenzoTicketRecordV1Schema.title` is: a ticket read before this field existed, or before its
+     * first reconciling `read()`, has none yet. A board card falls back to `#<issueNumber>` rather
+     * than treating an absent title as an error.
+     */
+    title: z.string().min(1).max(512).optional(),
     lane: pipenzoLaneV1Schema,
     phase: pipenzoPhaseV1Schema,
     labels: z
@@ -88,6 +95,27 @@ export const pipenzoTicketViewV1Schema = z
     risk: pipenzoTicketRiskV1Schema,
     precommits: z.array(pipenzoTicketPrecommitV1Schema).max(200),
     etags: pipenzoTicketEtagsV1Schema,
+  })
+  .strict();
+
+/**
+ * The bound on how many tickets one board listing can carry (issue #255). Wire safety, not a
+ * design limit -- there is no per-repo ticket cap the way `PIPENZO_MAX_CONNECTED_REPOS` bounds the
+ * repo picker, so this is set far above any plausible real backlog rather than derived from one.
+ */
+export const PIPENZO_MAX_LISTED_TICKETS = 5_000;
+
+/**
+ * The board's list route (issue #255): every ticket the daemon's local store knows about, already
+ * label-wins reconciled by the polling reconciler (#231) -- never a fan-out of one live GitHub read
+ * per ticket, which is exactly what `routes/pipenzo-tickets.ts` used to refuse to serve before that
+ * reconciler existed. Flat rather than grouped by lane: `board-lanes.ts`'s `ticketsByLane` already
+ * does that client-side, and a wire shape that pre-grouped would be a second place the lane-to-
+ * column mapping could drift from `BOARD_LANES`.
+ */
+export const pipenzoTicketListV1Schema = z
+  .object({
+    tickets: z.array(pipenzoTicketViewV1Schema).max(PIPENZO_MAX_LISTED_TICKETS),
   })
   .strict();
 
@@ -181,6 +209,7 @@ export const pipenzoTicketErrorV1Schema = z
 
 export type PipenzoTicketWorktreeViewV1 = z.infer<typeof pipenzoTicketWorktreeViewV1Schema>;
 export type PipenzoTicketViewV1 = z.infer<typeof pipenzoTicketViewV1Schema>;
+export type PipenzoTicketListV1 = z.infer<typeof pipenzoTicketListV1Schema>;
 export type PipenzoTicketDivergenceV1 = z.infer<typeof pipenzoTicketDivergenceV1Schema>;
 export type PipenzoTicketReconciliationV1 = z.infer<typeof pipenzoTicketReconciliationV1Schema>;
 export type PipenzoTicketReadRequestV1 = z.infer<typeof pipenzoTicketReadRequestV1Schema>;

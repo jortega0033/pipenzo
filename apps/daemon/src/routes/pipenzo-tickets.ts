@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import {
+  pipenzoTicketListV1Schema,
   pipenzoTicketReadRequestV1Schema,
   pipenzoTicketReconciliationV1Schema,
   pipenzoTicketTransitionRequestV1Schema,
@@ -30,18 +31,25 @@ import {
  * Both choices below are copied from the phase routes rather than re-decided here:
  *
  * - **A rejected body is never echoed.** The Zod issue list stays on this side.
- * - **Low rate limits.** Both routes are human-paced — a person opens a ticket, a person drags a
- *   card — and each one costs a GitHub read against a rate-limited API.
+ * - **Low rate limits.** `read`/`transition` are human-paced — a person opens a ticket, a person
+ *   drags a card — and each one costs a GitHub read against a rate-limited API.
  *
- * ## Why there is no list route
+ * ## The list route (issue #255) reads local state, never GitHub
  *
- * A board needs every ticket, and this surface deliberately does not offer that. Reconciling one
- * ticket costs one GitHub read; reconciling a board costs one per ticket, on an API with a quota,
- * every time anyone opens the board. The reconciler that makes a list affordable is the polling
- * layer with `If-None-Match` (build step 4, #161 — "a `304` costs no quota at all"), which #188
- * explicitly puts out of scope. Shipping an unreconciled list route in the meantime would be worse
- * than shipping none: it would return lanes that look authoritative and are not, through a surface
- * whose entire purpose is that the label wins.
+ * `GET /v2/pipenzo/tickets` used to not exist, and this module's own comment said why: reconciling
+ * one ticket costs one GitHub read, so reconciling a board on every open would cost one per ticket
+ * against a rate-limited API. That calculus held only until something kept the local record
+ * reconciled *without* a live board-open triggering it — and the polling reconciler (#231) is that
+ * something: it walks every connected repo's tickets on its own cadence, through this same
+ * `PipenzoPhaseMachine.read()`, and keeps `FileTicketStore` label-wins reconciled in the background.
+ * So the list route below is a synchronous local read (`machine.list()`, a passthrough to
+ * `FileTicketStore.list()`) with no GitHub call and no per-ticket cost at all — the generous rate
+ * limit it carries reflects that, matching `GET /v2/pipenzo/repos/connected`'s reasoning exactly.
+ *
+ * A ticket between reconciler polls can be up to one interval (60s by default) stale, which is the
+ * honest tradeoff this design makes: "board open" no longer means "N GitHub reads", it means
+ * "whatever the background loop already knew". A caller that needs one ticket reconciled *right
+ * now* still wants `POST /v2/pipenzo/tickets/read`, not this.
  */
 const TICKET_ERROR_STATUS: Record<PipenzoTicketErrorCodeV1, number> = {
   invalid_request: 400,
@@ -89,6 +97,7 @@ function toTicketView(ticket: PipenzoTicketRecordV1): PipenzoTicketViewV1 {
     ticketId: ticket.ticketId,
     repo: ticket.repo,
     issueNumber: ticket.issueNumber,
+    ...(ticket.title ? { title: ticket.title } : {}),
     lane: ticket.lane,
     phase: ticket.phase,
     labels: ticket.labels,
@@ -145,6 +154,19 @@ export function registerPipenzoTicketRoutes(
   events?: PipenzoPhaseEventBus,
 ): void {
   const limits = { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } };
+
+  // The board's list route (issue #255). Generous rather than `limits` above: this is a local read
+  // through `machine.list()` with no GitHub call behind it, matching the reasoning
+  // `GET /v2/pipenzo/repos/connected` already states for the same shape of route.
+  app.get(
+    '/v2/pipenzo/tickets',
+    { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } },
+    async (_req, reply) => {
+      reply.send(
+        pipenzoTicketListV1Schema.parse({ tickets: machine.list().map(toTicketView) }),
+      );
+    },
+  );
 
   app.post('/v2/pipenzo/tickets/read', limits, async (req, reply) => {
     const parsed = pipenzoTicketReadRequestV1Schema.safeParse(req.body);

@@ -123,6 +123,7 @@ import {
   pipenzoTicketReadRequestV1Schema,
   pipenzoTicketTransitionRequestV1Schema,
   pipenzoTicketReconciliationV1Schema,
+  pipenzoTicketListV1Schema,
   pipenzoPhaseEventOrStreamErrorV1Schema,
   pipenzoGitHubHealthV1Schema,
   type PipenzoGitHubHealthV1,
@@ -150,6 +151,7 @@ import {
   type PipenzoTicketReadRequestV1,
   type PipenzoTicketTransitionRequestV1,
   type PipenzoTicketReconciliationV1,
+  type PipenzoTicketListV1,
   type PipenzoPhaseEventV1,
 } from '@agent-dock/shared';
 import {
@@ -436,6 +438,14 @@ export class AgentDockClient {
       transitionTicket: (
         input: PipenzoTicketTransitionRequestV1,
       ): Promise<PipenzoTicketReconciliationV1> => this.transitionPipenzoTicketV1(input),
+      /**
+       * The board's list route (issue #255): every ticket the daemon's local store knows about,
+       * already label-wins reconciled by the polling reconciler (#231) rather than triggering one
+       * live GitHub read per ticket. See `apps/daemon/src/routes/pipenzo-tickets.ts`'s module
+       * comment for why this is now affordable in a way it deliberately was not before that
+       * reconciler existed.
+       */
+      listTickets: (): Promise<PipenzoTicketListV1> => this.listPipenzoTicketsV1(),
       /**
        * The phase-change stream (issue #189): one daemon-wide stream carrying every ticket's
        * transitions, so a board needs one connection rather than one per card.
@@ -1103,6 +1113,16 @@ export class AgentDockClient {
       pipenzoTicketReconciliationV1Schema,
       'pipenzo ticket reconciliation',
       { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) },
+      { expectedStatus: 200 },
+    );
+  }
+
+  private async listPipenzoTicketsV1(): Promise<PipenzoTicketListV1> {
+    return this.requestV2(
+      '/v2/pipenzo/tickets',
+      pipenzoTicketListV1Schema,
+      'pipenzo ticket list',
+      { method: 'GET' },
       { expectedStatus: 200 },
     );
   }

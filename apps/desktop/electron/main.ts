@@ -1287,6 +1287,13 @@ handle('daemon:pipenzo-ticket-transition', async (_event, input: unknown) => {
   if (!client) throw new Error('daemon is not ready yet');
   return client.v2.pipenzo.transitionTicket(pipenzoTicketTransitionRequestV1Schema.parse(input));
 });
+// The board's list route (issue #255): a local read through the reconciler's already-reconciled
+// state, no per-ticket GitHub call and no worktree path in the response, same boundary as the two
+// handlers above.
+handle('daemon:pipenzo-list-tickets', async () => {
+  if (!client) throw new Error('daemon is not ready yet');
+  return client.v2.pipenzo.listTickets();
+});
 /**
  * "Retry now" / "Poll now" (#70/#71/#75): forces the reconciler's next tick to run immediately.
  * Fire-and-forget, same as the client method it calls -- the triggered tick's result reaches the

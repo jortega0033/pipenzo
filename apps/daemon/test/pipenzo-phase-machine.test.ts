@@ -52,12 +52,12 @@ function makeTicket(overrides: Partial<PipenzoTicketRecordV1> = {}): PipenzoTick
   };
 }
 
-function makeIssue(labels: readonly string[]): GitHubIssue {
+function makeIssue(labels: readonly string[], title = 'First-run empty'): GitHubIssue {
   return {
     owner: REF.owner,
     repo: REF.repo,
     number: ISSUE_NUMBER,
-    title: 'First-run empty',
+    title,
     body: '',
     state: 'open',
     labels: [...labels],
@@ -72,11 +72,12 @@ function makeIssue(labels: readonly string[]): GitHubIssue {
 function harness(options: {
   ticket?: Partial<PipenzoTicketRecordV1>;
   issueLabels?: readonly string[];
+  issueTitle?: string;
 } = {}) {
   const tickets = new FileTicketStore(storeDirectory());
   tickets.create(makeTicket(options.ticket));
   const github = new FakeGitHubClient().seedIssue(
-    makeIssue(options.issueLabels ?? ['pipenzo:queued']),
+    makeIssue(options.issueLabels ?? ['pipenzo:queued'], options.issueTitle),
   );
   const machine = new PipenzoPhaseMachine({ tickets, github: () => github });
   return { tickets, github, machine };
@@ -339,8 +340,10 @@ describe('PipenzoPhaseMachine and the CI-failure lifecycle', () => {
 
 describe('PipenzoPhaseMachine.read reconciliation', () => {
   it('reports no divergence when the two stores agree', async () => {
+    // Title held equal to the fake issue's default so this test isolates lane/label agreement --
+    // title caching has its own describe block below.
     const { machine } = harness({
-      ticket: { lane: 'queued', labels: ['pipenzo:queued'] },
+      ticket: { lane: 'queued', labels: ['pipenzo:queued'], title: 'First-run empty' },
       issueLabels: ['pipenzo:queued'],
     });
 
@@ -415,8 +418,10 @@ describe('PipenzoPhaseMachine.read reconciliation', () => {
   });
 
   it('keeps the local lane when the issue carries no lane-bearing label at all', async () => {
+    // Title held equal to the fake issue's default for the same reason as the agreement test above
+    // -- this isolates the "no lane-bearing label" case from title caching.
     const { machine, tickets } = harness({
-      ticket: { lane: 'working', labels: ['pipenzo:working'] },
+      ticket: { lane: 'working', labels: ['pipenzo:working'], title: 'First-run empty' },
       issueLabels: ['bug', 'pipenzo:schema-v1'],
     });
 
@@ -466,5 +471,91 @@ describe('PipenzoPhaseMachine.read reconciliation', () => {
     const machine = new PipenzoPhaseMachine({ tickets, github: () => github });
 
     await expect(machine.read(TICKET_ID)).rejects.toMatchObject({ code: 'issue_not_found' });
+  });
+});
+
+describe('PipenzoPhaseMachine.read title caching (issue #255)', () => {
+  it('caches the title on a ticket that has never had one', async () => {
+    const { machine, tickets } = harness({ issueTitle: 'Fix the board list route' });
+
+    const result = await machine.read(TICKET_ID);
+
+    expect(result.ticket.title).toBe('Fix the board list route');
+    expect(result.changed).toBe(true);
+    expect(tickets.get(TICKET_ID)?.title).toBe('Fix the board list route');
+  });
+
+  it('refreshes a stale cached title on an otherwise-agreeing read', async () => {
+    const { machine, tickets } = harness({
+      ticket: { title: 'Old title' },
+      issueLabels: ['pipenzo:queued'],
+      issueTitle: 'Renamed on GitHub',
+    });
+
+    const result = await machine.read(TICKET_ID);
+
+    // The lane/labels agreed, so this would otherwise have been an unchanged, unpersisted read --
+    // the title still has to travel through, since nothing else will ever pick it up.
+    expect(result.divergence).toBe('none');
+    expect(result.ticket.title).toBe('Renamed on GitHub');
+    expect(result.changed).toBe(true);
+    expect(tickets.get(TICKET_ID)?.title).toBe('Renamed on GitHub');
+  });
+
+  it('does not rewrite the record when the title has not changed', async () => {
+    const { machine, tickets } = harness({
+      ticket: { title: 'Same title throughout' },
+      issueTitle: 'Same title throughout',
+    });
+    const before = tickets.get(TICKET_ID);
+
+    const result = await machine.read(TICKET_ID);
+
+    expect(result.changed).toBe(false);
+    expect(tickets.get(TICKET_ID)).toBe(before);
+  });
+
+  it('still caches the title when the issue carries no lane-bearing label', async () => {
+    const { machine, tickets } = harness({
+      ticket: { lane: 'working', labels: ['pipenzo:working'] },
+      issueLabels: ['bug'],
+      issueTitle: 'Not yet triaged',
+    });
+
+    const result = await machine.read(TICKET_ID);
+
+    expect(result.divergence).toBe('unlabelled');
+    expect(result.changed).toBe(true);
+    // The lane itself is still untouched -- only the title travelled.
+    expect(result.ticket.lane).toBe('working');
+    expect(tickets.get(TICKET_ID)?.title).toBe('Not yet triaged');
+  });
+
+  it('folds a title change into a lane reconciliation, in the same write', async () => {
+    const { machine, tickets, github } = harness({
+      ticket: { lane: 'working', labels: ['pipenzo:working'], title: 'Old title' },
+      issueLabels: ['pipenzo:needs-human'],
+      issueTitle: 'New title',
+    });
+
+    const result = await machine.read(TICKET_ID);
+
+    expect(result.divergence).toBe('lane_reconciled');
+    expect(result.ticket.lane).toBe('needs-human');
+    expect(result.ticket.title).toBe('New title');
+    expect(tickets.get(TICKET_ID)?.title).toBe('New title');
+    // Reconciliation is local-only, same as every other read() reconciliation.
+    expect(github.calls.filter((call) => call.method === 'setIssueLabels')).toHaveLength(0);
+  });
+});
+
+describe('PipenzoPhaseMachine.list', () => {
+  it('returns every ticket the local store knows about, unreconciled', () => {
+    const { machine, tickets } = harness({ ticket: { lane: 'needs-human' } });
+
+    // No GitHub client wired for this assertion path -- list() must never need one.
+    const machineWithoutGitHub = new PipenzoPhaseMachine({ tickets });
+    expect(machineWithoutGitHub.list()).toEqual([tickets.get(TICKET_ID)]);
+    expect(machine.list()).toEqual([tickets.get(TICKET_ID)]);
   });
 });
