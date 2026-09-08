@@ -124,6 +124,8 @@ import {
   pipenzoTicketTransitionRequestV1Schema,
   pipenzoTicketReconciliationV1Schema,
   pipenzoPhaseEventOrStreamErrorV1Schema,
+  pipenzoGitHubHealthV1Schema,
+  type PipenzoGitHubHealthV1,
   type PipenzoRefineRequestV1,
   type PipenzoRefineResultV1,
   type PipenzoImplementRequestV1,
@@ -193,6 +195,16 @@ export interface PipenzoTicketEventsOptions {
   signal?: AbortSignal;
   /** Resume after this SSE `id:` (a phase-event `sequence`), instead of the retained window. */
   lastEventId?: string;
+}
+
+/**
+ * No `lastEventId`, unlike `PipenzoTicketEventsOptions` -- the GitHub connection-health stream
+ * (issue #257) has no cursor to resume from. It is a latest-value snapshot, not an event log: a
+ * fresh connection is handed the current value immediately, so there is nothing a resume protocol
+ * would add. See `apps/daemon/src/pipenzo-health-events.ts` for the full reasoning.
+ */
+export interface PipenzoGitHubHealthEventsOptions {
+  signal?: AbortSignal;
 }
 
 export interface AuditReadOptions {
@@ -437,6 +449,18 @@ export class AgentDockClient {
       ticketEvents: (
         options?: PipenzoTicketEventsOptions,
       ): AsyncGenerator<PipenzoPhaseEventV1, void, void> => this.streamPipenzoTicketEventsV1(options),
+      /**
+       * The GitHub connection-health stream (issue #257): one daemon-wide latest-value stream for
+       * `PipenzoGitHubHealthV1` (#230), which #70/#71/#72/#73/#75's banners render.
+       *
+       * No reconnect logic and no `lastEventId`, unlike `ticketEvents` above: this is not an event
+       * log, so there is no cursor to resume from. The daemon sends the current value the instant a
+       * connection opens, so a bare retry after any drop is a complete "reconnect" on its own.
+       */
+      githubHealthEvents: (
+        options?: PipenzoGitHubHealthEventsOptions,
+      ): AsyncGenerator<PipenzoGitHubHealthV1, void, void> =>
+        this.streamPipenzoGitHubHealthEventsV1(options),
     },
     integrations: {
       mcp: {
@@ -1398,6 +1422,52 @@ export class AgentDockClient {
       }
       yield event;
     }
+  }
+
+  /**
+   * The GitHub connection-health stream (issue #257). Much simpler than the phase stream above: no
+   * `Last-Event-ID`, no sequence-monotonicity check, no `stream.error` variant to unwrap -- every
+   * frame this stream ever sends is a plain `PipenzoGitHubHealthV1`, because a latest-value stream
+   * has nothing else to say. See `PipenzoGitHubHealthEventsOptions` for why there is no cursor.
+   */
+  private async *streamPipenzoGitHubHealthEventsV1(
+    options: PipenzoGitHubHealthEventsOptions = {},
+  ): AsyncGenerator<PipenzoGitHubHealthV1, void, void> {
+    await this.ensureProtocolVersion(PROTOCOL_V2);
+
+    let res: Response;
+    try {
+      res = await this.fetchImpl(`${this.baseUrl}/v2/pipenzo/github/health/events`, {
+        headers: { Authorization: `Bearer ${this.token}` },
+        signal: options.signal,
+      });
+    } catch (err) {
+      if (options.signal?.aborted) return;
+      throw new DaemonUnavailableError(
+        `could not reach the daemon at ${this.baseUrl}: ${errorMessage(err)}`,
+        { cause: err },
+      );
+    }
+
+    if (res.status === 401) throw new UnauthorizedError();
+    if (!res.ok) {
+      const body = await res.json().catch(() => undefined);
+      const message =
+        daemonErrorMessage(body) ?? `failed to open the health stream (status ${res.status})`;
+      throw new DaemonError(message, res.status, daemonErrorCode(body), daemonErrorDetails(body));
+    }
+    if (!res.body) {
+      throw new ValidationError('daemon returned a health stream without a response body');
+    }
+
+    yield* parseSseStream(res.body, {
+      schema: pipenzoGitHubHealthV1Schema,
+      label: 'Pipenzo GitHub health',
+      signal: options.signal,
+      maxFrameBytes: MAX_V2_SSE_FRAME_BYTES,
+      fatalUtf8: true,
+      rejectUnterminatedFrame: true,
+    });
   }
 
   private async sendSessionCommandV2(command: AgentCommandV2): Promise<CommandAcknowledgementV2> {

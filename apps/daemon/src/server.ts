@@ -31,6 +31,7 @@ import { registerPipenzoRecoveryRoutes } from './routes/pipenzo-recovery.js';
 import { registerPipenzoRepoRoutes } from './routes/pipenzo-repos.js';
 import type { ConnectedReposStore } from './connected-repos-store.js';
 import type { GitHubClient } from './github-client.js';
+import { registerPipenzoHealthRoutes, type PipenzoHealthSource } from './routes/pipenzo-health.js';
 
 export interface BuildServerOptions {
   registry: ProviderRegistry;
@@ -75,6 +76,13 @@ export interface BuildServerOptions {
    */
   connectedRepos?: ConnectedReposStore;
   pipenzoGitHubClient?: () => GitHubClient;
+  /**
+   * The GitHub connection-health stream (issue #257): the transport `PipenzoReconciler` (#231) left
+   * for "the first banner to need it". Optional for the same reason every other Pipenzo surface is —
+   * a daemon assembled without a reconciler has no health route at all, rather than one that answers
+   * with a payload nobody produced.
+   */
+  pipenzoHealth?: PipenzoHealthSource;
 }
 
 /**
@@ -159,6 +167,7 @@ export function buildServer(opts: BuildServerOptions): FastifyInstance {
     if (opts.crashRecovery) registerPipenzoRecoveryRoutes(app, opts.crashRecovery);
     if (opts.connectedRepos && opts.pipenzoGitHubClient)
       registerPipenzoRepoRoutes(app, opts.connectedRepos, opts.pipenzoGitHubClient);
+    if (opts.pipenzoHealth) registerPipenzoHealthRoutes(app, opts.pipenzoHealth);
     if (opts.attachmentStore)
       registerV2MultimodalRoutes(app, opts.attachmentStore, opts.sessionManager);
   });

@@ -70,6 +70,7 @@ import {
   pipenzoTicketTransitionRequestV1Schema,
   pipenzoTicketReconciliationV1Schema,
   pipenzoPhaseEventV1Schema,
+  pipenzoGitHubHealthV1Schema,
   pipenzoConnectReposRequestV1Schema,
   pipenzoConnectedReposV1Schema,
   pipenzoRepoListV1Schema,
@@ -142,6 +143,7 @@ import {
   type PipenzoTicketTransitionRequestV1,
   type PipenzoTicketReconciliationV1,
   type PipenzoPhaseEventV1,
+  type PipenzoGitHubHealthV1,
   type PipenzoConnectReposRequestV1,
   type PipenzoConnectedReposV1,
   type PipenzoRepoListV1,
@@ -242,6 +244,12 @@ export interface AgentDockBridge {
    * filter on `ticketId` for a single card. Returns its own unsubscribe.
    */
   onPipenzoPhaseEvent(callback: (event: PipenzoPhaseEventV1) => void): () => void;
+  /**
+   * The GitHub connection-health stream (issue #257): the current `PipenzoGitHubHealthV1` (#230)
+   * the moment a listener subscribes, then a live update whenever the reconciler's (#231) polling
+   * loop changes it. One subscription serves the whole board, same as the phase stream above.
+   */
+  onPipenzoGitHubHealth(callback: (health: PipenzoGitHubHealthV1) => void): () => void;
   /**
    * The GitHub credential's state, never the credential (issue #165). There is no counterpart that
    * *sets* a token: the device-code flow runs in main, so a `repo`-scoped credential never crosses
@@ -903,6 +911,17 @@ const api: AgentDockBridge = {
     };
     ipcRenderer.on('daemon:pipenzo-phase-event', listener);
     return () => ipcRenderer.removeListener('daemon:pipenzo-phase-event', listener);
+  },
+  onPipenzoGitHubHealth(callback) {
+    const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => {
+      // Same reasoning as onPipenzoPhaseEvent above: validated again on this side, and a malformed
+      // payload is dropped rather than handed to a banner that would render `undefined` fields.
+      const parsed = pipenzoGitHubHealthV1Schema.safeParse(payload);
+      if (!parsed.success) return;
+      callback(parsed.data);
+    };
+    ipcRenderer.on('daemon:pipenzo-github-health', listener);
+    return () => ipcRenderer.removeListener('daemon:pipenzo-github-health', listener);
   },
   /**
    * The device-code sign-in (issue #114). Three verbs, and between them they carry no credential

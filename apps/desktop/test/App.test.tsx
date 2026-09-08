@@ -169,6 +169,7 @@ function installBridge(overrides: Partial<AgentDockBridge> = {}): {
     pipenzoTicketRead: vi.fn(),
     pipenzoTicketTransition: vi.fn(),
     onPipenzoPhaseEvent: vi.fn(() => () => {}),
+    onPipenzoGitHubHealth: vi.fn(() => () => {}),
     pipenzoGitHubConnection: vi.fn().mockResolvedValue({
       state: 'connected',
       login: 'octocat',

@@ -303,6 +303,10 @@ async function main() {
         cache: githubConditionalCache,
         rateLimits: githubRateLimits,
       }),
+    // The reconciler's health stream (issue #257): `health()`/`subscribeHealth()` are the only two
+    // members the route needs, and it is the same object whose `start()`/`stop()` this file already
+    // owns below.
+    pipenzoHealth: pipenzoReconciler,
   });
 
   const requestedPort = Number(process.env.AGENT_DOCK_PORT ?? '0');
