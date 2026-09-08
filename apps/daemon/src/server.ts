@@ -32,6 +32,7 @@ import { registerPipenzoRepoRoutes } from './routes/pipenzo-repos.js';
 import type { ConnectedReposStore } from './connected-repos-store.js';
 import type { GitHubClient } from './github-client.js';
 import { registerPipenzoHealthRoutes, type PipenzoHealthSource } from './routes/pipenzo-health.js';
+import type { DaemonGitHubCredential } from './github-credential.js';
 
 export interface BuildServerOptions {
   registry: ProviderRegistry;
@@ -83,6 +84,13 @@ export interface BuildServerOptions {
    * with a payload nobody produced.
    */
   pipenzoHealth?: PipenzoHealthSource;
+  /**
+   * The daemon's own GitHub credential, reported (not assumed) on `/health` (issue #209). Optional
+   * for the same reason every other Pipenzo surface is: a daemon assembled without one just omits
+   * `githubCredentialSource` from its `/health` response, rather than reporting a value nobody
+   * resolved.
+   */
+  githubCredential?: DaemonGitHubCredential;
 }
 
 /**
@@ -145,7 +153,7 @@ export function buildServer(opts: BuildServerOptions): FastifyInstance {
     done(null, payload),
   );
 
-  registerHealthRoute(app, startedAt);
+  registerHealthRoute(app, startedAt, opts.githubCredential);
   registerProviderRoutes(app, opts.registry);
   registerSessionRoutes(app, opts.sessionManager, opts.registry, opts.trustStore);
   registerV2ProviderRoutes(app, opts.registry);

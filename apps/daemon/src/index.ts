@@ -315,6 +315,9 @@ async function main() {
     // members the route needs, and it is the same object whose `start()`/`stop()` this file already
     // owns below.
     pipenzoHealth: pipenzoReconciler,
+    // The daemon's own resolved-source report on `/health` (issue #209) — the same object every
+    // `OctokitGitHubClient.fromToken` call above already resolves against.
+    githubCredential,
   });
 
   const requestedPort = Number(process.env.AGENT_DOCK_PORT ?? '0');

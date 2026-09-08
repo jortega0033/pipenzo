@@ -44,15 +44,42 @@ export type PipenzoCredentialUnavailableReasonV1 = z.infer<
  * "You are publishing with a shell variable, not with the account shown here" has to be a *visible*
  * state — the rule against credential fallbacks is really a rule against **silent** precedence.
  *
- * Two honest limits on that, so this field is not mistaken for more than it is. It is not yet
- * rendered anywhere (#113 owns the pre-app shell that will show it), and it describes what Electron
- * main *sent*, not what the daemon resolved — a stdin handoff that failed would still be reported
- * here as `vault`. Closing that second gap means having the daemon report its own resolved source
- * back over the health channel.
+ * One honest limit on that, so this field is not mistaken for more than it is: it is not yet
+ * rendered anywhere (#113 owns the pre-app shell that will show it).
+ *
+ * It used to describe only what Electron main *sent*, which a failed stdin handoff (a truncated
+ * write, `EPIPE` against a child that died on spawn) could report as `vault` even though the daemon
+ * ended up with nothing (issue #209). Main now confirms this against
+ * `daemonCredentialSourceV1Schema`, the daemon's own report of what it actually resolved, over the
+ * `/health` channel (`reconcileDaemonTokenSource` in `daemon-environment.ts`) before setting this
+ * field — a daemon that reports `none` is never papered over with main's pre-handoff intent.
  */
 export const pipenzoCredentialSourceV1Schema = z.enum(['vault', 'environment', 'none']);
 
 export type PipenzoCredentialSourceV1 = z.infer<typeof pipenzoCredentialSourceV1Schema>;
+
+/**
+ * What the *daemon itself* can honestly say about where its credential came from (issue #209) —
+ * a narrower, differently-shaped question than `pipenzoCredentialSourceV1Schema` above.
+ *
+ * The daemon cannot tell a vault-sourced token from a development-environment-sourced one: both
+ * arrive identically over stdin as `DaemonGitHubCredential.fromStartup`'s one JSON message (see
+ * `apps/desktop/electron/main.ts`'s `spawnDaemon`, which writes *either* source down the same
+ * pipe). What the daemon *can* say, honestly, from its own state:
+ *
+ * - `injected` — a credential arrived over stdin and is what `resolve()` uses. In the shipped app
+ *   this is the only way a real credential ever reaches the daemon, so it confirms whatever
+ *   Electron main most recently attempted to send actually landed intact.
+ * - `environment` — nothing arrived over stdin, but the daemon's own `process.env` held a usable
+ *   `PIPENZO_GITHUB_TOKEN`. Electron main always strips that variable before spawning the daemon
+ *   (`buildDaemonEnvironment`), so this case is expected only for a daemon nobody's Electron main
+ *   started (a direct `pnpm dev`, the live-smoke harness, CI) — seeing it from an Electron-spawned
+ *   daemon means the strip did not happen and is worth surfacing rather than assuming away.
+ * - `none` — neither. The daemon has no usable credential at all.
+ */
+export const daemonCredentialSourceV1Schema = z.enum(['injected', 'environment', 'none']);
+
+export type DaemonCredentialSourceV1 = z.infer<typeof daemonCredentialSourceV1Schema>;
 
 export const pipenzoGitHubConnectionV1Schema = z.object({
   state: z.enum(['connected', 'disconnected', 'unavailable']),

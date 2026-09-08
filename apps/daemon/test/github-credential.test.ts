@@ -197,6 +197,53 @@ describe('DaemonGitHubCredential', () => {
     expect(DaemonGitHubCredential.withToken('short').injected).toBe(false);
     expect(DaemonGitHubCredential.withToken(TOKEN).resolve({})).toBe(TOKEN);
   });
+
+  /**
+   * Issue #209: what `/health` reports, so Electron main can confirm its pre-handoff intent
+   * actually landed instead of assuming it did. `resolvedSource` answers a narrower question than
+   * `resolveDaemonGitHubToken`'s `vault`/`environment`/`none` -- the daemon genuinely cannot tell a
+   * vault-sourced injected token from an environment-sourced one, since both arrive identically
+   * over stdin (see `@agent-dock/shared`'s `daemonCredentialSourceV1Schema`).
+   */
+  describe('resolvedSource', () => {
+    it('reports injected when a credential arrived over stdin, regardless of the environment', async () => {
+      const credential = await DaemonGitHubCredential.fromStartup({
+        stdin: streamOf(`{"githubToken":"${TOKEN}"}\n`),
+        env: { [CREDENTIAL_ON_STDIN_ENV_KEY]: '1' },
+      });
+      expect(credential.resolvedSource({})).toBe('injected');
+      expect(
+        credential.resolvedSource({ PIPENZO_GITHUB_TOKEN: fakeToken('fromTheShell000000000001') }),
+      ).toBe('injected');
+    });
+
+    it('reports environment when nothing was injected but the environment holds a usable token', () => {
+      const token = fakeToken('fromTheShell000000000001');
+      expect(DaemonGitHubCredential.none().resolvedSource({ PIPENZO_GITHUB_TOKEN: token })).toBe(
+        'environment',
+      );
+    });
+
+    it('reports none when neither source has a usable token', () => {
+      expect(DaemonGitHubCredential.none().resolvedSource({})).toBe('none');
+      expect(
+        DaemonGitHubCredential.none().resolvedSource({ PIPENZO_GITHUB_TOKEN: 'not token shaped' }),
+      ).toBe('none');
+    });
+
+    // A handoff that arrived but failed the shape check (garbled, wrong type, truncated) is not
+    // "injected" -- `injected` is false in that case, same as `credential.injected` above, so this
+    // falls through to the environment check like any other uninjected credential.
+    it('falls through to the environment check when the injected value was not usable', async () => {
+      const credential = await DaemonGitHubCredential.fromStartup({
+        stdin: streamOf('{"githubToken":"has a space in it"}\n'),
+        env: { [CREDENTIAL_ON_STDIN_ENV_KEY]: '1' },
+      });
+      const token = fakeToken('fromTheShell000000000001');
+      expect(credential.resolvedSource({ PIPENZO_GITHUB_TOKEN: token })).toBe('environment');
+      expect(credential.resolvedSource({})).toBe('none');
+    });
+  });
 });
 
 /**

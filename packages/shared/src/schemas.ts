@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { AUTH_SOURCES, PROVIDER_IDS } from './provider.js';
+import { daemonCredentialSourceV1Schema } from './pipenzo-credential-v1.js';
 
 export const providerIdSchema = z.enum(PROVIDER_IDS);
 
@@ -163,4 +164,13 @@ export const healthResponseSchema = z.object({
       }
     })
     .optional(),
+  /**
+   * The daemon's own report of where its GitHub credential came from (issue #209). Optional for
+   * compatibility with a daemon built before this field existed, the same reason
+   * `supportedProtocolVersions` is optional above; absent means "ask an older daemon," not "no
+   * credential." Electron main reconciles this against what it intended to send
+   * (`reconcileDaemonTokenSource` in `apps/desktop/electron/daemon-environment.ts`) rather than
+   * trusting its own pre-handoff intent, which a failed stdin write could leave stale.
+   */
+  githubCredentialSource: daemonCredentialSourceV1Schema.optional(),
 });

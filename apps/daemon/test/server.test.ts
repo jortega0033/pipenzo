@@ -11,6 +11,7 @@ import {
 } from '@agent-dock/agent-runtime';
 import { AGENT_DOCK_PROTOCOL_VERSION } from '@agent-dock/shared';
 import { buildServer } from '../src/server.js';
+import { DaemonGitHubCredential } from '../src/github-credential.js';
 import { SessionManager } from '../src/session-manager.js';
 import { SessionAdmissionController } from '../src/session-admission.js';
 
@@ -62,6 +63,55 @@ describe('GET /health', () => {
     const { app } = setup();
     const res = await app.inject({ method: 'GET', url: '/health' });
     expect(res.json().protocolVersion).toBe(AGENT_DOCK_PROTOCOL_VERSION);
+  });
+
+  /**
+   * Issue #209: a daemon assembled without a `githubCredential` (a route test, or a build that
+   * never wired the seam) omits the field entirely, the same "absent means unsupported" shape
+   * `supportedProtocolVersions` already established -- never a fabricated `'none'`.
+   */
+  it('omits githubCredentialSource when no credential object was ever assembled', async () => {
+    const { app } = setup();
+    const res = await app.inject({ method: 'GET', url: '/health' });
+    expect(res.json()).not.toHaveProperty('githubCredentialSource');
+  });
+
+  it("reports the daemon's own resolved credential source when one is assembled", async () => {
+    const registry = new ProviderRegistry();
+    const sessionManager = new SessionManager(registry, noopLogger);
+    const app = buildServer({
+      registry,
+      sessionManager,
+      token: TOKEN,
+      logger: noopLogger,
+      githubCredential: DaemonGitHubCredential.withToken('a'.repeat(40)),
+    });
+    const res = await app.inject({ method: 'GET', url: '/health' });
+    expect(res.json().githubCredentialSource).toBe('injected');
+  });
+
+  it('reports none rather than a stale guess when the assembled credential has nothing', async () => {
+    // `DaemonGitHubCredential.none().resolvedSource()` (no args) reads the real `process.env`, the
+    // same as the production route does -- so a `PIPENZO_GITHUB_TOKEN` left over from a live-smoke
+    // run in this shell would otherwise make this test's answer depend on who runs it.
+    const previous = process.env.PIPENZO_GITHUB_TOKEN;
+    delete process.env.PIPENZO_GITHUB_TOKEN;
+    try {
+      const registry = new ProviderRegistry();
+      const sessionManager = new SessionManager(registry, noopLogger);
+      const app = buildServer({
+        registry,
+        sessionManager,
+        token: TOKEN,
+        logger: noopLogger,
+        githubCredential: DaemonGitHubCredential.none(),
+      });
+      const res = await app.inject({ method: 'GET', url: '/health' });
+      expect(res.json().githubCredentialSource).toBe('none');
+    } finally {
+      if (previous === undefined) delete process.env.PIPENZO_GITHUB_TOKEN;
+      else process.env.PIPENZO_GITHUB_TOKEN = previous;
+    }
   });
 });
 
