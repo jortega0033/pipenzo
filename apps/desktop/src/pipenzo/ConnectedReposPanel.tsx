@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { getBridge } from '../bridge.js';
 import { Dialog } from '../components/primitives/Dialog.js';
 import { Icon } from '../components/primitives/Icon.js';
@@ -32,6 +32,20 @@ import { repoMonogram, settingsSaveCtaLabel } from './repo-picker.js';
  * a remove is "the list, minus this one". The list it subtracts from is the one this component
  * loaded, never a filtered view of it — the same rule the picker's save had to be corrected to
  * follow, for the same reason: anything dropped from the payload is deleted from the workspace.
+ *
+ * ## Why there is never more than one writer at a time
+ *
+ * This screen has two controls that write the same list, and each builds its payload from its own
+ * view of it. Overlap them and the one that lands second wins with a list assembled before the
+ * first one happened — a removal quietly undone, or a repository quietly re-added, with no error
+ * anywhere. There is no version token on the wire to catch that afterwards, so the fix is to make
+ * the overlap unreachable:
+ *
+ * - a removal in flight disables every remove button **and** "Add a repo…", so the picker cannot
+ *   be opened against a list the daemon is midway through rewriting;
+ * - a save in flight refuses to close the dialog, so the picker cannot be abandoned with a `PUT`
+ *   still on the wire. The scrim covers this panel while it is open, which is what makes those two
+ *   guards a complete pair rather than two halves of a race.
  */
 export function ConnectedReposPanel() {
   const [repositories, setRepositories] = useState<readonly string[] | undefined>(undefined);
@@ -40,7 +54,18 @@ export function ConnectedReposPanel() {
   const [removing, setRemoving] = useState<string | undefined>(undefined);
   const [removeError, setRemoveError] = useState<string | undefined>(undefined);
   const [picking, setPicking] = useState(false);
+  const [pickerSaving, setPickerSaving] = useState(false);
   const labelId = useId();
+  /**
+   * The in-flight latch, held in a ref rather than read off `removing`.
+   *
+   * `removing` is state, so two clicks dispatched inside one React batch both see the value from
+   * before either of them — the disabled attribute they were supposed to hit has not been
+   * committed yet. That is not reachable with a mouse, and it is one line to make it not reachable
+   * at all; the alternative is two `PUT`s built from the same pre-removal list, of which the second
+   * puts the first one's repository back.
+   */
+  const writing = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -67,17 +92,35 @@ export function ConnectedReposPanel() {
     };
   }, [reloadKey]);
 
+  /**
+   * Closing clears the saving flag as well as the dialog, and opening clears it too.
+   *
+   * A successful save unmounts the picker in the same commit that sets its `saving` back to
+   * `false`, so the picker's effect for that edge does not run and its last word here stays
+   * `true`. Nothing reads the flag while the dialog is shut, and remounting the picker reports the
+   * truth again — but both of those are properties of code somewhere else. The flag describes a
+   * picker session, so it is ended where the session is, and its meaning does not depend on a
+   * child that is on its way out or not yet mounted.
+   */
+  const closePicker = useCallback(() => {
+    setPicking(false);
+    setPickerSaving(false);
+  }, []);
+
   const remove = useCallback(
     (fullName: string) => {
-      // Guarded rather than merely disabled: the button is disabled while a removal is in flight,
-      // but `repositories` being undefined would make the payload below a guess at the list.
-      if (repositories === undefined || removing !== undefined) return;
+      // Guarded rather than merely disabled: `repositories` being undefined would make the payload
+      // below a guess at the list, and `writing` closes the one-batch window the disabled
+      // attribute cannot (see the ref's own comment).
+      if (repositories === undefined || writing.current) return;
       const next = repositories.filter((name) => name !== fullName);
+      writing.current = true;
       setRemoving(fullName);
       setRemoveError(undefined);
       void getBridge()
         .pipenzoConnectRepos({ repositories: [...next] })
         .then((saved) => {
+          writing.current = false;
           setRemoving(undefined);
           // The daemon's own answer, not `next`: it de-duplicates and sorts, and rendering the
           // request instead of the response is how a list on screen starts disagreeing with the
@@ -85,13 +128,14 @@ export function ConnectedReposPanel() {
           setRepositories(saved.repositories);
         })
         .catch((error: unknown) => {
+          writing.current = false;
           setRemoving(undefined);
           // Nothing optimistic was applied, so there is nothing to roll back — the row is still
           // there because it is still connected.
           setRemoveError(error instanceof Error ? error.message : 'could not save the change');
         });
     },
-    [repositories, removing],
+    [repositories],
   );
 
   return (
@@ -153,11 +197,17 @@ export function ConnectedReposPanel() {
                 ))}
               </ul>
             )}
+            {/* Closed while a removal is in flight. The picker reads the connected list on mount,
+                so opening it against a list the daemon has not finished rewriting would put the
+                repository that is being removed back on screen, ticked — and its save would then
+                make that true. */}
             <button
               type="button"
               className="ws-menu-item foot"
+              disabled={removing !== undefined}
               onClick={() => {
                 setRemoveError(undefined);
+                setPickerSaving(false);
                 setPicking(true);
               }}
             >
@@ -183,21 +233,29 @@ export function ConnectedReposPanel() {
         </span>
       </div>
 
-      {/* The picker, not a second copy of it. It reads the connected list itself on open and
-          writes the complete selection on save, which is why "Add a repo…" is also how a repo the
-          per-row remove cannot reach — one that is connected and archived — gets unticked. */}
+      {/* The picker, not a second copy of it (see `RepoPicker`, which #115 built standalone for
+          exactly this). It reads the connected list itself on mount and writes the complete
+          selection on save, so what it hands back is the whole new list rather than an addition to
+          merge — which is why `onConnected` replaces state here instead of appending to it. */}
       <Dialog
         open={picking}
-        onClose={() => setPicking(false)}
+        // `Dialog` closes on Escape and on a backdrop click without asking its children, and
+        // closing does not cancel the write the picker has in flight. Refused while one is: the
+        // save would land after the user was back on this list and had removed something, and
+        // replace the list with the selection they walked away from.
+        onClose={() => {
+          if (!pickerSaving) closePicker();
+        }}
         title="Choose the repos Pipenzo manages"
         subtitle="Everything this credential can open a pull request against. Ticking and unticking here replaces the connected list with exactly what is ticked."
         width={640}
       >
         <RepoPicker
           ctaLabel={settingsSaveCtaLabel}
+          onSavingChange={setPickerSaving}
           onConnected={(saved) => {
             setRepositories(saved);
-            setPicking(false);
+            closePicker();
           }}
         />
       </Dialog>

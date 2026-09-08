@@ -186,6 +186,10 @@ describe('ConnectedReposPanel', () => {
     );
 
     expect(bridge.pipenzoConnectRepos).toHaveBeenCalledTimes(1);
+    // And the picker cannot be opened either: it reads the connected list on mount, so opening it
+    // against a list the daemon has not finished rewriting would show the repository being removed
+    // as still ticked -- and its save would then make that true again.
+    expect(screen.getByRole('button', { name: /add a repo/i })).toBeDisabled();
     release?.({ repositories: ['octocat/hello-world'] });
     await waitFor(() =>
       expect(screen.queryByText('jortega0033/agentdock')).not.toBeInTheDocument(),
@@ -206,6 +210,67 @@ describe('ConnectedReposPanel', () => {
     // The picker's own row, and its CTA carrying #125's verb rather than first-run's.
     await screen.findByRole('checkbox', { name: /octocat\/spoon-knife/ });
     expect(screen.getByRole('button', { name: 'Save 1 repo' })).toBeInTheDocument();
+  });
+
+  /**
+   * The interleaving a guardrail review found. `Dialog` closes on Escape without consulting its
+   * children, and closing does not cancel the write -- so a picker dismissed mid-save would land
+   * its `PUT` after the user was back on this list and had removed something, replacing the list
+   * with the selection they walked away from. That is #115's bug (a write that replaces the whole
+   * list, built from a stale view of it) reached through a different door.
+   */
+  it('refuses to close the picker while its save is in flight', async () => {
+    let release: ((value: { repositories: string[] }) => void) | undefined;
+    const connect = vi.fn(
+      () =>
+        new Promise<{ repositories: string[] }>((resolve) => {
+          release = resolve;
+        }),
+    );
+    installBridge({
+      connected: ['octocat/hello-world'],
+      listing: [repo('octocat/hello-world'), repo('octocat/spoon-knife')],
+      connect,
+    });
+    render(<ConnectedReposPanel />);
+    await screen.findByText('octocat/hello-world');
+
+    fireEvent.click(screen.getByRole('button', { name: /add a repo/i }));
+    fireEvent.click(await screen.findByRole('checkbox', { name: /octocat\/spoon-knife/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save 2 repos' }));
+    await waitFor(() => expect(connect).toHaveBeenCalledTimes(1));
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    release?.({ repositories: ['octocat/hello-world', 'octocat/spoon-knife'] });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  /**
+   * Pins the user-visible half of the close guard: refusing to close while saving must not leave a
+   * *later* dialog stuck. The picker unmounts in the same commit that clears its `saving`, so the
+   * panel never hears that edge -- two separate things currently keep the flag honest afterwards
+   * (the panel clears it on both dialog transitions, and a remounted picker reports its own state
+   * on mount), and this asserts the outcome rather than either mechanism.
+   */
+  it('still closes on Escape when the picker is reopened after a save', async () => {
+    installBridge({
+      connected: ['octocat/hello-world'],
+      listing: [repo('octocat/hello-world'), repo('octocat/spoon-knife')],
+    });
+    render(<ConnectedReposPanel />);
+    await screen.findByText('octocat/hello-world');
+
+    fireEvent.click(screen.getByRole('button', { name: /add a repo/i }));
+    fireEvent.click(await screen.findByRole('checkbox', { name: /octocat\/spoon-knife/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save 2 repos' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: /add a repo/i }));
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
   it('closes the picker and shows what it saved', async () => {

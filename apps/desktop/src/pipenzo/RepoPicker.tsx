@@ -33,10 +33,27 @@ import {
  */
 export function RepoPicker({
   onConnected,
+  onSavingChange,
   ctaLabel,
 }: {
   /** Called with the saved list after a successful write. */
   onConnected?: (repositories: readonly string[]) => void;
+  /**
+   * Whether a save is in flight, on every edge.
+   *
+   * Exists because a host that can *dismiss* this component has to be able to refuse to. #125
+   * mounts the picker inside a modal `Dialog`, which closes on Escape or a backdrop click without
+   * consulting its children — and closing mid-save does not cancel the write. The picker would
+   * unmount with a `PUT` still on the wire, the user would go back to the list and remove
+   * something, and the abandoned save would land afterwards and replace the list with the
+   * selection they walked away from. That is the #115 bug (a write that replaces the whole list,
+   * built from a stale view of it) reached through a different door.
+   *
+   * The signal has to come from here because `saving` is this component's own state and there is
+   * nothing else a host could observe. It is a plain notification, not a veto: the picker does not
+   * know or care what its host does with it.
+   */
+  onSavingChange?: (saving: boolean) => void;
   /** Overrides the CTA text. #125's Settings framing says "Save", not "Connect N repos". */
   ctaLabel?: (count: number) => string;
 }) {
@@ -73,6 +90,15 @@ export function RepoPicker({
       cancelled = true;
     };
   }, [reloadKey]);
+
+  // Reported from an effect rather than from `submit`'s three branches, so the host cannot be left
+  // holding `true` because one exit path forgot to say otherwise. React runs this after the commit
+  // that changed `saving`, which is after `onConnected` has already fired on the success path --
+  // the host therefore learns the new list first and that the save is over second, which is the
+  // order that lets it act on the result before it re-enables anything.
+  useEffect(() => {
+    onSavingChange?.(saving);
+  }, [saving, onSavingChange]);
 
   const visible = useMemo(() => filterRepos(repositories ?? [], query), [repositories, query]);
   // The count is the *selection*, not the ticked-and-visible rows. A user whose org access lapsed
