@@ -7,6 +7,21 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { OwnedWorktreeManager, type WorktreeGitRunner } from '../src/worktree-manager.js';
 import { resolveWorkspaceIdentity } from '../src/workspace-identity.js';
 import { WorkspaceTrustStore } from '../src/workspace-trust-store.js';
+/**
+ * Every test in this file drives real Git. A process spawn on Windows costs 100-300 ms before the
+ * command itself does anything, these bodies spawn tens of them, and the slowest measures ~11.5 s on
+ * an idle machine -- so the 15-20 s budgets they carried were roughly 1.5-2x headroom. This suite
+ * has already been shown not to have that much: issue #219 records `server-v2.test.ts`'s
+ * corrupted-queue test (~7.2 s idle) timing out at 15 s on the Windows runner, and reproducing the
+ * CI conditions locally times these out at 15 s too.
+ *
+ * These are budgets sized from measurement, not budgets raised until the file went quiet -- the
+ * work is real, correct and genuinely slow, and nothing here waits on a poll or a sleep that a
+ * bigger number would paper over. 45_000 is ~4x the slowest measured body, and still fails a
+ * genuine hang far inside the job's 20-minute limit.
+ */
+const GIT_HEAVY_TIMEOUT_MS = 45_000;
+
 
 const run = promisify(execFile);
 const temporaryDirectories: string[] = [];
@@ -86,7 +101,7 @@ describe('worktree trust gating', () => {
       manager.create({ cwd: repo, name: 'child', confirmIncludeCopy: true }),
     ).rejects.toMatchObject({ code: 'workspace_untrusted' });
     expect(spy.calls).toEqual([]);
-  }, 15_000);
+  }, GIT_HEAVY_TIMEOUT_MS);
 
   it('never runs Git against an already-created worktree whose source trust was later revoked, even on load/list', async () => {
     const base = await temporaryDirectory();
@@ -123,7 +138,7 @@ describe('worktree trust gating', () => {
     expect(spy.calls).toEqual([]);
     // Status is left as the last-known value rather than freshly (and unsafely) re-probed.
     expect(listed.find((item) => item.id === created.id)?.status).toBe('ready');
-  }, 15_000);
+  }, GIT_HEAVY_TIMEOUT_MS);
 
   it('creates and cleans up normally once the source repository is trusted', async () => {
     const base = await temporaryDirectory();
@@ -144,7 +159,7 @@ describe('worktree trust gating', () => {
     expect(created.status).toBe('ready');
     const cleaned = await manager.cleanup(created.id);
     expect(cleaned.status).toBe('missing');
-  }, 15_000);
+  }, GIT_HEAVY_TIMEOUT_MS);
 
   it('does not propagate trust to a newly created owned worktree', async () => {
     const base = await temporaryDirectory();
@@ -166,7 +181,7 @@ describe('worktree trust gating', () => {
     const worktreePath = join(base, 'owned', ownedDirs[0]!);
     const worktreeIdentity = await resolveWorkspaceIdentity(worktreePath);
     expect((await trustStore.inspect(worktreeIdentity)).state).toBe('untrusted');
-  }, 15_000);
+  }, GIT_HEAVY_TIMEOUT_MS);
 
   it('aborts before the mutating worktree-add command when trust is revoked mid-flight (TOCTOU)', async () => {
     const base = await temporaryDirectory();
@@ -195,7 +210,7 @@ describe('worktree trust gating', () => {
       manager.create({ cwd: repo, name: 'child', confirmIncludeCopy: true }),
     ).rejects.toMatchObject({ code: 'workspace_untrusted' });
     expect(calls.some((call) => call[0] === 'worktree' && call[1] === 'add')).toBe(false);
-  }, 15_000);
+  }, GIT_HEAVY_TIMEOUT_MS);
 
   it('aborts cleanup before worktree-remove when the source directory is replaced mid-flight', async () => {
     const base = await temporaryDirectory();
@@ -252,7 +267,7 @@ describe('worktree trust gating', () => {
     });
     expect(dirtyCheckCalls).toBe(2); // sanity: cleanup() did reach its own dirty-check call
     expect(calls.some((call) => call[0] === 'worktree' && call[1] === 'remove')).toBe(false);
-  }, 15_000);
+  }, GIT_HEAVY_TIMEOUT_MS);
 
   it('serializes concurrent create() calls against the same source repo instead of throwing worktree_busy (issue #118)', async () => {
     const base = await temporaryDirectory();
@@ -293,5 +308,5 @@ describe('worktree trust gating', () => {
     // The real proof this queues rather than merely not-throwing: at no point did this repo's two
     // create() calls have a Git command in flight at the same time.
     expect(maxActive).toBe(1);
-  }, 20_000);
+  }, GIT_HEAVY_TIMEOUT_MS);
 });
