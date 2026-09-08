@@ -61,6 +61,9 @@ import type {
   PipenzoTicketTransitionRequestV1,
   PipenzoTicketReconciliationV1,
   PipenzoPhaseEventV1,
+  PipenzoConnectReposRequestV1,
+  PipenzoConnectedReposV1,
+  PipenzoRepoListV1,
   PipenzoDeviceCodeV1,
   PipenzoDeviceOutcomeV1,
   PipenzoGitHubConnectionV1,
@@ -241,6 +244,23 @@ export interface AgentDockBridge {
   openGitHubDeviceVerification(): Promise<void>;
   cancelGitHubDeviceFlow(): Promise<void>;
   onGitHubDeviceOutcome(callback: (outcome: PipenzoDeviceOutcomeV1) => void): () => void;
+  /**
+   * The repo picker (issue #115).
+   *
+   * `pipenzoListRepos` answers with every repository this credential can **write** to — the daemon
+   * filters on GitHub's own `permissions.push`, because a repository Pipenzo can only read is one
+   * it can never manage. It walks GitHub's pagination on the daemon side and answers once, so the
+   * picker's filter searches the whole set rather than only the pages it happens to have; the
+   * `truncated` flag says when even that hit its page cap. The daemon caches the answer for a
+   * minute, because one call fans out to as many as fifty GitHub requests.
+   *
+   * `pipenzoConnectRepos` replaces the whole list rather than adding to it: the writer is a set of
+   * checkboxes, and unticking one has to mean something — so a caller must send the complete
+   * selection, including anything connected that its own listing could not show.
+   */
+  pipenzoListRepos(): Promise<PipenzoRepoListV1>;
+  pipenzoConnectedRepos(): Promise<PipenzoConnectedReposV1>;
+  pipenzoConnectRepos(input: PipenzoConnectReposRequestV1): Promise<PipenzoConnectedReposV1>;
   selectAndUploadAttachments(sessionId?: string): Promise<AttachmentMetadataV2[]>;
   validateStructuredOutput(input: StructuredWorkflowRequestV2): Promise<StructuredWorkflowResultV2>;
   createSession(input: CreateSessionInput): Promise<AgentSession>;

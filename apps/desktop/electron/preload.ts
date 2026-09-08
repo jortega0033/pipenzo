@@ -68,6 +68,9 @@ import {
   pipenzoTicketTransitionRequestV1Schema,
   pipenzoTicketReconciliationV1Schema,
   pipenzoPhaseEventV1Schema,
+  pipenzoConnectReposRequestV1Schema,
+  pipenzoConnectedReposV1Schema,
+  pipenzoRepoListV1Schema,
   pipenzoDeviceCodeV1Schema,
   pipenzoDeviceOutcomeV1Schema,
   pipenzoGitHubConnectionV1Schema,
@@ -135,6 +138,9 @@ import {
   type PipenzoTicketTransitionRequestV1,
   type PipenzoTicketReconciliationV1,
   type PipenzoPhaseEventV1,
+  type PipenzoConnectReposRequestV1,
+  type PipenzoConnectedReposV1,
+  type PipenzoRepoListV1,
   type PipenzoDeviceCodeV1,
   type PipenzoDeviceOutcomeV1,
   type PipenzoGitHubConnectionV1,
@@ -253,6 +259,23 @@ export interface AgentDockBridge {
   openGitHubDeviceVerification(): Promise<void>;
   cancelGitHubDeviceFlow(): Promise<void>;
   onGitHubDeviceOutcome(callback: (outcome: PipenzoDeviceOutcomeV1) => void): () => void;
+  /**
+   * The repo picker (issue #115).
+   *
+   * `pipenzoListRepos` answers with every repository this credential can **write** to — the daemon
+   * filters on GitHub's own `permissions.push`, because a repository Pipenzo can only read is one
+   * it can never manage. It walks GitHub's pagination on the daemon side and answers once, so the
+   * picker's filter searches the whole set rather than only the pages it happens to have; the
+   * `truncated` flag says when even that hit its page cap. The daemon caches the answer for a
+   * minute, because one call fans out to as many as fifty GitHub requests.
+   *
+   * `pipenzoConnectRepos` replaces the whole list rather than adding to it: the writer is a set of
+   * checkboxes, and unticking one has to mean something — so a caller must send the complete
+   * selection, including anything connected that its own listing could not show.
+   */
+  pipenzoListRepos(): Promise<PipenzoRepoListV1>;
+  pipenzoConnectedRepos(): Promise<PipenzoConnectedReposV1>;
+  pipenzoConnectRepos(input: PipenzoConnectReposRequestV1): Promise<PipenzoConnectedReposV1>;
   selectAndUploadAttachments(sessionId?: string): Promise<AttachmentMetadataV2[]>;
   validateStructuredOutput(input: StructuredWorkflowRequestV2): Promise<StructuredWorkflowResultV2>;
   createSession(input: CreateSessionInput): Promise<AgentSession>;
@@ -879,6 +902,24 @@ const api: AgentDockBridge = {
    * validated itself, so this cannot be turned into an open-anything primitive), and the outcome
    * channel reports only that a sign-in ended and how.
    */
+  /**
+   * The repo picker (issue #115). `listRepos` costs real GitHub quota on the daemon side, so it is
+   * a first-run and settings action rather than something a screen polls.
+   */
+  async pipenzoListRepos() {
+    return pipenzoRepoListV1Schema.parse(await ipcRenderer.invoke('daemon:pipenzo-list-repos'));
+  },
+  async pipenzoConnectedRepos() {
+    return pipenzoConnectedReposV1Schema.parse(
+      await ipcRenderer.invoke('daemon:pipenzo-connected-repos'),
+    );
+  },
+  async pipenzoConnectRepos(input) {
+    const parsed = pipenzoConnectReposRequestV1Schema.parse(input);
+    return pipenzoConnectedReposV1Schema.parse(
+      await ipcRenderer.invoke('daemon:pipenzo-connect-repos', parsed),
+    );
+  },
   async startGitHubDeviceFlow() {
     return pipenzoDeviceCodeV1Schema.parse(
       await ipcRenderer.invoke('pipenzo:github-device-start'),

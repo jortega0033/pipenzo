@@ -37,6 +37,7 @@ import {
   pipenzoIssueCreateRequestV1Schema,
   pipenzoCaptureCapabilityRequestV1Schema,
   pipenzoIdeaDraftRequestV1Schema,
+  pipenzoConnectReposRequestV1Schema,
   pipenzoTicketReadRequestV1Schema,
   pipenzoTicketTransitionRequestV1Schema,
   structuredWorkflowRequestV2Schema,
@@ -1049,6 +1050,27 @@ handle('pipenzo:github-device-open-verification', (): void => {
 
 handle('pipenzo:github-device-cancel', (): void => {
   deviceSession.cancel();
+});
+
+/**
+ * The repo picker (issue #115). Ordinary daemon routes, unlike the credential channels above: the
+ * listing needs the daemon's GitHub client, and the connected list is daemon state that the polling
+ * reconciler reads. Nothing here touches a credential, which is why it goes through
+ * `@agent-dock/client` rather than being handled in main.
+ */
+handle('daemon:pipenzo-list-repos', async () => {
+  if (!client) throw new Error('daemon is not ready yet');
+  return client.v2.pipenzo.listRepos();
+});
+
+handle('daemon:pipenzo-connected-repos', async () => {
+  if (!client) throw new Error('daemon is not ready yet');
+  return client.v2.pipenzo.connectedRepos();
+});
+
+handle('daemon:pipenzo-connect-repos', async (_event, input: unknown) => {
+  if (!client) throw new Error('daemon is not ready yet');
+  return client.v2.pipenzo.connectRepos(pipenzoConnectReposRequestV1Schema.parse(input));
 });
 
 handle('daemon:list-providers', async () => {

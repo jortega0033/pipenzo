@@ -16,6 +16,17 @@ const DEMO_APPROVAL_HANDLE = 'demo-approval-handle-1234567890123456789012';
 
 /** Same rule as `DEMO_CWD`: recognisably not a real account, since demo mode ships to every user. */
 const DEMO_LOGIN = 'demo-user';
+/** The demo's one repository. `demo-` prefixed like `DEMO_CWD`, so it can never read as real. */
+const DEMO_REPO = 'demo-user/demo-workspace';
+const DEMO_REPOSITORY = {
+  fullName: DEMO_REPO,
+  archived: false,
+  defaultBranch: 'main',
+  language: 'TypeScript',
+  openIssues: 3,
+  pushedAt: '2025-01-01T00:00:00.000Z',
+} as const;
+
 /** Fixed rather than `new Date()`, so two demo runs never render differently. */
 const DEMO_CREDENTIAL_STORED_AT = '2025-01-01T00:00:00.000Z';
 
@@ -162,6 +173,16 @@ export function createDemoBridge(): AgentDockBridge {
     // Demo mode is already past the connect flow (it reports a stored credential above), so these
     // are unreachable rather than merely unused -- refusing is the honest answer, and a fake code
     // box would be the one screen in a demo that lies about what it is doing.
+    // Reports one obviously-fake connected repository, for exactly the reason
+    // `pipenzoGitHubConnection` reports a credential: as of #115 the pre-app gate also asks whether
+    // any repository has been chosen, so an *empty* list here would bounce "Try a demo" into the
+    // repo picker -- asking the viewer to connect real repositories in order to look at a fixture.
+    // `DEMO_REPO` is unmistakably not real for the same reason `DEMO_CWD` is.
+    pipenzoListRepos: async () => ({ repositories: [DEMO_REPOSITORY], truncated: false }),
+    pipenzoConnectedRepos: async () => ({ repositories: [DEMO_REPO] }),
+    pipenzoConnectRepos: async () => {
+      throw new Error('connecting repositories is not available in demo mode');
+    },
     startGitHubDeviceFlow: async () => {
       throw new Error('signing in to GitHub is not available in demo mode');
     },

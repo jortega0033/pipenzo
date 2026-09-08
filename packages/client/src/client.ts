@@ -115,6 +115,9 @@ import {
   pipenzoCaptureCapabilityV1Schema,
   pipenzoIdeaDraftRequestV1Schema,
   pipenzoIdeaDraftResultV1Schema,
+  pipenzoConnectReposRequestV1Schema,
+  pipenzoConnectedReposV1Schema,
+  pipenzoRepoListV1Schema,
   pipenzoTicketReadRequestV1Schema,
   pipenzoTicketTransitionRequestV1Schema,
   pipenzoTicketReconciliationV1Schema,
@@ -135,6 +138,9 @@ import {
   type PipenzoCaptureCapabilityV1,
   type PipenzoIdeaDraftRequestV1,
   type PipenzoIdeaDraftResultV1,
+  type PipenzoConnectReposRequestV1,
+  type PipenzoConnectedReposV1,
+  type PipenzoRepoListV1,
   type PipenzoTicketReadRequestV1,
   type PipenzoTicketTransitionRequestV1,
   type PipenzoTicketReconciliationV1,
@@ -377,6 +383,21 @@ export class AgentDockClient {
       /** Free text in, a structured draft out (issue #84). Creates nothing. */
       draftIssue: (input: PipenzoIdeaDraftRequestV1): Promise<PipenzoIdeaDraftResultV1> =>
         this.draftPipenzoIssueV1(input),
+      /**
+       * The repo picker (issue #115).
+       *
+       * `listRepos` is what this credential can *write* to — the daemon filters on GitHub's own
+       * `permissions.push`, since a repository Pipenzo can only read is one it can never manage.
+       * It costs real quota (up to fifty paginated requests), so it is a first-run and settings
+       * action rather than something to poll.
+       *
+       * `connectRepos` replaces the whole list rather than adding to it: the writer is a set of
+       * checkboxes, and unticking one has to mean something.
+       */
+      listRepos: (): Promise<PipenzoRepoListV1> => this.listPipenzoReposV1(),
+      connectedRepos: (): Promise<PipenzoConnectedReposV1> => this.connectedPipenzoReposV1(),
+      connectRepos: (input: PipenzoConnectReposRequestV1): Promise<PipenzoConnectedReposV1> =>
+        this.connectPipenzoReposV1(input),
       /**
        * The phase machine's ticket surface (issue #188). `readTicket` reconciles a ticket against
        * its issue's labels and returns the result; `transitionTicket` writes a new `pipenzo:` label
@@ -948,6 +969,47 @@ export class AgentDockClient {
       pipenzoCaptureCapabilityV1Schema,
       'pipenzo capability report',
       { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) },
+      { expectedStatus: 200 },
+    );
+  }
+
+  private async listPipenzoReposV1(): Promise<PipenzoRepoListV1> {
+    return this.requestV2(
+      '/v2/pipenzo/repos',
+      pipenzoRepoListV1Schema,
+      'pipenzo repository list',
+      { method: 'GET' },
+      { expectedStatus: 200 },
+    );
+  }
+
+  private async connectedPipenzoReposV1(): Promise<PipenzoConnectedReposV1> {
+    return this.requestV2(
+      '/v2/pipenzo/repos/connected',
+      pipenzoConnectedReposV1Schema,
+      'pipenzo connected repositories',
+      { method: 'GET' },
+      { expectedStatus: 200 },
+    );
+  }
+
+  private async connectPipenzoReposV1(
+    input: PipenzoConnectReposRequestV1,
+  ): Promise<PipenzoConnectedReposV1> {
+    const parsed = validateInput(
+      pipenzoConnectReposRequestV1Schema,
+      input,
+      'pipenzo connect repos request',
+    );
+    return this.requestV2(
+      '/v2/pipenzo/repos/connected',
+      pipenzoConnectedReposV1Schema,
+      'pipenzo connected repositories',
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(parsed),
+      },
       { expectedStatus: 200 },
     );
   }

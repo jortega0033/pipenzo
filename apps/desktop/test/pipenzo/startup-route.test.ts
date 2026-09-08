@@ -124,6 +124,30 @@ describe('routePipenzoStartup', () => {
         environmentCredential: false,
       });
     });
+
+    /**
+     * The symmetric flash. `#113` gave the *connection* its own loading screen so a token-less
+     * install never sees the board first; #115's count needed the same, or a credentialed install
+     * with nothing chosen renders the board and has it replaced by the picker a moment later.
+     */
+    it('waits rather than guessing while the repository count is still unknown', () => {
+      expect(
+        routePipenzoStartup({ connection: connection(), connectedRepos: 'unknown' }),
+      ).toEqual({ screen: 'loading' });
+    });
+
+    /**
+     * ...but only for an install that could go either way. A token-less one is going to the
+     * pre-app whatever it has chosen, so waiting would just delay the screen it will see anyway.
+     */
+    it('does not wait on a repository count for a token-less install', () => {
+      expect(
+        routePipenzoStartup({
+          connection: connection({ state: 'disconnected', source: 'none' }),
+          connectedRepos: 'unknown',
+        }),
+      ).toMatchObject({ screen: 'pre-app', step: 'device-code' });
+    });
   });
 
   /**

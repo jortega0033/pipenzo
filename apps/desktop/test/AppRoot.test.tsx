@@ -12,10 +12,19 @@ const CONNECTED: PipenzoGitHubConnectionV1 = {
   source: 'vault',
 };
 
-function realBridge(connection: PipenzoGitHubConnectionV1 = CONNECTED): AgentDockBridge {
+function realBridge(
+  connection: PipenzoGitHubConnectionV1 = CONNECTED,
+  connectedRepos: readonly string[] = ['octocat/hello-world'],
+): AgentDockBridge {
   return {
     pipenzoGitHubConnection: vi.fn().mockResolvedValue(connection),
     disconnectGitHub: vi.fn().mockResolvedValue(connection),
+    pipenzoListRepos: vi.fn().mockResolvedValue({ repositories: [], truncated: false }),
+    // Non-empty by default: as of #115 a credentialed install with *no* repositories chosen is
+    // routed to the picker rather than the app, so "connected" alone no longer means "past the
+    // gate". The cases below that care about the difference set this explicitly.
+    pipenzoConnectedRepos: vi.fn().mockResolvedValue({ repositories: connectedRepos }),
+    pipenzoConnectRepos: vi.fn(),
     startGitHubDeviceFlow: vi.fn(),
     openGitHubDeviceVerification: vi.fn().mockResolvedValue(undefined),
     cancelGitHubDeviceFlow: vi.fn().mockResolvedValue(undefined),
@@ -172,6 +181,51 @@ describe('AppRoot pre-app gate (issue #113)', () => {
     expect(await screen.findByRole('button', { name: 'Try a demo' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '1 · Device code' })).not.toBeInTheDocument();
     expect(screen.queryByText(/PIPENZO_GITHUB_TOKEN/)).not.toBeInTheDocument();
+  });
+
+  /**
+   * The headline behaviour of #115, through the real gate: a credential is no longer enough on its
+   * own. An install that has connected GitHub and chosen nothing belongs in the repo picker.
+   */
+  it('sends a credentialed install with no repositories chosen to the picker', async () => {
+    (window as unknown as { agentDock: AgentDockBridge }).agentDock = realBridge(CONNECTED, []);
+    render(<AppRoot />);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Choose the repos Pipenzo manages' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Try a demo' })).not.toBeInTheDocument();
+  });
+
+  /**
+   * And it must not flash the board on the way there. The count is unknown for one IPC round trip,
+   * and rendering the app during it would put the board on screen and then replace it -- the exact
+   * flash `#113`'s loading screen exists to prevent, reintroduced for the second gate condition.
+   */
+  it('shows neither screen while the repository count is still unknown', async () => {
+    let resolveRepos: ((value: { repositories: string[] }) => void) | undefined;
+    const bridge = realBridge();
+    bridge.pipenzoConnectedRepos = vi.fn(
+      () =>
+        new Promise<{ repositories: string[] }>((resolve) => {
+          resolveRepos = resolve;
+        }),
+    );
+    (window as unknown as { agentDock: AgentDockBridge }).agentDock = bridge;
+    render(<AppRoot />);
+
+    // Long enough for the connection read to have resolved, which is the state that used to be
+    // enough on its own to render the app.
+    await waitFor(() =>
+      expect(screen.getByRole('status', { name: 'Checking your GitHub connection' })).toBeInTheDocument(),
+    );
+    expect(screen.queryByRole('button', { name: 'Try a demo' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /Choose the repos/ })).not.toBeInTheDocument();
+
+    resolveRepos?.({ repositories: ['octocat/hello-world'] });
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Try a demo' })).toBeInTheDocument(),
+    );
   });
 
   /**

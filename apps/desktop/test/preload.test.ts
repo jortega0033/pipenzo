@@ -87,6 +87,12 @@ describe('electron/preload.ts — real bridge (AD-07)', () => {
         'openGitHubDeviceVerification',
         'cancelGitHubDeviceFlow',
         'onGitHubDeviceOutcome',
+        // The repo picker (issue #115). Ordinary daemon routes rather than credential channels:
+        // the listing needs the daemon's GitHub client and the connected list is daemon state, so
+        // none of the three touches a token in either direction.
+        'pipenzoListRepos',
+        'pipenzoConnectedRepos',
+        'pipenzoConnectRepos',
         'selectAndUploadAttachments',
         'validateStructuredOutput',
         'createSession',

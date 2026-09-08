@@ -16,6 +16,7 @@ import { SessionAdmissionController, resolveMaxActiveSessions } from './session-
 import { FileSessionStore } from './session-store.js';
 import { FileExecutionGraphStore } from './execution-graph-store.js';
 import { FileTicketStore } from './pipenzo-ticket-store.js';
+import { ConnectedReposStore } from './connected-repos-store.js';
 import { ensureStateDirectory, stateDirectory } from './state-directory.js';
 import { SubagentGraphStore } from './subagent-graph-store.js';
 import { OwnedWorktreeManager } from './worktree-manager.js';
@@ -123,6 +124,14 @@ async function main() {
   // of, and `tickets-v1` keeps this store's on-disk layout parallel to `sessions-v1`. The phase
   // machine below (#188) is what reads and writes it.
   const ticketStore = new FileTicketStore(join(durableStateDirectory, 'tickets-v1'));
+
+  // Pipenzo's connected-repos list (issue #115): which repositories a human chose in the first-run
+  // picker, and therefore which ones the polling reconciler will iterate. A single file beside the
+  // other durable stores rather than a per-workspace record, because the picker runs before any
+  // repository has been cloned -- see the store's own comment on why it is not keyed by workspace.
+  const connectedRepos = new ConnectedReposStore(
+    join(durableStateDirectory, 'connected-repos-v1.json'),
+  );
 
   const sessionRecovery = sessionStore.getRecoveryReport();
   const graphRecovery = executionGraphStore.recoveryReport();
@@ -259,6 +268,13 @@ async function main() {
     phaseMachine,
     phaseEvents,
     crashRecovery,
+    connectedRepos,
+    // The same lazy, per-call client boundary as the phase service and phase machine above: built
+    // from a token read at call time, never retained between requests.
+    pipenzoGitHubClient: () =>
+      OctokitGitHubClient.fromToken(githubCredential.resolve(), {
+        cache: githubConditionalCache,
+      }),
   });
 
   const requestedPort = Number(process.env.AGENT_DOCK_PORT ?? '0');

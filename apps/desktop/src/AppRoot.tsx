@@ -5,6 +5,7 @@ import { clearBridgeOverride, setBridgeOverride } from './bridge.js';
 import { ConnectScreen } from './pipenzo/ConnectScreen.js';
 import { EnvironmentCredentialBanner } from './pipenzo/EnvironmentCredentialBanner.js';
 import { routePipenzoStartup } from './pipenzo/startup-route.js';
+import { useConnectedRepos } from './pipenzo/use-connected-repos.js';
 import { useGitHubConnection } from './pipenzo/use-github-connection.js';
 
 /** Owns the demo-mode lifecycle so it stays isolated from `App`'s own logic: swaps the active
@@ -51,7 +52,12 @@ function PipenzoStartup({
   exitDemoMode: () => void;
 }) {
   const connection = useGitHubConnection();
-  const route = routePipenzoStartup({ connection });
+  const { connectedRepos, refresh: refreshConnectedRepos } = useConnectedRepos();
+  // #113 shipped this router with `connectedRepos` defaulting to `'not-tracked'`, because nothing
+  // recorded a list. #115 is what makes it real -- and the hook keeps answering `'not-tracked'`
+  // whenever the count is genuinely unknown, so a daemon that has not finished starting never gets
+  // read as "no repositories chosen".
+  const route = routePipenzoStartup({ connection, connectedRepos });
 
   // Nothing at all until the credential state is known. A spinner here would be worse than blank:
   // this resolves in one IPC round trip, and a spinner that appears and vanishes inside a frame is
@@ -65,7 +71,16 @@ function PipenzoStartup({
   // its own "Try a demo": a demo bridge that answered `disconnected` would otherwise offer to
   // enter a demo it is already inside.
   if (route.screen === 'pre-app') {
-    return <ConnectScreen route={route} {...(demoMode ? {} : { onEnterDemo: enterDemoMode })} />;
+    return (
+      <ConnectScreen
+        route={route}
+        {...(demoMode ? {} : { onEnterDemo: enterDemoMode })}
+        // Handed the saved count directly rather than left to the next `ready`: the picker's save
+        // is the moment first-run finishes, and waiting for a poll to notice would leave the user
+        // looking at a screen they have already completed.
+        onReposConnected={(repositories) => refreshConnectedRepos(repositories.length)}
+      />
+    );
   }
 
   return (

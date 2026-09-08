@@ -207,6 +207,34 @@ export interface GitHubLabel {
   readonly description: string;
 }
 
+/**
+ * One repository the credential can reach (issue #115).
+ *
+ * Narrower than GitHub's payload on purpose: this carries only what the repo picker shows, so a
+ * field cannot become load-bearing in a renderer without somebody widening a type here first.
+ * `archived` is kept rather than filtered out at this level — the picker has to *show* an archived
+ * repository in order to explain why it cannot be chosen.
+ */
+export interface GitHubRepository {
+  /** `owner/name`, as GitHub itself reports it. */
+  readonly fullName: string;
+  readonly archived: boolean;
+  readonly defaultBranch: string;
+  readonly language?: string;
+  readonly openIssues: number;
+  /** ISO-8601, absent for a repository that has never been pushed to. */
+  readonly pushedAt?: string;
+}
+
+/**
+ * How many pages of `GET /user/repos` this client will walk before giving up and saying so.
+ *
+ * 100 per page, so this is 5,000 repositories — far above any plausible account, and bounded so an
+ * organisation with an implausible one cannot turn a picker into an unbounded quota spend. The
+ * caller is told when the cap was hit rather than being handed a short list that looks complete.
+ */
+export const GITHUB_REPO_PAGE_CAP = 50;
+
 export interface GitHubPullRequestDiff {
   readonly number: number;
   readonly baseRef: string;
@@ -246,6 +274,19 @@ export interface GitHubCheckRun {
  */
 export interface GitHubClient {
   getIssue(ref: RepoRef, issueNumber: number): Promise<GitHubIssue>;
+  /**
+   * Every repository this credential can *write* to, for the repo picker (issue #115).
+   *
+   * Write, not read: Pipenzo's whole job on a repository is creating labels and opening pull
+   * requests, so a repository it can only read is one it can never manage. Listing those anyway
+   * would fill the picker with rows that fail at the first write, long after the user chose them.
+   * The filter is GitHub's own `permissions.push`, applied here rather than in the UI so every
+   * consumer inherits it.
+   */
+  listAccessibleRepositories(): Promise<{
+    readonly repositories: readonly GitHubRepository[];
+    readonly truncated: boolean;
+  }>;
   listLabels(ref: RepoRef): Promise<readonly GitHubLabel[]>;
   /** Idempotent: an existing label with the same name is returned rather than re-created. */
   createLabel(ref: RepoRef, label: GitHubLabel): Promise<GitHubLabel>;
@@ -584,6 +625,36 @@ export function toGitHubClientError(error: unknown, operation: string): GitHubCl
   return new GitHubClientError('network', `${operation}: ${message}`);
 }
 
+/**
+ * One repository row, or `undefined` for one Pipenzo could never manage.
+ *
+ * Returning `undefined` rather than throwing for a repository without push access is the point:
+ * one unusable entry in a five-thousand-row listing must not fail the whole picker. A *malformed*
+ * entry still throws, because that means GitHub's shape changed and guessing would be worse.
+ */
+function normalizeRepository(
+  raw: Record<string, unknown>,
+  operation: string,
+): GitHubRepository | undefined {
+  const permissions = raw.permissions as Record<string, unknown> | undefined;
+  // Absent permissions is treated as "no push access", not as "assume yes". GitHub omits the block
+  // for some listing shapes, and the safe reading of a missing capability is that it is missing.
+  if (permissions?.push !== true) return undefined;
+  const fullName = requireString(raw.full_name, 'full_name', operation);
+  const language = typeof raw.language === 'string' && raw.language.length > 0 ? raw.language : undefined;
+  const pushedAt = typeof raw.pushed_at === 'string' && raw.pushed_at.length > 0 ? raw.pushed_at : undefined;
+  return {
+    fullName,
+    archived: raw.archived === true,
+    defaultBranch: requireString(raw.default_branch, 'default_branch', operation),
+    ...(language ? { language } : {}),
+    // GitHub's `open_issues_count` includes pull requests. Named `openIssues` on the wire with that
+    // stated, rather than silently presented as an issue count it is not.
+    openIssues: Math.max(0, Math.trunc(requireNumber(raw.open_issues_count, 'open_issues_count', operation))),
+    ...(pushedAt ? { pushedAt } : {}),
+  };
+}
+
 function requireString(value: unknown, field: string, operation: string): string {
   if (typeof value !== 'string') {
     throw new GitHubClientError('invalid_response', `${operation}: ${field} was not a string`);
@@ -876,6 +947,65 @@ export class OctokitGitHubClient implements GitHubClient {
     const login = requireString((response.data as Record<string, unknown>).login, 'login', operation);
     assertLogin(login, operation);
     return login;
+  }
+
+  /**
+   * Walks `GET /user/repos` and normalizes what comes back.
+   *
+   * `affiliation` is pinned to the three memberships that can carry write access, which is both a
+   * correctness and a cost decision: without it GitHub's default includes every organisation
+   * repository the account can merely see, which on a large org is thousands of rows the picker
+   * would list and Pipenzo could never manage. `permissions.push` is then checked per repository,
+   * because affiliation says how you are related to a repository, not what you may do to it.
+   *
+   * Uncached, unlike `listLabels`. This is a first-run and a settings action, not a hot path, and a
+   * conditional-request cache keyed on a listing that changes whenever the user's org memberships
+   * change would answer `304` for a repository they were granted access to an hour ago.
+   */
+  async listAccessibleRepositories(): Promise<{
+    readonly repositories: readonly GitHubRepository[];
+    readonly truncated: boolean;
+  }> {
+    const operation = 'listAccessibleRepositories';
+    const collected: GitHubRepository[] = [];
+    let truncated = false;
+    try {
+      // `iterator`, not `paginate`: the cap has to be enforced *while* walking. `paginate` would
+      // fetch every page first and let this method notice the size afterwards, which is the one
+      // thing the cap exists to prevent.
+      let pages = 0;
+      for await (const response of this.#octokit.paginate.iterator('GET /user/repos', {
+        per_page: 100,
+        affiliation: 'owner,collaborator,organization_member',
+        sort: 'pushed',
+        direction: 'desc',
+      })) {
+        // Checked *before* this page is counted, not after the previous one. Breaking as soon as
+        // the cap is reached would report `truncated` for an account with exactly
+        // `GITHUB_REPO_PAGE_CAP` pages and nothing beyond them — telling the user their list is
+        // incomplete when it is complete, which is the one thing this flag exists to prevent.
+        // Arriving here at all means the iterator produced a further page, so there really is more.
+        if (pages >= GITHUB_REPO_PAGE_CAP) {
+          truncated = true;
+          break;
+        }
+        pages += 1;
+        if (!Array.isArray(response.data)) {
+          throw new GitHubClientError(
+            'invalid_response',
+            `${operation}: repositories was not an array`,
+          );
+        }
+        for (const entry of response.data) {
+          const repository = normalizeRepository(entry as Record<string, unknown>, operation);
+          if (repository) collected.push(repository);
+        }
+      }
+    } catch (error) {
+      if (error instanceof GitHubClientError) throw error;
+      throw toGitHubClientError(error, operation);
+    }
+    return { repositories: collected, truncated };
   }
 
   async createIssue(ref: RepoRef, input: GitHubIssueDraft): Promise<GitHubIssue> {

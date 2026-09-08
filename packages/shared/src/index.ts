@@ -22,4 +22,5 @@ export * from './pipenzo-phase-machine-v1.js';
 export * from './pipenzo-phase-events-v1.js';
 export * from './pipenzo-recovery-v1.js';
 export * from './pipenzo-credential-v1.js';
+export * from './pipenzo-repos-v1.js';
 
