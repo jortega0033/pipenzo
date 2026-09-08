@@ -1,8 +1,11 @@
-import type { RefineEstimateV1 } from '@agent-dock/shared';
+import { PIPENZO_DIFF_SIZE_THRESHOLDS, type RefineEstimateV1 } from '@agent-dock/shared';
 import { ApprovalCard, ApprovalP, RefCell, RefGrid } from '../components/primitives/ApprovalCard.js';
 import { Button } from '../components/primitives/Button.js';
 import { Chip } from '../components/primitives/Chip.js';
+import { Icon } from '../components/primitives/Icon.js';
 import { Split, type SplitRow } from '../components/primitives/Split.js';
+
+const { onePrMaxLines, onePrMaxFiles, stackMaxLines, stackMaxFiles } = PIPENZO_DIFF_SIZE_THRESHOLDS;
 
 /**
  * The refusal outcome panel (issue #100), for a ticket the diff-size gate at Refine declined
@@ -30,7 +33,8 @@ import { Split, type SplitRow } from '../components/primitives/Split.js';
  *   `setWindowOpenHandler` already routes any `https:` target through the same validated
  *   `openAllowedExternalUrl` gate every other "open externally" path in this app uses -- so a plain
  *   `target="_blank"` anchor is the honest, already-wired choice, not a placeholder waiting on a
- *   bridge method that does not exist.
+ *   bridge method that does not exist. Its leading icon is `external`, the same one
+ *   `DeviceCodeStep.tsx` already uses for its own "opens in your browser" GitHub link.
  * - **"Retry refine" stays a caller-supplied callback**, the same deferral `BoardScreen`'s
  *   `onConnectRepo`/`onNewFromIdea` already established: this panel does not own the daemon call
  *   that re-invokes Refine (repo, issue number, repository path and provider all have to come from
@@ -74,6 +78,7 @@ export function RefusalPanel({
             rel="noreferrer"
           >
             Open on GitHub
+            <Icon name="external" size="sm" />
           </a>
           {onRetryRefine && (
             <Button variant="ghost" icon="undo" onClick={onRetryRefine}>
@@ -97,9 +102,9 @@ export function RefusalPanel({
         <RefCell label="Tripped" value={trip.headline} sub={trip.detail} />
         <RefCell
           label="One-PR budget"
-          value="≤ 100 · ≤ 10"
+          value={`≤ ${onePrMaxLines} · ≤ ${onePrMaxFiles}`}
           mono
-          sub="changed lines · files. Stacks cover 100–400, layered"
+          sub={`changed lines · files. Stacks cover ${onePrMaxLines}–${stackMaxLines}, layered`}
         />
       </RefGrid>
       {proposedSplit && proposedSplit.length > 0 && (
@@ -132,20 +137,30 @@ export function RefusalPanel({
 }
 
 /**
- * Which of README's two refusal conditions applies, purely from the estimate itself -- the same
- * boundary `apps/daemon/src/refine-gate.ts`'s `evaluateDiffSizeGate` and
- * `pipenzo-phase-service.ts`'s `refusalCommentBody` (issue #270) already compute daemon-side.
- * Recomputed here rather than carried on the wire: `estimate` already has everything this needs,
- * README's 100/10/400/20 numbers are the one stated source of truth both sides read from (not two
- * independent guesses), and the alternative -- a `trippedBy` field added to
- * `PipenzoRefineResultV1` -- is a real option a later ticket can still take if this ever drifts.
+ * Which of README's refusal conditions actually applies, purely from the estimate itself -- the
+ * same boundary `apps/daemon/src/refine-gate.ts`'s `evaluateDiffSizeGate` and
+ * `pipenzo-phase-service.ts`'s `refusalCommentBody` (issue #270) already compute daemon-side, off
+ * the same `PIPENZO_DIFF_SIZE_THRESHOLDS` this reads too (not a second copy of README's numbers,
+ * after an earlier version of this file hardcoded its own). Recomputed here rather than carried on
+ * the wire: `estimate` already has everything this needs, and the alternative -- a `trippedBy`
+ * field added to `PipenzoRefineResultV1` -- is a real option a later ticket can still take if this
+ * ever needs to move.
+ *
+ * Reports exactly which number(s) crossed the ceiling rather than a fixed "> 400 / also > 20"
+ * pair: a files-only trip (e.g. 50 lines, 21 files) must not claim the lines ceiling was breached
+ * when it was not -- a wrong number here is a worse bug than the duplication this function exists
+ * to avoid in the first place.
  */
 function trippedBy(estimate: RefineEstimateV1): { headline: string; detail: string } {
-  if (estimate.changedLines > 400 || estimate.filesTouched > 20) {
-    return {
-      headline: '> 400 changed lines',
-      detail: 'also > 20 files — either one alone declines',
-    };
+  const overLines = estimate.changedLines > stackMaxLines;
+  const overFiles = estimate.filesTouched > stackMaxFiles;
+  if (overLines || overFiles) {
+    const headline = overLines ? `> ${stackMaxLines} changed lines` : `> ${stackMaxFiles} files`;
+    const detail =
+      overLines && overFiles
+        ? `also > ${stackMaxFiles} files — either one alone declines`
+        : `${estimate.changedLines} lines · ${estimate.filesTouched} files — either ceiling alone declines`;
+    return { headline, detail };
   }
   return {
     headline: 'no clean layering',

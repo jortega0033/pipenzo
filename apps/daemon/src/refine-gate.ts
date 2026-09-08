@@ -1,4 +1,4 @@
-import type { RefineEstimateV1 } from '@agent-dock/shared';
+import { PIPENZO_DIFF_SIZE_THRESHOLDS, type RefineEstimateV1 } from '@agent-dock/shared';
 
 /**
  * The diff-size gate at Refine (issue #270), separated from `refine-subagent.ts` the same way
@@ -17,22 +17,21 @@ import type { RefineEstimateV1 } from '@agent-dock/shared';
  * - Anything above the 400/20 ceiling, or inside the 100–400/10–20 band without a clean layering,
  *   → `refuse`: hand the ticket to a human with the estimate, flagged
  *   `pipenzo:needs-pre-scoping`.
+ *
+ * The four numbers themselves live in `@agent-dock/shared`'s `PIPENZO_DIFF_SIZE_THRESHOLDS`, not
+ * here — `apps/desktop/src/pipenzo/RefusalPanel.tsx` needs the same rule to describe which
+ * condition tripped, and a daemon-only constant would leave the desktop with its own copy of
+ * README's numbers, free to drift from this one.
  */
 export type DiffSizeGateVerdict = 'single' | 'stack' | 'refuse';
 
-/** README's own numbers, named so a reader does not have to reverse-engineer them from the ifs
- * below. Not exported as tunables -- these are the product's stated rule, not a configuration
- * knob any caller should be able to drift from README without an explicit decision to change it. */
-const ONE_PR_MAX_LINES = 100;
-const ONE_PR_MAX_FILES = 10;
-const STACK_MAX_LINES = 400;
-const STACK_MAX_FILES = 20;
-
 export function evaluateDiffSizeGate(estimate: RefineEstimateV1): DiffSizeGateVerdict {
-  if (estimate.changedLines <= ONE_PR_MAX_LINES && estimate.filesTouched <= ONE_PR_MAX_FILES) {
+  const { onePrMaxLines, onePrMaxFiles, stackMaxLines, stackMaxFiles } =
+    PIPENZO_DIFF_SIZE_THRESHOLDS;
+  if (estimate.changedLines <= onePrMaxLines && estimate.filesTouched <= onePrMaxFiles) {
     return 'single';
   }
-  if (estimate.changedLines <= STACK_MAX_LINES && estimate.filesTouched <= STACK_MAX_FILES) {
+  if (estimate.changedLines <= stackMaxLines && estimate.filesTouched <= stackMaxFiles) {
     return estimate.layered ? 'stack' : 'refuse';
   }
   return 'refuse';

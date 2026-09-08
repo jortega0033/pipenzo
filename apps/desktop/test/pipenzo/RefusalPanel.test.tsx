@@ -78,6 +78,24 @@ describe('RefusalPanel', () => {
       );
       expect(screen.getByText('no clean layering')).toBeInTheDocument();
     });
+
+    /**
+     * Regression: an earlier version of this component always named the *lines* ceiling in both
+     * headline and detail, even when only the file count actually tripped it -- a files-only
+     * overrun (lines well within budget) must not claim the lines ceiling was breached.
+     */
+    it('names the files ceiling, not the lines ceiling, for a files-only overrun', () => {
+      render(
+        <RefusalPanel
+          repo={REPO}
+          issueNumber={ISSUE_NUMBER}
+          estimate={{ changedLines: 50, filesTouched: 21, layered: true }}
+        />,
+      );
+      expect(screen.getByText('> 20 files')).toBeInTheDocument();
+      expect(screen.queryByText(/> 400 changed lines/)).not.toBeInTheDocument();
+      expect(screen.getByText(/50 lines · 21 files/)).toBeInTheDocument();
+    });
   });
 
   it('links "Open on GitHub" to the real issue, as a plain external anchor', () => {
@@ -92,6 +110,9 @@ describe('RefusalPanel', () => {
     expect(link).toHaveAttribute('href', 'https://github.com/jortega0033/pipenzo/issues/113');
     expect(link).toHaveAttribute('target', '_blank');
     expect(link).toHaveAttribute('rel', 'noreferrer');
+    // Matches the canvas's own leading icon on this button -- the same one DeviceCodeStep.tsx
+    // already uses for its "opens in your browser" GitHub link.
+    expect(link.querySelector('svg')).toBeInTheDocument();
   });
 
   describe('the proposed split', () => {
