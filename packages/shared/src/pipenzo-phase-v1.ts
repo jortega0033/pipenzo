@@ -40,15 +40,17 @@ const noControlCharacters = (value: string): boolean =>
  * The same rule for a field that is *many* lines of prose rather than one.
  *
  * `\r` (0x0d) is permitted here and nowhere else. The fields `noControlCharacters` guards are a
- * title and a one-line instruction, where a carriage return is a caller bug. A comment body is the
- * first multi-line field on this surface, and the bodies #100 and #144 compose are stitched out of
- * captured command and git output on Windows — which is CRLF. Refusing that would fail the
- * operator with a flat 400 for a line ending they never typed, on this product's primary platform.
+ * title and a one-line instruction, where a carriage return is a caller bug. A comment body and an
+ * issue-create body are the multi-line fields on this surface, and the bodies #100 and #144
+ * compose are stitched out of captured command and git output on Windows — which is CRLF.
+ * Refusing that would fail the operator with a flat 400 for a line ending they never typed, on
+ * this product's primary platform.
  *
- * The other public-markdown payload on this surface, `pipenzoIssueCreateRequestV1Schema.body`,
- * carries no control-character rule at all and bounds its length in UTF-16 units rather than code
- * points. That is a real divergence and not a shared rule this one is being kept in step with;
- * bringing it into line changes a shipped route (#84) and is filed as issue #232.
+ * Until issue #232, the other public-markdown payload on this surface,
+ * `pipenzoIssueCreateRequestV1Schema.body`, carried no control-character rule at all and bounded
+ * its length in UTF-16 units rather than code points — a real divergence from the comment body's
+ * rule rather than a deliberate one. #232 put both fields on this one predicate, via
+ * `proseBodyProblem`.
  */
 const noProseControlCharacters = (value: string): boolean =>
   [...value].every((character) => {
@@ -261,7 +263,17 @@ export const pipenzoIssueCreateRequestV1Schema = z
       .min(1)
       .max(256)
       .refine(noControlCharacters, 'must not contain control characters'),
-    body: z.string().max(65_536),
+    // No `.max()` here, for the same reason the comment body has none: a zod string check that
+    // fails marks the result *dirty*, not aborted, so the `superRefine` below runs regardless and
+    // a `.max()` would cap nothing except at a number (131,072) that is not the documented limit.
+    // The walk is capped inside `issueCreateBodyProblem`, which is also the guard
+    // `assertIssueDraft` in the daemon's GitHub client uses (issue #232).
+    body: z.string().superRefine((value, ctx) => {
+      const problem = issueCreateBodyProblem(value);
+      if (problem !== undefined) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: ISSUE_CREATE_BODY_MESSAGES[problem] });
+      }
+    }),
     labels: z.array(z.string().min(1).max(50)).max(20).optional(),
   })
   .strict();
@@ -274,6 +286,47 @@ export const pipenzoIssueCreateResultV1Schema = z
     htmlUrl: z.string().url(),
   })
   .strict();
+
+/** What is wrong with a prose body, or `undefined` if nothing is. */
+export type ProseBodyProblem = 'blank' | 'too_long' | 'control_characters';
+
+/**
+ * The one prose-body rule, in one place, for every field on this surface whose payload is public
+ * markdown (issue #228, generalized to the issue-create body by issue #232).
+ *
+ * `issueCommentBodyProblem` and `issueCreateBodyProblem` below both call this rather than each
+ * carrying their own copy, which is what #232 found: the two had quietly drifted apart (the
+ * create body allowed control characters and measured length in UTF-16 units, not code points) as
+ * a shipped-route oversight rather than a documented choice. One predicate cannot drift from
+ * itself.
+ *
+ * Emptiness is tested on the *trimmed* string but the untrimmed value is what gets sent. Blankness
+ * is a per-field choice (`allowBlank`): a blank *comment* is a caller bug — it renders as an empty
+ * box on the issue under the operator's name — while a blank issue *body* is an ordinary, valid
+ * GitHub issue with no description, and #84's shipped "New from idea" route has always allowed
+ * one. Either way, leading or trailing whitespace inside a real body is the caller's formatting to
+ * keep, and a client that silently rewrote what gets published would be a client whose output
+ * nobody can predict from its input.
+ *
+ * Length is counted in code points, not UTF-16 units, because that is what GitHub's 65,536 counts
+ * on both the comment and the issue-body endpoint. `'x'.repeat(70_000).length` and
+ * `[...'🙂'.repeat(70_000)].length` disagree by a factor of two, and measuring in units would
+ * refuse an emoji-heavy body at roughly half GitHub's real allowance — inverting the whole purpose
+ * of refusing early.
+ */
+function proseBodyProblem(
+  body: string,
+  maxChars: number,
+  { allowBlank }: { allowBlank: boolean },
+): ProseBodyProblem | undefined {
+  if (typeof body !== 'string') return 'blank';
+  if (!allowBlank && body.trim().length === 0) return 'blank';
+  // Cheap first: a string over twice the cap in UTF-16 units cannot be under it in code points.
+  if (body.length > maxChars * 2) return 'too_long';
+  if ([...body].length > maxChars) return 'too_long';
+  if (!noProseControlCharacters(body)) return 'control_characters';
+  return undefined;
+}
 
 /**
  * The longest comment body Pipenzo will send, in Unicode code points (issue #228).
@@ -293,11 +346,12 @@ export const pipenzoIssueCreateResultV1Schema = z
  */
 export const MAX_ISSUE_COMMENT_CHARS = 65_536;
 
-/** What is wrong with a comment body, or `undefined` if nothing is. */
-export type IssueCommentBodyProblem = 'blank' | 'too_long' | 'control_characters';
+/** What is wrong with a comment body, or `undefined` if nothing is. Kept as its own alias (rather
+ * than a bare use of `ProseBodyProblem`) because it is part of this package's public API. */
+export type IssueCommentBodyProblem = ProseBodyProblem;
 
 /**
- * The one comment-body rule, in one place (issue #228).
+ * The comment-body rule (issue #228).
  *
  * The wire schema below and `assertCommentBody` in the daemon's GitHub client both call this, and
  * the client is the floor: the HTTP route is not the only way in, because a daemon-side caller
@@ -305,31 +359,47 @@ export type IssueCommentBodyProblem = 'blank' | 'too_long' | 'control_characters
  * directly and would otherwise get no validation at all. A predicate returning *which* rule failed,
  * rather than a boolean, is what lets each caller render its own message without a second copy of
  * the rule drifting behind it.
- *
- * Emptiness is tested on the *trimmed* string but the untrimmed value is what gets sent. A comment
- * of pure whitespace is a caller bug — it renders as an empty box on the issue under the
- * operator's name — while leading or trailing whitespace inside a real body is the caller's
- * formatting to keep, and a client that silently rewrote what gets published would be a client
- * whose output nobody can predict from its input.
- *
- * Length is counted in code points, not UTF-16 units, because that is what GitHub's 65,536 counts.
- * `'x'.repeat(70_000).length` and `[...'🙂'.repeat(70_000)].length` disagree by a factor of two,
- * and measuring in units would refuse an emoji-heavy body at roughly half GitHub's real allowance —
- * inverting the whole purpose of refusing early.
  */
 export function issueCommentBodyProblem(body: string): IssueCommentBodyProblem | undefined {
-  if (typeof body !== 'string' || body.trim().length === 0) return 'blank';
-  // Cheap first: a string over twice the cap in UTF-16 units cannot be under it in code points.
-  if (body.length > MAX_ISSUE_COMMENT_CHARS * 2) return 'too_long';
-  if ([...body].length > MAX_ISSUE_COMMENT_CHARS) return 'too_long';
-  if (!noProseControlCharacters(body)) return 'control_characters';
-  return undefined;
+  return proseBodyProblem(body, MAX_ISSUE_COMMENT_CHARS, { allowBlank: false });
 }
 
 /** Wire-facing wording for each problem. The daemon client phrases its own, with its operation. */
 const ISSUE_COMMENT_BODY_MESSAGES: Record<IssueCommentBodyProblem, string> = {
   blank: 'must not be blank',
   too_long: `must be at most ${MAX_ISSUE_COMMENT_CHARS} characters`,
+  control_characters: 'must not contain control characters',
+};
+
+/**
+ * The longest issue body Pipenzo will create, in Unicode code points (issue #232).
+ *
+ * Kept as its own constant rather than reused from `MAX_ISSUE_COMMENT_CHARS`: the two happen to
+ * agree today because GitHub bounds both an issue body and an issue comment at 65,536 characters,
+ * but that is two of GitHub's rules for two different endpoints agreeing, not one rule with two
+ * names — a future change to either limit should not silently move the other.
+ */
+export const MAX_ISSUE_BODY_CHARS = 65_536;
+
+/** What is wrong with a "New from idea" issue body (issue #84), or `undefined` if nothing is. */
+export type IssueCreateBodyProblem = ProseBodyProblem;
+
+/**
+ * The issue-create body rule (issue #232), the create-body sibling of `issueCommentBodyProblem`.
+ *
+ * Unlike a comment, a blank body is allowed: a created issue with no description is a normal,
+ * valid GitHub issue, and #84's shipped route has always permitted one. `assertIssueDraft` in the
+ * daemon's GitHub client calls this too, for the same reason `assertCommentBody` calls the comment
+ * version — `PipenzoPhaseService.createIssue` reaches the client directly.
+ */
+export function issueCreateBodyProblem(body: string): IssueCreateBodyProblem | undefined {
+  return proseBodyProblem(body, MAX_ISSUE_BODY_CHARS, { allowBlank: true });
+}
+
+/** Wire-facing wording for each problem. The daemon client phrases its own, with its operation. */
+const ISSUE_CREATE_BODY_MESSAGES: Record<IssueCreateBodyProblem, string> = {
+  blank: 'must not be blank',
+  too_long: `must be at most ${MAX_ISSUE_BODY_CHARS} characters`,
   control_characters: 'must not contain control characters',
 };
 
@@ -348,11 +418,10 @@ const ISSUE_COMMENT_BODY_MESSAGES: Record<IssueCommentBodyProblem, string> = {
  * reachable from any agent-facing tool: a model that could call it could publish arbitrary text as
  * a human.
  *
- * Control characters are refused for the same reason the title fields here refuse them, but under
- * a rule of this field's own: `noProseControlCharacters` adds a carriage-return exception to the
- * newline and tab ones, because this is the only multi-line field on the surface. No other field
- * has that exception, and the issue-create body has no such rule at all — see
- * `noProseControlCharacters` for why the divergence is deliberate rather than an oversight.
+ * Control characters are refused for the same reason the title fields here refuse them, under
+ * `noProseControlCharacters`'s carriage-return exception to the newline and tab ones — the two
+ * multi-line fields on this surface, this one and the issue-create body, share that exception and
+ * nothing else here needs it.
  */
 export const pipenzoIssueCommentRequestV1Schema = z
   .object({

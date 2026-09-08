@@ -7,6 +7,7 @@ import {
   PIPENZO_LABEL_NAMESPACE,
   isPipenzoLabel,
   issueCommentBodyProblem,
+  issueCreateBodyProblem,
 } from '@agent-dock/shared';
 import { ConditionalRequestCache } from './github-conditional-cache.js';
 import {
@@ -1553,6 +1554,13 @@ function assertLogin(login: string, operation: string): void {
   }
 }
 
+/**
+ * Aligned with `assertCommentBody` (issue #232): both now call a shared prose-body predicate from
+ * `@agent-dock/shared` rather than each carrying its own length/control-character check. Before
+ * #232 this compared `input.body.length` (UTF-16 units) against 65,536 with no control-character
+ * rule at all -- the same divergence from the comment body's rule that #232 found on the wire
+ * schema, duplicated here on the client's own floor.
+ */
 function assertIssueDraft(input: GitHubIssueDraft, operation: string): void {
   const title = input.title.trim();
   if (!title || title.length > 256) {
@@ -1561,8 +1569,21 @@ function assertIssueDraft(input: GitHubIssueDraft, operation: string): void {
       `${operation}: an issue title must be 1-256 characters`,
     );
   }
-  if (input.body.length > 65_536) {
-    throw new GitHubClientError('invalid_request', `${operation}: issue body is too long`);
+  switch (issueCreateBodyProblem(input.body)) {
+    case 'blank':
+      // Unreachable today: `issueCreateBodyProblem` allows a blank body, matching #84's shipped
+      // route. The case stays so a future tightening of `allowBlank` fails a type check here
+      // instead of falling through to `default`.
+      throw new GitHubClientError('invalid_request', `${operation}: issue body must not be blank`);
+    case 'too_long':
+      throw new GitHubClientError('invalid_request', `${operation}: issue body is too long`);
+    case 'control_characters':
+      throw new GitHubClientError(
+        'invalid_request',
+        `${operation}: issue body must not contain control characters`,
+      );
+    default:
+      break;
   }
   for (const label of input.labels ?? []) assertLabelName(label, operation);
 }

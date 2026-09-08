@@ -21,7 +21,7 @@ import {
   type RepoRef,
 } from '../src/github-client.js';
 import { ConditionalRequestCache } from '../src/github-conditional-cache.js';
-import { MAX_ISSUE_COMMENT_CHARS } from '@agent-dock/shared';
+import { MAX_ISSUE_BODY_CHARS, MAX_ISSUE_COMMENT_CHARS } from '@agent-dock/shared';
 
 const REF: RepoRef = { owner: 'jortega0033', repo: 'pipenzo' };
 
@@ -549,6 +549,77 @@ describe('GitHub issue write operations', () => {
       expect((error as GitHubClientError).code).toBe('invalid_request');
     }
     expect(calls).toHaveLength(0);
+  });
+
+  /**
+   * Issue #232: `assertIssueDraft` compared `body.length` (UTF-16 units) against 65,536 with no
+   * control-character rule at all -- the same divergence from `assertCommentBody`'s rule that #232
+   * found on the wire schema, duplicated here on the client's own floor. Now both call the shared
+   * `issueCreateBodyProblem`/`issueCommentBodyProblem` predicates.
+   */
+  it('refuses a body with control characters, without issuing a request', async () => {
+    const { octokit, calls } = stubOctokit({});
+    for (const body of ['a\u0000b', 'a\u0007b']) {
+      const error = await catchAsync(() =>
+        OctokitGitHubClient.withOctokit(octokit).createIssue(REF, { title: 'a title', body }),
+      );
+      expect((error as GitHubClientError).code).toBe('invalid_request');
+    }
+    expect(calls).toHaveLength(0);
+  });
+
+  // A blank body stays allowed: a created issue with no description is a normal, valid GitHub
+  // issue, and #84's shipped route has always permitted one -- unlike a comment.
+  it('still creates an issue with a blank body', async () => {
+    const { octokit, calls } = stubOctokit({
+      request: async () => ({ headers: {}, data: { ...ISSUE_DATA, number: 902, assignees: [] } }),
+    });
+    const created = await OctokitGitHubClient.withOctokit(octokit).createIssue(REF, {
+      title: 'Drafted from an idea',
+      body: '',
+    });
+    expect(created.number).toBe(902);
+    expect(calls).toHaveLength(1);
+  });
+
+  // Same CRLF exception as the comment body: bodies stitched out of captured command or git
+  // output on Windows are the norm, not the exception, for this product's primary platform.
+  it('accepts a CRLF body and sends it byte for byte', async () => {
+    const { octokit, calls } = stubOctokit({
+      request: async () => ({ headers: {}, data: { ...ISSUE_DATA, number: 903, assignees: [] } }),
+    });
+    const crlf = 'Acceptance criteria:\r\n\r\n- one\r\n- two\r\n';
+    await OctokitGitHubClient.withOctokit(octokit).createIssue(REF, {
+      title: 'Drafted from an idea',
+      body: crlf,
+    });
+    expect(calls[0]?.params).toMatchObject({ body: crlf });
+  });
+
+  /**
+   * Issue #232: GitHub counts characters, so the client's own bound has to as well. Measured in
+   * UTF-16 units, an emoji-heavy body would be refused at roughly half GitHub's real allowance.
+   */
+  it('measures the body in code points, not UTF-16 units', async () => {
+    const { octokit, calls } = stubOctokit({
+      request: async () => ({ headers: {}, data: { ...ISSUE_DATA, number: 904, assignees: [] } }),
+    });
+    const client = OctokitGitHubClient.withOctokit(octokit);
+    // 65,536 code points, 131,072 UTF-16 units: at the limit, and accepted.
+    await client.createIssue(REF, {
+      title: 'Drafted from an idea',
+      body: '🙂'.repeat(MAX_ISSUE_BODY_CHARS),
+    });
+    expect(calls).toHaveLength(1);
+    // One code point over the cap, and deliberately *under* twice the cap in UTF-16 units, so
+    // nothing but the code-point comparison can be what rejects it.
+    const overLimit = `${'🙂'.repeat(65_000)}${'x'.repeat(537)}`;
+    expect([...overLimit]).toHaveLength(MAX_ISSUE_BODY_CHARS + 1);
+    const error = await catchAsync(() =>
+      client.createIssue(REF, { title: 'Drafted from an idea', body: overLimit }),
+    );
+    expect((error as GitHubClientError).code).toBe('invalid_request');
+    expect(calls).toHaveLength(1);
   });
 
   it('is mirrored by the fake, including the additive assignment', async () => {
