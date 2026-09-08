@@ -135,10 +135,22 @@ export function resolveDaemonGitHubToken(input: {
   readonly environmentToken: string | undefined;
   readonly isPackaged: boolean;
   readonly isDevelopmentBuild: boolean;
+  /**
+   * Set once an operator has explicitly disconnected in this run of the app (issue #210). The
+   * vault still always wins over this flag -- signing in again writes a real vault record, which
+   * the check above already returns from before this one is ever reached -- but while the vault is
+   * empty, an explicit disconnect must not be a no-op in a development build: without this, the
+   * very next spawn falls straight back to the same inherited `PIPENZO_GITHUB_TOKEN`, and "forget
+   * this credential" silently becomes "keep using it". Deliberately process-lifetime, not cleared
+   * by anything short of restarting the app -- the fallback exists for developer convenience, and
+   * convenience is exactly what an explicit disconnect is supposed to override.
+   */
+  readonly developmentFallbackSuppressed?: boolean;
 }): DaemonGitHubTokenResolution {
   const vaultToken = input.vaultToken?.trim();
   if (isTokenShaped(vaultToken)) return { token: vaultToken, source: 'vault' };
   if (input.isPackaged || !input.isDevelopmentBuild) return { token: undefined, source: 'none' };
+  if (input.developmentFallbackSuppressed) return { token: undefined, source: 'none' };
   const environmentToken = input.environmentToken?.trim();
   if (isTokenShaped(environmentToken)) {
     return { token: environmentToken, source: 'environment' };

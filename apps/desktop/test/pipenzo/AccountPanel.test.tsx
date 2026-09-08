@@ -115,8 +115,9 @@ describe('AccountPanel', () => {
     render(<AccountPanel />);
 
     expect(await screen.findByText(/running on an inherited token/i)).toBeVisible();
-    // And it does not pretend disconnecting would stop it.
-    expect(screen.getByText(/cannot clear a shell variable/i)).toBeInTheDocument();
+    // And it says accurately what disconnecting now does (issue #210): stops the daemon from
+    // re-arming onto the variable this run, though it comes back on the next restart.
+    expect(screen.getByText(/disconnecting now stops it too/i)).toBeInTheDocument();
   });
 
   it('explains a machine that cannot store a credential', async () => {
@@ -232,10 +233,12 @@ describe('AccountPanel', () => {
 
   /**
    * The vault can hold a record while the daemon is running on an inherited variable -- a daemon
-   * spawned before the vault was written. Clearing the vault restarts it straight back onto the
-   * same `PIPENZO_GITHUB_TOKEN`, so the dialog must not promise a revocation it cannot perform.
+   * spawned before the vault was written. Disconnecting now stops that fallback too (issue #210),
+   * so the dialog must say so accurately, while still not promising a GitHub-side revocation it
+   * cannot perform -- device flow is a public client with no client secret to authenticate that
+   * API call with.
    */
-  it('says a disconnect will not revoke an inherited token', async () => {
+  it('says a disconnect stops an inherited token from re-arming, but still cannot revoke it', async () => {
     installBridge({
       connection: { state: 'connected', login: 'octocat', source: 'environment' },
     });
@@ -245,8 +248,28 @@ describe('AccountPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: /disconnect github/i }));
     const dialog = await screen.findByRole('dialog');
 
-    expect(within(dialog).getByText(/will not revoke anything/i)).toBeInTheDocument();
-    expect(within(dialog).getByText(/comes back with the same access/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/stops it from using that variable/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/stays valid on GitHub until you revoke it/i)).toBeInTheDocument();
+  });
+
+  /**
+   * Issue #210's other half: every disconnect, not only the inherited-token case, forgets the
+   * token locally without revoking it on GitHub -- Pipenzo has no client secret to authenticate a
+   * revocation call with. The dialog owes a direct, working link to where a human does that
+   * themselves, not just a mention of it.
+   */
+  it('links directly to the GitHub page a human revokes access from', async () => {
+    installBridge({ connection: CONNECTED });
+    render(<AccountPanel />);
+    await loaded();
+
+    fireEvent.click(screen.getByRole('button', { name: /disconnect github/i }));
+    const dialog = await screen.findByRole('dialog');
+
+    const link = within(dialog).getByRole('link', { name: /github\.com\/settings\/applications/i });
+    expect(link).toHaveAttribute('href', 'https://github.com/settings/applications');
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noreferrer');
   });
 
   /**

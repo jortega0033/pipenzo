@@ -189,6 +189,16 @@ let respawnAfterExit: ChildProcess | undefined;
 /** True while a credential-change restart is between the kill and the next daemon's spawn. */
 let credentialRestartPending = false;
 
+/**
+ * Set once by `pipenzo:disconnect-github` and never cleared for the rest of this process's life
+ * (issue #210). See `resolveDaemonGitHubToken`'s `developmentFallbackSuppressed` for why: without
+ * it, a development build's next spawn falls straight back to the same inherited
+ * `PIPENZO_GITHUB_TOKEN`, so "disconnect" would clear the vault and then immediately re-arm from
+ * the shell. Signing in again (a real vault write) is unaffected — the vault always wins over this
+ * flag, checked first in `resolveDaemonGitHubToken`.
+ */
+let developmentFallbackSuppressed = false;
+
 function sendStatus(status: DaemonStatus): void {
   sendToRenderer(mainWindow, 'daemon:status', status);
 }
@@ -211,6 +221,7 @@ function spawnDaemon(): void {
     environmentToken: process.env.PIPENZO_GITHUB_TOKEN,
     isPackaged: app.isPackaged,
     isDevelopmentBuild: IS_DEVELOPMENT_BUILD,
+    developmentFallbackSuppressed,
   });
   // Not `credential.source` here (issue #209): that is main's pre-handoff *intent*, unconfirmed
   // until the daemon's own `/health` report lands in `waitForDaemonReady`'s success branch, which
@@ -1056,7 +1067,14 @@ handle('pipenzo:disconnect-github', (): PipenzoGitHubConnectionV1 => {
   // That turned this channel into the unbounded restart loop the guard was written to prevent,
   // which matters because `restartDaemonForCredentialChange` intentionally bypasses `killDaemon`'s
   // bounded `sessions.cancelAll`: every repetition kills in-flight sessions uncancelled.
-  if (tokenVault.clear()) restartDaemonForCredentialChange();
+  if (tokenVault.clear()) {
+    // Issue #210: an explicit disconnect must stick in a development build too, where the vault
+    // being empty would otherwise fall straight back to an inherited `PIPENZO_GITHUB_TOKEN` on the
+    // very next spawn -- silently turning "forget this credential" into "keep using it". Set
+    // before the restart, so the very next `spawnDaemon()` this triggers already honors it.
+    developmentFallbackSuppressed = true;
+    restartDaemonForCredentialChange();
+  }
   // `source` in this reply still describes the daemon that is on its way out; the restart it just
   // triggered recomputes it. The renderer re-reads the connection when `daemon:status` next goes
   // `ready`, which is the same moment the new daemon's credential actually takes effect.

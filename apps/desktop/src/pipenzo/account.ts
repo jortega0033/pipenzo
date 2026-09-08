@@ -28,6 +28,20 @@ import type {
  */
 export const REQUESTED_OAUTH_SCOPE = 'repo';
 
+/**
+ * Where a human revokes Pipenzo's access themselves (issue #210).
+ *
+ * Device flow is a public client with no client secret (see `github-oauth-app.ts`), so Pipenzo
+ * cannot call GitHub's Applications API to revoke a token on the user's behalf -- that API
+ * authenticates with `client_id:client_secret`, which does not exist here and cannot be
+ * manufactured for a distributed desktop app. "Disconnect" therefore forgets the token locally; it
+ * never revokes it on GitHub. This is the one honest alternative the fix for #210 has: a direct
+ * link to the page a human uses to actually revoke it, plainly labelled so the two are never
+ * confused. `DeviceCodeStep.tsx`'s `cancelled` failure copy already names this same page in prose
+ * for a different moment in the flow; this is the same fact, linked, for the disconnect moment.
+ */
+export const GITHUB_AUTHORIZED_APPS_URL = 'https://github.com/settings/applications';
+
 /** Two letters for the identity avatar. Uppercase, because it reads as initials rather than a name. */
 export function accountMonogram(login: string): string {
   const alphanumeric = login.replace(/[^A-Za-z0-9]/g, '');

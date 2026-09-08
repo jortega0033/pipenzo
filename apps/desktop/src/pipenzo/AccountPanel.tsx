@@ -7,6 +7,7 @@ import { Icon } from '../components/primitives/Icon.js';
 import { LoadLine } from '../components/primitives/LoadLine.js';
 import { Notice } from '../components/primitives/Notice.js';
 import {
+  GITHUB_AUTHORIZED_APPS_URL,
   REQUESTED_OAUTH_SCOPE,
   accountMonogram,
   connectionChip,
@@ -186,8 +187,9 @@ export function AccountPanel() {
               >
                 Pipenzo is acting with <span className="mono">PIPENZO_GITHUB_TOKEN</span> from the
                 environment, not with the account shown above. That fallback exists only in a
-                development build whose vault is empty. Disconnecting clears the vault; it cannot
-                clear a shell variable, so the daemon would come back on the same token.
+                development build whose vault is empty. Disconnecting now stops it too, for the
+                rest of this run — it comes back only if you restart Pipenzo with the variable
+                still exported.
               </Notice>
             )}
 
@@ -283,7 +285,7 @@ export function AccountPanel() {
         <div className="danger-row">
           <span className="set-sub">
             {inheritedToken
-              ? 'Clears the token from the vault. This daemon would restart onto PIPENZO_GITHUB_TOKEN and keep working, because a shell variable is not Pipenzo’s to clear.'
+              ? 'Clears the token from the vault and stops the daemon from re-arming onto PIPENZO_GITHUB_TOKEN for the rest of this run. Worktrees, branches and the ticket store stay on disk.'
               : connection.state === 'unavailable'
                 ? 'Removes the stored record this machine cannot read, so you can sign in again from scratch. Worktrees, branches and the ticket store stay on disk.'
                 : 'Clears the token from the vault, and the daemon restarts without one. Worktrees, branches and the ticket store stay on disk.'}
@@ -338,18 +340,23 @@ export function AccountPanel() {
             does not wait for work in flight to wind down.
           </p>
           {inheritedToken && (
-            <Notice tone="warn" icon="warning" title="This will not revoke anything">
+            <Notice tone="warn" icon="warning" title="Stops the daemon, not the token">
               This daemon is running on <span className="mono">PIPENZO_GITHUB_TOKEN</span> from the
-              environment. Clearing the vault restarts it onto the same variable, so it comes back
-              with the same access. To actually stop it, unset the variable and restart Pipenzo —
-              and revoke the token on GitHub if it should no longer work anywhere.
+              environment. Disconnecting stops it from using that variable for the rest of this
+              run — it comes back only if you restart Pipenzo with the variable still exported.
+              Either way, the token itself stays valid on GitHub until you revoke it there
+              yourself.
             </Notice>
           )}
           <p className="set-sub">
             Your worktrees, branches and ticket store stay exactly where they are, and nothing on
             GitHub changes: labels, branches and pull requests are untouched — a disconnect here
-            forgets a token, it does not revoke one. Signing in again is the same device flow as the
-            first time.
+            forgets a token, it does not revoke one. Pipenzo has no client secret and cannot revoke
+            it for you; the token stays valid until you delete it yourself under{' '}
+            <a href={GITHUB_AUTHORIZED_APPS_URL} target="_blank" rel="noreferrer">
+              github.com/settings/applications
+            </a>
+            . Signing in again is the same device flow as the first time.
           </p>
           {disconnection.status === 'error' && (
             <Notice tone="danger" icon="warning" title="Could not disconnect">

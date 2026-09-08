@@ -388,6 +388,48 @@ describe('which credential the daemon runs on is decided once, and named', () =>
   });
 
   /**
+   * Issue #210: without this, disconnecting on a development build with an empty vault is a
+   * no-op -- the very next spawn falls straight back to the same inherited `PIPENZO_GITHUB_TOKEN`,
+   * silently turning "forget this credential" into "keep using it".
+   */
+  describe('developmentFallbackSuppressed', () => {
+    it('refuses the environment fallback once suppressed, even though the gates that allow it are met', () => {
+      expect(
+        resolveDaemonGitHubToken({
+          vaultToken: undefined,
+          environmentToken,
+          isPackaged: false,
+          isDevelopmentBuild: true,
+          developmentFallbackSuppressed: true,
+        }),
+      ).toEqual({ token: undefined, source: 'none' });
+    });
+
+    it('does not suppress the vault, which is checked first and always wins', () => {
+      expect(
+        resolveDaemonGitHubToken({
+          vaultToken,
+          environmentToken,
+          isPackaged: false,
+          isDevelopmentBuild: true,
+          developmentFallbackSuppressed: true,
+        }),
+      ).toEqual({ token: vaultToken, source: 'vault' });
+    });
+
+    it('defaults to false, so every existing call site keeps behaving exactly as before', () => {
+      expect(
+        resolveDaemonGitHubToken({
+          vaultToken: undefined,
+          environmentToken,
+          isPackaged: false,
+          isDevelopmentBuild: true,
+        }),
+      ).toEqual({ token: environmentToken, source: 'environment' });
+    });
+  });
+
+  /**
    * Both gates are read in main, not just the filename-derived one. That the *fallback* fails
    * closed when the substitution is missing is asserted behaviourally above
    * ("ignores the environment when the build-time development flag is false"); all this checks is
@@ -399,6 +441,22 @@ describe('which credential the daemon runs on is decided once, and named', () =>
     expect(main).toMatch(/isDevelopmentBuild:\s*IS_DEVELOPMENT_BUILD/);
     expect(main).toMatch(
       /typeof __PIPENZO_DEVELOPMENT_BUILD__ === 'boolean'\s*\?\s*__PIPENZO_DEVELOPMENT_BUILD__\s*:\s*false/,
+    );
+  });
+
+  /**
+   * Issue #210: the wiring a pure-function unit test cannot see -- the disconnect handler sets the
+   * process-lifetime flag before triggering the restart it just decided on, and every spawn
+   * (including the very next one, for this restart) feeds it into `resolveDaemonGitHubToken`.
+   */
+  it("is suppressed for the rest of the process's life by an explicit disconnect (issue #210)", async () => {
+    const main = await readElectron('main.ts');
+    expect(main).toMatch(/let developmentFallbackSuppressed = false;/);
+    expect(main).toMatch(/developmentFallbackSuppressed,\s*\n\s*\}\);/);
+    // Set, not read, inside the handler that actually cleared the vault -- and before the restart
+    // it triggers, so the very next spawn already honors it.
+    expect(main).toMatch(
+      /if \(tokenVault\.clear\(\)\) \{[\s\S]{0,200}?developmentFallbackSuppressed = true;[\s\S]{0,100}?restartDaemonForCredentialChange\(\);/,
     );
   });
 });
@@ -612,7 +670,9 @@ describe('nothing on the renderer bridge can obtain the token', () => {
     // including the machine-without-a-credential-store case that made the previous
     // `status().state !== 'disconnected'` form of this guard permanently true. What is asserted
     // here is only the wiring: that the handler gates on that return value and on nothing else.
-    expect(main).toMatch(/if \(tokenVault\.clear\(\)\) restartDaemonForCredentialChange\(\)/);
+    expect(main).toMatch(
+      /if \(tokenVault\.clear\(\)\) \{[\s\S]{0,200}?restartDaemonForCredentialChange\(\);\s*\n\s*\}/,
+    );
     // And specifically not on `status()`, which cannot distinguish "nothing stored" from "cannot
     // tell" and so answers the same on every machine where the loop was reachable. The quote class
     // is `['"]` rather than `'`: the reintroduction this guards against is a *rewrite*, and a
