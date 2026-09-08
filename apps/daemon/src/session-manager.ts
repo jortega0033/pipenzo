@@ -602,14 +602,11 @@ export class SessionManager {
         // one oversized event and lets the session continue: v1 has no per-event delivery
         // guarantee a dropped event could quietly violate, so issue #51 asks this path to fail
         // the whole session instead of silently discarding provider-controlled content.
-        this.logger.warn(
-          'legacy session envelope exceeded the per-frame ceiling; failing the session',
-          {
-            sessionId: id,
-            eventType: event.type,
-            bytes,
-          },
-        );
+        this.logger.warn('legacy session envelope exceeded the per-frame ceiling; failing the session', {
+          sessionId: id,
+          eventType: event.type,
+          bytes,
+        });
         const failure: AgentEventEnvelope = {
           type: 'session.failed',
           message: 'a provider event exceeded the maximum frame size and could not be delivered',
@@ -1133,10 +1130,7 @@ export class SessionManager {
         session.status = 'failed';
         session.completedAt = new Date().toISOString();
         session.error = event.message;
-        this.logger.warn('legacy session failed', {
-          sessionId: session.id,
-          message: event.message,
-        });
+        this.logger.warn('legacy session failed', { sessionId: session.id, message: event.message });
         break;
       case 'session.cancelled':
         session.status = 'cancelled';
