@@ -35,7 +35,6 @@ PIPENZO_SOURCE = PIPENZO_ROOT / "app-icons" / "pipenzo-app-icon-helmet-p-monochr
 PIPENZO_ICON_ROOT = PIPENZO_ROOT / "app-icons"
 PIPENZO_PNG_ROOT = PIPENZO_ICON_ROOT / "png"
 PIPENZO_PNG_SIZES = (16, 20, 24, 32, 48, 64, 128, 256, 512, 1024)
-PIPENZO_ICO_SIZES = ((16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256))
 
 BLOCKED_ELEMENTS = {
     "animate",
@@ -213,7 +212,7 @@ def main() -> None:
         PIPENZO_PNG_ROOT,
         PIPENZO_ICON_ROOT,
         PIPENZO_PNG_SIZES,
-        PIPENZO_ICO_SIZES,
+        ICO_SIZES,
         "pipenzo.ico",
         "pipenzo.icns",
         png_name_fn=lambda size: f"pipenzo-icon-{size}.png",

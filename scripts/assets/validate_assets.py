@@ -375,6 +375,16 @@ def validate_pipenzo_pack() -> None:
         if path.is_file():
             validate_svg(path, viewbox)
 
+    # Every committed SVG must go through the XML sanitizer above, not just the manifest's
+    # sha256 pin below — a future asset-only PR that adds an .svg without updating
+    # PIPENZO_SVG_VIEWBOXES would otherwise skip the <script>/<use>/external-reference checks.
+    all_svgs = {path.relative_to(PIPENZO_ROOT).as_posix() for path in PIPENZO_ROOT.rglob("*.svg")}
+    unchecked_svgs = sorted(all_svgs - set(PIPENZO_SVG_VIEWBOXES))
+    check(
+        not unchecked_svgs,
+        f"SVG missing from PIPENZO_SVG_VIEWBOXES (skips XML sanitization): {unchecked_svgs}",
+    )
+
     try:
         manifest = json.loads(PIPENZO_MANIFEST.read_text(encoding="utf-8"))
     except OSError as error:
@@ -384,48 +394,90 @@ def validate_pipenzo_pack() -> None:
         ERRORS.append(f"Malformed manifest {relative(PIPENZO_MANIFEST)}: {error}")
         return
 
+    if not isinstance(manifest, dict):
+        ERRORS.append(f"Manifest is not a JSON object: {relative(PIPENZO_MANIFEST)}")
+        return
+
+    manifest_root = PIPENZO_ROOT.resolve()
     manifest_files = manifest.get("files", [])
+    if not isinstance(manifest_files, list):
+        ERRORS.append(f"Manifest \"files\" is not a list: {relative(PIPENZO_MANIFEST)}")
+        return
+
     for entry in manifest_files:
-        path = PIPENZO_ROOT / entry["file"]
+        try:
+            file_name = entry["file"]
+        except (KeyError, TypeError) as error:
+            ERRORS.append(f"Malformed manifest entry (missing 'file'): {entry!r} ({error})")
+            continue
+
+        path = PIPENZO_ROOT / file_name
+        try:
+            path.resolve().relative_to(manifest_root)
+        except ValueError:
+            ERRORS.append(f"Manifest entry escapes the asset root: {file_name!r}")
+            continue
         if not path.is_file():
             ERRORS.append(f"Missing approved asset: {relative(path)}")
             continue
 
+        try:
+            expected_bytes = entry["bytes"]
+            expected_sha256 = entry["sha256"]
+        except KeyError as error:
+            ERRORS.append(f"Malformed manifest entry for {file_name!r}: missing {error}")
+            continue
+
         data = path.read_bytes()
         check(
-            len(data) == entry["bytes"],
+            len(data) == expected_bytes,
             f"Approved asset size no longer matches the reviewed pack: {relative(path)}",
         )
         check(
-            hashlib.sha256(data).hexdigest() == entry["sha256"],
+            hashlib.sha256(data).hexdigest() == expected_sha256,
             "Approved asset content no longer matches the reviewed pack (this ticket must not "
             f"redraw/reinterpret the mascot): {relative(path)}",
         )
         if "dimensions" in entry:
             try:
+                expected_dimensions = entry["dimensions"]
+                expected_format = entry["format"]
+                expected_mode = entry["mode"]
+            except KeyError as error:
+                ERRORS.append(
+                    f"Malformed manifest entry for {file_name!r}: missing {error} alongside "
+                    "'dimensions'"
+                )
+                continue
+            try:
                 with Image.open(path) as image:
                     image.load()
                     check(
-                        list(image.size) == entry["dimensions"],
+                        list(image.size) == expected_dimensions,
                         f"Wrong dimensions for {relative(path)}: {image.size}",
                     )
                     check(
-                        image.format == entry["format"],
+                        image.format == expected_format,
                         f"Wrong format for {relative(path)}: {image.format}",
                     )
                     # ICO/ICNS are multi-representation containers; Pillow's generic .mode
                     # reflects only its default-loaded frame, not every embedded representation,
                     # so it isn't a meaningful signal here (unlike plain PNG/WebP/JPEG).
-                    if entry["format"] not in {"ICO", "ICNS"}:
+                    if expected_format not in {"ICO", "ICNS"}:
                         check(
-                            image.mode == entry["mode"],
+                            image.mode == expected_mode,
                             f"Wrong color mode for {relative(path)}: {image.mode}",
                         )
             except (OSError, ValueError) as error:
                 ERRORS.append(f"Cannot decode {relative(path)}: {error}")
         validate_forbidden_bytes(path)
 
-    expected = {entry["file"] for entry in manifest_files}
+    expected = {entry["file"] for entry in manifest_files if isinstance(entry, dict) and "file" in entry}
+    check(
+        set(PIPENZO_SVG_VIEWBOXES) <= expected,
+        "SVG validated by PIPENZO_SVG_VIEWBOXES but missing from the manifest: "
+        f"{sorted(set(PIPENZO_SVG_VIEWBOXES) - expected)}",
+    )
     on_disk = {
         path.relative_to(PIPENZO_ROOT).as_posix()
         for path in PIPENZO_ROOT.rglob("*")
