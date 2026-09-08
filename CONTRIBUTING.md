@@ -41,6 +41,14 @@ Electron would put it in Electron main's own environment block, readable by any 
 provider subprocesses walking their own parent chain (see `apps/desktop/electron/dev-token-file.ts`
 for the full reasoning). Never used in a packaged build.
 
+**A process crash dump can contain your token.** This app never calls Electron's
+`crashReporter.start()`, so its own `app.getPath('crashDumps')` directory stays empty -- but the
+operating system's own crash facilities (Windows Error Reporting, macOS's
+`~/Library/Logs/DiagnosticReports`, a Linux core dump) can still capture Electron main's memory on a
+crash, and a real GitHub credential loaded at that moment goes with it (see
+`apps/desktop/electron/github-token-vault.ts`). Never attach an OS crash report or core file to an
+issue, or share one, without checking what it contains first.
+
 ## Project structure
 
 See [docs/architecture.md](docs/architecture.md) for the full picture, and

@@ -98,6 +98,32 @@ describe('readCredentialMessage', () => {
     const raw = await readCredentialMessage(streamOf('x'.repeat(200)), { maxBytes: 64 });
     expect(raw).toBe('');
   });
+
+  /**
+   * Issue #214: the `Buffer`s this function accumulates while reading are zeroed once the message
+   * has been built from them, so the credential does not sit in that extra copy for the GC to get to
+   * on its own time. Holding a reference to the exact chunk handed to the stream and checking it
+   * after the call is the only way to observe this from outside the module.
+   */
+  it('zeroes the buffered chunk after building the message', async () => {
+    const chunk = Buffer.from(`{"githubToken":"${TOKEN}"}\n`, 'utf8');
+    const raw = await readCredentialMessage(Readable.from([chunk]));
+    expect(parseDaemonCredentialMessage(raw)).toEqual({ githubToken: TOKEN });
+    expect(chunk.every((byte) => byte === 0)).toBe(true);
+  });
+
+  /**
+   * The overflow path used to clear the accumulated `chunks` array but never zeroed the one chunk
+   * that tipped the running total past `maxBytes` -- that chunk is never pushed into `chunks`, so it
+   * needs its own `fill(0)`. A message only slightly over the bound can hold most of a real token in
+   * exactly that chunk.
+   */
+  it('also zeroes the chunk that tips the message over its size bound', async () => {
+    const chunk = Buffer.from('x'.repeat(200), 'utf8');
+    const raw = await readCredentialMessage(Readable.from([chunk]), { maxBytes: 64 });
+    expect(raw).toBe('');
+    expect(chunk.every((byte) => byte === 0)).toBe(true);
+  });
 });
 
 describe('DaemonGitHubCredential', () => {

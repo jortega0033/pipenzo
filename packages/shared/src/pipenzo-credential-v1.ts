@@ -1,6 +1,44 @@
 import { z } from 'zod';
 
 /**
+ * The shape a GitHub token must have before anything in Pipenzo will accept it (issue #214):
+ * printable, non-whitespace ASCII, 20-512 characters. Covers every format GitHub has issued
+ * (`ghp_`, `gho_`, `github_pat_`, the 40-hex classic) and excludes every separator -- this value
+ * becomes an HTTP `Authorization` header and travels down a newline-terminated stdin message, so a
+ * newline would frame a second message or split a request. The floor is 20 rather than 8 because
+ * every real format is at least 36 characters, so a truncated paste reads as "not configured" rather
+ * than as a credential that 401s later.
+ *
+ * Declared once here and imported by every file that checks it --
+ * `apps/desktop/electron/github-token-vault.ts`, `apps/desktop/electron/daemon-environment.ts`, and
+ * `apps/daemon/src/github-credential.ts` all had their own identical copy before this. Token-pattern
+ * divergence between them fails closed (a value one rejects falls through to a stripped environment
+ * and then `token_missing`), so the risk was genuinely low, but the repo already treats this class of
+ * drift seriously elsewhere -- `CREDENTIAL_ON_STDIN_ENV_KEY` has a cross-file sync test -- and a
+ * single hoisted source is cheaper than either three copies or three tests keeping them in sync.
+ */
+export const GITHUB_TOKEN_SHAPE_PATTERN = /^[\x21-\x7e]{20,512}$/;
+
+/**
+ * A GitHub login, by GitHub's own rules (issue #214). Shared between `github-token-vault.ts` (which
+ * validates a login on the way in and re-validates it on the way back out, since it round-trips
+ * through disk), this schema's own `login`/`assignee` fields, and `apps/daemon/src/github-client.ts`'s
+ * `assertLogin`. Unlike the token pattern above, a divergence here does not fail closed: the vault
+ * could return `connected` with a login this schema's old, separately-written copy of the same regex
+ * rejected, and `pipenzo:github-connection` would throw permanently instead of degrading --
+ * precisely the bug class this file's `storedAt` re-validation (see `github-token-vault.ts`) already
+ * exists to prevent for a different field.
+ *
+ * One exception, left as-is rather than forced through this constant: `github-client.ts`'s
+ * `parseRepoRef` embeds this exact character class as a capture group inside one combined
+ * `owner/repo` regex, not as a standalone login check. Rewriting that one to interpolate
+ * `GITHUB_LOGIN_PATTERN.source` would trade a plainly-readable literal for a harder-to-read
+ * construction just to avoid a fourth copy of an already-simple pattern; noted here so this doc
+ * comment does not overstate what got hoisted.
+ */
+export const GITHUB_LOGIN_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
+
+/**
  * What the renderer is allowed to know about Pipenzo's GitHub credential (issue #165).
  *
  * ## The shape is the security property
@@ -86,10 +124,7 @@ export type DaemonCredentialSourceV1 = z.infer<typeof daemonCredentialSourceV1Sc
 export const pipenzoGitHubConnectionV1Schema = z.object({
   state: z.enum(['connected', 'disconnected', 'unavailable']),
   /** Present only when `state` is `connected`. GitHub's own login rules. */
-  login: z
-    .string()
-    .regex(/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/)
-    .optional(),
+  login: z.string().regex(GITHUB_LOGIN_PATTERN).optional(),
   /** When the credential was stored, ISO-8601. Present only when `state` is `connected`. */
   storedAt: z.string().datetime({ offset: true }).optional(),
   /** Present only when `state` is `unavailable`. */

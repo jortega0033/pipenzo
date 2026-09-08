@@ -1,4 +1,4 @@
-import type { DaemonCredentialSourceV1 } from '@agent-dock/shared';
+import { GITHUB_TOKEN_SHAPE_PATTERN, type DaemonCredentialSourceV1 } from '@agent-dock/shared';
 import {
   GITHUB_TOKEN_ENV_KEYS,
   GitHubClientError,
@@ -88,13 +88,15 @@ export interface DaemonCredentialMessageV1 {
  * The same shape rule the vault and the sender apply — printable, non-whitespace, at least 20
  * characters (every GitHub token format is at least 36), bounded at 512.
  *
- * Deliberately identical to `daemon-environment.ts`'s and the vault's rather than looser: the rule
- * that decides what this process actually *uses* must not be the most permissive of the three, or
- * the strictness upstream is decoration. Re-checked on arrival rather than trusted from the sender
- * because the value is about to become an HTTP `Authorization` header, and a header value
- * containing a newline is request splitting.
+ * `GITHUB_TOKEN_SHAPE_PATTERN` (issue #214) rather than a copy declared here: the rule that decides
+ * what this process actually *uses* must not be the most permissive of the three, or the strictness
+ * upstream is decoration, and three independently-declared copies of the same regex (this file,
+ * `daemon-environment.ts`, `github-token-vault.ts`) was exactly the drift risk a single hoisted
+ * source closes. Re-checked on arrival rather than trusted from the sender because the value is
+ * about to become an HTTP `Authorization` header, and a header value containing a newline is request
+ * splitting.
  */
-const TOKEN_PATTERN = /^[\x21-\x7e]{20,512}$/;
+const TOKEN_PATTERN = GITHUB_TOKEN_SHAPE_PATTERN;
 
 export function isTokenShaped(value: unknown): value is string {
   return typeof value === 'string' && TOKEN_PATTERN.test(value);
@@ -136,6 +138,22 @@ export function readCredentialMessage(
     const chunks: Buffer[] = [];
     let bytes = 0;
     let settled = false;
+    // `Buffer`s are mutable, backed by real memory `fill()` actually overwrites -- unlike the `raw`
+    // string this function returns, which JavaScript gives no way to zero. Called on every path out
+    // of `finish()` (issue #214), not only the overflow case below: the chunks read off the wire are
+    // an extra live copy of the credential that has done its job the instant `Buffer.concat` has run,
+    // and there is no reason to leave that copy sitting in heap for the GC to get to on its own time.
+    //
+    // This makes `chunks` destructive to read: every `Buffer` pushed into it is zeroed in place once
+    // this function is done with it, including a chunk handed in directly by `stream` rather than
+    // one this function allocated itself (`Buffer.from(chunk, 'utf8')` below only runs for a string
+    // chunk). Fine for the real stdin this reads in production, where every chunk is a fresh
+    // allocation the stream will not reuse; a caller feeding this the same `Buffer` object twice, or
+    // one it still needs after this call, would see it come back zeroed.
+    const wipeChunks = (): void => {
+      for (const chunk of chunks) chunk.fill(0);
+      chunks.length = 0;
+    };
     const finish = (): void => {
       if (settled) return;
       settled = true;
@@ -150,15 +168,20 @@ export function readCredentialMessage(
       // assumed — `pause()` alone never exits; `unref()` exits in ~400ms.
       stream.pause();
       (stream as NodeJS.ReadableStream & { unref?: () => void }).unref?.();
-      resolve(Buffer.concat(chunks).toString('utf8'));
+      const raw = Buffer.concat(chunks).toString('utf8');
+      wipeChunks();
+      resolve(raw);
     };
     const onData = (chunk: Buffer | string): void => {
       const buffer = typeof chunk === 'string' ? Buffer.from(chunk, 'utf8') : chunk;
       bytes += buffer.length;
       if (bytes > maxBytes) {
         // Keep nothing: a message this size is not one this protocol produced, and a truncated
-        // prefix of it is not a credential either.
-        chunks.length = 0;
+        // prefix of it is not a credential either. `buffer` itself -- the chunk that tipped `bytes`
+        // over the limit -- was never pushed to `chunks`, so `wipeChunks()` alone would miss it and
+        // leave whatever prefix of the credential it holds unzeroed; wipe it directly first.
+        buffer.fill(0);
+        wipeChunks();
         finish();
         return;
       }
