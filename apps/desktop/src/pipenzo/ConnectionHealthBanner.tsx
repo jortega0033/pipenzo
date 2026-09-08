@@ -18,16 +18,26 @@ type UnreachableHealth = Extract<PipenzoGitHubHealthV1, { state: 'unreachable' }
  *
  * Driven entirely by `PipenzoGitHubHealthV1` (#230) off `usePipenzoGitHubHealth()`. Built
  * incrementally, one state per ticket: #70 adds `retrying`, #71 adds `unreachable`, #72 adds
- * `credential_rejected`. Every other state renders nothing until its own ticket adds a branch
- * here — an unhandled state is silence, not a placeholder banner guessing at copy nobody has
- * written yet.
+ * `credential_rejected`, #73 adds the recovery banner. Every other state renders nothing until
+ * its own ticket adds a branch here — an unhandled state is silence, not a placeholder banner
+ * guessing at copy nobody has written yet.
  */
 export function ConnectionHealthBanner({
   health,
+  loginName,
+  connectedRepoCount,
   onRetryNow,
   onReauthenticate,
 }: {
   health: PipenzoGitHubHealthV1 | undefined;
+  /**
+   * The signed-in GitHub login, for #73's "Signed in again as `<login>`". Optional the same way
+   * the action callbacks are: without it, the recovery banner simply omits that clause rather
+   * than guessing a name.
+   */
+  loginName?: string;
+  /** How many repos are connected, for #73's "N repos reconnected". */
+  connectedRepoCount?: number;
   /**
    * "Retry now" (#70/#71's shared action, wired to `pollGitHubHealthNow` — issue #257's
    * "poll now" route). Optional so a caller that has not wired it yet still gets a banner, just
@@ -45,6 +55,8 @@ export function ConnectionHealthBanner({
    */
   onReauthenticate?: () => Promise<void>;
 }) {
+  const justRecovered = useJustRecovered(health);
+
   if (health?.state === 'retrying') {
     return <RetryingBanner health={health} onRetryNow={onRetryNow} />;
   }
@@ -53,6 +65,15 @@ export function ConnectionHealthBanner({
   }
   if (health?.state === 'credential_rejected') {
     return <CredentialRejectedBanner onReauthenticate={onReauthenticate} />;
+  }
+  if (health?.state === 'healthy' && justRecovered.shown) {
+    return (
+      <RecoveryBanner
+        loginName={loginName}
+        connectedRepoCount={connectedRepoCount}
+        onDismiss={justRecovered.dismiss}
+      />
+    );
   }
   return null;
 }
@@ -256,6 +277,86 @@ function CredentialRejectedBanner({
       </Dialog>
     </>
   );
+}
+
+/**
+ * #73's recovery banner: the same slot reporting that the connection came back. Warn-toned, not
+ * danger — this is good news, not a status — and dismissible, unlike every other banner in this
+ * cluster: those report a live system state with no "acknowledge" gesture that would make sense,
+ * where this one reports a single past event and Foundations.dc.html's own note says a blocking
+ * state that vanishes silently is its own bug report, so the recovery gets an explicit banner a
+ * human clears rather than one that fades on its own.
+ *
+ * A stated simplification: the design canvas's own example also names how many tickets "parked
+ * while the token was gone" came back to Queued. Nothing in this codebase tracks which tickets
+ * were affected during an outage window today -- `PipenzoReconciler` does not label or move a
+ * ticket while unreachable, only stops reconciling it, so there is no real per-ticket signal here
+ * to report without inventing one. `loginName` and `connectedRepoCount` are both real, already-
+ * available data (`useGitHubConnection`/`useConnectedRepos`); the ticket clause is left out
+ * rather than filled with an invented or approximate number.
+ */
+function RecoveryBanner({
+  loginName,
+  connectedRepoCount,
+  onDismiss,
+}: {
+  loginName?: string;
+  connectedRepoCount?: number;
+  onDismiss: () => void;
+}) {
+  return (
+    <Banner icon="info" tone="warn" onDismiss={onDismiss}>
+      {loginName !== undefined ? (
+        <>
+          Signed in again as <b>{loginName}</b>
+        </>
+      ) : (
+        'Signed in again'
+      )}
+      {connectedRepoCount !== undefined && (
+        <>
+          {' '}
+          · {connectedRepoCount} {connectedRepoCount === 1 ? 'repo' : 'repos'} reconnected
+        </>
+      )}
+      .
+    </Banner>
+  );
+}
+
+/**
+ * Tracks the one transition #73 cares about: a failing state (`retrying`, `unreachable`,
+ * `credential_rejected`) followed by `healthy`. `shown` stays true across re-renders once that
+ * transition is observed -- surviving the health stream's own later `healthy` republishes, which
+ * happen on every clean poll -- until either `dismiss()` is called or a *new* failure interrupts
+ * it, which cancels the stale recovery notice rather than leaving it to read as current.
+ *
+ * Deliberately not derived from `health` alone: "just recovered" is a fact about a transition,
+ * which no single snapshot can carry, so this is the one piece of state in the whole cluster that
+ * has to live in a ref/state pair rather than be computed straight from the latest `health` value.
+ */
+function useJustRecovered(health: PipenzoGitHubHealthV1 | undefined): {
+  shown: boolean;
+  dismiss: () => void;
+} {
+  const previousState = useRef<PipenzoGitHubHealthV1['state'] | undefined>(undefined);
+  const [shown, setShown] = useState(false);
+
+  useEffect(() => {
+    const previous = previousState.current;
+    const wasFailing =
+      previous === 'retrying' || previous === 'unreachable' || previous === 'credential_rejected';
+    if (health?.state === 'healthy' && wasFailing) {
+      setShown(true);
+    } else if (health !== undefined && health.state !== 'healthy') {
+      // A fresh failure means the earlier recovery is no longer today's news.
+      setShown(false);
+    }
+    previousState.current = health?.state;
+  }, [health]);
+
+  const dismiss = useCallback(() => setShown(false), []);
+  return { shown, dismiss };
 }
 
 /**

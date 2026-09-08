@@ -368,4 +368,33 @@ describe('AppRoot connection-health banner (issue #257 -> #70)', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Re-authenticate' }));
     await waitFor(() => expect(bridge.disconnectGitHub).toHaveBeenCalledTimes(1));
   });
+
+  it('renders the recovery banner (#73) with the real login and repo count once healthy follows a real failure', async () => {
+    let deliverHealth: ((health: import('@agent-dock/shared').PipenzoGitHubHealthV1) => void) | undefined;
+    const bridge = realBridge(CONNECTED, ['octocat/hello-world', 'octocat/other']);
+    bridge.onPipenzoGitHubHealth = vi.fn((callback) => {
+      deliverHealth = callback;
+      return () => {};
+    });
+    (window as unknown as { agentDock: AgentDockBridge }).agentDock = bridge;
+    render(<AppRoot />);
+    await screen.findByRole('button', { name: 'Try a demo' });
+
+    deliverHealth?.({
+      state: 'unreachable',
+      consecutiveFailures: 5,
+      firstFailureAt: Date.now() - 60_000,
+      maxAttempts: 5,
+    });
+    await screen.findByText('GitHub is unreachable.');
+
+    deliverHealth?.({ state: 'healthy', lastCleanPollAt: Date.now() });
+
+    expect(await screen.findByText(/Signed in again/)).toBeInTheDocument();
+    expect(screen.getByText('octocat')).toBeInTheDocument();
+    expect(screen.getByText(/2 repos reconnected/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    expect(screen.queryByText(/Signed in again/)).not.toBeInTheDocument();
+  });
 });
