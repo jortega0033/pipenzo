@@ -168,6 +168,7 @@ function installBridge(overrides: Partial<AgentDockBridge> = {}): {
     draftPipenzoIssue: vi.fn(),
     pipenzoTicketRead: vi.fn(),
     pipenzoTicketTransition: vi.fn(),
+    pipenzoListTickets: vi.fn().mockResolvedValue({ tickets: [] }),
     onPipenzoPhaseEvent: vi.fn(() => () => {}),
     onPipenzoGitHubHealth: vi.fn(() => () => {}),
     pollGitHubHealthNow: vi.fn(async () => {}),

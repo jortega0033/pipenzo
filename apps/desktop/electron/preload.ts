@@ -69,6 +69,7 @@ import {
   pipenzoTicketReadRequestV1Schema,
   pipenzoTicketTransitionRequestV1Schema,
   pipenzoTicketReconciliationV1Schema,
+  pipenzoTicketListV1Schema,
   pipenzoPhaseEventV1Schema,
   pipenzoGitHubHealthV1Schema,
   pipenzoConnectReposRequestV1Schema,
@@ -142,6 +143,7 @@ import {
   type PipenzoTicketReadRequestV1,
   type PipenzoTicketTransitionRequestV1,
   type PipenzoTicketReconciliationV1,
+  type PipenzoTicketListV1,
   type PipenzoPhaseEventV1,
   type PipenzoGitHubHealthV1,
   type PipenzoConnectReposRequestV1,
@@ -239,6 +241,8 @@ export interface AgentDockBridge {
   /** The phase machine's ticket surface (issue #188): the label is authoritative for the lane. */
   pipenzoTicketRead(input: PipenzoTicketReadRequestV1): Promise<PipenzoTicketReconciliationV1>;
   pipenzoTicketTransition(input: PipenzoTicketTransitionRequestV1): Promise<PipenzoTicketReconciliationV1>;
+  /** The board's list route (issue #255). Mirrors `window.d.ts`'s declaration of the same method. */
+  pipenzoListTickets(): Promise<PipenzoTicketListV1>;
   /**
    * Live phase changes for every ticket (issue #189). One subscription serves the whole board;
    * filter on `ticketId` for a single card. Returns its own unsubscribe.
@@ -895,6 +899,9 @@ const api: AgentDockBridge = {
   async pipenzoTicketTransition(input) {
     const parsed = pipenzoTicketTransitionRequestV1Schema.parse(input);
     return pipenzoTicketReconciliationV1Schema.parse(await ipcRenderer.invoke('daemon:pipenzo-ticket-transition', parsed));
+  },
+  async pipenzoListTickets() {
+    return pipenzoTicketListV1Schema.parse(await ipcRenderer.invoke('daemon:pipenzo-list-tickets'));
   },
   async pipenzoGitHubConnection() {
     return pipenzoGitHubConnectionV1Schema.parse(

@@ -102,6 +102,9 @@ describe('electron/preload.ts — real bridge (AD-07)', () => {
         'draftPipenzoIssue',
         'pipenzoTicketRead',
         'pipenzoTicketTransition',
+        // The board's list route (issue #255): a local read of the reconciler's already-reconciled
+        // state, no per-ticket GitHub call.
+        'pipenzoListTickets',
         'onPipenzoPhaseEvent',
         // The GitHub connection-health stream (issue #257), plus its manual poll trigger (#70/#71/#75).
         'onPipenzoGitHubHealth',

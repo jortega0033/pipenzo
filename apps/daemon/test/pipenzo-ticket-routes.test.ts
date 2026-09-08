@@ -104,9 +104,72 @@ function buildApp(options: {
   };
 }
 
+describe('GET /v2/pipenzo/tickets', () => {
+  it('lists the local store state, with no GitHub call at all', async () => {
+    const { app, github } = buildApp({ ticket: { title: 'Fix the board list route' } });
+
+    const response = await app.inject({ method: 'GET', url: '/v2/pipenzo/tickets', headers: auth });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      tickets: [{ ticketId: TICKET_ID, lane: 'queued', title: 'Fix the board list route' }],
+    });
+    expect(github.calls).toHaveLength(0);
+  });
+
+  it('omits the title field entirely when the record has never cached one', async () => {
+    const { app } = buildApp();
+
+    const response = await app.inject({ method: 'GET', url: '/v2/pipenzo/tickets', headers: auth });
+
+    const body = response.json() as { tickets: Array<Record<string, unknown>> };
+    expect(body.tickets[0]).not.toHaveProperty('title');
+  });
+
+  it('lists every ticket the store holds, not just one', async () => {
+    const { app, tickets } = buildApp();
+    tickets.create(
+      makeTicket({
+        ticketId: '00000000-0000-4000-8000-000000000002',
+        issueNumber: 79,
+        title: 'A second ticket',
+      }),
+    );
+
+    const response = await app.inject({ method: 'GET', url: '/v2/pipenzo/tickets', headers: auth });
+
+    const body = response.json() as { tickets: Array<{ ticketId: string }> };
+    expect(body.tickets.map((ticket) => ticket.ticketId).sort()).toEqual(
+      ['00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002'].sort(),
+    );
+  });
+
+  it('never puts a worktree filesystem path on the wire', async () => {
+    const { app } = buildApp({
+      ticket: { worktree: { id: WORKTREE_ID, path: WORKTREE_PATH, branch: 'issue-78' } },
+    });
+
+    const response = await app.inject({ method: 'GET', url: '/v2/pipenzo/tickets', headers: auth });
+
+    expect(response.body).not.toContain('issue-78\\');
+    expect(response.body).not.toContain('/owned/');
+    expect(response.body).not.toContain('owned');
+  });
+
+  it('rejects an unauthenticated request', async () => {
+    const { app } = buildApp();
+
+    const response = await app.inject({ method: 'GET', url: '/v2/pipenzo/tickets' });
+
+    expect(response.statusCode).toBe(401);
+  });
+});
+
 describe('POST /v2/pipenzo/tickets/read', () => {
   it('reconciles against the issue labels and reports agreement', async () => {
-    const { app } = buildApp();
+    // Title held equal to the fake issue's default (see makeIssue) so this test isolates label
+    // agreement from the title-caching path a first read also exercises (issue #255).
+    const { app } = buildApp({ ticket: { title: 'First-run empty' } });
 
     const response = await app.inject({
       method: 'POST',

@@ -338,6 +338,19 @@ export const pipenzoTicketRecordV1Schema = z
     ticketId: pipenzoTicketIdV1Schema,
     repo: pipenzoRepoRefV1Schema,
     issueNumber: pipenzoIssueNumberV1Schema,
+    /**
+     * The issue title, cached alongside the phase-machine state this record otherwise holds (issue
+     * #255). Not in build step 3's original field list — this store was built to track lane/phase
+     * state, not issue content — and it stays *optional* rather than required for exactly that
+     * reason: a record persisted before this field existed has no value to backfill it with, and
+     * there is no rename-on-bump migration path for `schemaVersion: 1` (#162 is where that would
+     * live). `undefined` means "not cached yet", not "the issue has no title" — a caller rendering a
+     * card falls back to `#<issueNumber>` for that case, same as `pipenzo-phase-machine.ts`'s
+     * `read()`, which is the one place that ever writes this: every reconciling read already fetches
+     * the full issue for its labels, so caching the title costs nothing beyond what the label read
+     * already pays for, and keeps it fresh on the same cadence the reconciler (#231) polls at.
+     */
+    title: z.string().min(1).max(512).optional(),
     lane: pipenzoLaneV1Schema,
     phase: pipenzoPhaseV1Schema,
     labels: z
