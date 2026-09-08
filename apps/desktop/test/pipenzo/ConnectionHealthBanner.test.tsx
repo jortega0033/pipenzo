@@ -99,4 +99,46 @@ describe('ConnectionHealthBanner', () => {
       expect(onRetryNow).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe('unreachable (#71)', () => {
+    const health: PipenzoGitHubHealthV1 = {
+      state: 'unreachable',
+      consecutiveFailures: 5,
+      firstFailureAt: NOW - 60_000,
+      nextAttemptAt: NOW + 8 * 60_000,
+      maxAttempts: 5,
+      lastCleanPollAt: NOW - 120_000,
+    };
+
+    it('renders the blocking, tinted banner with the failure count and backoff readout', () => {
+      const { container } = render(<ConnectionHealthBanner health={health} />);
+      const banner = container.querySelector('.banner')!;
+      expect(banner.className).toBe('banner danger blocking');
+      expect(screen.getByText('GitHub is unreachable.')).toBeInTheDocument();
+      expect(screen.getByText(/5 polls failed since/)).toBeInTheDocument();
+      expect(screen.getByText(/14:01/)).toBeInTheDocument();
+      expect(screen.getByText('backoff 8m')).toBeInTheDocument();
+    });
+
+    it('says running agents keep working in their own worktrees', () => {
+      render(<ConnectionHealthBanner health={health} />);
+      expect(screen.getByText(/running agents keep working in their/)).toBeInTheDocument();
+    });
+
+    it('omits the backoff count when nothing is scheduled (the ladder stopped, only a human moves this)', () => {
+      const { container } = render(
+        <ConnectionHealthBanner health={{ ...health, nextAttemptAt: undefined }} />,
+      );
+      expect(container.querySelector('.b-count')).not.toBeInTheDocument();
+    });
+
+    it('renders "Retry now" as the default (non-ghost) button and calls onRetryNow on click', () => {
+      const onRetryNow = vi.fn();
+      render(<ConnectionHealthBanner health={health} onRetryNow={onRetryNow} />);
+      const button = screen.getByRole('button', { name: 'Retry now' });
+      expect(button.className).toBe('btn sm');
+      button.click();
+      expect(onRetryNow).toHaveBeenCalledTimes(1);
+    });
+  });
 });
