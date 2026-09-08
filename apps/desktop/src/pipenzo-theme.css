@@ -1986,6 +1986,75 @@
     flex-shrink: 0;
   }
 
+  /* Kanban board shell — ported verbatim from Main.dc.html's Board screen (issue #81). `.board` is
+     the four-column grid `AppShell`'s `.main` renders below its `MainHead`; each `.lane` scrolls
+     its own `.lane-cards` well independently of the other three, so a long Working lane never
+     pushes a short Queued lane's head out of view. See Lane.tsx. */
+  .board {
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+    overflow: hidden;
+    background: var(--color-bg);
+    padding: 8px 16px 16px;
+  }
+
+  .lane {
+    display: flex;
+    flex-direction: column;
+    background: var(--color-bg);
+    min-width: 0;
+  }
+
+  .lane-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 40px;
+    padding: 0 12px;
+    flex-shrink: 0;
+  }
+
+  .lane-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-text);
+    line-height: 1;
+  }
+
+  .lane-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+  }
+
+  .lane-count {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--color-text-faint);
+    line-height: 1;
+  }
+
+  .lane-r {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .lane-cards {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
   /* Ticket card — ported verbatim from Foundations.dc.html's "Cards" section (mirrors
      Main.dc.html's kanban board). A plain surface, no border anywhere in this system, that steps
      up one surface on hover; `.held` (bounded-concurrency, a card waiting on a file-overlap slot)
