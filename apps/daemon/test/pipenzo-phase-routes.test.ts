@@ -12,7 +12,11 @@ import { GitHubClientError, type GitHubIssue } from '../src/github-client.js';
 import type { CommandResult, GateCommandRunner } from '../src/review-gates.js';
 import type { GitCommandResult, PipenzoGitRunner } from '../src/pipenzo-git.js';
 import type { ImplementWorktreeManager } from '../src/implement-orchestrator.js';
-import type { PipenzoPhaseMachine, PipenzoTicketReconciliation } from '../src/pipenzo-phase-machine.js';
+import type {
+  PipenzoLaneBearingLabelV1,
+  PipenzoPhaseMachine,
+  PipenzoTicketReconciliation,
+} from '../src/pipenzo-phase-machine.js';
 import type { PipenzoTicketRecordV1 } from '@agent-dock/shared';
 
 const TOKEN = 'test-token-pipenzo-phases';
@@ -166,12 +170,16 @@ class FakeMachine implements Pick<PipenzoPhaseMachine, 'transition'> {
       this.#fail = undefined;
       throw error;
     }
-    const ticket = ticketRecord({ ticketId, labels: [toLabel as PipenzoTicketRecordV1['labels'][number]] });
+    const label = toLabel as PipenzoLaneBearingLabelV1;
+    const ticket = ticketRecord({ ticketId, labels: [label] });
     return {
       ticket,
       divergence: 'none',
       previousLane: 'working',
-      observedLabels: ticket.labels,
+      // Narrower than `ticket.labels` on purpose, matching the real machine's `read()`/
+      // `transition()`: `observedLabels` is only ever the lane-bearing subset, and every label
+      // this fake ever hands out is a lane-bearing transition target.
+      observedLabels: [label],
       changed: true,
     };
   }
