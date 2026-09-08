@@ -86,8 +86,8 @@ import { join } from 'node:path';
  * there and every GitHub call fails `token_missing`. That is the intended end state of #165 rather
  * than a regression — a packaged build silently inheriting the launching shell's PAT is exactly
  * what it set out to stop — but it does mean **#220 has to land before a packaged build is
- * useful**, and packaging is its own epic (#8). Development builds are unaffected: they still read
- * `PIPENZO_GITHUB_TOKEN`.
+ * useful**, and packaging is its own epic (#8). Development builds are unaffected: they still have
+ * a fallback, read from a file rather than a shell variable since issue #212 (`dev-token-file.ts`).
  */
 
 /** The file name under the vault directory. Versioned so a future format change is a new name. */

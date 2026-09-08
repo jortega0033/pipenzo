@@ -32,11 +32,11 @@ describe('routePipenzoStartup', () => {
 
   /**
    * The whole reason this decision reads `source` rather than `state`. A development build with an
-   * empty vault and a `PIPENZO_GITHUB_TOKEN` in its environment has a daemon that can reach GitHub
-   * *this run*; sending it to "Connect GitHub" would be false, and connecting from there would
-   * write to a vault the running daemon is not reading.
+   * empty vault and a development-fallback token in place (issue #212) has a daemon that can reach
+   * GitHub *this run*; sending it to "Connect GitHub" would be false, and connecting from there
+   * would write to a vault the running daemon is not reading.
    */
-  it('treats an inherited environment token as a real credential, and flags it', () => {
+  it('treats a development-fallback token as a real credential, and flags it', () => {
     expect(
       routePipenzoStartup({
         connection: connection({ state: 'disconnected', source: 'environment' }),

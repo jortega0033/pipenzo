@@ -45,7 +45,7 @@ import { useGitHubConnection } from './use-github-connection.js';
  * `PipenzoGitHubConnectionV1` carries `state` (what the vault holds) and `source` (which credential
  * the *running daemon* was handed), and the two can disagree. `daemon-environment.ts` is explicit
  * that the ambiguity worth preventing is *silent* precedence, and equally explicit that until
- * something renders this field, "you are running on a shell variable, not the account you
+ * something renders this field, "you are running on the development fallback, not the account you
  * connected" reaches a console warning and nothing a user sees — "the field is the mechanism; the
  * surface is still owed". This panel is that surface, so the environment case is raised rather than
  * printed in a row where it would read as trivia.
@@ -141,13 +141,14 @@ export function AccountPanel() {
   const rows = providers === undefined ? undefined : providerRows(providers);
   const chip = connection === undefined ? undefined : connectionChip(connection.state);
   /**
-   * The daemon is running on an inherited variable, which changes what a disconnect *does* and not
-   * just what it says. Before issue #210, clearing the vault restarted the daemon straight back
-   * onto the same `PIPENZO_GITHUB_TOKEN` -- main now also suppresses that fallback (for the rest
-   * of this run) as part of the same click, so "this stops" is the honest sentence, not "this
-   * comes back". It still never revokes the token on GitHub itself. Reachable with `state:
-   * 'connected'` too: a daemon spawned before the vault was written is on the environment while
-   * the vault holds a record.
+   * The daemon is running on the development fallback (a file under Electron's own data
+   * directory, `dev-token-file.ts` -- an inherited shell variable before issue #212), which changes
+   * what a disconnect *does* and not just what it says. Before issue #210, clearing the vault
+   * restarted the daemon straight back onto that same fallback token -- main now also suppresses
+   * it (for the rest of this run) as part of the same click, so "this stops" is the honest
+   * sentence, not "this comes back". It still never revokes the token on GitHub itself. Reachable
+   * with `state: 'connected'` too: a daemon spawned before the vault was written is on the
+   * development fallback while the vault holds a record.
    */
   const inheritedToken = connection !== undefined && isRunningOnInheritedToken(connection);
 
@@ -185,13 +186,12 @@ export function AccountPanel() {
               <Notice
                 tone="warn"
                 icon="warning"
-                title="This daemon is running on an inherited token"
+                title="This daemon is running on the development fallback"
               >
-                Pipenzo is acting with <span className="mono">PIPENZO_GITHUB_TOKEN</span> from the
-                environment, not with the account shown above. That fallback exists only in a
-                development build whose vault is empty. Disconnecting now stops it too, for the
-                rest of this run — it comes back only if you restart Pipenzo with the variable
-                still exported.
+                Pipenzo is acting with a token read from a local file, not with the account shown
+                above. That fallback exists only in a development build whose vault is empty.
+                Disconnecting now stops it too, for the rest of this run — it comes back only if
+                you restart Pipenzo with the file still in place.
               </Notice>
             )}
 
@@ -287,7 +287,7 @@ export function AccountPanel() {
         <div className="danger-row">
           <span className="set-sub">
             {inheritedToken
-              ? 'Clears the token from the vault and stops the daemon from re-arming onto PIPENZO_GITHUB_TOKEN for the rest of this run. Worktrees, branches and the ticket store stay on disk.'
+              ? 'Clears the token from the vault and stops the daemon from re-arming onto the development fallback for the rest of this run. Worktrees, branches and the ticket store stay on disk.'
               : connection.state === 'unavailable'
                 ? 'Removes the stored record this machine cannot read, so you can sign in again from scratch. Worktrees, branches and the ticket store stay on disk.'
                 : 'Clears the token from the vault, and the daemon restarts without one. Worktrees, branches and the ticket store stay on disk.'}
@@ -343,11 +343,10 @@ export function AccountPanel() {
           </p>
           {inheritedToken && (
             <Notice tone="warn" icon="warning" title="Stops the daemon, not the token">
-              This daemon is running on <span className="mono">PIPENZO_GITHUB_TOKEN</span> from the
-              environment. Disconnecting stops it from using that variable for the rest of this
-              run — it comes back only if you restart Pipenzo with the variable still exported.
-              Either way, the token itself stays valid on GitHub until you revoke it there
-              yourself.
+              This daemon is running on the development-fallback token, read from a local file.
+              Disconnecting stops it from using that file for the rest of this run — it comes back
+              only if you restart Pipenzo with the file still in place. Either way, the token
+              itself stays valid on GitHub until you revoke it there yourself.
             </Notice>
           )}
           <p className="set-sub">

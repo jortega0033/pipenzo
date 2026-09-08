@@ -107,16 +107,17 @@ describe('AccountPanel', () => {
 
   /**
    * The surface `daemon-environment.ts` says is owed: a vault that reports `disconnected` while the
-   * daemon runs on an inherited `PIPENZO_GITHUB_TOKEN`. The rule against credential fallbacks is a
-   * rule against *silent* precedence, so this combination has to be visible rather than inferable.
+   * daemon runs on the development fallback (a file, issue #212 -- an inherited shell variable
+   * before that). The rule against credential fallbacks is a rule against *silent* precedence, so
+   * this combination has to be visible rather than inferable.
    */
-  it('says so when the daemon is running on an inherited token', async () => {
+  it('says so when the daemon is running on the development fallback', async () => {
     installBridge({ connection: { state: 'disconnected', source: 'environment' } });
     render(<AccountPanel />);
 
-    expect(await screen.findByText(/running on an inherited token/i)).toBeVisible();
+    expect(await screen.findByText(/running on the development fallback/i)).toBeVisible();
     // And it says accurately what disconnecting now does (issue #210): stops the daemon from
-    // re-arming onto the variable this run, though it comes back on the next restart.
+    // re-arming onto the fallback this run, though it comes back on the next restart.
     expect(screen.getByText(/disconnecting now stops it too/i)).toBeInTheDocument();
   });
 
@@ -232,13 +233,13 @@ describe('AccountPanel', () => {
   });
 
   /**
-   * The vault can hold a record while the daemon is running on an inherited variable -- a daemon
-   * spawned before the vault was written. Disconnecting now stops that fallback too (issue #210),
-   * so the dialog must say so accurately, while still not promising a GitHub-side revocation it
-   * cannot perform -- device flow is a public client with no client secret to authenticate that
-   * API call with.
+   * The vault can hold a record while the daemon is running on the development fallback -- a
+   * daemon spawned before the vault was written. Disconnecting now stops that fallback too (issue
+   * #210), so the dialog must say so accurately, while still not promising a GitHub-side
+   * revocation it cannot perform -- device flow is a public client with no client secret to
+   * authenticate that API call with.
    */
-  it('says a disconnect stops an inherited token from re-arming, but still cannot revoke it', async () => {
+  it('says a disconnect stops the development fallback from re-arming, but still cannot revoke it', async () => {
     installBridge({
       connection: { state: 'connected', login: 'octocat', source: 'environment' },
     });
@@ -248,7 +249,7 @@ describe('AccountPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: /disconnect github/i }));
     const dialog = await screen.findByRole('dialog');
 
-    expect(within(dialog).getByText(/stops it from using that variable/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/stops it from using that file/i)).toBeInTheDocument();
     expect(within(dialog).getByText(/stays valid on GitHub until you revoke it/i)).toBeInTheDocument();
   });
 

@@ -69,6 +69,7 @@ import {
   resolveDaemonGitHubToken,
   type DaemonGitHubTokenSource,
 } from './daemon-environment.js';
+import { devTokenFilePath, readDevTokenFile } from './dev-token-file.js';
 import { resolveWindowIcon } from './resolve-window-icon.js';
 import { sendToRenderer } from './send-to-renderer.js';
 import {
@@ -214,11 +215,18 @@ function spawnDaemon(): void {
 
   // The one place in this app that turns a stored credential back into plaintext, and the one
   // place that decides which credential the daemon gets. See `daemon-environment.ts` for why the
-  // inherited environment is stripped rather than merged, and why the development fallback is
-  // narrow and named rather than silent.
+  // daemon's own inherited environment is stripped rather than merged, and why the development
+  // fallback is narrow and named rather than silent.
+  //
+  // `IS_DEVELOPMENT_BUILD ? readDevTokenFile(...) : undefined`, not a bare call, so a packaged
+  // build's bundle contains no reachable call to `readDevTokenFile` at all once Rollup folds the
+  // condition to the literal `false` (issue #212; verified against the built output the same way
+  // `vite.config.ts`'s own comment on this constant documents for `resolveDaemonGitHubToken`'s
+  // internal gate) -- not just "the result is unused", but "the file is never even opened" in a
+  // shipped Pipenzo.
   const credential = resolveDaemonGitHubToken({
     vaultToken: tokenVault.readToken(),
-    environmentToken: process.env.PIPENZO_GITHUB_TOKEN,
+    developmentToken: IS_DEVELOPMENT_BUILD ? readDevTokenFile(app.getPath('userData')) : undefined,
     isPackaged: app.isPackaged,
     isDevelopmentBuild: IS_DEVELOPMENT_BUILD,
     developmentFallbackSuppressed,
@@ -233,7 +241,7 @@ function spawnDaemon(): void {
   daemonTokenSource = 'none';
   if (credential.source === 'environment') {
     console.warn(
-      '[pipenzo] no GitHub token in the vault; this development build is using the inherited PIPENZO_GITHUB_TOKEN. A packaged build would refuse.',
+      `[pipenzo] no GitHub token in the vault; this development build is using the token at ${devTokenFilePath(app.getPath('userData'))}. A packaged build would refuse.`,
     );
   }
 
