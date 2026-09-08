@@ -48,7 +48,7 @@ const noControlCharacters = (value: string): boolean =>
  * The other public-markdown payload on this surface, `pipenzoIssueCreateRequestV1Schema.body`,
  * carries no control-character rule at all and bounds its length in UTF-16 units rather than code
  * points. That is a real divergence and not a shared rule this one is being kept in step with;
- * bringing it into line is a change to a shipped route (#84) and is filed separately.
+ * bringing it into line changes a shipped route (#84) and is filed as issue #232.
  */
 const noProseControlCharacters = (value: string): boolean =>
   [...value].every((character) => {
