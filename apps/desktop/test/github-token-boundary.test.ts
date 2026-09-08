@@ -411,7 +411,7 @@ describe('nothing on the renderer bridge can obtain the token', () => {
       /github|credential/i.test(channel ?? ''),
     );
     // An exact list, so a new credential-adjacent channel cannot appear without someone editing
-    // this line and saying why. The four that exist, and what each is allowed to carry:
+    // this line and saying why. The five that exist, and what each is allowed to carry:
     //
     // - `github-connection`  — the vault's *state*. No token field exists in its schema at any
     //   depth, which the contract test below enforces separately.
@@ -419,7 +419,12 @@ describe('nothing on the renderer bridge can obtain the token', () => {
     // - `github-device-start` — a `user_code`, which is the pairing string a human is meant to read
     //   out. Never the `device_code`, which for the length of the flow is as good as the token.
     // - `github-device-cancel` / `-open-verification` — no payload in either direction.
+    // - `daemon:pipenzo-github-health-poll` (issue #257) — no payload in either direction either:
+    //   it forces the reconciler's next poll, and answers once the daemon has accepted the request,
+    //   never with anything the reconciler read from GitHub (that travels over
+    //   `daemon:pipenzo-github-health`, a push channel this regex does not match).
     expect(credentialChannels.sort()).toEqual([
+      'daemon:pipenzo-github-health-poll',
       'pipenzo:disconnect-github',
       'pipenzo:github-connection',
       'pipenzo:github-device-cancel',

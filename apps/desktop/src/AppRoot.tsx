@@ -1,12 +1,14 @@
 import { useCallback, useState } from 'react';
 import { App } from './App.js';
 import { createDemoBridge } from './demo-bridge.js';
-import { clearBridgeOverride, setBridgeOverride } from './bridge.js';
+import { clearBridgeOverride, getBridge, setBridgeOverride } from './bridge.js';
+import { ConnectionHealthBanner } from './pipenzo/ConnectionHealthBanner.js';
 import { ConnectScreen } from './pipenzo/ConnectScreen.js';
 import { EnvironmentCredentialBanner } from './pipenzo/EnvironmentCredentialBanner.js';
 import { routePipenzoStartup } from './pipenzo/startup-route.js';
 import { useConnectedRepos } from './pipenzo/use-connected-repos.js';
 import { useGitHubConnection } from './pipenzo/use-github-connection.js';
+import { usePipenzoGitHubHealth } from './pipenzo/use-pipenzo-github-health.js';
 
 /** Owns the demo-mode lifecycle so it stays isolated from `App`'s own logic: swaps the active
  * bridge (via bridge.ts's override -- `window.agentDock` itself is frozen by Electron's
@@ -53,6 +55,9 @@ function PipenzoStartup({
 }) {
   const connection = useGitHubConnection();
   const { connectedRepos, refresh: refreshConnectedRepos } = useConnectedRepos();
+  // Subscribed unconditionally (rules of hooks), rendered only past the pre-app gate below: there
+  // is nothing connected to poll, and so nothing this could report differently, before that point.
+  const health = usePipenzoGitHubHealth();
   // #113 shipped this router with `connectedRepos` defaulting to `'not-tracked'`, because nothing
   // recorded a list. #115 is what makes it real -- and the hook keeps answering `'not-tracked'`
   // whenever the count is genuinely unknown, so a daemon that has not finished starting never gets
@@ -86,6 +91,10 @@ function PipenzoStartup({
   return (
     <>
       {route.environmentCredential && <EnvironmentCredentialBanner />}
+      <ConnectionHealthBanner
+        health={health}
+        onRetryNow={() => void getBridge().pollGitHubHealthNow().catch(() => {})}
+      />
       <App demoMode={demoMode} onEnterDemo={enterDemoMode} onExitDemo={exitDemoMode} />
     </>
   );

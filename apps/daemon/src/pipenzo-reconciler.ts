@@ -188,6 +188,24 @@ export class PipenzoReconciler {
   }
 
   /**
+   * Forces the next tick to run now instead of waiting out the current interval or backoff delay
+   * — #70/#71/#75's manual "Retry now"/"Poll now" action.
+   *
+   * Cancels whatever is currently scheduled and reschedules for immediately, the same way `start()`
+   * does for the first tick. A no-op while stopped (nothing to reschedule) and a no-op while a tick
+   * is already in flight: that tick's own completion schedules the next one already, and clearing
+   * `#timer` here would only ever find `undefined` in that case since a running tick holds no timer.
+   */
+  pollNow(): void {
+    if (!this.#running || this.#ticking) return;
+    if (this.#timer !== undefined) {
+      this.#scheduler.clear(this.#timer);
+      this.#timer = undefined;
+    }
+    this.#scheduleIn(0);
+  }
+
+  /**
    * Stops the loop and waits for any tick already in flight.
    *
    * Idempotent, and awaiting the in-flight tick matters: a `setTimeout` nobody clears keeps a Node

@@ -78,6 +78,7 @@ export function installAssetCaptureBridge(): void {
     // because a component that subscribes on mount should still render.
     onPipenzoPhaseEvent: () => () => {},
     onPipenzoGitHubHealth: () => () => {},
+    pollGitHubHealthNow: async () => {},
     // Answers `connected` so the pre-app gate (issue #113) does not route every capture to the
     // Connect screen. Deterministic values, like everything else in this fixture -- a `storedAt` of
     // `new Date()` would make every screenshot differ from the last one by a timestamp.

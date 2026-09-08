@@ -103,8 +103,9 @@ describe('electron/preload.ts — real bridge (AD-07)', () => {
         'pipenzoTicketRead',
         'pipenzoTicketTransition',
         'onPipenzoPhaseEvent',
-        // The GitHub connection-health stream (issue #257).
+        // The GitHub connection-health stream (issue #257), plus its manual poll trigger (#70/#71/#75).
         'onPipenzoGitHubHealth',
+        'pollGitHubHealthNow',
         // The GitHub credential's state and a disconnect (issue #165), plus the device-code
         // sign-in (issue #114). Six members, and not one of them stores or returns a credential:
         // the state channels carry a schema with no token field at any depth, `start` answers with
