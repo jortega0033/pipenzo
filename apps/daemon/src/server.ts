@@ -28,6 +28,9 @@ import { registerPipenzoTicketRoutes } from './routes/pipenzo-tickets.js';
 import type { PipenzoPhaseEventBus } from './pipenzo-phase-events.js';
 import type { PipenzoCrashRecovery } from './pipenzo-crash-recovery.js';
 import { registerPipenzoRecoveryRoutes } from './routes/pipenzo-recovery.js';
+import { registerPipenzoRepoRoutes } from './routes/pipenzo-repos.js';
+import type { ConnectedReposStore } from './connected-repos-store.js';
+import type { GitHubClient } from './github-client.js';
 
 export interface BuildServerOptions {
   registry: ProviderRegistry;
@@ -65,6 +68,13 @@ export interface BuildServerOptions {
    * empty report a caller cannot distinguish from "nothing was interrupted".
    */
   crashRecovery?: PipenzoCrashRecovery;
+  /**
+   * The repo picker's two surfaces (issue #115). Both are needed together: the store answers what
+   * was chosen, and the client answers what there was to choose from. A daemon assembled without a
+   * GitHub credential leaves both out, and the routes simply do not exist.
+   */
+  connectedRepos?: ConnectedReposStore;
+  pipenzoGitHubClient?: () => GitHubClient;
 }
 
 /**
@@ -147,6 +157,8 @@ export function buildServer(opts: BuildServerOptions): FastifyInstance {
     if (opts.phaseMachine)
       registerPipenzoTicketRoutes(app, opts.phaseMachine, opts.phaseEvents);
     if (opts.crashRecovery) registerPipenzoRecoveryRoutes(app, opts.crashRecovery);
+    if (opts.connectedRepos && opts.pipenzoGitHubClient)
+      registerPipenzoRepoRoutes(app, opts.connectedRepos, opts.pipenzoGitHubClient);
     if (opts.attachmentStore)
       registerV2MultimodalRoutes(app, opts.attachmentStore, opts.sessionManager);
   });

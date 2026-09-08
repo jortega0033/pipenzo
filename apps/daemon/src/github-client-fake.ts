@@ -7,6 +7,7 @@ import {
   type GitHubIssue,
   type GitHubIssueDraft,
   type GitHubLabel,
+  type GitHubRepository,
   type GitHubPullRequestDiff,
   type RepoRef,
 } from './github-client.js';
@@ -34,9 +35,26 @@ export class FakeGitHubClient implements GitHubClient {
   /** Where `createIssue` starts numbering. Seeded issues above it stay addressable. */
   #nextIssueNumber = 1_000;
   #viewerLogin = 'pipenzo-test-user';
+  /** What `listAccessibleRepositories` answers. Empty until a test seeds it. */
+  #repositories: readonly GitHubRepository[] = [];
+  #repositoriesTruncated = false;
 
   seedAuthenticatedLogin(login: string): this {
     this.#viewerLogin = login;
+    return this;
+  }
+
+  /**
+   * Seeds the repo picker's listing (issue #115).
+   *
+   * Takes already-normalized rows rather than GitHub's raw payload, because the normalization —
+   * including the `permissions.push` filter that decides which repositories are listed at all — is
+   * the real client's job and is tested against real payload shapes there. A fake that re-did it
+   * would be a second implementation of the rule, free to drift from the first.
+   */
+  seedRepositories(repositories: readonly GitHubRepository[], truncated = false): this {
+    this.#repositories = repositories;
+    this.#repositoriesTruncated = truncated;
     return this;
   }
 
@@ -185,6 +203,14 @@ export class FakeGitHubClient implements GitHubClient {
   }
 
   /** Whoever the fake token belongs to. Settable, so a test can drive both sides of a claim race. */
+  async listAccessibleRepositories(): Promise<{
+    readonly repositories: readonly GitHubRepository[];
+    readonly truncated: boolean;
+  }> {
+    this.#enter('listAccessibleRepositories', String(this.#repositories.length));
+    return { repositories: this.#repositories, truncated: this.#repositoriesTruncated };
+  }
+
   async getAuthenticatedLogin(): Promise<string> {
     this.#enter('getAuthenticatedLogin', this.#viewerLogin);
     return this.#viewerLogin;

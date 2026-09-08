@@ -12,10 +12,19 @@ const CONNECTED: PipenzoGitHubConnectionV1 = {
   source: 'vault',
 };
 
-function realBridge(connection: PipenzoGitHubConnectionV1 = CONNECTED): AgentDockBridge {
+function realBridge(
+  connection: PipenzoGitHubConnectionV1 = CONNECTED,
+  connectedRepos: readonly string[] = ['octocat/hello-world'],
+): AgentDockBridge {
   return {
     pipenzoGitHubConnection: vi.fn().mockResolvedValue(connection),
     disconnectGitHub: vi.fn().mockResolvedValue(connection),
+    pipenzoListRepos: vi.fn().mockResolvedValue({ repositories: [], truncated: false }),
+    // Non-empty by default: as of #115 a credentialed install with *no* repositories chosen is
+    // routed to the picker rather than the app, so "connected" alone no longer means "past the
+    // gate". The cases below that care about the difference set this explicitly.
+    pipenzoConnectedRepos: vi.fn().mockResolvedValue({ repositories: connectedRepos }),
+    pipenzoConnectRepos: vi.fn(),
     startGitHubDeviceFlow: vi.fn(),
     openGitHubDeviceVerification: vi.fn().mockResolvedValue(undefined),
     cancelGitHubDeviceFlow: vi.fn().mockResolvedValue(undefined),

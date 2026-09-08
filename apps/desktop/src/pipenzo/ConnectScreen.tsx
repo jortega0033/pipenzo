@@ -1,21 +1,22 @@
 import { useState } from 'react';
-import { Notice } from '../components/primitives/Notice.js';
 import { DeviceCodeStep } from './DeviceCodeStep.js';
+import { RepoPicker } from './RepoPicker.js';
 import { ConnectPane, PreAppShell } from './PreAppShell.js';
 import type { PipenzoStartupRoute, PreAppStep } from './startup-route.js';
 
 /**
  * The pre-app screen (issue #113): the shell, plus whichever of the two steps the route selected.
  *
- * Step 1 is real as of #114 — `DeviceCodeStep` owns its own pane, because everything in it (the
- * heading's promise about where the token goes, the scope disclosure, the actions) belongs to the
- * flow rather than to the frame. Step 2 is still #115's, and shows its real heading from the canvas
- * with a plain statement of what is not built yet: a plausible-looking stub of a repo picker would
- * be worse than an empty frame, since a fake list is indistinguishable from a broken one.
+ * Both steps are real now. `DeviceCodeStep` (#114) owns its own pane, because everything in it —
+ * the heading's promise about where the token goes, the scope disclosure, the actions — belongs to
+ * the flow rather than to the frame. Step 2 hosts `RepoPicker` (#115), which is a separate
+ * component rather than inline markup because Settings reuses it (#125): "Add a repo…" there is
+ * this same picker in a different frame.
  */
 export function ConnectScreen({
   route,
   onEnterDemo,
+  onReposConnected,
 }: {
   route: Extract<PipenzoStartupRoute, { screen: 'pre-app' }>;
   /**
@@ -25,6 +26,12 @@ export function ConnectScreen({
    * connecting, not a piece of the shell.
    */
   onEnterDemo?: () => void;
+  /**
+   * Called after the picker saves (issue #115). The gate re-reads the connected count itself, so
+   * this exists to make that re-read *immediate* rather than leaving the user on a screen they
+   * have finished with until something else happens to refresh it.
+   */
+  onReposConnected?: (repositories: readonly string[]) => void;
 }) {
   // The route decides which step is *shown by default* and which are reachable; this holds the
   // user's own navigation on top of that. It is not lifted into the router because it is genuinely
@@ -46,12 +53,15 @@ export function ConnectScreen({
       ) : (
         <ConnectPane
           title="Choose the repos Pipenzo manages"
-          subtitle="Pipenzo only ever looks at the repositories you pick here. Adding or removing one later is a Settings change, not a reconnect."
+          subtitle={
+            <>
+              Pipenzo authenticates as <i>you</i>, not as an installed GitHub App — so there is no
+              org-install step for an admin to grant, and it can reach exactly what your own account
+              already can. Org-level access control stays GitHub&apos;s own permission model.
+            </>
+          }
         >
-          <Notice icon="info" title="The repo picker is not built yet">
-            Choosing repositories is issue #115. Your GitHub connection is already stored, so
-            nothing here needs redoing once it lands.
-          </Notice>
+          <RepoPicker {...(onReposConnected ? { onConnected: onReposConnected } : {})} />
         </ConnectPane>
       )}
     </PreAppShell>

@@ -88,6 +88,24 @@ export function installAssetCaptureBridge(): void {
     disconnectGitHub: async () => { throw new Error('disconnecting GitHub is not available while capturing assets'); },
     // Asset capture reports a stored credential above, so the connect flow never renders. Refusing
     // rather than returning a plausible fixture keeps a device code out of any screenshot.
+    // One deterministic, obviously-fake repository. Not empty, because the pre-app gate (#115) would
+    // then route every capture into the repo picker; not a realistic name, because a screenshot of
+    // a repo list is a screenshot people will read as somebody's real account.
+    pipenzoListRepos: async () => ({
+      repositories: [
+        {
+          fullName: 'demo-user/demo-workspace',
+          archived: false,
+          defaultBranch: 'main',
+          language: 'TypeScript',
+          openIssues: 3,
+          pushedAt: '2025-01-01T00:00:00.000Z',
+        },
+      ],
+      truncated: false,
+    }),
+    pipenzoConnectedRepos: async () => ({ repositories: ['demo-user/demo-workspace'] }),
+    pipenzoConnectRepos: async () => { throw new Error('connecting repositories is not available while capturing assets'); },
     startGitHubDeviceFlow: async () => { throw new Error('signing in to GitHub is not available while capturing assets'); },
     openGitHubDeviceVerification: async () => { throw new Error('signing in to GitHub is not available while capturing assets'); },
     cancelGitHubDeviceFlow: async () => {},

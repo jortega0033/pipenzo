@@ -16,6 +16,11 @@ function installBridge() {
     openGitHubDeviceVerification: vi.fn().mockResolvedValue(undefined),
     cancelGitHubDeviceFlow: vi.fn().mockResolvedValue(undefined),
     onGitHubDeviceOutcome: vi.fn(() => () => {}),
+    // Step 2 hosts the real picker as of #115, and it reads on mount. Its own behaviour is
+    // `RepoPicker.test.tsx`'s subject; here it only has to exist.
+    pipenzoListRepos: vi.fn().mockResolvedValue({ repositories: [], truncated: false }),
+    pipenzoConnectedRepos: vi.fn().mockResolvedValue({ repositories: [] }),
+    pipenzoConnectRepos: vi.fn(),
   } as never);
 }
 
@@ -42,7 +47,7 @@ describe('ConnectScreen', () => {
    * Step 2 is still #115's. `ConnectScreen` is where the two steps meet, so this is the file that
    * notices if the placeholder is ever mistaken for a built screen.
    */
-  it('shows the repo step on the route #115 will produce', () => {
+  it('shows the repo step, with the picker in it', () => {
     installBridge();
     render(
       <ConnectScreen route={{ screen: 'pre-app', step: 'choose-repos', canChooseRepos: true }} />,
@@ -51,7 +56,8 @@ describe('ConnectScreen', () => {
     expect(
       screen.getByRole('heading', { name: 'Choose the repos Pipenzo manages' }),
     ).toBeInTheDocument();
-    expect(screen.getByText(/issue #115/)).toBeInTheDocument();
+    // The subtitle is the canvas's own framing of what personal OAuth does and does not get you.
+    expect(screen.getByText(/not as an installed GitHub App/)).toBeInTheDocument();
   });
 
   it('lets the user move between steps once both are reachable', () => {

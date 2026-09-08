@@ -61,6 +61,9 @@ import type {
   PipenzoTicketTransitionRequestV1,
   PipenzoTicketReconciliationV1,
   PipenzoPhaseEventV1,
+  PipenzoConnectReposRequestV1,
+  PipenzoConnectedReposV1,
+  PipenzoRepoListV1,
   PipenzoDeviceCodeV1,
   PipenzoDeviceOutcomeV1,
   PipenzoGitHubConnectionV1,
@@ -237,6 +240,21 @@ export interface AgentDockBridge {
    * cannot be turned into an open-anything primitive. The outcome arrives on the subscription,
    * not as a return value, because the human is in another application for most of the flow.
    */
+  /**
+   * The repo picker (issue #115).
+   *
+   * `pipenzoListRepos` answers with every repository this credential can **write** to — the daemon
+   * filters on GitHub's own `permissions.push`, because a repository Pipenzo can only read is one
+   * it can never manage. It walks GitHub's pagination on the daemon side and answers once, so the
+   * picker's filter searches the whole set rather than only the pages it happens to have; the
+   * `truncated` flag says when even that hit its page cap.
+   *
+   * `pipenzoConnectRepos` replaces the whole list rather than adding to it: the writer is a set of
+   * checkboxes, and unticking one has to mean something.
+   */
+  pipenzoListRepos(): Promise<PipenzoRepoListV1>;
+  pipenzoConnectedRepos(): Promise<PipenzoConnectedReposV1>;
+  pipenzoConnectRepos(input: PipenzoConnectReposRequestV1): Promise<PipenzoConnectedReposV1>;
   startGitHubDeviceFlow(): Promise<PipenzoDeviceCodeV1>;
   openGitHubDeviceVerification(): Promise<void>;
   cancelGitHubDeviceFlow(): Promise<void>;
