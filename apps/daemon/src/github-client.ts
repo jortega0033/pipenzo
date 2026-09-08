@@ -135,47 +135,100 @@ export class GitHubClientError extends Error {
 }
 
 /**
- * Removes anything shaped like a GitHub credential from a string.
+ * The daemon's own resolved credential(s), registered so `redactSecrets` can scrub them by exact
+ * value regardless of shape (issue #211). Module-private and additive-only: nothing ever removes a
+ * value once registered, and there is no read accessor — the set exists to be matched against, not
+ * inspected. Registering a value is still a second place it sits in heap memory alongside
+ * `DaemonGitHubCredential`'s own private field; what this design buys is that neither this set nor
+ * `redactSecrets` can be used to read it back out anywhere in this codebase.
+ */
+const knownSecrets = new Set<string>();
+
+/**
+ * A floor on length rather than trusting every caller to have already validated shape: an empty or
+ * near-empty string registered by mistake would make the exact-match rule in `redactSecrets` below
+ * scrub that substring out of *every* message this module ever produces, which is a worse failure
+ * than the known limit this function exists to close. Set to the same 20-character floor
+ * `github-credential.ts`'s `isTokenShaped` already enforces on every real GitHub credential this
+ * daemon resolves — not an arbitrary smaller number, so a future caller cannot register something
+ * shorter than any credential this process actually holds while still believing it passed a real
+ * shape check.
+ */
+const MIN_KNOWN_SECRET_LENGTH = 20;
+
+/**
+ * Registers `value` as a secret `redactSecrets` should also scrub by exact substring match, for
+ * any future appearance regardless of format — the mitigation issue #211 asked for once the
+ * daemon started holding its resolved token in a first-class object (`DaemonGitHubCredential`)
+ * instead of reading it from the environment at call time, which made an exact-value scrub cheap
+ * and format-independent for the first time.
  *
- * Deliberately pattern-based rather than "strip the token we happen to hold": the strings that
- * reach here come from octokit and from Node's HTTP stack, and they can contain a *different*
- * credential than the one this client was constructed with (a redirect, a proxy URL, a
- * credential-in-URL a user pasted into a remote). Matching the shapes covers all of them.
+ * Registering does not itself log, persist, or return `value` — this function's only effect is
+ * adding it to the in-memory set `redactSecrets` reads, for the life of this process.
+ */
+export function registerKnownSecret(value: string): void {
+  const trimmed = value.trim();
+  if (trimmed.length >= MIN_KNOWN_SECRET_LENGTH) knownSecrets.add(trimmed);
+}
+
+/**
+ * Removes anything shaped like a GitHub credential from a string, then removes any exact match of
+ * a value `registerKnownSecret` was told about.
+ *
+ * Deliberately pattern-based first rather than "strip the token we happen to hold" alone: the
+ * strings that reach here come from octokit and from Node's HTTP stack, and they can contain a
+ * *different* credential than the one this client was constructed with (a redirect, a proxy URL, a
+ * credential-in-URL a user pasted into a remote). Matching the shapes covers all of them; the
+ * exact-value pass below covers the one shape no pattern can, at all, safely.
  *
  * Rule order matters and is not arbitrary. The URL rules run **before** the header rule, because
  * `https://x-access-token:ghp_…@github.com/o/r.git` contains a literal `x-access-token:` and a
  * header rule matching first would swallow the host and repository path along with the credential
  * — leaving an operator a `push_failed` with no diagnostic in it at all. Redaction should remove
- * the secret, not the sentence.
+ * the secret, not the sentence. The exact-value pass runs **last**, after every pattern rule, so its
+ * job is ordinarily the leftover a shape rule was never going to catch. (A pattern rule that only
+ * partially rewrote a registered secret would leave a fragment the exact pass can no longer match —
+ * unreachable for anything `isTokenShaped` accepts today, since the `gh*_`/`github_pat_`/JWT rules
+ * each consume their whole match, but worth knowing this pass is not a backstop for that case.)
  *
- * **Known limit, recorded rather than re-litigated:** a pre-2021 40-hex classic PAT is not
- * matched, and cannot be. This module interpolates commit SHAs into messages, and a 40-hex rule
- * would redact every one of them. That is one more reason the env-PAT path is temporary and build
- * step 4's vault is the real fix — a credential you cannot recognize is one you cannot scrub.
+ * **Formerly a known limit, closed by issue #211:** a pre-2021 40-hex classic PAT cannot be
+ * *pattern*-matched — this module interpolates commit SHAs into messages, and a 40-hex rule would
+ * redact every one of them, a false-positive rate worse than the leak it would prevent. Once the
+ * daemon holds its resolved token in `DaemonGitHubCredential` rather than re-reading the
+ * environment at call time (issue #165), that exact string is known in advance and cheap to
+ * register — `apps/daemon/src/index.ts` does so once, at startup. A classic PAT this daemon was
+ * never handed (someone else's, in a proxy URL or a pasted remote) is still only caught when its
+ * shape matches one of the pattern rules above; the known-limit is narrower, not eliminated.
  */
 export function redactSecrets(value: string): string {
-  return (
-    value
-      // Credential in a URL, both forms: `user:pass@host` and the bare `token@host` git also uses.
-      .replace(/(https?:\/\/)[^/@\s:]+:[^/@\s]+@/gi, '$1[redacted]@')
-      .replace(/(https?:\/\/)[^/@\s:]+@/gi, '$1[redacted]@')
-      // Classic and fine-grained GitHub tokens, wherever they appear.
-      .replace(/gh[pousr]_[A-Za-z0-9]{16,}/g, '[redacted]')
-      .replace(/github_pat_[A-Za-z0-9_]{20,}/g, '[redacted]')
-      // A bare JWT — what a GitHub App installation token looks like with no `Bearer` in front.
-      .replace(/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, '[redacted]')
-      // Base64 of a `gh*_` token: what `Authorization: Basic` carries on the wire.
-      .replace(/\bZ2h[A-Za-z0-9+/]{16,}={0,2}/g, '[redacted]')
-      // Any auth header. The value alternation consumes the scheme *and* what follows it: a rule
-      // that stops after `Basic` leaves the entire credential sitting in the log line.
-      // The `"?'?` on both sides of the separator matters: in a JSON body the key is quoted
-      // (`"access_token":"…"`), and a rule that only allows a bare `key: value` misses it.
-      .replace(
-        /\b(proxy-authorization|authorization|x-access-token|access_token|token)"?'?\s*[:=]\s*"?'?(?:basic|bearer|token)?\s*[^\s"']+/gi,
-        '$1: [redacted]',
-      )
-      .replace(/\bbearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, 'Bearer [redacted]')
-  );
+  let scrubbed = value
+    // Credential in a URL, both forms: `user:pass@host` and the bare `token@host` git also uses.
+    .replace(/(https?:\/\/)[^/@\s:]+:[^/@\s]+@/gi, '$1[redacted]@')
+    .replace(/(https?:\/\/)[^/@\s:]+@/gi, '$1[redacted]@')
+    // Classic and fine-grained GitHub tokens, wherever they appear.
+    .replace(/gh[pousr]_[A-Za-z0-9]{16,}/g, '[redacted]')
+    .replace(/github_pat_[A-Za-z0-9_]{20,}/g, '[redacted]')
+    // A bare JWT — what a GitHub App installation token looks like with no `Bearer` in front.
+    .replace(/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, '[redacted]')
+    // Base64 of a `gh*_` token: what `Authorization: Basic` carries on the wire.
+    .replace(/\bZ2h[A-Za-z0-9+/]{16,}={0,2}/g, '[redacted]')
+    // Any auth header. The value alternation consumes the scheme *and* what follows it: a rule
+    // that stops after `Basic` leaves the entire credential sitting in the log line.
+    // The `"?'?` on both sides of the separator matters: in a JSON body the key is quoted
+    // (`"access_token":"…"`), and a rule that only allows a bare `key: value` misses it.
+    .replace(
+      /\b(proxy-authorization|authorization|x-access-token|access_token|token)"?'?\s*[:=]\s*"?'?(?:basic|bearer|token)?\s*[^\s"']+/gi,
+      '$1: [redacted]',
+    )
+    .replace(/\bbearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, 'Bearer [redacted]');
+  // `replaceAll` with a *string* argument, not a regex built from `secret`: a token's characters
+  // are printable ASCII and could still include a regex metacharacter, and the string overload
+  // does a literal substring match with no pattern interpretation at all -- the replacement
+  // `'[redacted]'` carries no `$` either, so there is no substitution-pattern hazard on that side.
+  for (const secret of knownSecrets) {
+    if (secret) scrubbed = scrubbed.replaceAll(secret, '[redacted]');
+  }
+  return scrubbed;
 }
 
 export interface RepoRef {
