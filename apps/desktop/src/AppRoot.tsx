@@ -2,9 +2,11 @@ import { useCallback, useState } from 'react';
 import { App } from './App.js';
 import { createDemoBridge } from './demo-bridge.js';
 import { clearBridgeOverride, getBridge, setBridgeOverride } from './bridge.js';
+import { SyncStatusPill } from './components/primitives/SyncStatusPill.js';
 import { ConnectionHealthBanner } from './pipenzo/ConnectionHealthBanner.js';
 import { ConnectScreen } from './pipenzo/ConnectScreen.js';
 import { EnvironmentCredentialBanner } from './pipenzo/EnvironmentCredentialBanner.js';
+import { deriveSyncStatus } from './pipenzo/sync-status.js';
 import { routePipenzoStartup } from './pipenzo/startup-route.js';
 import { useConnectedRepos } from './pipenzo/use-connected-repos.js';
 import { useGitHubConnection } from './pipenzo/use-github-connection.js';
@@ -88,9 +90,28 @@ function PipenzoStartup({
     );
   }
 
+  const sync = deriveSyncStatus(health);
+
   return (
     <>
       {route.environmentCredential && <EnvironmentCredentialBanner />}
+      {/*
+       * The board header's sync pill (#75), on the canvas's own artboard. It belongs in
+       * `MainHead`/`MainHeadRight` (`AppShell.tsx`'s doc comment names it as an example of what
+       * that slot holds), and that header is not mounted anywhere real yet -- the same
+       * shell-wiring gap `BoardScreen.tsx`'s own doc comment describes for `tickets`. Rendered
+       * here, in its own row, rather than left unwired: this is a real value driven by real
+       * health data, and a pill with nowhere to sit is not a reason to leave it disconnected the
+       * way `SyncStatusPill` was before this ticket. Reflow into `MainHeadRight` is shell-wiring's
+       * job once that ticket exists.
+       */}
+      <div className="sync-status-row" style={{ display: 'flex', justifyContent: 'flex-end', padding: '8px 16px 0' }}>
+        <SyncStatusPill
+          status={sync.status}
+          label={sync.label}
+          onRefresh={() => void getBridge().pollGitHubHealthNow().catch(() => {})}
+        />
+      </div>
       <ConnectionHealthBanner
         health={health}
         loginName={connection?.state === 'connected' ? connection.login : undefined}

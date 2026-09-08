@@ -397,4 +397,34 @@ describe('AppRoot connection-health banner (issue #257 -> #70)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
     expect(screen.queryByText(/Signed in again/)).not.toBeInTheDocument();
   });
+
+  it('wires the sync pill and the degraded-quota banner (#75) to real health pushes', async () => {
+    let deliverHealth: ((health: import('@agent-dock/shared').PipenzoGitHubHealthV1) => void) | undefined;
+    const bridge = realBridge();
+    bridge.onPipenzoGitHubHealth = vi.fn((callback) => {
+      deliverHealth = callback;
+      return () => {};
+    });
+    (window as unknown as { agentDock: AgentDockBridge }).agentDock = bridge;
+    render(<AppRoot />);
+    await screen.findByRole('button', { name: 'Try a demo' });
+
+    // Before any push: the pill reads "not synced yet" rather than guessing.
+    expect(screen.getByText('Not synced yet')).toBeInTheDocument();
+
+    deliverHealth?.({
+      state: 'healthy',
+      lastCleanPollAt: Date.now(),
+      quota: { remainingFraction: 0.05, resetAt: Date.now() + 60_000, degraded: true },
+    });
+
+    expect(await screen.findByText('Syncing slowly')).toBeInTheDocument();
+    expect(screen.getByText(/degraded, not failed/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Poll now' }));
+    await waitFor(() => expect(bridge.pollGitHubHealthNow).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh now' }));
+    await waitFor(() => expect(bridge.pollGitHubHealthNow).toHaveBeenCalledTimes(2));
+  });
 });
