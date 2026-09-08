@@ -209,9 +209,14 @@ export class PipenzoReconciler {
     this.#timer = this.#scheduler.set(delayMs, () => {
       this.#timer = undefined;
       // Held so `stop()` can await it. `#tick` never rejects, so this promise never does either.
-      this.#ticking = this.#tick().finally(() => {
-        this.#ticking = undefined;
+      // Cleared only if `#ticking` still points at *this* tick's promise -- a `start()` called
+      // while `stop()` is awaiting an in-flight tick can schedule a new one that overwrites
+      // `#ticking` before this settles, and clobbering it unconditionally here would let `stop()`
+      // resolve without actually waiting for the still-running tick (see `stop()`'s doc comment).
+      const ticking: Promise<void> = this.#tick().finally(() => {
+        if (this.#ticking === ticking) this.#ticking = undefined;
       });
+      this.#ticking = ticking;
     });
   }
 

@@ -491,6 +491,82 @@ describe('PipenzoReconciler', () => {
     await reconciler.stop();
   });
 
+  it('a stop() issued after a restart still waits for the tick that restart started, not a stale one', async () => {
+    // Regression test for the `#scheduleIn` `.finally()` unconditionally clearing `#ticking`: if
+    // `stop()` starts awaiting tick A and `start()` is called again before A settles, tick B gets
+    // scheduled and `#ticking` moves to point at it. A settling later must not clobber `#ticking`
+    // back to `undefined` while B is still running -- that would let a later `stop()` resolve
+    // without actually waiting for B, which is exactly the "tick nobody waits for" failure the
+    // class's own doc comments warn against.
+    const resolvers: Array<() => void> = [];
+    let readCalls = 0;
+    const machine = {
+      read: async () => {
+        readCalls += 1;
+        await new Promise<void>((resolve) => {
+          resolvers.push(resolve);
+        });
+        return { changed: false } as never;
+      },
+    };
+    const ticket = makeTicket({ issueNumber: 11 });
+    const repos = repoStore();
+    const tickets = ticketStore();
+    tickets.create(ticket);
+    await repos.replace([REPO]);
+    const scheduler = new FakeScheduler();
+    const reconciler = new PipenzoReconciler({
+      repos,
+      tickets,
+      machine,
+      scheduler,
+      random: () => 0,
+      pollIntervalMs: 1_000,
+    });
+
+    // Tick A starts and blocks inside `machine.read()`.
+    reconciler.start();
+    scheduler.advance(0);
+    await waitFor(() => expect(readCalls).toBe(1));
+
+    // stop() begins waiting for tick A specifically -- it must not resolve until A settles.
+    let firstStopResolved = false;
+    const firstStop = reconciler.stop().then(() => {
+      firstStopResolved = true;
+    });
+
+    // Something restarts the loop before A has settled. This schedules and starts tick B, which
+    // overlaps A -- exactly the "by construction" guarantee's edge case.
+    reconciler.start();
+    scheduler.advance(0);
+    await waitFor(() => expect(readCalls).toBe(2));
+    expect(firstStopResolved).toBe(false);
+
+    // Releasing A lets the first stop() resolve (it was always waiting on A's own promise), but
+    // must leave `#ticking` pointing at B, since B is still running.
+    resolvers[0]?.();
+    await firstStop;
+    expect(firstStopResolved).toBe(true);
+
+    // A second, later stop() must genuinely wait for B -- not resolve immediately because A's
+    // `.finally()` already (wrongly, pre-fix) cleared `#ticking` out from under it.
+    let secondStopResolved = false;
+    const secondStop = reconciler.stop().then(() => {
+      secondStopResolved = true;
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(secondStopResolved).toBe(false);
+
+    resolvers[1]?.();
+    await secondStop;
+    expect(secondStopResolved).toBe(true);
+
+    // Exactly two ticks ran -- A and B -- never a third overlapping one.
+    expect(readCalls).toBe(2);
+  });
+
   it('publishes health to every subscriber and lets one unsubscribe', async () => {
     const ticket = makeTicket({ issueNumber: 11 });
     const github = new FakeGitHubClient().seedIssue(makeIssue(11, ['pipenzo:working']));
