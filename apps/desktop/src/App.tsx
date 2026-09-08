@@ -74,10 +74,13 @@ export interface AppProps {
 
 // demoMode/onEnterDemo/onExitDemo default to inert values so every existing `render(<App />)`
 // call site (this file's own test suite included) keeps working unchanged -- AppRoot.tsx is the
-// only real caller, and it always passes all three explicitly.
+// only real caller, and it always passes all three explicitly. `onEnterDemo` itself is unused in
+// the body: since #274, `App` only ever mounts with `demoMode={true}` (see #277), so its own
+// "Try a demo" affordance is gone and the prop has nothing left to wire to. It stays in `AppProps`
+// so `AppRoot.tsx` doesn't need to special-case its one real call site.
 const NOOP = () => {};
 
-export function App({ demoMode = false, onEnterDemo = NOOP, onExitDemo = NOOP }: AppProps = {}) {
+export function App({ demoMode = false, onEnterDemo: _onEnterDemo = NOOP, onExitDemo = NOOP }: AppProps = {}) {
   const [daemonState, setDaemonState] = useState<DaemonState>('connecting');
   const [daemonError, setDaemonError] = useState<string>();
   const [providers, setProviders] = useState<ProviderStatusV2[]>();
@@ -507,11 +510,6 @@ export function App({ demoMode = false, onEnterDemo = NOOP, onExitDemo = NOOP }:
           </div>
         </div>
         <div className="app-header__status">
-          {!demoMode && (
-            <button className="button button--secondary" type="button" onClick={onEnterDemo}>
-              Try a demo
-            </button>
-          )}
           <div className={`runtime-state runtime-state--${daemonState}`}>
             <span className="runtime-state__dot" aria-hidden="true" />
             <span>Local runtime</span>
@@ -596,10 +594,7 @@ export function App({ demoMode = false, onEnterDemo = NOOP, onExitDemo = NOOP }:
               </div>
               {providersError && <div className="banner banner--error">{providersError}</div>}
               {providers && (
-                <ProviderPanel
-                  providers={providers}
-                  onTryDemo={demoMode ? undefined : onEnterDemo}
-                />
+                <ProviderPanel providers={providers} />
               )}
             </section>
             <section className="card">
