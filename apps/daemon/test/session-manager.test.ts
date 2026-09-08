@@ -370,7 +370,8 @@ describe('SessionManager — v1 replay byte ceiling (issue #51)', () => {
     await collected;
 
     const fullWarnings = logger.warn.mock.calls.filter(
-      ([message]) => message === 'session event history full; further events will not be replayable',
+      ([message]) =>
+        message === 'session event history full; further events will not be replayable',
     );
     expect(fullWarnings.length).toBe(1);
   }, 15_000);
@@ -410,7 +411,10 @@ describe('SessionManager — v1 oversized-envelope safety (issue #51)', () => {
     const testSession = provider.sessions.get(session.id)!;
     const collected = collectUntilTerminal(sessionManager, session.id);
 
-    testSession.push({ type: 'assistant.message', text: `PAYLOAD_CANARY${'x'.repeat(2 * 1024 * 1024)}` });
+    testSession.push({
+      type: 'assistant.message',
+      text: `PAYLOAD_CANARY${'x'.repeat(2 * 1024 * 1024)}`,
+    });
     await collected;
 
     expect(JSON.stringify(logger.warn.mock.calls)).not.toContain('PAYLOAD_CANARY');
@@ -950,10 +954,24 @@ function createPendingInteractive(sessionManager: SessionManager, signal?: Abort
   );
 }
 
+/**
+ * A trusted workspace plus the audit and trust files a secured session writes into, in one temp
+ * directory that `cleanup()` removes.
+ *
+ * `cleanup()` shuts down every manager handed to `register()` before it deletes anything, because
+ * a session's own work outlives the assertions that provoked it: a fail-closed audit append is a
+ * multi-step open/write/fsync/close, and `expect(append).toHaveBeenCalled...` only proves the
+ * first of those has started. On Windows a still-open handle keeps a deleted file's directory
+ * entry alive, so removing the parent then fails with `ENOTEMPTY` (issue #219). Shutting the
+ * manager down is a real barrier on that work rather than a guess at how long it takes -- it is
+ * also what the daemon itself does, so a test that skipped it would be asserting against a
+ * teardown no production path uses.
+ */
 async function trustedWorkspaceFixture(): Promise<{
   auditStore: AuditStore;
   cleanup(): Promise<void>;
   identity: WorkspaceIdentity;
+  register(sessionManager: SessionManager): void;
   trustStore: WorkspaceTrustStore;
 }> {
   const root = await mkdtemp(join(tmpdir(), 'agent-dock-session-security-'));
@@ -962,10 +980,24 @@ async function trustedWorkspaceFixture(): Promise<{
   const identity = await resolveWorkspaceIdentity(workspace);
   const trustStore = new WorkspaceTrustStore(join(root, 'workspace-trust.json'));
   await trustStore.setTrusted(identity);
+  const auditStore = new AuditStore(join(root, 'audit.jsonl'));
+  const managers: SessionManager[] = [];
   return {
-    auditStore: new AuditStore(join(root, 'audit.jsonl')),
-    cleanup: () => rm(root, { recursive: true, force: true }),
+    auditStore,
+    cleanup: async () => {
+      for (const sessionManager of managers.splice(0)) {
+        sessionManager.beginShutdown();
+        await sessionManager.cancelAll();
+      }
+      // Also drains any append started by a manager this test never registered: read() waits on
+      // the store's own serialized write tail before it returns.
+      await auditStore.read().catch(() => undefined);
+      await rm(root, { recursive: true, force: true });
+    },
     identity,
+    register: (sessionManager: SessionManager) => {
+      managers.push(sessionManager);
+    },
     trustStore,
   };
 }
@@ -1034,6 +1066,7 @@ describe('SessionManager — provider startup evidence', () => {
       auditStore: fixture.auditStore,
       trustStore: fixture.trustStore,
     });
+    fixture.register(sessionManager);
     const providerStatus: ProviderStatus = {
       id: provider.id,
       name: provider.name,
@@ -1089,6 +1122,7 @@ describe('SessionManager — provider startup evidence', () => {
     const sessionManager = new SessionManager(registry, noopLogger, undefined, {
       trustStore: fixture.trustStore,
     });
+    fixture.register(sessionManager);
     try {
       const start = sessionManager.createInteractive(
         provider.id,
@@ -1191,6 +1225,7 @@ describe('SessionManager — pending interactive startup', () => {
         auditStore: fixture.auditStore,
         trustStore: fixture.trustStore,
       });
+      fixture.register(sessionManager);
       const start = sessionManager.createInteractive(
         provider.id,
         fixture.identity.canonicalPath,
@@ -1310,6 +1345,7 @@ describe('SessionManager — interactive command dispatch', () => {
         auditStore: fixture.auditStore,
         trustStore: fixture.trustStore,
       });
+      fixture.register(sessionManager);
       const sessionA = await sessionManager.createInteractive(
         providerA.id,
         fixture.identity.canonicalPath,
@@ -1672,6 +1708,7 @@ describe('SessionManager — secured approvals', () => {
         interactionTimeoutMs: 1_000,
         trustStore: fixture.trustStore,
       });
+      fixture.register(sessionManager);
       const session = await sessionManager.createInteractive(
         provider.id,
         fixture.identity.canonicalPath,
@@ -1719,6 +1756,96 @@ describe('SessionManager — secured approvals', () => {
     }
   });
 
+  /**
+   * Issue #219. Deciding an approval by policy is not instantaneous: it reads the trust store and
+   * appends an audit row before it answers the provider. A workspace revocation that lands inside
+   * that window closes the provider session, so the answer is sent into a handle that has already
+   * gone terminal and `send()` throws.
+   *
+   * The bug was not the throw -- that race is legitimate and the request is already fail-closed by
+   * the supervisor's own teardown. The bug was where it landed: it escaped `consumeInteractive`,
+   * killing the drain that had not yet read `session.cancelled` off the stream. The session then
+   * reported `running` forever, its runtime was never retired, and `runtime.done` rejected into an
+   * unhandled rejection -- the three symptoms recorded on the issue, from one escaped throw.
+   *
+   * Every await here is on an observable state change, so the interleaving is exact rather than
+   * provoked by load: the audit append is held open, the revocation runs to the point of closing
+   * the handle, and only then is the append released to lose its race.
+   */
+  it('keeps draining events when an approval decision loses its race with revocation', async () => {
+    const fixture = await trustedWorkspaceFixture();
+    let terminal = false;
+    const interactive: ControllableInteractiveSession = makeControllableInteractiveSession({
+      // Faithful to SessionSupervisor.send(), which calls assertOpen() first.
+      send: async () => {
+        if (terminal) {
+          throw new InteractiveSessionError('session_terminal', 'session is terminal');
+        }
+      },
+      close: async () => {
+        terminal = true;
+        interactive.push({ type: 'session.cancelled', reason: 'trust revoked' });
+        interactive.finish();
+      },
+    });
+    try {
+      const provider = new InteractiveTestProvider(interactive);
+      const registry = new ProviderRegistry();
+      registry.register(provider);
+      const held = deferred<void>();
+      const entered = deferred<void>();
+      const realAppend = fixture.auditStore.append.bind(fixture.auditStore);
+      let first = true;
+      const append = vi.spyOn(fixture.auditStore, 'append').mockImplementation(async (entry) => {
+        if (first) {
+          first = false;
+          entered.resolve();
+          await held.promise;
+        }
+        return realAppend(entry);
+      });
+      const sessionManager = new SessionManager(registry, noopLogger, undefined, {
+        auditStore: fixture.auditStore,
+        trustStore: fixture.trustStore,
+      });
+      fixture.register(sessionManager);
+      const session = await sessionManager.createInteractive(
+        provider.id,
+        fixture.identity.canonicalPath,
+        'hello',
+        APPROVAL_SELECTION,
+        INTERACTIVE_TRANSPORT,
+        INTERACTIVE_EXECUTION_ID,
+        INTERACTIVE_TURN_ID,
+        undefined,
+        fixture.identity,
+      );
+
+      // Close the in-memory gate first, exactly as the revocation route does before it awaits
+      // anything, so the approval below is decided against a `revoking` workspace and denied by
+      // policy rather than published for a human.
+      sessionManager.blockWorkspace(fixture.identity.workspaceId);
+      interactive.push(approvalRequest(uuid(60_030)));
+      await entered.promise;
+
+      // The denial now owns the request and is parked on its audit write. Revocation cannot claim
+      // it, so it runs on to closing the handle -- and the answer will be sent into a dead session.
+      const revoking = sessionManager.revokeWorkspace(fixture.identity.workspaceId);
+      await vi.waitFor(() => expect(interactive.closeCalls()).toBe(1));
+      held.resolve();
+      await revoking;
+
+      // `session.cancelled` was queued behind the parked approval, so it is only ever seen by a
+      // drain that survived the failed send.
+      expect(sessionManager.get(session.id)?.status).toBe('cancelled');
+      expect(append).toHaveBeenCalledWith(
+        expect.objectContaining({ actor: 'policy', decision: 'deny' }),
+      );
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
   it('audits a supervisor-side fail-closed approval resolution exactly once', async () => {
     const fixture = await trustedWorkspaceFixture();
     const interactive = makeControllableInteractiveSession();
@@ -1731,6 +1858,7 @@ describe('SessionManager — secured approvals', () => {
         auditStore: fixture.auditStore,
         trustStore: fixture.trustStore,
       });
+      fixture.register(sessionManager);
       const session = await sessionManager.createInteractive(
         provider.id,
         fixture.identity.canonicalPath,
@@ -1788,6 +1916,7 @@ describe('SessionManager — secured approvals', () => {
       const sessionManager = new SessionManager(registry, noopLogger, undefined, {
         trustStore: fixture.trustStore,
       });
+      fixture.register(sessionManager);
       const session = await sessionManager.createInteractive(
         provider.id,
         fixture.identity.canonicalPath,
@@ -1837,6 +1966,7 @@ describe('SessionManager — secured approvals', () => {
         auditStore: fixture.auditStore,
         trustStore: fixture.trustStore,
       });
+      fixture.register(sessionManager);
       const session = await sessionManager.createInteractive(
         provider.id,
         fixture.identity.canonicalPath,
@@ -1906,6 +2036,7 @@ describe('SessionManager — secured approvals', () => {
         auditStore: fixture.auditStore,
         trustStore: fixture.trustStore,
       });
+      fixture.register(sessionManager);
       const session = await sessionManager.createInteractive(
         provider.id,
         fixture.identity.canonicalPath,
@@ -2297,6 +2428,7 @@ describe('V2SessionFacade — bounded startup fallback', () => {
     const sessionManager = new SessionManager(registry, noopLogger, undefined, {
       trustStore: fixture.trustStore,
     });
+    fixture.register(sessionManager);
     const sessions = new V2SessionFacade(sessionManager);
     const primaryManifest: ProviderV2Manifest = {
       interactive: true,
@@ -2859,7 +2991,12 @@ describe('SessionManager — staged attachments and output schema (issue #59)', 
     );
 
     expect(provider.interactiveOptions[0]?.attachments).toEqual([
-      { attachmentId, path: expect.stringContaining('.bin') as unknown as string, mimeType: 'image/png', byteLength: expect.any(Number) as unknown as number },
+      {
+        attachmentId,
+        path: expect.stringContaining('.bin') as unknown as string,
+        mimeType: 'image/png',
+        byteLength: expect.any(Number) as unknown as number,
+      },
     ]);
     const [record] = await attachmentStore.referenceForDispatch([attachmentId], session.id);
     expect(record?.sessionId).toBe(session.id);

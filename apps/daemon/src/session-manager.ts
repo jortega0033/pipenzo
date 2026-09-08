@@ -94,6 +94,15 @@ interface InteractiveRuntimeState extends RuntimeStateBase {
   commandLedger: Map<string, CommandRecord>;
   reservedInteractionCommands: Map<string, string>;
   interactions: InteractionState;
+  /**
+   * Work this session started that no caller is awaiting -- today, the fail-closed resolution and
+   * audit write a publication-deadline timeout fires off (issue #219). It is still this session's
+   * work: it writes to this session's audit file and talks to this session's provider handle, so
+   * `done` must not resolve while any of it is in flight. Without this, a session could be
+   * reported terminal (and its state directory deleted) while an audit append still held the file
+   * open -- a leak in production, and the `ENOTEMPTY` teardown failure on Windows CI.
+   */
+  backgroundWork: Set<Promise<void>>;
   approvalActions: Map<string, PermissionActionV2>;
   sessionGrants: Set<string>;
   transport: string;
@@ -345,7 +354,13 @@ export class SessionManager {
         initialAttachmentIds,
         outputSchema,
         (done) => {
-          void done.finally(() => lease.release());
+          // `.finally()` returns a *new* promise that rejects with whatever `done` rejected with,
+          // so voiding it turned any failed session into an unhandled rejection (issue #219).
+          // Settle on both outcomes instead; the lease must be released either way.
+          void done.then(
+            () => lease.release(),
+            () => lease.release(),
+          );
           leaseTransferred = true;
         },
       );
@@ -497,11 +512,12 @@ export class SessionManager {
         reservedInteractionCommands: new Map(),
         interactions: new InteractionState(
           (interaction) => {
-            void this.expireInteraction(id, interaction, 'timeout');
+            this.trackBackgroundWork(id, this.expireInteraction(id, interaction, 'timeout'));
           },
           undefined,
           this.security.interactionTimeoutMs,
         ),
+        backgroundWork: new Set(),
         approvalActions: new Map(),
         sessionGrants: new Set(),
         transport: transport.id,
@@ -586,11 +602,14 @@ export class SessionManager {
         // one oversized event and lets the session continue: v1 has no per-event delivery
         // guarantee a dropped event could quietly violate, so issue #51 asks this path to fail
         // the whole session instead of silently discarding provider-controlled content.
-        this.logger.warn('legacy session envelope exceeded the per-frame ceiling; failing the session', {
-          sessionId: id,
-          eventType: event.type,
-          bytes,
-        });
+        this.logger.warn(
+          'legacy session envelope exceeded the per-frame ceiling; failing the session',
+          {
+            sessionId: id,
+            eventType: event.type,
+            bytes,
+          },
+        );
         const failure: AgentEventEnvelope = {
           type: 'session.failed',
           message: 'a provider event exceeded the maximum frame size and could not be delivered',
@@ -641,27 +660,70 @@ export class SessionManager {
     }
   }
 
+  /**
+   * Registers work started outside any caller's await -- see `backgroundWork`. Rejections are
+   * absorbed here (every producer already logs its own failure) so an unawaited slot can never
+   * surface as an unhandled rejection, and the entry is removed on settle so a long-lived session
+   * does not accumulate resolved promises.
+   */
+  private trackBackgroundWork(id: string, work: Promise<void>): void {
+    const runtime = this.runtime.get(id);
+    const tracked = work.catch(() => undefined);
+    if (!runtime || runtime.kind !== 'interactive') return;
+    runtime.backgroundWork.add(tracked);
+    void tracked.finally(() => {
+      runtime.backgroundWork.delete(tracked);
+    });
+  }
+
+  /** Waits out every in-flight `backgroundWork` entry, including any a drained entry started. */
+  private async drainBackgroundWork(runtime: InteractiveRuntimeState): Promise<void> {
+    while (runtime.backgroundWork.size > 0) {
+      await Promise.allSettled([...runtime.backgroundWork]);
+    }
+  }
+
   private async consumeInteractive(id: string, runtime: InteractiveRuntimeState): Promise<void> {
     this.mutateSession(id, (session) => {
       session.status = 'running';
     });
-    for await (const sourceEvent of runtime.handle.events) {
-      const event = await this.prepareInteractiveEvent(id, runtime, sourceEvent);
-      if (!event) continue;
-      this.mutateSession(id, (session) => this.applyInteractiveStatus(session, event));
-      const index = runtime.nextEventIndex;
-      runtime.nextEventIndex += 1;
-      this.recordInteractiveEvent(runtime, index, event);
-      if (event.type === 'subagent.status') this.applySubagentEvent(id, event);
-      for (const listener of [...runtime.listeners]) {
+    try {
+      for await (const sourceEvent of runtime.handle.events) {
+        // Per-event daemon-side handling must never abort the drain (issue #219). This loop is
+        // what applies a session's terminal status, releases its attachments and retires its
+        // runtime, so one event that cannot be processed -- an approval whose provider send lost
+        // a race with teardown, a listener store that threw -- must not leave the session stuck
+        // reporting `running` forever with its cleanup unrun.
         try {
-          listener(index, event);
-        } catch {
-          this.logger.warn('interactive session listener failed', {
+          const event = await this.prepareInteractiveEvent(id, runtime, sourceEvent);
+          if (!event) continue;
+          this.mutateSession(id, (session) => this.applyInteractiveStatus(session, event));
+          const index = runtime.nextEventIndex;
+          runtime.nextEventIndex += 1;
+          this.recordInteractiveEvent(runtime, index, event);
+          if (event.type === 'subagent.status') this.applySubagentEvent(id, event);
+          for (const listener of [...runtime.listeners]) {
+            try {
+              listener(index, event);
+            } catch {
+              this.logger.warn('interactive session listener failed', {
+                sessionId: id,
+              });
+            }
+          }
+        } catch (error) {
+          this.logger.warn('failed to process an interactive session event', {
             sessionId: id,
+            eventType: sourceEvent.type,
+            error: error instanceof Error ? error.message : String(error),
           });
         }
       }
+    } finally {
+      // Only now is every piece of this session's work finished, so `done` (and therefore
+      // `revokeWorkspace`, `cancelAll` and daemon shutdown) genuinely means "nothing of this
+      // session is still touching the provider or the audit file".
+      await this.drainBackgroundWork(runtime);
     }
     this.markCompleted(id);
     if (runtime.attachmentIds && runtime.attachmentIds.length > 0) {
@@ -866,6 +928,20 @@ export class SessionManager {
         requestId: event.requestId,
         decision: providerDecision,
       });
+    } catch (error) {
+      // Deciding this approval needs the trust store and the audit file, so the session can go
+      // terminal underneath us while we are awaiting them -- cancellation, shutdown, or the
+      // workspace revocation that produced this very `deny` (issue #219). There is nothing left
+      // to tell the provider: the supervisor fail-closes every interaction it still holds as part
+      // of going terminal, and the audit row above already records the decision. Anything else is
+      // a real dispatch failure and still propagates.
+      if (!(error instanceof InteractiveSessionError) || error.code !== 'session_terminal') {
+        throw error;
+      }
+      this.logger.warn('approval decision was not sent: session went terminal first', {
+        sessionId: id,
+        requestId: event.requestId,
+      });
     } finally {
       runtime.interactions.settle(event.requestId);
       runtime.approvalActions.delete(event.requestId);
@@ -1057,7 +1133,10 @@ export class SessionManager {
         session.status = 'failed';
         session.completedAt = new Date().toISOString();
         session.error = event.message;
-        this.logger.warn('legacy session failed', { sessionId: session.id, message: event.message });
+        this.logger.warn('legacy session failed', {
+          sessionId: session.id,
+          message: event.message,
+        });
         break;
       case 'session.cancelled':
         session.status = 'cancelled';
@@ -1595,6 +1674,15 @@ export class SessionManager {
         (entry): entry is { id: string; runtime: RuntimeState } => entry.runtime !== undefined,
       );
     const closeReason = this.shuttingDown ? 'shutdown' : 'cancel';
+    // A session that has already reached a terminal *status* can still be finishing work of its
+    // own -- the fail-closed audit write a publication timeout fired off, an attachment release
+    // (issue #219). Nothing closes those, but shutdown must not return while one is mid-write, so
+    // every retained runtime's `done` is awaited even though only the active ones are closed.
+    const retainedRuntimes = this.store
+      .list()
+      .filter((session) => this.ownedBy(session.id, protocolVersion))
+      .map((session) => this.runtime.get(session.id))
+      .filter((runtime): runtime is RuntimeState => runtime !== undefined);
     const stopping = Promise.allSettled(
       activeRuntimes.map(({ id, runtime }) => this.closeRuntime(id, runtime, closeReason)),
     );
@@ -1607,7 +1695,7 @@ export class SessionManager {
       await Promise.race([
         stopping.then(() =>
           Promise.allSettled([
-            ...activeRuntimes.map(({ runtime }) => runtime.done),
+            ...retainedRuntimes.map((runtime) => runtime.done),
             ...pendingStarts.map((pending) => pending.done),
           ]),
         ),
