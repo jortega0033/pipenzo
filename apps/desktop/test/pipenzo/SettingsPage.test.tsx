@@ -8,11 +8,18 @@ afterEach(() => {
   clearBridgeOverride();
 });
 
+/** Every method the panels this page hosts reach for on mount, and nothing else. */
 function installBridge() {
   setBridgeOverride({
     pipenzoConnectedRepos: vi.fn().mockResolvedValue({ repositories: ['octocat/hello-world'] }),
     pipenzoListRepos: vi.fn().mockResolvedValue({ repositories: [], truncated: false }),
     pipenzoConnectRepos: vi.fn(),
+    pipenzoGitHubConnection: vi
+      .fn()
+      .mockResolvedValue({ state: 'connected', login: 'octocat', source: 'vault' }),
+    onDaemonStatus: () => () => {},
+    listProvidersV2: vi.fn().mockResolvedValue([]),
+    disconnectGitHub: vi.fn(),
   } as never);
 }
 
@@ -34,9 +41,13 @@ describe('SettingsPage', () => {
     const { container } = render(<SettingsPage />);
     await screen.findByText('octocat/hello-world');
 
+    // Both columns are occupied now that #130's Account panel has landed beside #125's repo list.
+    // A `.col` element stays absent until something fills it, so this count is the page's own
+    // statement about how many panels it hosts, not a layout constant.
     const columns = container.querySelectorAll('.cols > .col');
-    expect(columns).toHaveLength(1);
+    expect(columns).toHaveLength(2);
     expect(columns[0]?.querySelector('.form-panel')).not.toBeNull();
+    expect(columns[1]?.querySelector('.form-panel')).not.toBeNull();
   });
 
   it('hosts the connected-repos panel', async () => {
@@ -45,5 +56,13 @@ describe('SettingsPage', () => {
 
     expect(await screen.findByText('Connected repos')).toBeInTheDocument();
     expect(await screen.findByText('octocat/hello-world')).toBeInTheDocument();
+  });
+
+  it('hosts the account panel', async () => {
+    installBridge();
+    render(<SettingsPage />);
+
+    expect(await screen.findByText('Account')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /disconnect github/i })).toBeInTheDocument();
   });
 });
