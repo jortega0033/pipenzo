@@ -1,8 +1,8 @@
 {
   "name": "@agent-dock/desktop",
   "version": "0.1.0",
-  "description": "AgentDock desktop client: Electron + React demo for the AgentDock boilerplate",
-  "author": "AgentDock contributors",
+  "description": "Pipenzo desktop client: Electron + React app built on the AgentDock boilerplate",
+  "author": "Pipenzo contributors",
   "private": true,
   "type": "module",
   "main": "dist-electron/main.js",

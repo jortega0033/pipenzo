@@ -228,7 +228,7 @@ describe('manifest.schema.json conformance (issue #61)', () => {
       providerPins: { 'codex-app-server': '0.147.0' },
       gates: [{ name: 'lint', passed: true }],
       artifacts: [
-        { name: 'installer', path: 'dist-packages/AgentDock-Setup-0.1.0.exe', sha256: 'b'.repeat(64), sizeBytes: 12_345 },
+        { name: 'installer', path: 'dist-packages/Pipenzo-Setup-0.1.0.exe', sha256: 'b'.repeat(64), sizeBytes: 12_345 },
       ],
       signingStatus: 'unsigned',
       documentedExceptions: ['pnpm audit (not --prod) has a documented dev-tool exception'],

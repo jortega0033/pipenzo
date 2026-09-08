@@ -47,8 +47,8 @@ unpacked, useful for a quick check without a full package step.
 
 ```
 dist-packages/
-  win-unpacked/                       the unpacked app (AgentDock.exe + resources/)
-  AgentDock-Setup-<version>.exe       the NSIS installer
+  win-unpacked/                       the unpacked app (Pipenzo.exe + resources/)
+  Pipenzo-Setup-<version>.exe         the NSIS installer
 ```
 
 `directories.output: ../../dist-packages` in `electron-builder.yml` deliberately keeps installer
@@ -59,12 +59,12 @@ gitignored.
 ## Runtime layout once packaged
 
 ```
-AgentDock.exe                    (Electron; renderer + main process live in resources/app.asar)
+Pipenzo.exe                      (Electron; renderer + main process live in resources/app.asar)
 resources/
   app.asar                       renderer (dist/) + main + preload, no node_modules needed,
                                   everything is bundled at build time (see above)
   assets/app-icons/png/
-    icon-256.png                 runtime window icon used outside packaged metadata surfaces
+    pipenzo-icon-256.png         runtime window icon used outside packaged metadata surfaces
   daemon/
     index.js                     the daemon's own esbuild bundle, unmodified from apps/daemon/dist/
     agent-dock-job-host.exe      daemon-owned Windows Job Object process-tree host
@@ -76,14 +76,19 @@ resources/
 
 ## Native application identity
 
-The default AgentDock identity lives under `apps/desktop/assets/`. Electron Builder reads
-`assets/app-icons/agent-dock.ico` for `AgentDock.exe`, the NSIS installer and uninstaller, and the
-Start Menu shortcut. The runtime `BrowserWindow` resolves the committed 256-pixel PNG in
+The Pipenzo identity (see [#241](https://github.com/jortega0033/pipenzo/issues/241)) lives under
+`apps/desktop/assets/pipenzo/`, the approved brand pack checked in by
+[#239](https://github.com/jortega0033/pipenzo/issues/239). Electron Builder reads
+`assets/pipenzo/app-icons/pipenzo.ico` for `Pipenzo.exe`, the NSIS installer and uninstaller, and
+the Start Menu shortcut. The runtime `BrowserWindow` resolves the committed 256-pixel PNG in
 development and from `process.resourcesPath` after packaging.
 
 The corresponding ICNS and full PNG size ladder are committed for platform tooling and future
-targets, but macOS packaging is not yet configured or verified. See [assets.md](assets.md) for the
-source SVGs, exact inventory, regeneration, validation, and fork rebranding steps.
+targets, but macOS packaging is not yet configured or verified. See [assets.md](assets.md) and
+[brand/BRAND.md](brand/BRAND.md) for the source SVGs, exact inventory, regeneration, validation,
+and usage rules. The inherited AgentDock identity under `apps/desktop/assets/brand/` and
+`apps/desktop/assets/app-icons/` is no longer referenced by packaging; it's a leftover from the
+agentdock boilerplate this repo is built on, not a second active identity.
 
 ## The daemon ships outside `app.asar`
 
@@ -162,7 +167,7 @@ running left the process count and the daemon's port unchanged.
 
 ## Unsigned installer and SmartScreen
 
-The NSIS installer and the packaged `AgentDock.exe` are unsigned: electron-builder's log shows
+The NSIS installer and the packaged `Pipenzo.exe` are unsigned: electron-builder's log shows
 signing steps being skipped for lack of a certificate. **Expect Windows SmartScreen to warn on
 first run** ("Windows protected your PC" / unknown publisher), that's expected behavior for an
 unsigned OSS boilerplate build, not a packaging bug. Code signing was explicitly out of scope for

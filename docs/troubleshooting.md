@@ -162,7 +162,7 @@ of scope for this project.
 [packaging.md#verifying-a-packaging-sensitive-change](packaging.md#verifying-a-packaging-sensitive-change).
 If you changed anything under `apps/desktop/electron/` or `electron-builder.yml`, `pnpm build`
 alone was never sufficient to catch a packaging-mode-only bug; you need to actually run
-`pnpm package:win` and launch `dist-packages/win-unpacked/AgentDock.exe`.
+`pnpm package:win` and launch `dist-packages/win-unpacked/Pipenzo.exe`.
 
 ## Testing without a real Claude/Codex account
 
