@@ -11,7 +11,7 @@ import { PROVIDER_DISPLAY_NAMES } from '@agent-dock/shared';
  * `packages/agent-runtime/src/providers/compatibility-manifest.ts`. Update both together, and
  * keep every version suffixed "(demo)" so a reader can never mistake this fixture-driven data for
  * a live provider read. */
-export const CLAUDE_DEMO_VERSION = '2.1.251 (demo)';
+export const CLAUDE_DEMO_VERSION = '2.1.260 (demo)';
 export const CODEX_DEMO_VERSION = '0.147.0 (demo)';
 export const DEMO_TRANSPORT_ID = 'demo-interactive';
 
