@@ -334,4 +334,73 @@ describe('ConnectionHealthBanner', () => {
       expect(screen.getByText(/Signed in again/)).toBeInTheDocument();
     });
   });
+
+  describe('degraded quota (#75)', () => {
+    const degraded: PipenzoGitHubHealthV1 = {
+      state: 'healthy',
+      lastCleanPollAt: NOW,
+      quota: { remainingFraction: 0.08, resetAt: NOW + 60_000, degraded: true },
+    };
+
+    it('renders the warn banner below 15% remaining quota', () => {
+      const { container } = render(<ConnectionHealthBanner health={degraded} />);
+      const banner = container.querySelector('.banner')!;
+      expect(banner.className).toBe('banner warn');
+      expect(screen.getByText('15%')).toBeInTheDocument();
+      expect(screen.getByText(/degraded, not failed/)).toBeInTheDocument();
+    });
+
+    it('renders nothing when healthy but quota is not degraded', () => {
+      const { container } = render(
+        <ConnectionHealthBanner
+          health={{
+            state: 'healthy',
+            lastCleanPollAt: NOW,
+            quota: { remainingFraction: 0.5, resetAt: NOW + 60_000, degraded: false },
+          }}
+        />,
+      );
+      expect(container).toBeEmptyDOMElement();
+    });
+
+    it('renders "Poll now" as a ghost button and calls onRetryNow on click', () => {
+      const onRetryNow = vi.fn();
+      render(<ConnectionHealthBanner health={degraded} onRetryNow={onRetryNow} />);
+      const button = screen.getByRole('button', { name: 'Poll now' });
+      expect(button.className).toBe('btn ghost sm');
+      button.click();
+      expect(onRetryNow).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not compete with a more urgent banner: a failing state with a degraded quota reading still shows its own banner, not this one', () => {
+      render(
+        <ConnectionHealthBanner
+          health={{
+            state: 'unreachable',
+            consecutiveFailures: 5,
+            firstFailureAt: NOW - 60_000,
+            maxAttempts: 5,
+            quota: { remainingFraction: 0.05, resetAt: NOW + 60_000, degraded: true },
+          }}
+        />,
+      );
+      expect(screen.getByText('GitHub is unreachable.')).toBeInTheDocument();
+      expect(screen.queryByText(/degraded, not failed/)).not.toBeInTheDocument();
+    });
+
+    it('does not pre-empt a shown recovery banner', () => {
+      const retrying: PipenzoGitHubHealthV1 = {
+        state: 'retrying',
+        attempt: 1,
+        maxAttempts: 5,
+        nextAttemptAt: NOW,
+        consecutiveFailures: 1,
+        firstFailureAt: NOW,
+      };
+      const { rerender } = render(<ConnectionHealthBanner health={retrying} />);
+      rerender(<ConnectionHealthBanner health={degraded} />);
+      expect(screen.getByText(/Signed in again/)).toBeInTheDocument();
+      expect(screen.queryByText(/degraded, not failed/)).not.toBeInTheDocument();
+    });
+  });
 });

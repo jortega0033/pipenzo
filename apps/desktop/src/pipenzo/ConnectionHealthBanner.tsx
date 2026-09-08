@@ -18,9 +18,9 @@ type UnreachableHealth = Extract<PipenzoGitHubHealthV1, { state: 'unreachable' }
  *
  * Driven entirely by `PipenzoGitHubHealthV1` (#230) off `usePipenzoGitHubHealth()`. Built
  * incrementally, one state per ticket: #70 adds `retrying`, #71 adds `unreachable`, #72 adds
- * `credential_rejected`, #73 adds the recovery banner. Every other state renders nothing until
- * its own ticket adds a branch here — an unhandled state is silence, not a placeholder banner
- * guessing at copy nobody has written yet.
+ * `credential_rejected`, #73 adds the recovery banner, #75 adds the degraded-quota banner. Every
+ * other state renders nothing until its own ticket adds a branch here — an unhandled state is
+ * silence, not a placeholder banner guessing at copy nobody has written yet.
  */
 export function ConnectionHealthBanner({
   health,
@@ -39,10 +39,10 @@ export function ConnectionHealthBanner({
   /** How many repos are connected, for #73's "N repos reconnected". */
   connectedRepoCount?: number;
   /**
-   * "Retry now" (#70/#71's shared action, wired to `pollGitHubHealthNow` — issue #257's
-   * "poll now" route). Optional so a caller that has not wired it yet still gets a banner, just
-   * without the action row's button — the same shape `SyncStatusPill.onRefresh` established for
-   * this cluster's sibling.
+   * "Retry now" / "Poll now" (#70/#71/#75's shared action, wired to `pollGitHubHealthNow` —
+   * issue #257's "poll now" route). Optional so a caller that has not wired it yet still gets a
+   * banner, just without the action row's button — the same shape `SyncStatusPill.onRefresh`
+   * established for this cluster's sibling.
    */
   onRetryNow?: () => void;
   /**
@@ -74,6 +74,12 @@ export function ConnectionHealthBanner({
         onDismiss={justRecovered.dismiss}
       />
     );
+  }
+  // Checked last, and only reachable once nothing more urgent already claimed the slot above: a
+  // degraded quota reading alongside a failing state does not compete with that state's own
+  // banner, and a dismissed-but-still-recovering moment does not get pre-empted by this either.
+  if (health?.state === 'healthy' && health.quota?.degraded === true) {
+    return <DegradedQuotaBanner onPollNow={onRetryNow} />;
   }
   return null;
 }
@@ -320,6 +326,34 @@ function RecoveryBanner({
         </>
       )}
       .
+    </Banner>
+  );
+}
+
+/**
+ * #75's degraded-quota banner: below `DEGRADED_QUOTA_FRACTION` (`pipenzo-reconciler.ts`) remaining
+ * GitHub rate limit, the reconciler has already widened its own poll interval -- this banner just
+ * says so. Warn-toned, not danger, and the default (non-blocking) variant: the connection is fine
+ * and every ticket still runs, only slower. `quota.degraded` is read directly off the wire rather
+ * than re-derived from `remainingFraction` here, for the reason `pipenzo-health-v1.ts` carries the
+ * flag in the first place -- the reconciler owns the threshold because it owns the interval, and a
+ * second place recomputing "degraded" from the fraction is a second place free to disagree with it.
+ */
+function DegradedQuotaBanner({ onPollNow }: { onPollNow?: () => void }) {
+  return (
+    <Banner
+      icon="warning"
+      tone="warn"
+      action={
+        onPollNow && (
+          <Button size="sm" variant="ghost" onClick={onPollNow}>
+            Poll now
+          </Button>
+        )
+      }
+    >
+      Below <b>15%</b> of this hour&apos;s GitHub rate limit. Poll intervals have widened and the
+      board reads &quot;syncing slowly&quot; — degraded, not failed.
     </Banner>
   );
 }
