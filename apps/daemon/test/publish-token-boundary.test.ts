@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import {
   PROVIDER_AUTH_ENV_KEYS,
   REVIEWED_OS_RUNTIME_ENV_KEYS,
@@ -109,6 +109,23 @@ async function stripped(file: string): Promise<string> {
   strippedCache.set(file, code);
   return code;
 }
+
+/**
+ * Warms those caches before any assertion runs, with a budget sized for the one-time tree read
+ * rather than for an assertion. Reading the ~136 files of apps/daemon/src and packages/agent-runtime/src cold is legitimately slow on a loaded Windows
+ * runner, and leaving that cost inside whichever test happened to scan first is exactly how a
+ * *file read* came to fail an assertion's 5 s default (issue #219). Files are read in parallel
+ * here, which the sequential per-test scans could not do. Every assertion below keeps the default
+ * budget and now runs against memory, so a guard that genuinely misbehaves still fails fast.
+ */
+async function warm(root: string): Promise<void> {
+  const files = await sourceFiles(root);
+  await Promise.all(files.map((file) => readSource(file)));
+}
+
+beforeAll(async () => {
+  await Promise.all([warm(daemonSrc), warm(runtimeSrc)]);
+}, 60_000);
 
 describe('the GitHub token never reaches a provider subprocess', () => {
   it('is absent from every reviewed environment allowlist, by name', () => {

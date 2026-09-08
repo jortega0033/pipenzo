@@ -1,7 +1,7 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import {
   CREDENTIAL_ON_STDIN_ENV_KEY,
   DAEMON_GITHUB_TOKEN_ENV_KEY,
@@ -109,6 +109,23 @@ async function stripped(file: string): Promise<string> {
 }
 
 const readElectron = (name: string): Promise<string> => stripped(join(electronSrc(), name));
+
+/**
+ * Warms those caches before any assertion runs, with a budget sized for the one-time tree read
+ * rather than for an assertion. Reading the ~120 files of apps/desktop/electron and apps/desktop/src cold is legitimately slow on a loaded Windows
+ * runner, and leaving that cost inside whichever test happened to scan first is exactly how a
+ * *file read* came to fail an assertion's 5 s default (issue #219). Files are read in parallel
+ * here, which the sequential per-test scans could not do. Every assertion below keeps the default
+ * budget and now runs against memory, so a guard that genuinely misbehaves still fails fast.
+ */
+async function warm(root: string): Promise<void> {
+  const files = await sourceFiles(root);
+  await Promise.all(files.map((file) => readSource(file)));
+}
+
+beforeAll(async () => {
+  await Promise.all([warm(electronSrc()), warm(rendererSrc())]);
+}, 60_000);
 
 describe('the plaintext is produced once, and delivered over a pipe', () => {
   it('has exactly one caller of readToken(), and it is the daemon spawn', async () => {
