@@ -256,7 +256,14 @@ describe('the publish surface is not reachable from agent-runtime', () => {
     for (const file of files) {
       const text = await readSource(file);
       // Matches a tool-definition-shaped mention, not a comment about the boundary.
-      if (/['"`](?:git_push|gh_pr_create|github_create_pull_request|create_pull_request|publish)['"`]/.test(text)) {
+      // `create_issue_comment` and friends joined the list with issue #228: a comment is world-
+      // visible text published under the operator's GitHub identity, so a model that could name a
+      // tool for it could speak as a human on their own repositories.
+      if (
+        /['"`](?:git_push|gh_pr_create|github_create_pull_request|create_pull_request|publish|create_issue_comment|github_comment|post_comment|comment_on_issue)['"`]/.test(
+          text,
+        )
+      ) {
         offenders.push(relative(runtimeSrc, file));
       }
     }

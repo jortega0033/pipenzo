@@ -224,6 +224,55 @@ export const pipenzoIssueCreateResultV1Schema = z
   })
   .strict();
 
+/**
+ * Posting one comment on an issue (issue #228).
+ *
+ * Two rows of epic #4's diff-size gate end in a comment rather than in a lane move: the
+ * "no clean layering at any size" row posts the estimate and the proposed split before handing to
+ * a human (#100), and a blown estimate records real-versus-predicted numbers where a human will
+ * see them (#144). Labels cannot express either, so this is the first write on this surface whose
+ * payload is prose.
+ *
+ * `body` is the one caller-authored string here, and unlike `extraInstructions` it does not reach
+ * a prompt — it reaches the public internet, under the operator's GitHub identity. That is why the
+ * route behind it carries the same human-paced rate limit as the rest of this surface and is not
+ * reachable from any agent-facing tool: a model that could call it could publish arbitrary text as
+ * a human.
+ *
+ * Control characters are refused for the same reason every other prose field here refuses them,
+ * with the newline and tab exceptions that make a multi-paragraph comment expressible at all.
+ */
+export const pipenzoIssueCommentRequestV1Schema = z
+  .object({
+    repo: pipenzoRepoRefV1Schema.optional(),
+    issueNumber: pipenzoIssueNumberV1Schema,
+    body: z
+      .string()
+      .min(1)
+      .max(65_536)
+      .refine((value) => value.trim().length > 0, 'must not be blank')
+      .refine(noControlCharacters, 'must not contain control characters'),
+  })
+  .strict();
+
+/**
+ * The comment's identity, and nothing else.
+ *
+ * The body is deliberately **not** echoed back. The caller already has it, it can be 64KB, and a
+ * response that repeats a request's largest field is a response whose size doubles for no reader.
+ * What a caller cannot construct for itself is the comment's id and its permalink, so those are
+ * what comes back.
+ */
+export const pipenzoIssueCommentResultV1Schema = z
+  .object({
+    repo: pipenzoRepoRefV1Schema,
+    issueNumber: pipenzoIssueNumberV1Schema,
+    commentId: z.number().int().positive(),
+    htmlUrl: z.string().url(),
+    createdAt: z.string().min(1).max(64),
+  })
+  .strict();
+
 /* ------------------------------------------------------------ error codes */
 
 /**
@@ -285,4 +334,6 @@ export type PipenzoIssueClaimRequestV1 = z.infer<typeof pipenzoIssueClaimRequest
 export type PipenzoIssueClaimResultV1 = z.infer<typeof pipenzoIssueClaimResultV1Schema>;
 export type PipenzoIssueCreateRequestV1 = z.infer<typeof pipenzoIssueCreateRequestV1Schema>;
 export type PipenzoIssueCreateResultV1 = z.infer<typeof pipenzoIssueCreateResultV1Schema>;
+export type PipenzoIssueCommentRequestV1 = z.infer<typeof pipenzoIssueCommentRequestV1Schema>;
+export type PipenzoIssueCommentResultV1 = z.infer<typeof pipenzoIssueCommentResultV1Schema>;
 export type PipenzoPhaseErrorCodeV1 = (typeof PIPENZO_PHASE_ERROR_CODES)[number];

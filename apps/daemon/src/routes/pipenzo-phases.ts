@@ -10,6 +10,8 @@ import {
   pipenzoImplementCommitsV1Schema,
   pipenzoIssueClaimRequestV1Schema,
   pipenzoIssueClaimResultV1Schema,
+  pipenzoIssueCommentRequestV1Schema,
+  pipenzoIssueCommentResultV1Schema,
   pipenzoIssueCreateRequestV1Schema,
   pipenzoIssueCreateResultV1Schema,
   pipenzoRefineRequestV1Schema,
@@ -191,5 +193,31 @@ export function registerPipenzoPhaseRoutes(
     }
     // Outside the try: the issue is open on GitHub by now, and a retry would file a duplicate.
     reply.code(201).send(pipenzoIssueCreateResultV1Schema.parse(result));
+  });
+
+  /**
+   * Posts one comment on an issue (issue #228), for #100's refusal panel and #144's blown-estimate
+   * record.
+   *
+   * It shares this file's limits rather than getting its own, and that is the load-bearing choice
+   * here: this is the first route on the surface whose payload is prose that becomes public under
+   * the operator's GitHub identity. Every other property it needs it inherits from `server.ts` —
+   * the startup bearer token, the reject-any-Origin guard, and the fact that an agent session's
+   * environment carries neither the daemon's port nor its token.
+   */
+  app.post('/v2/pipenzo/issues/comment', limits, async (req, reply) => {
+    const parsed = pipenzoIssueCommentRequestV1Schema.safeParse(req.body);
+    if (!parsed.success) return invalid(reply, 'issue comment request');
+    let result;
+    try {
+      result = await service.commentOnIssue(parsed.data);
+    } catch (error) {
+      if (error instanceof PipenzoPhaseError) return fail(reply, error);
+      return fail(reply, new PipenzoPhaseError('github_failed', 'issue comment failed'));
+    }
+    // Outside the try, for the same reason as the create route above and with a sharper edge: the
+    // comment is already public by now, and GitHub has no idempotency key for one — an operator's
+    // natural retry after a response-shape error would post it a second time.
+    reply.code(201).send(pipenzoIssueCommentResultV1Schema.parse(result));
   });
 }

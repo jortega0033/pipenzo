@@ -9,6 +9,8 @@ import type {
   PipenzoImplementResultV1,
   PipenzoIssueClaimRequestV1,
   PipenzoIssueClaimResultV1,
+  PipenzoIssueCommentRequestV1,
+  PipenzoIssueCommentResultV1,
   PipenzoIssueCreateRequestV1,
   PipenzoIssueCreateResultV1,
   PipenzoPhaseErrorCodeV1,
@@ -367,6 +369,37 @@ export class PipenzoPhaseService {
         issueNumber: issue.number,
         title: issue.title,
         htmlUrl: issue.htmlUrl,
+      };
+    } catch (error) {
+      throw toPhaseError(error);
+    }
+  }
+
+  /**
+   * Posts one comment on an issue (issue #228).
+   *
+   * The thinnest method on this service, and that is the intention: it resolves a repository,
+   * calls the client, and maps the error. Everything a comment *means* — the estimate and the
+   * proposed split (#100), the real-versus-predicted numbers (#144) — is composed by the caller
+   * that has those numbers. A service that formatted them here would be a second place the wording
+   * of a public comment is decided, and the first place would stop being reviewable on its own.
+   *
+   * Note what is not here: no retry, and no "did it already post?" check. GitHub has no
+   * idempotency key for a comment, so a caller that must not double-post gates itself.
+   */
+  async commentOnIssue(
+    request: PipenzoIssueCommentRequestV1,
+  ): Promise<PipenzoIssueCommentResultV1> {
+    const ref = this.#resolveRepo(request.repo);
+    const github = this.#requireGitHub();
+    try {
+      const comment = await github.createIssueComment(ref, request.issueNumber, request.body);
+      return {
+        repo: `${ref.owner}/${ref.repo}`,
+        issueNumber: request.issueNumber,
+        commentId: comment.id,
+        htmlUrl: comment.htmlUrl,
+        createdAt: comment.createdAt,
       };
     } catch (error) {
       throw toPhaseError(error);

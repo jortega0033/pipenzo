@@ -200,6 +200,37 @@ export interface GitHubIssue {
   readonly etag: string | undefined;
 }
 
+/**
+ * One comment Pipenzo posted (issue #228).
+ *
+ * Narrower than GitHub's payload, and narrow in one direction on purpose: this is the echo of a
+ * *write*, not a row in a comment list. There is no author field because there is only ever one
+ * author — whoever the daemon's credential belongs to — and no reactions, no `updated_at`, no
+ * `author_association`, because nothing reads them. Widening this is somebody's later ticket with
+ * a consumer attached to it.
+ */
+export interface GitHubIssueComment {
+  readonly id: number;
+  readonly body: string;
+  readonly htmlUrl: string;
+  /** ISO-8601, as GitHub reports it. */
+  readonly createdAt: string;
+}
+
+/**
+ * The longest comment body this client will send.
+ *
+ * GitHub's own limit on an issue comment is 65,536 characters and it answers a longer one with a
+ * 422. Refusing here rather than there is what makes the failure legible: the caller composing a
+ * comment out of an estimate and a proposed split (#100) learns it was too long, instead of
+ * learning that GitHub rejected an unspecified field of an unspecified request.
+ *
+ * Refused, never truncated. A truncated comment is a *wrong* comment — the half of a proposed split
+ * that survived reads as the whole proposal — and it would be posted publicly under the operator's
+ * name with nothing marking it as incomplete.
+ */
+export const MAX_ISSUE_COMMENT_CHARS = 65_536;
+
 export interface GitHubLabel {
   readonly name: string;
   /** Six lowercase hex digits, no leading `#` — GitHub's own wire shape. */
@@ -327,6 +358,29 @@ export interface GitHubClient {
   getAuthenticatedLogin(): Promise<string>;
   /** Creates an issue (issue #184, for #84's "New from idea"). Never opens a pull request. */
   createIssue(ref: RepoRef, input: GitHubIssueDraft): Promise<GitHubIssue>;
+  /**
+   * Posts one comment on an issue (issue #228).
+   *
+   * Epic #4's diff-size gate ends two of its rows in a comment rather than in a lane move: the
+   * "no clean layering at any size" row posts the estimate and the proposed split before handing
+   * to a human (#100), and a blown estimate records real-versus-predicted numbers where a human
+   * will see them (#144). Neither is expressible with labels, which is the only write this client
+   * had.
+   *
+   * Post only. No edit, no delete, no list — each of those is a capability with no caller today,
+   * and an unused write on this interface is an unused write on a credential that can reach every
+   * repository the operator connected.
+   *
+   * **Not idempotent, and cannot be made so.** GitHub has no idempotency key for comments, so a
+   * retried call posts a second comment. Callers that must not double-post gate themselves; this
+   * method will not guess, because guessing means either silently swallowing a real second comment
+   * or reading the comment list on every write.
+   */
+  createIssueComment(
+    ref: RepoRef,
+    issueNumber: number,
+    body: string,
+  ): Promise<GitHubIssueComment>;
   getPullRequestDiff(ref: RepoRef, pullNumber: number): Promise<GitHubPullRequestDiff>;
   listPullRequestChecks(ref: RepoRef, pullNumber: number): Promise<readonly GitHubCheckRun[]>;
 }
@@ -1034,6 +1088,45 @@ export class OctokitGitHubClient implements GitHubClient {
   }
 
   /**
+   * Posts one comment (issue #228).
+   *
+   * ## Why this invalidates the cached issue
+   *
+   * A comment is not a field of `GitHubIssue`, so nothing this write produces is stored in the
+   * conditional cache. What it *does* change is the issue's `updated_at`, which is on
+   * `GitHubIssue` and therefore in any cached body — GitHub bumps an issue's timestamp when a
+   * comment lands on it. So the same rule the other writes here state applies unchanged: a write
+   * that timed out may still have landed, and a conditional read afterwards must not be answered
+   * from a body recorded before it.
+   *
+   * The invalidation is close to free, which is worth writing down so a later edit does not
+   * "optimise" it away: a bumped `updated_at` changes the issue's ETag, so the next conditional
+   * read was going to be answered `200` regardless. Dropping the entry does not turn a free `304`
+   * into a paid read; it only stops the client sending a validator that could not have matched.
+   */
+  async createIssueComment(
+    ref: RepoRef,
+    issueNumber: number,
+    body: string,
+  ): Promise<GitHubIssueComment> {
+    const operation = `createIssueComment ${ref.owner}/${ref.repo}#${issueNumber}`;
+    assertPositiveInteger(issueNumber, 'issue number', operation);
+    assertCommentBody(body, operation);
+    let response;
+    try {
+      response = await this.#octokit.request(
+        'POST /repos/{owner}/{repo}/issues/{issue_number}/comments',
+        { owner: ref.owner, repo: ref.repo, issue_number: issueNumber, body },
+      );
+    } catch (error) {
+      throw toGitHubClientError(error, operation);
+    } finally {
+      this.#cache?.invalidate(ref, `issue:${issueNumber}`);
+    }
+    return normalizeIssueComment(response.data as Record<string, unknown>, operation);
+  }
+
+  /**
    * Every label on a repository.
    *
    * ## Why a paginated read gets a *conditional first page* rather than a conditional list
@@ -1337,6 +1430,41 @@ function assertIssueDraft(input: GitHubIssueDraft, operation: string): void {
     throw new GitHubClientError('invalid_request', `${operation}: issue body is too long`);
   }
   for (const label of input.labels ?? []) assertLabelName(label, operation);
+}
+
+/**
+ * One comment-body rule, shared by the real client and the fake (issue #228).
+ *
+ * Emptiness is tested on the *trimmed* string but the untrimmed value is what gets sent. A comment
+ * of pure whitespace is a caller bug — it renders as an empty box on the issue under the
+ * operator's name — while leading or trailing whitespace inside a real body is the caller's
+ * formatting to keep, and a client that silently rewrote what gets published would be a client
+ * whose output nobody can predict from its input.
+ */
+function assertCommentBody(body: string, operation: string): void {
+  if (typeof body !== 'string' || body.trim().length === 0) {
+    throw new GitHubClientError('invalid_request', `${operation}: a comment body cannot be empty`);
+  }
+  if (body.length > MAX_ISSUE_COMMENT_CHARS) {
+    throw new GitHubClientError(
+      'invalid_request',
+      `${operation}: a comment body must be at most ${MAX_ISSUE_COMMENT_CHARS} characters`,
+    );
+  }
+}
+
+function normalizeIssueComment(
+  data: Record<string, unknown>,
+  operation: string,
+): GitHubIssueComment {
+  return {
+    id: requireNumber(data.id, 'id', operation),
+    // GitHub echoes the body it stored. Taken from the response rather than from the argument so
+    // that any server-side normalisation is what the caller is told was posted.
+    body: typeof data.body === 'string' ? data.body : '',
+    htmlUrl: requireString(data.html_url, 'html_url', operation),
+    createdAt: requireString(data.created_at, 'created_at', operation),
+  };
 }
 
 function normalizeIssue(

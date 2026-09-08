@@ -6,6 +6,7 @@ import {
 import {
   GITHUB_TOKEN_ENV_KEYS,
   GitHubClientError,
+  MAX_ISSUE_COMMENT_CHARS,
   MAX_RATE_LIMIT_RETRIES,
   MAX_RATE_LIMIT_SLEEP_SECONDS,
   OctokitGitHubClient,
@@ -23,6 +24,14 @@ import {
 import { ConditionalRequestCache } from '../src/github-conditional-cache.js';
 
 const REF: RepoRef = { owner: 'jortega0033', repo: 'pipenzo' };
+
+/** GitHub's own comment-create payload, trimmed to the fields `normalizeIssueComment` reads. */
+const COMMENT_DATA = {
+  id: 5_579_054_675,
+  body: 'a body',
+  html_url: 'https://github.com/jortega0033/pipenzo/issues/161#issuecomment-5579054675',
+  created_at: '2026-09-08T06:30:00Z',
+};
 
 /**
  * Builds a realistic token prefix at runtime so no literal in this file matches a real GitHub
@@ -571,6 +580,143 @@ describe('GitHub issue write operations', () => {
 });
 
 /**
+ * Issue #228. Epic #4's diff-size gate ends two of its rows in a comment rather than a lane move,
+ * and labels cannot express either — so this is the first write on this client whose payload is
+ * prose that becomes public under the operator's GitHub identity.
+ */
+describe('createIssueComment', () => {
+  it('posts the body to the comments endpoint and returns the comment identity', async () => {
+    const { octokit, calls } = stubOctokit({
+      request: async () => ({ headers: {}, data: COMMENT_DATA }),
+    });
+    const comment = await OctokitGitHubClient.withOctokit(octokit).createIssueComment(
+      REF,
+      161,
+      'Estimate: 620 changed lines across 26 files. Proposed split: ...',
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.route).toBe('POST /repos/{owner}/{repo}/issues/{issue_number}/comments');
+    expect(calls[0]?.params).toMatchObject({
+      owner: 'jortega0033',
+      repo: 'pipenzo',
+      issue_number: 161,
+      body: 'Estimate: 620 changed lines across 26 files. Proposed split: ...',
+    });
+    expect(comment).toEqual({
+      id: COMMENT_DATA.id,
+      body: COMMENT_DATA.body,
+      htmlUrl: COMMENT_DATA.html_url,
+      createdAt: COMMENT_DATA.created_at,
+    });
+  });
+
+  it('refuses an empty, blank or oversized body without issuing a request', async () => {
+    const { octokit, calls } = stubOctokit({});
+    const client = OctokitGitHubClient.withOctokit(octokit);
+    for (const body of ['', '   \n\t ', 'x'.repeat(MAX_ISSUE_COMMENT_CHARS + 1)]) {
+      const error = await catchAsync(() => client.createIssueComment(REF, 161, body));
+      expect((error as GitHubClientError).code).toBe('invalid_request');
+    }
+    // Refused, never truncated: a half-posted proposed split reads as the whole proposal.
+    expect(calls).toHaveLength(0);
+  });
+
+  it('sends a body that is exactly at the limit, so the bound is inclusive', async () => {
+    const { octokit, calls } = stubOctokit({
+      request: async () => ({ headers: {}, data: COMMENT_DATA }),
+    });
+    await OctokitGitHubClient.withOctokit(octokit).createIssueComment(
+      REF,
+      161,
+      'x'.repeat(MAX_ISSUE_COMMENT_CHARS),
+    );
+    expect(calls).toHaveLength(1);
+  });
+
+  it('refuses an issue number that is not a positive integer, before any request', async () => {
+    const { octokit, calls } = stubOctokit({});
+    const client = OctokitGitHubClient.withOctokit(octokit);
+    for (const number of [0, -1, 1.5, Number.NaN]) {
+      const error = await catchAsync(() => client.createIssueComment(REF, number, 'a body'));
+      expect((error as GitHubClientError).code).toBe('invalid_request');
+    }
+    expect(calls).toHaveLength(0);
+  });
+
+  it('keeps leading and trailing whitespace inside a real body', async () => {
+    const { octokit, calls } = stubOctokit({
+      request: async () => ({ headers: {}, data: COMMENT_DATA }),
+    });
+    await OctokitGitHubClient.withOctokit(octokit).createIssueComment(REF, 161, '\n## Split\n\n');
+    // Blankness is tested on the trimmed string; what gets published is what the caller wrote.
+    expect(calls[0]?.params).toMatchObject({ body: '\n## Split\n\n' });
+  });
+
+  it('maps GitHub failures through the same error union as every other write', async () => {
+    for (const [status, code] of [
+      [401, 'unauthorized'],
+      [403, 'forbidden'],
+      [404, 'not_found'],
+      [422, 'invalid_request'],
+      [429, 'rate_limited'],
+    ] as const) {
+      const { octokit } = stubOctokit({
+        request: async () => {
+          throw httpError(status, 'upstream said no');
+        },
+      });
+      const error = await catchAsync(() =>
+        OctokitGitHubClient.withOctokit(octokit).createIssueComment(REF, 161, 'a body'),
+      );
+      expect((error as GitHubClientError).code).toBe(code);
+    }
+  });
+
+  it('raises invalid_response rather than inventing an identity for a malformed payload', async () => {
+    const { octokit } = stubOctokit({
+      request: async () => ({ headers: {}, data: { body: 'a body' } }),
+    });
+    const error = await catchAsync(() =>
+      OctokitGitHubClient.withOctokit(octokit).createIssueComment(REF, 161, 'a body'),
+    );
+    expect((error as GitHubClientError).code).toBe('invalid_response');
+  });
+
+  it('is mirrored by the fake, with the same validation and no deduplication', async () => {
+    const fake = new FakeGitHubClient().seedIssue({
+      owner: REF.owner,
+      repo: REF.repo,
+      number: 161,
+      title: 'A ticket',
+      body: '',
+      state: 'open',
+      labels: [],
+      assignees: [],
+      htmlUrl: 'https://github.com/jortega0033/pipenzo/issues/161',
+      updatedAt: '2026-09-06T00:00:00Z',
+      etag: undefined,
+    });
+    const first = await fake.createIssueComment(REF, 161, 'same text');
+    const second = await fake.createIssueComment(REF, 161, 'same text');
+    // GitHub has no idempotency key for a comment, so a fake that collapsed these would certify
+    // an idempotency the product does not have.
+    expect(second.id).not.toBe(first.id);
+    expect(fake.issueComments(REF, 161).map((entry) => entry.body)).toEqual([
+      'same text',
+      'same text',
+    ]);
+    expect(fake.calls.filter((call) => call.method === 'createIssueComment')).toHaveLength(2);
+
+    for (const body of ['   ', 'x'.repeat(MAX_ISSUE_COMMENT_CHARS + 1)]) {
+      const error = await catchAsync(() => fake.createIssueComment(REF, 161, body));
+      expect((error as GitHubClientError).code).toBe('invalid_request');
+    }
+    const missing = await catchAsync(() => fake.createIssueComment(REF, 999, 'a body'));
+    expect((missing as GitHubClientError).code).toBe('not_found');
+  });
+});
+
+/**
  * Issue #186. The phase machine's states are GitHub labels, so it cannot write a state without
  * these two methods — `createLabel` only ever made a label exist at the *repository* level.
  */
@@ -933,6 +1079,29 @@ describe('conditional requests (issue #161)', () => {
         OctokitGitHubClient.withOctokit(octokit, { cache }).assignIssue(REF, 161, 'jortega0033'),
       );
       expect(cache.get(REF, 'issue:161')).toBeUndefined();
+    });
+
+    /**
+     * Issue #228. A comment is not a field of `GitHubIssue`, but posting one bumps the issue's
+     * `updated_at`, which is one — so a cached body recorded before the comment is stale, and the
+     * same rule applies as to every other write here.
+     */
+    it('createIssueComment invalidates the issue it commented on, even when the write throws', async () => {
+      for (const outcome of ['ok', 'throws'] as const) {
+        const cache = new ConditionalRequestCache();
+        cache.set(REF, 'issue:161', 'W/"stale"', { number: 161 });
+        const { octokit } = stubOctokit({
+          request: async () => {
+            if (outcome === 'throws') throw httpError(500, 'Internal Server Error');
+            return { headers: {}, data: COMMENT_DATA };
+          },
+        });
+        const client = OctokitGitHubClient.withOctokit(octokit, { cache });
+        const call = (): Promise<unknown> => client.createIssueComment(REF, 161, 'a body');
+        if (outcome === 'throws') await catchAsync(call);
+        else await call();
+        expect(cache.get(REF, 'issue:161')).toBeUndefined();
+      }
     });
 
     it('createLabel invalidates the repository label list', async () => {

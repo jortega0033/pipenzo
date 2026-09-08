@@ -1,10 +1,12 @@
 import {
   GitHubClientError,
+  MAX_ISSUE_COMMENT_CHARS,
   PIPENZO_LABEL_NAMESPACE,
   isPipenzoLabel,
   type GitHubCheckRun,
   type GitHubClient,
   type GitHubIssue,
+  type GitHubIssueComment,
   type GitHubIssueDraft,
   type GitHubLabel,
   type GitHubRepository,
@@ -28,12 +30,15 @@ export class FakeGitHubClient implements GitHubClient {
   readonly #labels = new Map<string, GitHubLabel[]>();
   readonly #diffs = new Map<string, GitHubPullRequestDiff>();
   readonly #checks = new Map<string, GitHubCheckRun[]>();
+  readonly #comments = new Map<string, GitHubIssueComment[]>();
   /** Every call, in order, so a test can assert *what was asked of GitHub*, not just the answer. */
   readonly calls: Array<{ method: string; key: string }> = [];
   /** Queued failure per method name, consumed once. Lets a test drive the error paths. */
   readonly #failures = new Map<string, GitHubClientError>();
   /** Where `createIssue` starts numbering. Seeded issues above it stay addressable. */
   #nextIssueNumber = 1_000;
+  /** Comment ids are their own sequence on GitHub, and are here too, so a test cannot confuse them. */
+  #nextCommentId = 5_000;
   #viewerLogin = 'pipenzo-test-user';
   /** What `listAccessibleRepositories` answers. Empty until a test seeds it. */
   #repositories: readonly GitHubRepository[] = [];
@@ -236,6 +241,64 @@ export class FakeGitHubClient implements GitHubClient {
     };
     this.#issues.set(FakeGitHubClient.key(ref, number), issue);
     return issue;
+  }
+
+  /**
+   * Posts a comment, with the same validation and the same failure codes as the real client.
+   *
+   * The validation has to live here too, not only in the octokit implementation. #100's refusal
+   * panel and #144's blown-estimate record both compose a body out of numbers, and both are tested
+   * against this object — a fake that accepted an empty or oversized body would let those tests
+   * pass while the shipped client refused the identical call.
+   *
+   * A missing issue is `not_found`, because that is what GitHub answers. Nothing here dedupes: the
+   * real endpoint has no idempotency key, so a fake that collapsed two identical posts into one
+   * would certify an idempotency the product does not have.
+   */
+  async createIssueComment(
+    ref: RepoRef,
+    issueNumber: number,
+    body: string,
+  ): Promise<GitHubIssueComment> {
+    const key = FakeGitHubClient.key(ref, issueNumber);
+    this.#enter('createIssueComment', key);
+    if (typeof body !== 'string' || body.trim().length === 0) {
+      throw new GitHubClientError(
+        'invalid_request',
+        `createIssueComment ${key}: a comment body cannot be empty`,
+      );
+    }
+    if (body.length > MAX_ISSUE_COMMENT_CHARS) {
+      throw new GitHubClientError(
+        'invalid_request',
+        `createIssueComment ${key}: a comment body must be at most ${MAX_ISSUE_COMMENT_CHARS} characters`,
+      );
+    }
+    if (!this.#issues.has(key)) {
+      throw new GitHubClientError('not_found', `createIssueComment ${key}: no such issue`);
+    }
+    const id = this.#nextCommentId;
+    this.#nextCommentId += 1;
+    const comment: GitHubIssueComment = {
+      id,
+      body,
+      htmlUrl: `https://github.com/${ref.owner}/${ref.repo}/issues/${issueNumber}#issuecomment-${id}`,
+      createdAt: new Date(0).toISOString(),
+    };
+    this.#comments.set(key, [...(this.#comments.get(key) ?? []), comment]);
+    return comment;
+  }
+
+  /**
+   * What was posted on one issue, in order.
+   *
+   * Not on `GitHubClient` — the interface has no comment read, deliberately. This is a test
+   * affordance, because `calls` records *that* a comment was posted and this records *what was in
+   * it*, and the tickets consuming this method are the ones whose entire content is the numbers in
+   * the body.
+   */
+  issueComments(ref: RepoRef, issueNumber: number): readonly GitHubIssueComment[] {
+    return [...(this.#comments.get(FakeGitHubClient.key(ref, issueNumber)) ?? [])];
   }
 
   async getPullRequestDiff(ref: RepoRef, pullNumber: number): Promise<GitHubPullRequestDiff> {
