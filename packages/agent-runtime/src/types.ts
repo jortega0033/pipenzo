@@ -218,7 +218,15 @@ export interface InteractiveProviderSessionHandle {
       'cancel' | 'disconnect' | 'interrupt' | 'overflow' | 'shutdown' | 'timeout' | 'trust_revoked',
   ): Promise<void>;
   interrupt(): Promise<void>;
-  close(): Promise<void>;
+  /**
+   * `reason` is what the provider is told about any interaction the supervisor still holds when
+   * the session closes. The daemon resolves everything it has already taken off the event stream
+   * itself, but an interaction the provider emitted and the daemon has not yet consumed is only
+   * ever fail-closed here -- and it used to be reported as a plain `cancel` even when the session
+   * was being torn down because the workspace's trust had been revoked (issue #219). Defaults to
+   * `cancel`, which is what an ordinary close means.
+   */
+  close(reason?: 'cancel' | 'shutdown' | 'trust_revoked'): Promise<void>;
 }
 
 /** Low-level provider host contract wrapped by the common session supervisor. */

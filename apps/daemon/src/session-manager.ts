@@ -1786,7 +1786,11 @@ export class SessionManager {
     if (runtime.kind === 'legacy') return runtime.handle.cancel();
     runtime.sessionGrants.clear();
     await this.resolveClaimedInteractions(id, runtime, runtime.interactions.claimAll(), reason);
-    await runtime.handle.close();
+    // `claimAll` only covers interactions this session has already taken off the event stream. One
+    // the provider emitted a moment ago, still queued ahead of the consumer, is fail-closed by the
+    // supervisor during close instead -- so the reason has to travel with the close, or a
+    // revocation reaches the provider as an ordinary cancellation (issue #219).
+    await runtime.handle.close(reason);
   }
 
   private async waitForDone(runtime: RuntimeState, timeoutMs: number): Promise<void> {
