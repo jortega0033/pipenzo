@@ -84,9 +84,19 @@ function useCountdown(targetEpochMs: number): number {
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
-    setNow(Date.now());
-    if (targetEpochMs - Date.now() <= 0) return;
-    const interval = setInterval(() => setNow(Date.now()), 1_000);
+    const start = Date.now();
+    setNow(start);
+    if (targetEpochMs - start <= 0) return;
+    // Clears itself from inside the tick, not just on unmount/re-target: without this, once the
+    // countdown reaches zero the interval keeps firing once a second for as long as `health` goes
+    // unchanged (up to `MAX_POLL_BACKOFF_MS` -- 15 minutes -- on the reconciler's own ladder),
+    // which is exactly the silent-forever-ticking bug this comment used to just assert didn't
+    // happen.
+    const interval = setInterval(() => {
+      const tick = Date.now();
+      setNow(tick);
+      if (tick >= targetEpochMs) clearInterval(interval);
+    }, 1_000);
     return () => clearInterval(interval);
   }, [targetEpochMs]);
 

@@ -58,6 +58,23 @@ describe('ConnectionHealthBanner', () => {
       expect(screen.queryByText('18s')).not.toBeInTheDocument();
     });
 
+    it('stops ticking once the countdown reaches zero, instead of firing forever at "0s"', () => {
+      render(<ConnectionHealthBanner health={health} />);
+
+      act(() => {
+        vi.advanceTimersByTime(18_000);
+      });
+      expect(screen.getByText('0s')).toBeInTheDocument();
+      expect(vi.getTimerCount()).toBe(0);
+
+      // Nothing left to clear, and nothing re-renders on every later tick either.
+      act(() => {
+        vi.advanceTimersByTime(60_000);
+      });
+      expect(screen.getByText('0s')).toBeInTheDocument();
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
     it('omits the last-clean-poll sentence when there has never been one', () => {
       render(
         <ConnectionHealthBanner
