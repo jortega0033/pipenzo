@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 import struct
 import sys
@@ -19,6 +21,13 @@ ICON_ROOT = DESKTOP_ASSETS / "app-icons"
 PNG_ROOT = ICON_ROOT / "png"
 ILLUSTRATION_ROOT = DESKTOP_ASSETS / "illustrations"
 IMAGE_ROOT = PROJECT_ROOT / "docs" / "images"
+
+# Pipenzo's approved brand + mascot pack (see #239). Every file in it is checked against the
+# pack's own reviewed manifest.json (sha256 + bytes + dimensions), not a hand-maintained list
+# here, so this validator can't drift from what the pack's own QA pass actually approved.
+PIPENZO_ROOT = DESKTOP_ASSETS / "pipenzo"
+PIPENZO_MANIFEST = PIPENZO_ROOT / "manifest.json"
+STALE_BRAND_NAME = re.compile(r"(?i)agent[-_]?dock")
 ARCHITECTURE_ROOT = IMAGE_ROOT / "architecture"
 ARTWORK_ROOT = IMAGE_ROOT / "artwork"
 SCREENSHOT_ROOT = IMAGE_ROOT / "screenshots"
@@ -57,6 +66,18 @@ ILLUSTRATION_VIEWBOXES = {
     "runtime-unavailable.svg": "0 0 160 160",
 }
 ARCHITECTURE_VIEWBOXES = {"runtime-flow.svg": "0 0 1400 440"}
+PIPENZO_SVG_VIEWBOXES = {
+    "app-icons/pipenzo-app-icon-helmet-p-monochrome.svg": "0 0 1024 1024",
+    "brand/pipenzo-helmet-p-glyph-black.svg": "0 0 1024 1024",
+    "brand/pipenzo-helmet-p-glyph-white.svg": "0 0 1024 1024",
+    "brand/pipenzo-lockup-horizontal-dark.svg": "0 0 980 240",
+    "brand/pipenzo-lockup-horizontal-light.svg": "0 0 980 240",
+    "brand/pipenzo-lockup-stacked-dark.svg": "0 0 720 420",
+    "brand/pipenzo-lockup-stacked-light.svg": "0 0 720 420",
+    "brand/pipenzo-patch-p.svg": "0 0 128 128",
+    "brand/pipenzo-wordmark-dark.svg": "0 0 760 160",
+    "brand/pipenzo-wordmark-light.svg": "0 0 760 160",
+}
 PUBLIC_IMAGES = {
     ARTWORK_ROOT / "agent-dock-runtime.png": ((1536, 1024), "PNG"),
     SCREENSHOT_ROOT / "desktop-ready.png": ((1440, 900), "PNG"),
@@ -348,6 +369,78 @@ def validate_icns(path: Path) -> None:
         ERRORS.append(f"Cannot decode {relative(path)}: {error}")
 
 
+def validate_pipenzo_pack() -> None:
+    for name, viewbox in PIPENZO_SVG_VIEWBOXES.items():
+        path = PIPENZO_ROOT / name
+        if path.is_file():
+            validate_svg(path, viewbox)
+
+    try:
+        manifest = json.loads(PIPENZO_MANIFEST.read_text(encoding="utf-8"))
+    except OSError as error:
+        ERRORS.append(f"Cannot read {relative(PIPENZO_MANIFEST)}: {error}")
+        return
+    except json.JSONDecodeError as error:
+        ERRORS.append(f"Malformed manifest {relative(PIPENZO_MANIFEST)}: {error}")
+        return
+
+    manifest_files = manifest.get("files", [])
+    for entry in manifest_files:
+        path = PIPENZO_ROOT / entry["file"]
+        if not path.is_file():
+            ERRORS.append(f"Missing approved asset: {relative(path)}")
+            continue
+
+        data = path.read_bytes()
+        check(
+            len(data) == entry["bytes"],
+            f"Approved asset size no longer matches the reviewed pack: {relative(path)}",
+        )
+        check(
+            hashlib.sha256(data).hexdigest() == entry["sha256"],
+            "Approved asset content no longer matches the reviewed pack (this ticket must not "
+            f"redraw/reinterpret the mascot): {relative(path)}",
+        )
+        if "dimensions" in entry:
+            try:
+                with Image.open(path) as image:
+                    image.load()
+                    check(
+                        list(image.size) == entry["dimensions"],
+                        f"Wrong dimensions for {relative(path)}: {image.size}",
+                    )
+                    check(
+                        image.format == entry["format"],
+                        f"Wrong format for {relative(path)}: {image.format}",
+                    )
+                    # ICO/ICNS are multi-representation containers; Pillow's generic .mode
+                    # reflects only its default-loaded frame, not every embedded representation,
+                    # so it isn't a meaningful signal here (unlike plain PNG/WebP/JPEG).
+                    if entry["format"] not in {"ICO", "ICNS"}:
+                        check(
+                            image.mode == entry["mode"],
+                            f"Wrong color mode for {relative(path)}: {image.mode}",
+                        )
+            except (OSError, ValueError) as error:
+                ERRORS.append(f"Cannot decode {relative(path)}: {error}")
+        validate_forbidden_bytes(path)
+
+    expected = {entry["file"] for entry in manifest_files}
+    on_disk = {
+        path.relative_to(PIPENZO_ROOT).as_posix()
+        for path in PIPENZO_ROOT.rglob("*")
+        if path.is_file() and path != PIPENZO_MANIFEST
+    }
+    check(
+        on_disk <= expected,
+        f"Files present under {relative(PIPENZO_ROOT)} but not in the approved manifest: "
+        f"{sorted(on_disk - expected)}",
+    )
+
+    stale = sorted(name for name in expected if STALE_BRAND_NAME.search(name))
+    check(not stale, f"Stale AgentDock-branded filename in the approved Pipenzo pack: {stale}")
+
+
 def main() -> int:
     check_exact_files(BRAND_ROOT, set(BRAND_VIEWBOXES))
     check_exact_files(ICON_ROOT, {"agent-dock.ico", "agent-dock.icns"})
@@ -397,6 +490,8 @@ def main() -> int:
         if path.is_file():
             validate_raster(path, size, image_format, "RGB")
 
+    validate_pipenzo_pack()
+
     if ERRORS:
         print("Asset validation failed:")
         for error in ERRORS:
@@ -406,7 +501,7 @@ def main() -> int:
     print(
         "Asset validation passed: "
         f"{len(svg_files)} SVGs, {len(PNG_SIZES)} PNG icons, ICO, ICNS, "
-        f"and {len(PUBLIC_IMAGES)} curated public images"
+        f"{len(PUBLIC_IMAGES)} curated public images, and the approved Pipenzo asset pack"
     )
     return 0
 

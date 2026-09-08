@@ -1,0 +1,2158 @@
+{
+  "package": "Pipenzo approved brand + mascot asset pack",
+  "version": "1.0",
+  "qa": {
+    "passed": 197,
+    "failed": 0
+  },
+  "source_of_truth": [
+    "reference/pipenzo-approved-character-system-board.png",
+    "reference/pipenzo-approved-asset-board-helmet-icon-v2.png"
+  ],
+  "files": [
+    {
+      "file": "app-icons/pipenzo-app-icon-helmet-p-monochrome-1024.png",
+      "bytes": 544457,
+      "sha256": "d4ea7d4bd313a658cae1e86fcccd4dbd6e5453afc4924d5c7127a49da21df4ca",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mode": "RGB",
+      "format": "PNG"
+    },
+    {
+      "file": "app-icons/pipenzo-app-icon-helmet-p-monochrome-inverted-1024.png",
+      "bytes": 551610,
+      "sha256": "f0fca831fb5337f1a5038e3624b8171802ab58ad9f85492802c951d50bf935bb",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mode": "RGB",
+      "format": "PNG"
+    },
+    {
+      "file": "app-icons/pipenzo-app-icon-helmet-p-monochrome.svg",
+      "bytes": 6258,
+      "sha256": "8a91544fd6f782b6b17c48be23d53addd5861e0b283d5756c0f03c2671d9ae24"
+    },
+    {
+      "file": "app-icons/pipenzo.icns",
+      "bytes": 941557,
+      "sha256": "84c92bc0a13c795b6f36581553f63840e1a4aff186592290a797be07fe3884bc",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mode": "RGBA",
+      "format": "ICNS"
+    },
+    {
+      "file": "app-icons/pipenzo.ico",
+      "bytes": 65695,
+      "sha256": "7f550d27afdfd8e48478acd2513cd9a7dff58ce88fe69c21a62f44db6540c874",
+      "dimensions": [
+        256,
+        256
+      ],
+      "mode": "RGB",
+      "format": "ICO"
+    },
+    {
+      "file": "app-icons/png/pipenzo-icon-1024.png",
+      "bytes": 544457,
+      "sha256": "d4ea7d4bd313a658cae1e86fcccd4dbd6e5453afc4924d5c7127a49da21df4ca",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mode": "RGB",
+      "format": "PNG"
+    },
+    {
+      "file": "app-icons/png/pipenzo-icon-128.png",
+      "bytes": 12090,
+      "sha256": "5dde33288626786723f1a48235a16851ee58947e899529591c62924736ade3d7",
+      "dimensions": [
+        128,
+        128
+      ],
+      "mode": "RGB",
+      "format": "PNG"
+    },
+    {
+      "file": "app-icons/png/pipenzo-icon-16.png",
+      "bytes": 686,
+      "sha256": "a46cfb4774fe5d9b1d7d6886144491c038eb7cc9d6262fed21294ea45ff8afa3",
+      "dimensions": [
+        16,
+        16
+      ],
+      "mode": "RGB",
+      "format": "PNG"
+    },
+    {
+      "file": "app-icons/png/pipenzo-icon-20.png",
+      "bytes": 1004,
+      "sha256": "c423ce46652b857bc0abbc4875ca9186be46b6414c5ebe7a72998c2ca6ecee73",
+      "dimensions": [
+        20,
+        20
+      ],
+      "mode": "RGB",
+      "format": "PNG"
+    },
+    {
+      "file": "app-icons/png/pipenzo-icon-24.png",
+      "bytes": 1267,
+      "sha256": "a7d3a46fd3e89cc0af2c551a6bda42f479647588b5b72109c86514ace6b8838b",
+      "dimensions": [
+        24,
+        24
+      ],
+      "mode": "RGB",
+      "format": "PNG"
+    },
+    {
+      "file": "app-icons/png/pipenzo-icon-256.png",
+      "bytes": 41476,
+      "sha256": "e9c099502625b626c0c16c57b6aaa0bbe39acf9dedbbf5151558ace4c1080d6a",
+      "dimensions": [
+        256,
+        256
+      ],
+      "mode": "RGB",
+      "format": "PNG"
+    },
+    {
+      "file": "app-icons/png/pipenzo-icon-32.png",
+      "bytes": 1913,
+      "sha256": "fd2031a26923cfdee807ccfd5d1846c208f69b399f086c4da8ef088e0b01407e",
+      "dimensions": [
+        32,
+        32
+      ],
+      "mode": "RGB",
+      "format": "PNG"
+    },
+    {
+      "file": "app-icons/png/pipenzo-icon-48.png",
+      "bytes": 3346,
+      "sha256": "9c8b41607e409796126cdb7795a8493ed1a12b1dd230d028c4d480525356e1d2",
+      "dimensions": [
+        48,
+        48
+      ],
+      "mode": "RGB",
+      "format": "PNG"
+    },
+    {
+      "file": "app-icons/png/pipenzo-icon-512.png",
+      "bytes": 162858,
+      "sha256": "fa36dacf76c5e9653fd5922ed79502ce4ec1ea9fd7ad1bd29ca22b146c502793",
+      "dimensions": [
+        512,
+        512
+      ],
+      "mode": "RGB",
+      "format": "PNG"
+    },
+    {
+      "file": "app-icons/png/pipenzo-icon-64.png",
+      "bytes": 4799,
+      "sha256": "54a1a27c4eb01f806f2e21f65c2034fcb4e2f491919886703900e9de1a79201d",
+      "dimensions": [
+        64,
+        64
+      ],
+      "mode": "RGB",
+      "format": "PNG"
+    },
+    {
+      "file": "brand/favicon.ico",
+      "bytes": 65695,
+      "sha256": "7f550d27afdfd8e48478acd2513cd9a7dff58ce88fe69c21a62f44db6540c874",
+      "dimensions": [
+        256,
+        256
+      ],
+      "mode": "RGB",
+      "format": "ICO"
+    },
+    {
+      "file": "brand/pipenzo-favicon-16.png",
+      "bytes": 686,
+      "sha256": "a46cfb4774fe5d9b1d7d6886144491c038eb7cc9d6262fed21294ea45ff8afa3",
+      "dimensions": [
+        16,
+        16
+      ],
+      "mode": "RGB",
+      "format": "PNG"
+    },
+    {
+      "file": "brand/pipenzo-favicon-32.png",
+      "bytes": 1913,
+      "sha256": "fd2031a26923cfdee807ccfd5d1846c208f69b399f086c4da8ef088e0b01407e",
+      "dimensions": [
+        32,
+        32
+      ],
+      "mode": "RGB",
+      "format": "PNG"
+    },
+    {
+      "file": "brand/pipenzo-favicon-48.png",
+      "bytes": 3346,
+      "sha256": "9c8b41607e409796126cdb7795a8493ed1a12b1dd230d028c4d480525356e1d2",
+      "dimensions": [
+        48,
+        48
+      ],
+      "mode": "RGB",
+      "format": "PNG"
+    },
+    {
+      "file": "brand/pipenzo-favicon-64.png",
+      "bytes": 4799,
+      "sha256": "54a1a27c4eb01f806f2e21f65c2034fcb4e2f491919886703900e9de1a79201d",
+      "dimensions": [
+        64,
+        64
+      ],
+      "mode": "RGB",
+      "format": "PNG"
+    },
+    {
+      "file": "brand/pipenzo-helmet-p-glyph-black.png",
+      "bytes": 15912,
+      "sha256": "5369572132725f3fa7c5dab035ad79be65f4e4aef91efe9a1b08286d52f6c65b",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "brand/pipenzo-helmet-p-glyph-black.svg",
+      "bytes": 6203,
+      "sha256": "15d4547bb5991e736577c784dc27bb73badba9362cfbb504b2ddd6c01f7e5e74"
+    },
+    {
+      "file": "brand/pipenzo-helmet-p-glyph-white.png",
+      "bytes": 16530,
+      "sha256": "88f66e56b34ffdf503aceb6249d347eac524c8418decfd39780eb731966beed8",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "brand/pipenzo-helmet-p-glyph-white.svg",
+      "bytes": 6203,
+      "sha256": "31bf9ac119d547a1eafc86c19aef2be448851481977dea5b08344a3f8bafff92"
+    },
+    {
+      "file": "brand/pipenzo-lockup-horizontal-dark.png",
+      "bytes": 32774,
+      "sha256": "bbc2dd0df3923f3bb53f8135082897f1f631f6f2119c614e9c590bf038a49c74",
+      "dimensions": [
+        1200,
+        300
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "brand/pipenzo-lockup-horizontal-dark.svg",
+      "bytes": 6484,
+      "sha256": "a6866b6b3c47739bca60d08fe6e1c41b2605c4c48bf10853011c3dc23d9c2fed"
+    },
+    {
+      "file": "brand/pipenzo-lockup-horizontal-light.png",
+      "bytes": 32728,
+      "sha256": "b96e2b5e1ff71c74f29f412eb3e43b5531629dad7faedf81d80766217159bc10",
+      "dimensions": [
+        1200,
+        300
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "brand/pipenzo-lockup-horizontal-light.svg",
+      "bytes": 6481,
+      "sha256": "9e451de1f306a6bb914e6c4507c1197b896d687bcc5495348d35b35e83d00812"
+    },
+    {
+      "file": "brand/pipenzo-lockup-stacked-dark.png",
+      "bytes": 30251,
+      "sha256": "198c9d38fa4e3d54d143af5af37b70de6ac141e39de829822ee31b79575462b9",
+      "dimensions": [
+        900,
+        520
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "brand/pipenzo-lockup-stacked-dark.svg",
+      "bytes": 6488,
+      "sha256": "7049a257c8bc6eee16fdf12283a9e763d65ab7ed8e96fef31ed9a86181585479"
+    },
+    {
+      "file": "brand/pipenzo-lockup-stacked-light.png",
+      "bytes": 30424,
+      "sha256": "c8a42f562a2db22910b9e671cad7dd7466687dce7a1f32df7cc6c39e7cb44ad8",
+      "dimensions": [
+        900,
+        520
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "brand/pipenzo-lockup-stacked-light.svg",
+      "bytes": 6485,
+      "sha256": "cc1660ff0a3f2c64cc7ed02467f7e01aa6c60bb67786a15a0759ee930e5e3104"
+    },
+    {
+      "file": "brand/pipenzo-patch-p.svg",
+      "bytes": 251,
+      "sha256": "02fe0f05d82a61ca309aee95ec38896db7f323f380e2cf8ba24177b373f7e5bf"
+    },
+    {
+      "file": "brand/pipenzo-wordmark-dark.png",
+      "bytes": 9002,
+      "sha256": "9513a13fb3522d09988bac29d4847e91a8b2dbebcbf198aa0df58bbb719b5341",
+      "dimensions": [
+        1000,
+        220
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "brand/pipenzo-wordmark-dark.svg",
+      "bytes": 233,
+      "sha256": "e45b246b57f4357c0911a8e6c9d812a9fd6ebdb22ee2e57b3d2ef60783279179"
+    },
+    {
+      "file": "brand/pipenzo-wordmark-light.png",
+      "bytes": 8975,
+      "sha256": "9e99ecac059c345db50806e101107f4295d105627542af020121081812d03cfa",
+      "dimensions": [
+        1000,
+        220
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "brand/pipenzo-wordmark-light.svg",
+      "bytes": 233,
+      "sha256": "60f670bac974f870de001d2c0b060b9668a97f534d672eb8e0c0e95c95351001"
+    },
+    {
+      "file": "docs/ASSET_INDEX.md",
+      "bytes": 1823,
+      "sha256": "9a9de6baf02628983d9755e578ca0ced861d9ee13db794a7fbc04fb9f4e9456e"
+    },
+    {
+      "file": "docs/BRAND_USAGE.md",
+      "bytes": 1518,
+      "sha256": "38098664f9da404f8e9e47e9cbd5d77740437260a5a0deec2f4a240f68259f3c"
+    },
+    {
+      "file": "docs/QA_REPORT.md",
+      "bytes": 1161,
+      "sha256": "805168749e252411f733d7ecbad1cde62d2998108c63f5edf543a135746b4776"
+    },
+    {
+      "file": "docs/qa-contact-brand-icons.jpg",
+      "bytes": 222033,
+      "sha256": "01af4101de71dc6d5e73d1009094d5610bc94f473cbb11c3ed48fb2000c9baf1",
+      "dimensions": [
+        1560,
+        2100
+      ],
+      "mode": "RGB",
+      "format": "JPEG"
+    },
+    {
+      "file": "docs/qa-contact-illustrations.jpg",
+      "bytes": 608696,
+      "sha256": "048a5ce5af6e3c33f6b71df53b35cf640e0e560c7a5dd4f9e2f11b78e2c58fc5",
+      "dimensions": [
+        1520,
+        2880
+      ],
+      "mode": "RGB",
+      "format": "JPEG"
+    },
+    {
+      "file": "docs/qa-contact-marketing.jpg",
+      "bytes": 176790,
+      "sha256": "04bce277a645f011443810f62c805130fe986612621239357b1018f829fc4828",
+      "dimensions": [
+        1520,
+        920
+      ],
+      "mode": "RGB",
+      "format": "JPEG"
+    },
+    {
+      "file": "docs/qa-contact-mascot-detailed.jpg",
+      "bytes": 410460,
+      "sha256": "1fbef811e2ed9176c2f80b17ce17b1d681093d567d7b0c661305aec6d2082a0a",
+      "dimensions": [
+        1560,
+        1680
+      ],
+      "mode": "RGB",
+      "format": "JPEG"
+    },
+    {
+      "file": "docs/qa-contact-mini-sprites.jpg",
+      "bytes": 112831,
+      "sha256": "1f3ea8d0101e523eb608ef0cce8d13e8c61d466d88d430c6b1f4c08b98d7bb4c",
+      "dimensions": [
+        1440,
+        1200
+      ],
+      "mode": "RGB",
+      "format": "JPEG"
+    },
+    {
+      "file": "illustrations/pipenzo-failed-review-1200x800.png",
+      "bytes": 275508,
+      "sha256": "0d6133c862ce66b9c130dcaf9b60e3adbc24634b9b1fa806e1e5fec9bc92be2f",
+      "dimensions": [
+        1200,
+        800
+      ],
+      "mode": "RGB",
+      "format": "PNG"
+    },
+    {
+      "file": "illustrations/pipenzo-failed-review-1200x800.webp",
+      "bytes": 65372,
+      "sha256": "35edddcf14537d45dd1901984fe19674305c8932cb2f4c057ab685577ae5e43d",
+      "dimensions": [
+        1200,
+        800
+      ],
+      "mode": "RGB",
+      "format": "WEBP"
+    },
+    {
+      "file": "illustrations/pipenzo-first-run-empty-state-1200x760.png",
+      "bytes": 288611,
+      "sha256": "7529346fdfbc38acded1ec2bb0f4910cc4b767d2c04ba3b7333d976757e218b3",
+      "dimensions": [
+        1200,
+        760
+      ],
+      "mode": "RGB",
+      "format": "PNG"
+    },
+    {
+      "file": "illustrations/pipenzo-first-run-empty-state-1200x760.webp",
+      "bytes": 73744,
+      "sha256": "c2ffc73deebe9087eac7be0d13835a09073e839e4fa5689d4f4b27ab91ebe3ef",
+      "dimensions": [
+        1200,
+        760
+      ],
+      "mode": "RGB",
+      "format": "WEBP"
+    },
+    {
+      "file": "illustrations/pipenzo-good-implementation-1200x800.png",
+      "bytes": 274377,
+      "sha256": "31ea11f3a0605dd4449b4c578a90593815846d2dbcad33dfb6a939dce13171ab",
+      "dimensions": [
+        1200,
+        800
+      ],
+      "mode": "RGB",
+      "format": "PNG"
+    },
+    {
+      "file": "illustrations/pipenzo-good-implementation-1200x800.webp",
+      "bytes": 64984,
+      "sha256": "dafa60da09bfd43b32297cbccbf4c167afc193372a576a1cb62dff074bb884fd",
+      "dimensions": [
+        1200,
+        800
+      ],
+      "mode": "RGB",
+      "format": "WEBP"
+    },
+    {
+      "file": "illustrations/pipenzo-human-approval-boundary-1600x900.png",
+      "bytes": 1705418,
+      "sha256": "1f2410548bf64060f1fb92fbcf3614e18b19951d082c979c68d50b1fae7489cd",
+      "dimensions": [
+        1600,
+        900
+      ],
+      "mode": "RGB",
+      "format": "PNG"
+    },
+    {
+      "file": "illustrations/pipenzo-human-approval-boundary-1600x900.webp",
+      "bytes": 225094,
+      "sha256": "d13d3d663ee77106dbc382cf5eb725571c3e9bbd612b7d028a41f211c623fd68",
+      "dimensions": [
+        1600,
+        900
+      ],
+      "mode": "RGB",
+      "format": "WEBP"
+    },
+    {
+      "file": "illustrations/pipenzo-multiple-tickets-commander-1400x800.png",
+      "bytes": 339290,
+      "sha256": "55a1f5a556b0630df882f5b0a344f14d55260694aff766aab37c882f2f865cc0",
+      "dimensions": [
+        1400,
+        800
+      ],
+      "mode": "RGB",
+      "format": "PNG"
+    },
+    {
+      "file": "illustrations/pipenzo-multiple-tickets-commander-1400x800.webp",
+      "bytes": 85028,
+      "sha256": "b299bcdb7b28ddefb37cc1a659ca5fea5ffedc160f7bc405f86cfbb30c2e78da",
+      "dimensions": [
+        1400,
+        800
+      ],
+      "mode": "RGB",
+      "format": "WEBP"
+    },
+    {
+      "file": "illustrations/pipenzo-oversized-ticket-1600x900.png",
+      "bytes": 589244,
+      "sha256": "41c3fb359cc3463b58a9da3c37adad2edd8479a57bdc9d2744649f8d7a78baac",
+      "dimensions": [
+        1600,
+        900
+      ],
+      "mode": "RGB",
+      "format": "PNG"
+    },
+    {
+      "file": "illustrations/pipenzo-oversized-ticket-1600x900.webp",
+      "bytes": 133154,
+      "sha256": "0be74b10cebe2ab3f57327be17e7ecef6403b178e7224b317f01fa1075b0dfdb",
+      "dimensions": [
+        1600,
+        900
+      ],
+      "mode": "RGB",
+      "format": "WEBP"
+    },
+    {
+      "file": "illustrations/pipenzo-ready-for-approval-1200x800.png",
+      "bytes": 333249,
+      "sha256": "d59825aeea94b6b4418a7cac5e6e43d681829465bd3363e44eb116265fddb26c",
+      "dimensions": [
+        1200,
+        800
+      ],
+      "mode": "RGB",
+      "format": "PNG"
+    },
+    {
+      "file": "illustrations/pipenzo-ready-for-approval-1200x800.webp",
+      "bytes": 82692,
+      "sha256": "6c949041ea88a08ab37e33130f3c07d7f16a61992d26e8df204d08f3fac89386",
+      "dimensions": [
+        1200,
+        800
+      ],
+      "mode": "RGB",
+      "format": "WEBP"
+    },
+    {
+      "file": "illustrations/pipenzo-rejected-approval-1200x800.png",
+      "bytes": 293349,
+      "sha256": "c4e3cf11c1d50fc646ddbc3c23cbc285b14c97fb1e6517df379c7be59efbd0c0",
+      "dimensions": [
+        1200,
+        800
+      ],
+      "mode": "RGB",
+      "format": "PNG"
+    },
+    {
+      "file": "illustrations/pipenzo-rejected-approval-1200x800.webp",
+      "bytes": 69896,
+      "sha256": "af86041818472d58407fcd9e97bedad43757b48fdf6b26cf84c62a66ef9fcb3a",
+      "dimensions": [
+        1200,
+        800
+      ],
+      "mode": "RGB",
+      "format": "WEBP"
+    },
+    {
+      "file": "illustrations/pipenzo-review-complete-1200x800.png",
+      "bytes": 290098,
+      "sha256": "77714378c544ec921007a138bda26a33e5ea649d3d78959537585eb3910a1f0b",
+      "dimensions": [
+        1200,
+        800
+      ],
+      "mode": "RGB",
+      "format": "PNG"
+    },
+    {
+      "file": "illustrations/pipenzo-review-complete-1200x800.webp",
+      "bytes": 74878,
+      "sha256": "ffd04e7057ae7b4a0fb41e621c220b71e4dc1ba79ba932a06802714c49da6a7d",
+      "dimensions": [
+        1200,
+        800
+      ],
+      "mode": "RGB",
+      "format": "WEBP"
+    },
+    {
+      "file": "illustrations/pipenzo-review-process-1600x900.png",
+      "bytes": 541200,
+      "sha256": "80624902c5d3ef2b986e02f5270ae2949afd3b58e29b1c1345074a8c502e765f",
+      "dimensions": [
+        1600,
+        900
+      ],
+      "mode": "RGB",
+      "format": "PNG"
+    },
+    {
+      "file": "illustrations/pipenzo-review-process-1600x900.webp",
+      "bytes": 124384,
+      "sha256": "9aa69f844b2d8a3d03caa51ff41e1f71ce91b08f9acdae099f8d7e3b4db294ce",
+      "dimensions": [
+        1600,
+        900
+      ],
+      "mode": "RGB",
+      "format": "WEBP"
+    },
+    {
+      "file": "illustrations/pipenzo-small-ticket-1200x800.png",
+      "bytes": 264390,
+      "sha256": "28b1a0e1260c9e4e91ba1e1663b232b05594880e77fa6540506e64984550ee40",
+      "dimensions": [
+        1200,
+        800
+      ],
+      "mode": "RGB",
+      "format": "PNG"
+    },
+    {
+      "file": "illustrations/pipenzo-small-ticket-1200x800.webp",
+      "bytes": 65778,
+      "sha256": "0041391c59ed448b728115e2f38f8a55f2b5fd4d66998624811380d1688f1963",
+      "dimensions": [
+        1200,
+        800
+      ],
+      "mode": "RGB",
+      "format": "WEBP"
+    },
+    {
+      "file": "illustrations/pipenzo-workflow-roles-1800x650.png",
+      "bytes": 318152,
+      "sha256": "0e77e9c617b4f1ead8e90f689ce8e32802e345195a95dc16d48d0c50bc68f104",
+      "dimensions": [
+        1800,
+        650
+      ],
+      "mode": "RGB",
+      "format": "PNG"
+    },
+    {
+      "file": "illustrations/pipenzo-workflow-roles-1800x650.webp",
+      "bytes": 120572,
+      "sha256": "4e1c73ad785ef631d76e67fb5fadfe320f4134c35b9e452112a89b44802e2358",
+      "dimensions": [
+        1800,
+        650
+      ],
+      "mode": "RGB",
+      "format": "WEBP"
+    },
+    {
+      "file": "marketing/pipenzo-github-social-preview-1200x630-upload.jpg",
+      "bytes": 109364,
+      "sha256": "828760cd0b0681b8b7c436f6bd13dd71084e54ecb4967a9b6612218a5d298957",
+      "dimensions": [
+        1200,
+        630
+      ],
+      "mode": "RGB",
+      "format": "JPEG"
+    },
+    {
+      "file": "marketing/pipenzo-github-social-preview-1200x630.png",
+      "bytes": 409927,
+      "sha256": "52b756235f3fae36c3583ae2cd3ea3016592ab300880b2e4371bc21950e21b46",
+      "dimensions": [
+        1200,
+        630
+      ],
+      "mode": "RGB",
+      "format": "PNG"
+    },
+    {
+      "file": "marketing/pipenzo-github-social-preview-1200x630.webp",
+      "bytes": 91550,
+      "sha256": "2a74caa10fd94638a38bef4581f5912052773303c9f089dfe560944ab800f089",
+      "dimensions": [
+        1200,
+        630
+      ],
+      "mode": "RGB",
+      "format": "WEBP"
+    },
+    {
+      "file": "marketing/pipenzo-github-social-preview-1280x640-upload.jpg",
+      "bytes": 114650,
+      "sha256": "89d218053d5f961e1b36bc6e7c3f157516009edaa6c26063c1e3c148843ff487",
+      "dimensions": [
+        1280,
+        640
+      ],
+      "mode": "RGB",
+      "format": "JPEG"
+    },
+    {
+      "file": "marketing/pipenzo-github-social-preview-1280x640.png",
+      "bytes": 360939,
+      "sha256": "a7a1baebf71bc1b2dd76c7db4d87c3e1a7b79f9ecd1c257b6cdd65c5e99c1270",
+      "dimensions": [
+        1280,
+        640
+      ],
+      "mode": "RGB",
+      "format": "PNG"
+    },
+    {
+      "file": "marketing/pipenzo-github-social-preview-1280x640.webp",
+      "bytes": 93216,
+      "sha256": "9ca20438e0534bf550fbafada15cb9a39ad927709a2165abc188f7f0eec167c2",
+      "dimensions": [
+        1280,
+        640
+      ],
+      "mode": "RGB",
+      "format": "WEBP"
+    },
+    {
+      "file": "marketing/pipenzo-landing-hero-1600x900.png",
+      "bytes": 594919,
+      "sha256": "1f3fc2d8c5cef3e5296d57dc120363373180c7eb921eac2047aa1afa56faecb7",
+      "dimensions": [
+        1600,
+        900
+      ],
+      "mode": "RGB",
+      "format": "PNG"
+    },
+    {
+      "file": "marketing/pipenzo-landing-hero-1600x900.webp",
+      "bytes": 137008,
+      "sha256": "e8ffba3c3e37f965075d341e27f15577f60379cf60491b10362830d7360ba339",
+      "dimensions": [
+        1600,
+        900
+      ],
+      "mode": "RGB",
+      "format": "WEBP"
+    },
+    {
+      "file": "marketing/pipenzo-readme-hero-1600x520.png",
+      "bytes": 278236,
+      "sha256": "531b28cabb64c0af8af5245c8001e8fdea03dc76c181851ffc9696a049e6f305",
+      "dimensions": [
+        1600,
+        520
+      ],
+      "mode": "RGB",
+      "format": "PNG"
+    },
+    {
+      "file": "marketing/pipenzo-readme-hero-1600x520.webp",
+      "bytes": 76840,
+      "sha256": "5c7dbfd473101cb1434fb67c204f9ba54a10ae818eaed974ef4cbadcf9a1555e",
+      "dimensions": [
+        1600,
+        520
+      ],
+      "mode": "RGB",
+      "format": "WEBP"
+    },
+    {
+      "file": "mascot/detailed/pipenzo-auditor-verify.png",
+      "bytes": 1461926,
+      "sha256": "51f5cdc9ba23644be5191dab3b5f522248b375a6351ac1ce9b41786ea7442199",
+      "dimensions": [
+        1536,
+        1536
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/detailed/pipenzo-auditor-verify.webp",
+      "bytes": 290782,
+      "sha256": "73bf7dac7a14f569559fc08f94785e3fe6f241df63f0e1dfdf466aeac9134745",
+      "dimensions": [
+        1536,
+        1536
+      ],
+      "mode": "RGBA",
+      "format": "WEBP"
+    },
+    {
+      "file": "mascot/detailed/pipenzo-commander-routing.png",
+      "bytes": 1812751,
+      "sha256": "60b21b7e28ee3d12ab4800ce1d47ac30431f07e325f58d183d26f4fd0bf0bada",
+      "dimensions": [
+        1536,
+        1536
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/detailed/pipenzo-commander-routing.webp",
+      "bytes": 335334,
+      "sha256": "ebb3be9afad72bd3cdd05977ed784cb3088cbb451ea3de840cc8e90fe212b39e",
+      "dimensions": [
+        1536,
+        1536
+      ],
+      "mode": "RGBA",
+      "format": "WEBP"
+    },
+    {
+      "file": "mascot/detailed/pipenzo-field-engineer-canonical-bust.png",
+      "bytes": 696441,
+      "sha256": "cb892de9f32457fe24385737251f6a585efec677454f6c8a90437bb339084884",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/detailed/pipenzo-field-engineer-canonical-bust.webp",
+      "bytes": 146992,
+      "sha256": "df99e25aeb3c8337acbafe0cac38653dd33115b31c19983425cc001bc76689d5",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "mode": "RGBA",
+      "format": "WEBP"
+    },
+    {
+      "file": "mascot/detailed/pipenzo-field-engineer-canonical-fullbody.png",
+      "bytes": 1937203,
+      "sha256": "7cff8404245a99f3a1771f7fdc7bdd2e6c4fabdf1c163a083f5cf53267902f63",
+      "dimensions": [
+        1536,
+        1536
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/detailed/pipenzo-field-engineer-canonical-fullbody.webp",
+      "bytes": 349906,
+      "sha256": "ddf756ee19f237072ad52c16300d3674cc200838e0adfc028d0806715e2e1ef5",
+      "dimensions": [
+        1536,
+        1536
+      ],
+      "mode": "RGBA",
+      "format": "WEBP"
+    },
+    {
+      "file": "mascot/detailed/pipenzo-field-engineer-inspect.png",
+      "bytes": 1921334,
+      "sha256": "df34935b3d5b08652a1132154d14c615ce5bb5e3c9ca227483ff2f9d0e9d17d9",
+      "dimensions": [
+        1536,
+        1536
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/detailed/pipenzo-field-engineer-inspect.webp",
+      "bytes": 346388,
+      "sha256": "b4da636694d030f355210223b30970498f81cbe6639f972d2896b8dc16e17c25",
+      "dimensions": [
+        1536,
+        1536
+      ],
+      "mode": "RGBA",
+      "format": "WEBP"
+    },
+    {
+      "file": "mascot/detailed/pipenzo-field-engineer-neutral.png",
+      "bytes": 1822904,
+      "sha256": "dec3d9a350b33127d3b5c4578584270ab421ded3ed05ef32a6bee68a8f436912",
+      "dimensions": [
+        1536,
+        1536
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/detailed/pipenzo-field-engineer-neutral.webp",
+      "bytes": 313650,
+      "sha256": "2d904e598d055d546a484750485c2562054aca4be3f99967c711dc8b21ba903f",
+      "dimensions": [
+        1536,
+        1536
+      ],
+      "mode": "RGBA",
+      "format": "WEBP"
+    },
+    {
+      "file": "mascot/detailed/pipenzo-field-engineer-ready.png",
+      "bytes": 1822904,
+      "sha256": "dec3d9a350b33127d3b5c4578584270ab421ded3ed05ef32a6bee68a8f436912",
+      "dimensions": [
+        1536,
+        1536
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/detailed/pipenzo-field-engineer-ready.webp",
+      "bytes": 313650,
+      "sha256": "2d904e598d055d546a484750485c2562054aca4be3f99967c711dc8b21ba903f",
+      "dimensions": [
+        1536,
+        1536
+      ],
+      "mode": "RGBA",
+      "format": "WEBP"
+    },
+    {
+      "file": "mascot/detailed/pipenzo-field-engineer-refuse.png",
+      "bytes": 2101375,
+      "sha256": "9ab46ed59ba8afab8e7586f7480cd9c1d78324b58f751dca9be875745d7cea90",
+      "dimensions": [
+        1536,
+        1536
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/detailed/pipenzo-field-engineer-refuse.webp",
+      "bytes": 384110,
+      "sha256": "7bbdc64dfd367aa401d2583ef9f90f76fbc0ae802ca2a9787e725c403e51a1da",
+      "dimensions": [
+        1536,
+        1536
+      ],
+      "mode": "RGBA",
+      "format": "WEBP"
+    },
+    {
+      "file": "mascot/detailed/pipenzo-field-engineer-review.png",
+      "bytes": 1921334,
+      "sha256": "df34935b3d5b08652a1132154d14c615ce5bb5e3c9ca227483ff2f9d0e9d17d9",
+      "dimensions": [
+        1536,
+        1536
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/detailed/pipenzo-field-engineer-review.webp",
+      "bytes": 346388,
+      "sha256": "b4da636694d030f355210223b30970498f81cbe6639f972d2896b8dc16e17c25",
+      "dimensions": [
+        1536,
+        1536
+      ],
+      "mode": "RGBA",
+      "format": "WEBP"
+    },
+    {
+      "file": "mascot/detailed/pipenzo-field-engineer-terminal.png",
+      "bytes": 1937203,
+      "sha256": "7cff8404245a99f3a1771f7fdc7bdd2e6c4fabdf1c163a083f5cf53267902f63",
+      "dimensions": [
+        1536,
+        1536
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/detailed/pipenzo-field-engineer-terminal.webp",
+      "bytes": 349906,
+      "sha256": "ddf756ee19f237072ad52c16300d3674cc200838e0adfc028d0806715e2e1ef5",
+      "dimensions": [
+        1536,
+        1536
+      ],
+      "mode": "RGBA",
+      "format": "WEBP"
+    },
+    {
+      "file": "mascot/detailed/pipenzo-field-engineer-working.png",
+      "bytes": 1937203,
+      "sha256": "7cff8404245a99f3a1771f7fdc7bdd2e6c4fabdf1c163a083f5cf53267902f63",
+      "dimensions": [
+        1536,
+        1536
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/detailed/pipenzo-field-engineer-working.webp",
+      "bytes": 349906,
+      "sha256": "ddf756ee19f237072ad52c16300d3674cc200838e0adfc028d0806715e2e1ef5",
+      "dimensions": [
+        1536,
+        1536
+      ],
+      "mode": "RGBA",
+      "format": "WEBP"
+    },
+    {
+      "file": "mascot/detailed/pipenzo-inspector-review.png",
+      "bytes": 1921334,
+      "sha256": "df34935b3d5b08652a1132154d14c615ce5bb5e3c9ca227483ff2f9d0e9d17d9",
+      "dimensions": [
+        1536,
+        1536
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/detailed/pipenzo-inspector-review.webp",
+      "bytes": 346388,
+      "sha256": "b4da636694d030f355210223b30970498f81cbe6639f972d2896b8dc16e17c25",
+      "dimensions": [
+        1536,
+        1536
+      ],
+      "mode": "RGBA",
+      "format": "WEBP"
+    },
+    {
+      "file": "mascot/detailed/pipenzo-recon-refine.png",
+      "bytes": 1390539,
+      "sha256": "58b1b550cec994c450d581ca436b09b74a974767bb97605e4098928656d051e4",
+      "dimensions": [
+        1536,
+        1536
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/detailed/pipenzo-recon-refine.webp",
+      "bytes": 279788,
+      "sha256": "3b1b0775fc4915b66dc288d0940642677ae2c2e926c5fedcfd4b63110d7ba62e",
+      "dimensions": [
+        1536,
+        1536
+      ],
+      "mode": "RGBA",
+      "format": "WEBP"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-alert-128.png",
+      "bytes": 19264,
+      "sha256": "d1d2d24b50f0b30cae85d849c356b9e2c096d940c2d90771b29e9079811c92e4",
+      "dimensions": [
+        128,
+        128
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-alert-256.png",
+      "bytes": 64918,
+      "sha256": "643f5b20a944d86388132e0db6ba22dad95c4736edbc06d7d1a344d27010e31f",
+      "dimensions": [
+        256,
+        256
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-alert-32.png",
+      "bytes": 1732,
+      "sha256": "503afc7fc8a665484afac2814ab3af5a5b62dafa31bd550c84d6eda7bb6139be",
+      "dimensions": [
+        32,
+        32
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-alert-48.png",
+      "bytes": 3560,
+      "sha256": "aa32d3bc22f3ff777f95c4a817bdf73d25611288dfa1561aed37a3680fa4d298",
+      "dimensions": [
+        48,
+        48
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-alert-512.png",
+      "bytes": 218157,
+      "sha256": "f24421ac81d102972f58a44ee934258ae75a531f2fc10ac4ea644ca3a89d72e4",
+      "dimensions": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-alert-512.webp",
+      "bytes": 50028,
+      "sha256": "da10b2621b711d3784b53f109d24bec89569d7737fa40c70ff078c0b92307121",
+      "dimensions": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "format": "WEBP"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-alert-64.png",
+      "bytes": 5729,
+      "sha256": "08eea676c2654f4be7d60dcb72c272817e15f94a9dd074148515a472f507d6d2",
+      "dimensions": [
+        64,
+        64
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-alert-64.webp",
+      "bytes": 2438,
+      "sha256": "b3a35f5e834597e898d857d8fbb90cb244ea75d216d7cf56f934d34799e78e9d",
+      "dimensions": [
+        64,
+        64
+      ],
+      "mode": "RGBA",
+      "format": "WEBP"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-alert-96.png",
+      "bytes": 11648,
+      "sha256": "45f5aa15a23cd0e03c2cb5aef112221e01b8061ec9ce2d06101774dbc62ab815",
+      "dimensions": [
+        96,
+        96
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-alert-96.webp",
+      "bytes": 4144,
+      "sha256": "0ca44bc5fab3743a650288f6f044211f17edea8d3b4c0d8f5638eeedf7435c87",
+      "dimensions": [
+        96,
+        96
+      ],
+      "mode": "RGBA",
+      "format": "WEBP"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-commander-128.png",
+      "bytes": 23127,
+      "sha256": "932f59a1b5d191e7a7ff40d63df9d4a3740f999e30c964be7534a6f3fd0d6068",
+      "dimensions": [
+        128,
+        128
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-commander-256.png",
+      "bytes": 79560,
+      "sha256": "d671c85bae81ff3db2bbe7487f386442dbc1d168a5cb40547004dbe3213e5205",
+      "dimensions": [
+        256,
+        256
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-commander-32.png",
+      "bytes": 1952,
+      "sha256": "c22e62934c1a8600e751ba671ec0a094ea55551513ec4db1dd34207f78082c46",
+      "dimensions": [
+        32,
+        32
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-commander-48.png",
+      "bytes": 4102,
+      "sha256": "9e18f4c1bc27d9ba8d6e574b5e0a0a822c1ab2efea4046dedd1fa1b27ca1cb5b",
+      "dimensions": [
+        48,
+        48
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-commander-512.png",
+      "bytes": 270422,
+      "sha256": "f177e2d1f6eccbb1c6de8fbc87b5032560112225aa42638004bea8ba8f25487b",
+      "dimensions": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-commander-512.webp",
+      "bytes": 59300,
+      "sha256": "4af58b48b21c6ecd3fe53a97e12d89202dc71febcf33c919e4128ba3a0d86e9d",
+      "dimensions": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "format": "WEBP"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-commander-64.png",
+      "bytes": 6844,
+      "sha256": "42f81f59b8df986b36a2f8f5d41609f4548478ad8aaeb7fe22bc2699535e83cf",
+      "dimensions": [
+        64,
+        64
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-commander-64.webp",
+      "bytes": 2852,
+      "sha256": "e91ce1febc8f09d0781f9455d43c209d8baecac9e6cdd47657c40b4b779280c5",
+      "dimensions": [
+        64,
+        64
+      ],
+      "mode": "RGBA",
+      "format": "WEBP"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-commander-96.png",
+      "bytes": 14065,
+      "sha256": "53d358ec32f499628aad3ea06a994c9aecc4e3187ddbd449c2ea67fb4033f7e9",
+      "dimensions": [
+        96,
+        96
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-commander-96.webp",
+      "bytes": 4614,
+      "sha256": "5b35b99f16566004dd7b5e6937c104bcf663aa7c1fccd3ed95619174c140462c",
+      "dimensions": [
+        96,
+        96
+      ],
+      "mode": "RGBA",
+      "format": "WEBP"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-focused-128.png",
+      "bytes": 13200,
+      "sha256": "07829632cebb36a24be03dd48904263f9afaf8b17c5cb153c9809bec64fbecd3",
+      "dimensions": [
+        128,
+        128
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-focused-256.png",
+      "bytes": 44889,
+      "sha256": "f680cdcc091eaf4aa62d6de8a1409926416bd395c7dc82c2bd314ea5b8e86e54",
+      "dimensions": [
+        256,
+        256
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-focused-32.png",
+      "bytes": 1285,
+      "sha256": "a487a836dfc1159db6f690aa91f6792d3faf5c77064b454d2ccae46480fbc519",
+      "dimensions": [
+        32,
+        32
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-focused-48.png",
+      "bytes": 2598,
+      "sha256": "f858c266eb764f22a2f3b36d1a04449223c6488a5b8ed1dad6662e47f416f047",
+      "dimensions": [
+        48,
+        48
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-focused-512.png",
+      "bytes": 150924,
+      "sha256": "22c5e01ef17054efb73a31e6afe12b0e49f2d3e5d8bad939d2905181ffe91fac",
+      "dimensions": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-focused-512.webp",
+      "bytes": 36396,
+      "sha256": "9e63e875a09fa10c9c08e67e03411c5a1ffd248207bbb6f822247d3a7c498cab",
+      "dimensions": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "format": "WEBP"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-focused-64.png",
+      "bytes": 4035,
+      "sha256": "40d144d753fe4b47483726b46698c09b02dc71ae1c183def27ce22fbffdcebed",
+      "dimensions": [
+        64,
+        64
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-focused-64.webp",
+      "bytes": 1876,
+      "sha256": "48d92c1afc8c509b41259f0bb3216e0609a6e3396dd0587fbb85855371e4952a",
+      "dimensions": [
+        64,
+        64
+      ],
+      "mode": "RGBA",
+      "format": "WEBP"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-focused-96.png",
+      "bytes": 8139,
+      "sha256": "0e169f57e067e758d4288ca8f25070dbf143a9f87daaab634eb865a355fbc266",
+      "dimensions": [
+        96,
+        96
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-focused-96.webp",
+      "bytes": 3202,
+      "sha256": "13cf1f68d720074fa1ca2ee66b3495ef252c5627e77e4b7a9ecde4a57bf4d4ad",
+      "dimensions": [
+        96,
+        96
+      ],
+      "mode": "RGBA",
+      "format": "WEBP"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-neutral-128.png",
+      "bytes": 19229,
+      "sha256": "6e3650c68230f5ca3eb480fb6aa5e3c5fc30670923f31274788646482748f2e4",
+      "dimensions": [
+        128,
+        128
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-neutral-256.png",
+      "bytes": 64252,
+      "sha256": "5ef7de57c4b959b4228e24b153ca3d699ea60b36a668416f9000c4b53d19b1b8",
+      "dimensions": [
+        256,
+        256
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-neutral-32.png",
+      "bytes": 1736,
+      "sha256": "132bfe48f45d1a0aad8ca4b8249cf1d17aa13dc52c8da1605e60c7f0b9d24cf6",
+      "dimensions": [
+        32,
+        32
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-neutral-48.png",
+      "bytes": 3623,
+      "sha256": "7106e88029d39f4574c1b34c5fbe3d930c2bf92639c9574afd8452b5edfa6ba1",
+      "dimensions": [
+        48,
+        48
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-neutral-512.png",
+      "bytes": 216376,
+      "sha256": "d695804a70b3b4761be8d03f01ff185032296e7fc21999fd605857789a074d2f",
+      "dimensions": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-neutral-512.webp",
+      "bytes": 48952,
+      "sha256": "16c1c219f6c6835ccd80e0d334a835102c4093e94ea88638ad5132bfd413ba02",
+      "dimensions": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "format": "WEBP"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-neutral-64.png",
+      "bytes": 5772,
+      "sha256": "d2f12733a9ea6dd0f71e807926c555b0043b043349612d8f69dc43a3cbdbf19d",
+      "dimensions": [
+        64,
+        64
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-neutral-64.webp",
+      "bytes": 2426,
+      "sha256": "83f01f8c7340831f6051b00c6f8530589ac73b53253fd0a68f76910f26ef1617",
+      "dimensions": [
+        64,
+        64
+      ],
+      "mode": "RGBA",
+      "format": "WEBP"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-neutral-96.png",
+      "bytes": 11755,
+      "sha256": "24f0d3a793a03980f7ca11ab791d3f2e42dcfa0459d8762fcd4f26d839671342",
+      "dimensions": [
+        96,
+        96
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-neutral-96.webp",
+      "bytes": 4208,
+      "sha256": "bc8cf353a8c4cca7a138fbcfe27140a34f1e2a2e669e7c4a6815169c5730bc18",
+      "dimensions": [
+        96,
+        96
+      ],
+      "mode": "RGBA",
+      "format": "WEBP"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-skeptical-128.png",
+      "bytes": 18915,
+      "sha256": "01e312992b34f5dc4bffcc51d8b875f362fb8ec2bf421aa7211d9d039adeeec6",
+      "dimensions": [
+        128,
+        128
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-skeptical-256.png",
+      "bytes": 63513,
+      "sha256": "7921a5b07498bd8d54a4d33fad520c3c76055b6bce4947b4d243d10227a0c3d2",
+      "dimensions": [
+        256,
+        256
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-skeptical-32.png",
+      "bytes": 1704,
+      "sha256": "03f9f63bb86361fc0e36df88d47758f8b942434be44a70ddc6fc111caa961e2d",
+      "dimensions": [
+        32,
+        32
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-skeptical-48.png",
+      "bytes": 3585,
+      "sha256": "3cc9a4bf46c0bdc5493d18eba40e0bb6296244a74d90860eaecfce4ca894419d",
+      "dimensions": [
+        48,
+        48
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-skeptical-512.png",
+      "bytes": 213896,
+      "sha256": "09cd0acd9784a2070d38fbf12f5af5d3310fcf5ace74db50062b9f85576b8c8f",
+      "dimensions": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-skeptical-512.webp",
+      "bytes": 47786,
+      "sha256": "1604c38b47ffcb49e0b2b0503fd19e4324472ad74afb880781a4c5660ab698ba",
+      "dimensions": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "format": "WEBP"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-skeptical-64.png",
+      "bytes": 5705,
+      "sha256": "cdc5808fc968e65e7ae168e19fc73112d1615f169103adc4739a9f9e62b6a476",
+      "dimensions": [
+        64,
+        64
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-skeptical-64.webp",
+      "bytes": 2414,
+      "sha256": "ff4f215852420725f00e55821d5210c625ccc8f5abb609bf5eb3c4cc5f94cfb0",
+      "dimensions": [
+        64,
+        64
+      ],
+      "mode": "RGBA",
+      "format": "WEBP"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-skeptical-96.png",
+      "bytes": 11507,
+      "sha256": "5cec1f8cadf7bec23f63fd6b2049c1d3476f6333ccd5cdce330a0f479acc3226",
+      "dimensions": [
+        96,
+        96
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-skeptical-96.webp",
+      "bytes": 4136,
+      "sha256": "feca500cfccf1c4d9585235ec609bc410769bd5da41c72ec4d227bd0d0cc78d8",
+      "dimensions": [
+        96,
+        96
+      ],
+      "mode": "RGBA",
+      "format": "WEBP"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-thinking-128.png",
+      "bytes": 19711,
+      "sha256": "50b2d321eac2d1efa908894e51aeca3184b37cbdf30a244d6bb7c25a0284f64f",
+      "dimensions": [
+        128,
+        128
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-thinking-256.png",
+      "bytes": 65191,
+      "sha256": "075ec16549e1d29ea1b88d63f0da0280b9cdf74b57855892e9daef442476f158",
+      "dimensions": [
+        256,
+        256
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-thinking-32.png",
+      "bytes": 2043,
+      "sha256": "44d8b4af41e761d2d317e0fad82bc842e283bc1e379d48aadb7acaa2d1402adc",
+      "dimensions": [
+        32,
+        32
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-thinking-48.png",
+      "bytes": 3808,
+      "sha256": "8abe015374b3282a495fbd37950f6fed1e8440a5e01461ee98629bd2bb7d6e2c",
+      "dimensions": [
+        48,
+        48
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-thinking-512.png",
+      "bytes": 216187,
+      "sha256": "077de0a23f45924d73e98cc57179a31daf24cf6936dab4332ae3f024ff9d5086",
+      "dimensions": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-thinking-512.webp",
+      "bytes": 49108,
+      "sha256": "9ebff99896e9f928873772cfe53a059c2110d85871bc863b7efbaf59291ff609",
+      "dimensions": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "format": "WEBP"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-thinking-64.png",
+      "bytes": 6023,
+      "sha256": "fa135463d9c3d3b0fe6be3c5ac8c0dee12ee4a6fb79130f5aa99671e402dbb64",
+      "dimensions": [
+        64,
+        64
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-thinking-64.webp",
+      "bytes": 2652,
+      "sha256": "46c3400bb03b98b537943e062d745dd978b1f2dd61b7ef97795e651d28eb6e32",
+      "dimensions": [
+        64,
+        64
+      ],
+      "mode": "RGBA",
+      "format": "WEBP"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-thinking-96.png",
+      "bytes": 11917,
+      "sha256": "db38d1256914fbd3c00add3aadd0ba3efb81b60aa3d206bae769e78a36bde439",
+      "dimensions": [
+        96,
+        96
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-thinking-96.webp",
+      "bytes": 4468,
+      "sha256": "dd37ee21760ff99d0069272a41b09a0b2684005871a46b45bbfab88057b535d3",
+      "dimensions": [
+        96,
+        96
+      ],
+      "mode": "RGBA",
+      "format": "WEBP"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-waiting-128.png",
+      "bytes": 23837,
+      "sha256": "cccf8e69a7ec3f99c206cf0963e762377f31ede46566324b81f32d29152d832a",
+      "dimensions": [
+        128,
+        128
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-waiting-256.png",
+      "bytes": 81823,
+      "sha256": "ca99a9650330dc57e6c8b9f89bc4b102ad8b199f637eea0320fa7253e3cb0107",
+      "dimensions": [
+        256,
+        256
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-waiting-32.png",
+      "bytes": 1976,
+      "sha256": "54ddd235c39915dbe54ed59cc8003dabef5c66e65130cdd9f56cafa6b6389c70",
+      "dimensions": [
+        32,
+        32
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-waiting-48.png",
+      "bytes": 4293,
+      "sha256": "da0543a62b2e13ecba7b1a9163748ff8fea68c56c2f430e1a0165756a449e829",
+      "dimensions": [
+        48,
+        48
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-waiting-512.png",
+      "bytes": 276393,
+      "sha256": "77a9d53106f84341842eaa9ab9695784159768bbb1571fad212d985f321b2a02",
+      "dimensions": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-waiting-512.webp",
+      "bytes": 58974,
+      "sha256": "16129012aabe13ea7cf16791614640555ec1973438299e36f68af3c6106c77e5",
+      "dimensions": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "format": "WEBP"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-waiting-64.png",
+      "bytes": 6976,
+      "sha256": "a8bd3b76aa83a6593dc866b682a064cf9592ced6fbb18a2cb8e55345f53fdd29",
+      "dimensions": [
+        64,
+        64
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-waiting-64.webp",
+      "bytes": 2802,
+      "sha256": "12cd301f3e04338c0e06f35aed73472f88e322dda46f98fa62bec6bc55bd0b30",
+      "dimensions": [
+        64,
+        64
+      ],
+      "mode": "RGBA",
+      "format": "WEBP"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-waiting-96.png",
+      "bytes": 14677,
+      "sha256": "cb73acfd7e72d468b2e22b7f17a96d6aa73152608540b52ee1dd983bf5bc20f9",
+      "dimensions": [
+        96,
+        96
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/mini/pipenzo-head-waiting-96.webp",
+      "bytes": 4786,
+      "sha256": "82ef2c36e335a6fb2b7d566b78b21070dd5ed2861966316f6cebce0de88b8b29",
+      "dimensions": [
+        96,
+        96
+      ],
+      "mode": "RGBA",
+      "format": "WEBP"
+    },
+    {
+      "file": "mascot/sprites/pipenzo-sprite-idle-32.png",
+      "bytes": 2272,
+      "sha256": "17065f3be08de6ce2f91b397c56fbb147ab87b503c610b53aba2ffc048ff0c8d",
+      "dimensions": [
+        32,
+        32
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/sprites/pipenzo-sprite-idle-48.png",
+      "bytes": 4234,
+      "sha256": "7aabe1c3c1dcd0f27e82c0b07b2622082b42d46d225ded48a1b46c2999f1e646",
+      "dimensions": [
+        48,
+        48
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/sprites/pipenzo-sprite-idle-64.png",
+      "bytes": 7132,
+      "sha256": "69d72c72595f090f9d14c586451ba6b1d793dc149860ae911b5a651723e2b78f",
+      "dimensions": [
+        64,
+        64
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/sprites/pipenzo-sprite-idle-96.png",
+      "bytes": 13790,
+      "sha256": "21837264258c0a1b25451dd08075d2e48aa5377461c7180cdcb6fb10539b3977",
+      "dimensions": [
+        96,
+        96
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/sprites/pipenzo-sprite-inspect-32.png",
+      "bytes": 2378,
+      "sha256": "973fce9bcc6d54b750e9babcafa4a97e0829575cb5964f933af7cb2bcea1fd59",
+      "dimensions": [
+        32,
+        32
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/sprites/pipenzo-sprite-inspect-48.png",
+      "bytes": 4432,
+      "sha256": "644a6545c20bce12db5f1990a234f4b736e9d0861376f545b81cfe089c5b3b12",
+      "dimensions": [
+        48,
+        48
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/sprites/pipenzo-sprite-inspect-64.png",
+      "bytes": 7388,
+      "sha256": "150d88192665b855623dcbd093036b17c3c4e5d54bb2a75e9f794b872d661783",
+      "dimensions": [
+        64,
+        64
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/sprites/pipenzo-sprite-inspect-96.png",
+      "bytes": 14299,
+      "sha256": "664ffdd0f23d7280037a2cd6282dd3fb87518d99f553dfa9cc68df9799d0084c",
+      "dimensions": [
+        96,
+        96
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/sprites/pipenzo-sprite-point-32.png",
+      "bytes": 2312,
+      "sha256": "e6f7ecf7bfbf8cc0cd444862dda6a05f01f912d6c3d758001e9d7c9a81fc9049",
+      "dimensions": [
+        32,
+        32
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/sprites/pipenzo-sprite-point-48.png",
+      "bytes": 4219,
+      "sha256": "f4aa1431f44bc4adae860d33973fa42996c46a02fe90fd48f6ece12a4323d105",
+      "dimensions": [
+        48,
+        48
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/sprites/pipenzo-sprite-point-64.png",
+      "bytes": 7064,
+      "sha256": "3eee4c21d900f7eba538fd26e98a217454c27281a3e00132f9ceea71e7c9f1e7",
+      "dimensions": [
+        64,
+        64
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/sprites/pipenzo-sprite-point-96.png",
+      "bytes": 13522,
+      "sha256": "b27aad9909061ed6f07b9bbe2312453410a58a883e4d8402cebd22606e277722",
+      "dimensions": [
+        96,
+        96
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/sprites/pipenzo-sprite-wait-32.png",
+      "bytes": 2223,
+      "sha256": "37b978448bfbd6f901ec3ac57274880a3fe9f88ff4e890feed0264a8a647b49a",
+      "dimensions": [
+        32,
+        32
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/sprites/pipenzo-sprite-wait-48.png",
+      "bytes": 4043,
+      "sha256": "25cad934b0c0c48a416f772290d634cec81eb8465d1ca8f55171744c4807462e",
+      "dimensions": [
+        48,
+        48
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/sprites/pipenzo-sprite-wait-64.png",
+      "bytes": 6840,
+      "sha256": "57567a6e8b9ce94ebb19b0a0ade2188f69dbb4354536698f575eded1a74f0659",
+      "dimensions": [
+        64,
+        64
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/sprites/pipenzo-sprite-wait-96.png",
+      "bytes": 12983,
+      "sha256": "bbf730f75dfe227b38d0a6b96afcb54a1393a9e1296a651b5f6d7076a16dc6fa",
+      "dimensions": [
+        96,
+        96
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/sprites/pipenzo-sprite-walk-32.png",
+      "bytes": 2385,
+      "sha256": "7b2fe6f404771f8d533126c3a4fb83b52bbbc763516abcbe932e8fd67f2cf99c",
+      "dimensions": [
+        32,
+        32
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/sprites/pipenzo-sprite-walk-48.png",
+      "bytes": 4426,
+      "sha256": "e8dd8449b64a20a545f9cbf09c014afef225885972b75e652eb61fe484360f07",
+      "dimensions": [
+        48,
+        48
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/sprites/pipenzo-sprite-walk-64.png",
+      "bytes": 7500,
+      "sha256": "14e38b7abe35668a5648202d3ad9869402cbcf3c36682ea1e5a97304eb250b95",
+      "dimensions": [
+        64,
+        64
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/sprites/pipenzo-sprite-walk-96.png",
+      "bytes": 14593,
+      "sha256": "000245e1e5d120d4829bfe88e85ae772528e86f99579fb2bb74f1061cab4b472",
+      "dimensions": [
+        96,
+        96
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/sprites/pipenzo-sprite-work-32.png",
+      "bytes": 2273,
+      "sha256": "1ed16fd50acd0a0f39b7226e3b45906ee035ed2d68eae92e71e6f4bba1280ab8",
+      "dimensions": [
+        32,
+        32
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/sprites/pipenzo-sprite-work-48.png",
+      "bytes": 4402,
+      "sha256": "cc7971d8b497b9e9f3ce74cacd35525fd4746c04bda34dbc8b99eabc8c747faf",
+      "dimensions": [
+        48,
+        48
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/sprites/pipenzo-sprite-work-64.png",
+      "bytes": 7272,
+      "sha256": "9d5e2ceb8ad34feebc460729a7f5c73eba87bc71448bce5a426fca75e754f571",
+      "dimensions": [
+        64,
+        64
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "mascot/sprites/pipenzo-sprite-work-96.png",
+      "bytes": 14383,
+      "sha256": "bdf4949b79efcd141abeed9dcabd24b80ba9509f0321f64931644ee2221e0552",
+      "dimensions": [
+        96,
+        96
+      ],
+      "mode": "RGBA",
+      "format": "PNG"
+    },
+    {
+      "file": "reference/pipenzo-approved-asset-board-helmet-icon-v2.png",
+      "bytes": 2187715,
+      "sha256": "91a7cd65f6f671d9e5b9d1fcc17bb74470ebb41fdeeecda0461c615ed213984f",
+      "dimensions": [
+        1536,
+        1024
+      ],
+      "mode": "RGB",
+      "format": "PNG"
+    },
+    {
+      "file": "reference/pipenzo-approved-asset-board-v1.png",
+      "bytes": 2260498,
+      "sha256": "e16c8e2834fda89916080246d13740d598e289dea78d394e50d8ad1db74ec25f",
+      "dimensions": [
+        1536,
+        1024
+      ],
+      "mode": "RGB",
+      "format": "PNG"
+    },
+    {
+      "file": "reference/pipenzo-approved-character-system-board.png",
+      "bytes": 2265023,
+      "sha256": "197791febe255c303cf75eb9e41574c2bbcbc0f12c969e040f43b18a703c1aea",
+      "dimensions": [
+        1536,
+        1024
+      ],
+      "mode": "RGB",
+      "format": "PNG"
+    }
+  ]
+}

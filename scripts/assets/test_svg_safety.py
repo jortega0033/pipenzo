@@ -10,6 +10,8 @@ from tempfile import TemporaryDirectory
 import generate_assets
 import validate_assets
 
+PIPENZO_ROOT = Path(__file__).resolve().parents[2] / "apps" / "desktop" / "assets" / "pipenzo"
+
 
 class SvgSafetyTests(unittest.TestCase):
     def assert_safe(self, body: str) -> None:
@@ -91,6 +93,12 @@ class SvgSafetyTests(unittest.TestCase):
         for label, fixture in blocked_fixtures.items():
             with self.subTest(label=label):
                 self.assertTrue(self.validator_errors(fixture), label)
+
+    def test_committed_pipenzo_brand_svgs_are_safe(self) -> None:
+        for relative_name in validate_assets.PIPENZO_SVG_VIEWBOXES:
+            path = PIPENZO_ROOT / relative_name
+            with self.subTest(file=relative_name):
+                self.assert_safe(path.read_text(encoding="utf-8"))
 
     def test_generator_and_validator_classify_references_identically(self) -> None:
         values = (
