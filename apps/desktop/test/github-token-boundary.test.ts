@@ -8,6 +8,7 @@ import {
   GITHUB_CREDENTIAL_ENV_KEYS,
   buildDaemonCredentialMessage,
   buildDaemonEnvironment,
+  reconcileDaemonTokenSource,
   resolveDaemonGitHubToken,
 } from '../electron/daemon-environment.js';
 
@@ -398,6 +399,59 @@ describe('which credential the daemon runs on is decided once, and named', () =>
     expect(main).toMatch(/isDevelopmentBuild:\s*IS_DEVELOPMENT_BUILD/);
     expect(main).toMatch(
       /typeof __PIPENZO_DEVELOPMENT_BUILD__ === 'boolean'\s*\?\s*__PIPENZO_DEVELOPMENT_BUILD__\s*:\s*false/,
+    );
+  });
+});
+
+/**
+ * Issue #209: `resolveDaemonGitHubToken`'s `source` is main's pre-handoff *intent*, and a failed
+ * stdin write (`child.stdin` null, `EPIPE` against a child that died on spawn, a truncated write)
+ * could leave the daemon with nothing while main still reported whatever it had attempted to send.
+ * `reconcileDaemonTokenSource` is the confirmation step: the daemon's own `/health` report
+ * (`reported`) either confirms `intended` or overrides it, and only ever overrides it downward —
+ * never upgrades a `'none'` daemon report into a credentialed one, whatever main hoped for.
+ */
+describe('confirming what the daemon actually resolved, not just what main sent (issue #209)', () => {
+  it('confirms the intended source when the daemon reports a credential arrived', () => {
+    for (const intended of ['vault', 'environment', 'none'] as const) {
+      expect(reconcileDaemonTokenSource(intended, 'injected')).toBe(intended);
+    }
+  });
+
+  /**
+   * A daemon-reported `'environment'` means the daemon fell back to its own `process.env` --
+   * `buildDaemonEnvironment` always strips that variable before an Electron-managed daemon spawns,
+   * so seeing this from a daemon Electron itself started means the strip did not hold. Reported
+   * honestly rather than trusting whatever main intended to send.
+   */
+  it('reports environment when the daemon says it fell back to its own environment, regardless of intent', () => {
+    for (const intended of ['vault', 'environment', 'none'] as const) {
+      expect(reconcileDaemonTokenSource(intended, 'environment')).toBe('environment');
+    }
+  });
+
+  /**
+   * The acceptance criterion this ticket exists for: a deliberately failed stdin handoff must not
+   * surface as `source: vault` (or `environment`) just because that is what main attempted to send.
+   */
+  it('reports none when the daemon has nothing, even if main intended to send a real credential', () => {
+    for (const intended of ['vault', 'environment', 'none'] as const) {
+      expect(reconcileDaemonTokenSource(intended, 'none')).toBe('none');
+    }
+  });
+
+  /**
+   * The wiring a pure-function unit test cannot see: `spawnDaemon` passes this child's own intended
+   * source into `waitForDaemonReady`, and `daemonTokenSource` is set from the reconciled answer —
+   * `health.githubCredentialSource`, defaulted to `'none'` for a daemon built before this field
+   * existed -- not from `resolveDaemonGitHubToken`'s return value directly. A behavioural seam for
+   * `waitForDaemonReady` itself is issue #213's, tracked there rather than duplicated here.
+   */
+  it('is wired into waitForDaemonReady, confirming against the health response rather than trusting intent', async () => {
+    const main = await readElectron('main.ts');
+    expect(main).toMatch(/waitForDaemonReady\(child, spawnedAt, credential\.source\)/);
+    expect(main).toMatch(
+      /daemonTokenSource = reconcileDaemonTokenSource\(\s*intendedSource,\s*health\.githubCredentialSource \?\? 'none',?\s*\)/,
     );
   });
 });

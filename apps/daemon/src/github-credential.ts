@@ -1,3 +1,4 @@
+import type { DaemonCredentialSourceV1 } from '@agent-dock/shared';
 import {
   GITHUB_TOKEN_ENV_KEYS,
   GitHubClientError,
@@ -251,5 +252,16 @@ export class DaemonGitHubCredential {
       if (error instanceof GitHubClientError && error.code === 'token_missing') return undefined;
       throw error;
     }
+  }
+
+  /**
+   * What this daemon can honestly say about its own credential (issue #209), reported over
+   * `/health` so Electron main can confirm its pre-handoff intent actually landed rather than
+   * trusting it — see `@agent-dock/shared`'s `daemonCredentialSourceV1Schema` for the full
+   * reasoning on why this is a different, narrower question than "vault or environment".
+   */
+  resolvedSource(env: Readonly<Record<string, string | undefined>> = process.env): DaemonCredentialSourceV1 {
+    if (this.injected) return 'injected';
+    return this.tryResolve(env) !== undefined ? 'environment' : 'none';
   }
 }

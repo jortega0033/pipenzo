@@ -43,6 +43,7 @@ import {
   type CommandAcknowledgementV2,
   type CreateSessionRequest,
   type CreateSessionV2Request,
+  type DaemonCredentialSourceV1,
   type ProviderId,
   type ProviderStatus,
   type ProviderStatusV2,
@@ -179,6 +180,9 @@ export interface HealthResponse {
   uptimeSeconds: number;
   protocolVersion: number;
   supportedProtocolVersions?: readonly number[];
+  /** The daemon's own report of its resolved GitHub credential source (issue #209). Absent from a
+   * daemon built before this field existed. */
+  githubCredentialSource?: DaemonCredentialSourceV1;
 }
 
 export interface SessionEventsOptions {

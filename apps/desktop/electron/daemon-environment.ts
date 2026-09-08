@@ -1,3 +1,5 @@
+import type { DaemonCredentialSourceV1 } from '@agent-dock/shared';
+
 /**
  * The environment Electron main hands the daemon sidecar (issue #165).
  *
@@ -142,6 +144,48 @@ export function resolveDaemonGitHubToken(input: {
     return { token: environmentToken, source: 'environment' };
   }
   return { token: undefined, source: 'none' };
+}
+
+/**
+ * Confirms what Electron main *intended* to send the daemon against what the daemon itself reports
+ * having resolved, and reports the confirmed answer (issue #209).
+ *
+ * `resolveDaemonGitHubToken`'s own doc comment already names the gap this closes: its `source` is
+ * reportable but not yet reported, and it describes what main *sent*, not what the daemon actually
+ * ended up holding. A stdin handoff can fail silently -- `child.stdin` null, `EPIPE` against a
+ * child that died on spawn, a truncated write, a message the daemon's best-effort reader could not
+ * parse -- and until this function, a failed handoff still reported `intended` (e.g. `vault`) to
+ * the renderer, even though the daemon had nothing and every GitHub call was about to fail
+ * `token_missing`.
+ *
+ * `reported` comes from the daemon's own `/health` response
+ * (`DaemonGitHubCredential.resolvedSource`, `@agent-dock/shared`'s `daemonCredentialSourceV1Schema`)
+ * once `waitForDaemonReady` has adopted the client -- so this is a *confirmation* step, not a
+ * replacement for `resolveDaemonGitHubToken`: main still has to decide what to attempt sending
+ * before it knows whether the daemon received it.
+ *
+ * - `reported === 'injected'` means a real credential arrived over stdin, and in the shipped app
+ *   that credential can only be the one main just attempted to send -- so `intended` is confirmed
+ *   and returned unchanged.
+ * - `reported === 'environment'` means the daemon fell back to reading its own `process.env`,
+ *   which `buildDaemonEnvironment` always strips before spawning an Electron-managed daemon. Seeing
+ *   it here means that strip did not hold, so it is reported honestly as `environment` rather than
+ *   trusting `intended`.
+ * - `reported === 'none'` means the daemon has no usable credential at all, regardless of what main
+ *   attempted -- the exact silent-failure case this function exists to stop reporting as `vault`.
+ */
+export function reconcileDaemonTokenSource(
+  intended: DaemonGitHubTokenSource,
+  reported: DaemonCredentialSourceV1,
+): DaemonGitHubTokenSource {
+  switch (reported) {
+    case 'injected':
+      return intended;
+    case 'environment':
+      return 'environment';
+    case 'none':
+      return 'none';
+  }
 }
 
 /**

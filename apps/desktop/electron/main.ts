@@ -65,6 +65,7 @@ import { GITHUB_OAUTH_CLIENT_ID } from './github-oauth-app.js';
 import {
   buildDaemonCredentialMessage,
   buildDaemonEnvironment,
+  reconcileDaemonTokenSource,
   resolveDaemonGitHubToken,
   type DaemonGitHubTokenSource,
 } from './daemon-environment.js';
@@ -344,7 +345,7 @@ function spawnDaemon(): void {
     });
   });
 
-  waitForDaemonReady(child, spawnedAt).catch((err: Error) => {
+  waitForDaemonReady(child, spawnedAt, credential.source).catch((err: Error) => {
     if (daemonChild !== child) return; // a replacement is already reporting for itself
     sendStatus({ state: 'unavailable', error: `daemon failed to start: ${err.message}` });
   });
@@ -408,10 +409,17 @@ function forwardInteractiveEvent(event: AgentEventV2Envelope): void {
  * `unavailable` *after* the replacement had already reported `ready`, leaving the UI wrongly
  * broken. It could also adopt a discovery file the new daemon had just written, as the old child's
  * client.
+ *
+ * `intendedSource` is `spawnDaemon`'s own `resolveDaemonGitHubToken` answer for *this* child —
+ * what main attempted to send, before it knew whether the stdin handoff would actually land. Once
+ * `health()` succeeds, `reconcileDaemonTokenSource` (issue #209) confirms it against what the
+ * daemon itself reports having resolved and only then does `daemonTokenSource` become that
+ * confirmed answer — never the bare intent, which a failed handoff could leave wrong.
  */
 async function waitForDaemonReady(
   child: ChildProcess,
   spawnedAt: number,
+  intendedSource: DaemonGitHubTokenSource,
   timeoutMs = 15_000,
 ): Promise<void> {
   const deadline = Date.now() + timeoutMs;
@@ -428,10 +436,17 @@ async function waitForDaemonReady(
         });
         // health() also verifies protocol compatibility (see @agent-dock/client); this doubles
         // as both the readiness check and the version-compatibility check in one call.
-        await candidate.health();
+        const health = await candidate.health();
         // Re-checked after the await: the restart could have landed while `health()` was in flight.
         if (daemonChild !== child) return;
         client = candidate;
+        // A daemon built before issue #209 has no `githubCredentialSource` at all; treated as
+        // `'none'` rather than trusting `intendedSource` unconfirmed, the same fail-honest default
+        // `reconcileDaemonTokenSource` applies to every other unconfirmed case.
+        daemonTokenSource = reconcileDaemonTokenSource(
+          intendedSource,
+          health.githubCredentialSource ?? 'none',
+        );
         // Subscribed once here rather than on a renderer request: the board must not miss a
         // transition that happens between the daemon coming up and a window being opened.
         forwardPipenzoPhaseEvents();
