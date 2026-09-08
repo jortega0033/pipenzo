@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PipenzoGitHubHealthV1 } from '@agent-dock/shared';
 import { ConnectionHealthBanner } from '../../src/pipenzo/ConnectionHealthBanner.js';
@@ -149,6 +149,13 @@ describe('ConnectionHealthBanner', () => {
       lastCleanPollAt: NOW - 90_000,
     };
 
+    // Real timers for this block: the confirm-dialog tests below use `waitFor`/`findBy`, which
+    // poll via `setTimeout` and would otherwise race the outer `beforeEach`'s fake clock (`#70`'s
+    // countdown tests need fake timers; this block's async confirm/error flow needs real ones).
+    beforeEach(() => {
+      vi.useRealTimers();
+    });
+
     it('renders the blocking banner explaining the expired sign-in', () => {
       const { container } = render(<ConnectionHealthBanner health={health} />);
       const banner = container.querySelector('.banner')!;
@@ -164,13 +171,70 @@ describe('ConnectionHealthBanner', () => {
       expect(container.querySelector('.b-count')).not.toBeInTheDocument();
     });
 
-    it('renders "Re-authenticate" as the primary action and calls onReauthenticate on click', () => {
+    it('renders "Re-authenticate" as the primary action, opening a confirm dialog rather than firing immediately', () => {
       const onReauthenticate = vi.fn();
       render(<ConnectionHealthBanner health={health} onReauthenticate={onReauthenticate} />);
       const button = screen.getByRole('button', { name: 'Re-authenticate' });
       expect(button.className).toBe('btn primary sm');
-      button.click();
+      fireEvent.click(button);
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      expect(onReauthenticate).not.toHaveBeenCalled();
+    });
+
+    it('calls onReauthenticate only once the dialog is confirmed', async () => {
+      const onReauthenticate = vi.fn().mockResolvedValue(undefined);
+      render(<ConnectionHealthBanner health={health} onReauthenticate={onReauthenticate} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Re-authenticate' }));
+      const dialog = screen.getByRole('dialog');
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Re-authenticate' }));
+      await waitFor(() => expect(onReauthenticate).toHaveBeenCalledTimes(1));
+    });
+
+    it('"Not now" closes the dialog without calling onReauthenticate', () => {
+      const onReauthenticate = vi.fn();
+      render(<ConnectionHealthBanner health={health} onReauthenticate={onReauthenticate} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Re-authenticate' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(onReauthenticate).not.toHaveBeenCalled();
+    });
+
+    it('shows an error notice, and keeps the credential-rejected banner, when the daemon call fails', async () => {
+      const onReauthenticate = vi.fn().mockRejectedValue(new Error('daemon unreachable'));
+      render(<ConnectionHealthBanner health={health} onReauthenticate={onReauthenticate} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Re-authenticate' }));
+      const dialog = screen.getByRole('dialog');
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Re-authenticate' }));
+      expect(await screen.findByText(/daemon unreachable/)).toBeInTheDocument();
+      expect(screen.getByText('Your GitHub sign-in expired.')).toBeInTheDocument();
+    });
+
+    /**
+     * The guard `AccountPanel.tsx`'s identical channel needs and has (see this component's own
+     * doc comment): two clicks dispatched in the same React batch both see `pending === false`
+     * before either commits, and `useAsyncAction`'s `callIdRef` only decides which outcome wins,
+     * not whether a second call starts. Two re-authenticate attempts is two real daemon restarts.
+     */
+    it('will not start a second re-authenticate in the same batch as the first', () => {
+      let release: (() => void) | undefined;
+      const onReauthenticate = vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            release = resolve;
+          }),
+      );
+      render(<ConnectionHealthBanner health={health} onReauthenticate={onReauthenticate} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Re-authenticate' }));
+      const dialog = screen.getByRole('dialog');
+      const confirm = within(dialog).getByRole('button', { name: 'Re-authenticate' });
+
+      act(() => {
+        fireEvent.click(confirm);
+        fireEvent.click(confirm);
+      });
+
       expect(onReauthenticate).toHaveBeenCalledTimes(1);
+      release?.();
     });
 
     it('renders no action row when onReauthenticate is not supplied', () => {

@@ -1,8 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PipenzoGitHubHealthV1 } from '@agent-dock/shared';
 import { Banner } from '../components/primitives/Banner.js';
 import { Button } from '../components/primitives/Button.js';
+import { Dialog } from '../components/primitives/Dialog.js';
+import { Notice } from '../components/primitives/Notice.js';
 import { formatClockTimeUtc, formatDurationShort } from './connection-health-format.js';
+import { useAsyncAction } from './use-async-action.js';
 
 type RetryingHealth = Extract<PipenzoGitHubHealthV1, { state: 'retrying' }>;
 type UnreachableHealth = Extract<PipenzoGitHubHealthV1, { state: 'unreachable' }>;
@@ -33,13 +36,14 @@ export function ConnectionHealthBanner({
    */
   onRetryNow?: () => void;
   /**
-   * "Re-authenticate" (#72). Unlike `onRetryNow`, this one is wired to something real from the
-   * start (`AppRoot.tsx` calls `disconnectGitHub()`) rather than shipping decorative, because a
-   * revoked credential is not a thing polling harder ever fixes -- only a human signing in again
-   * does, and #72's whole point is that this is the one banner offering that as the primary
-   * action rather than a status.
+   * "Re-authenticate" (#72), wired in `AppRoot.tsx` to `disconnectGitHub()`. Async and returning
+   * the daemon's own promise, not fire-and-forget: `CredentialRejectedBanner` awaits it to drive
+   * a confirm dialog's pending state, the same shape `AccountPanel.tsx`'s "Disconnect GitHub"
+   * already established for this exact channel -- see that component's doc comment for why a
+   * disconnect reachable mid-run (which this banner is: it renders next to `<App>`, not only on
+   * the pre-app gate) needs a confirmation and a re-entrancy guard, not a bare `onClick`.
    */
-  onReauthenticate?: () => void;
+  onReauthenticate?: () => Promise<void>;
 }) {
   if (health?.state === 'retrying') {
     return <RetryingBanner health={health} onRetryNow={onRetryNow} />;
@@ -149,25 +153,108 @@ function UnreachableBanner({
  * flow that already runs `DeviceCodeStep` (#114) and already handles the daemon restart once a
  * fresh credential is stored. A second, parallel in-app re-auth surface would duplicate a flow
  * this app already gets right rather than reuse it.
+ *
+ * ## Why this confirms first, and why a ref guards it
+ *
+ * `AccountPanel.tsx`'s own doc comment says it plainly for its "Disconnect GitHub" button, which
+ * calls this exact channel: forgetting the vault's credential restarts the daemon, and that
+ * restart deliberately bypasses `killDaemon`'s graceful `sessions.cancelAll` -- on Windows
+ * `child.kill()` is `TerminateProcess`, so in-flight sessions die uncancelled. That restart's own
+ * comment says the bypass "would not be [acceptable] if this were ever reachable mid-run" and
+ * names Settings' button as exactly that case; this banner is the second one. `useAsyncAction`'s
+ * `pending` does not close the gap either -- its `callIdRef` only decides which *outcome* commits,
+ * not whether a second call starts -- so the `writing` ref below is not belt-and-braces, it is the
+ * actual guard, mirroring `AccountPanel.tsx`'s identical one for the identical reason (see #223,
+ * the unbounded-restart bug repeating this channel produced once already; the underlying premise
+ * that a disconnect is always a pre-app, no-sessions-running action is tracked as #224).
  */
-function CredentialRejectedBanner({ onReauthenticate }: { onReauthenticate?: () => void }) {
+function CredentialRejectedBanner({
+  onReauthenticate,
+}: {
+  onReauthenticate?: () => Promise<void>;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const reauth = useAsyncAction<void>();
+  const writing = useRef(false);
+
+  const closeConfirm = useCallback(() => {
+    setConfirming(false);
+    reauth.reset();
+  }, [reauth]);
+
+  const confirm = useCallback(() => {
+    if (writing.current || !onReauthenticate) return;
+    writing.current = true;
+    void reauth.run(onReauthenticate).finally(() => {
+      writing.current = false;
+    });
+  }, [onReauthenticate, reauth]);
+
   return (
-    <Banner
-      icon="warning"
-      tone="danger"
-      variant="blocking"
-      action={
-        onReauthenticate && (
-          <Button size="sm" variant="primary" onClick={onReauthenticate}>
-            Re-authenticate
-          </Button>
-        )
-      }
-    >
-      <b>Your GitHub sign-in expired.</b> Pipenzo signs in with device flow and holds the token in
-      the Electron-main vault; it was revoked or timed out. Reading issues, writing labels and
-      opening pull requests all need it back.
-    </Banner>
+    <>
+      <Banner
+        icon="warning"
+        tone="danger"
+        variant="blocking"
+        action={
+          onReauthenticate && (
+            <Button
+              size="sm"
+              variant="primary"
+              onClick={() => {
+                reauth.reset();
+                setConfirming(true);
+              }}
+            >
+              Re-authenticate
+            </Button>
+          )
+        }
+      >
+        <b>Your GitHub sign-in expired.</b> Pipenzo signs in with device flow and holds the token
+        in the Electron-main vault; it was revoked or timed out. Reading issues, writing labels
+        and opening pull requests all need it back.
+      </Banner>
+      <Dialog
+        open={confirming}
+        // Refused while the disconnect is on the wire, same as AccountPanel's: the daemon is being
+        // restarted underneath this window, and a dialog that vanishes mid-restart reads as "it
+        // finished" when nothing has yet.
+        onClose={() => {
+          if (!reauth.pending) closeConfirm();
+        }}
+        title="Re-authenticate with GitHub?"
+        subtitle="This clears the stored token and restarts the daemon, then opens the sign-in flow again."
+        width={520}
+        actions={
+          <>
+            <Button onClick={closeConfirm} disabled={reauth.pending}>
+              Not now
+            </Button>
+            <Button variant="primary" pending={reauth.pending} onClick={confirm}>
+              {reauth.pending ? 'Restarting…' : 'Re-authenticate'}
+            </Button>
+          </>
+        }
+      >
+        <div className="fieldset">
+          <p className="set-sub">
+            Anything running right now stops without a clean cancel — the daemon is handed its
+            credential once, at startup, so signing in again means restarting it, and that restart
+            does not wait for work in flight to wind down.
+          </p>
+          <p className="set-sub">
+            Your worktrees, branches and ticket store stay exactly where they are. Signing in
+            again is the same device flow as the first time.
+          </p>
+          {reauth.status === 'error' && (
+            <Notice tone="danger" icon="warning" title="Could not restart">
+              {reauth.error ?? 'The request failed.'} The rejected credential is still stored.
+            </Notice>
+          )}
+        </div>
+      </Dialog>
+    </>
   );
 }
 

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PipenzoGitHubConnectionV1 } from '@agent-dock/shared';
 import { AppRoot } from '../src/AppRoot.js';
@@ -359,7 +359,13 @@ describe('AppRoot connection-health banner (issue #257 -> #70)', () => {
     deliverHealth?.({ state: 'credential_rejected', rejectedAt: Date.now() - 30_000 });
 
     expect(await screen.findByText('Your GitHub sign-in expired.')).toBeInTheDocument();
+    // "Re-authenticate" opens a confirm dialog before touching the credential -- see
+    // ConnectionHealthBanner.tsx's CredentialRejectedBanner doc comment for why a disconnect
+    // reachable mid-run (which this is) needs one, the same way AccountPanel.tsx's identical
+    // "Disconnect GitHub" does.
     fireEvent.click(screen.getByRole('button', { name: 'Re-authenticate' }));
-    expect(bridge.disconnectGitHub).toHaveBeenCalledTimes(1);
+    const dialog = screen.getByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Re-authenticate' }));
+    await waitFor(() => expect(bridge.disconnectGitHub).toHaveBeenCalledTimes(1));
   });
 });
