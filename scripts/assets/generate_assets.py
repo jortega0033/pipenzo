@@ -26,6 +26,16 @@ PNG_ROOT = ICON_ROOT / "png"
 PNG_SIZES = (16, 24, 32, 44, 48, 64, 128, 256, 512, 1024)
 ICO_SIZES = ((16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256))
 
+# Pipenzo's own canonical icon family (see #239). This is additive: it derives Pipenzo's
+# monochrome helmet+p PNG/ICO/ICNS outputs from the approved asset pack's SVG source without
+# touching the AgentDock family above, which apps/desktop still consumes until #241 rewires
+# electron-builder.yml/index.html/AgentDockMark.tsx to the Pipenzo files generated here.
+PIPENZO_ROOT = ASSET_ROOT / "pipenzo"
+PIPENZO_SOURCE = PIPENZO_ROOT / "app-icons" / "pipenzo-app-icon-helmet-p-monochrome.svg"
+PIPENZO_ICON_ROOT = PIPENZO_ROOT / "app-icons"
+PIPENZO_PNG_ROOT = PIPENZO_ICON_ROOT / "png"
+PIPENZO_PNG_SIZES = (16, 20, 24, 32, 48, 64, 128, 256, 512, 1024)
+
 BLOCKED_ELEMENTS = {
     "animate",
     "animatemotion",
@@ -122,14 +132,14 @@ def rasterize(svg: bytes, size: int) -> Image.Image:
         return image.convert("RGBA")
 
 
-def build_ico(png_root: Path) -> bytes:
+def build_ico(png_root: Path, ico_sizes=ICO_SIZES, name_fn=lambda size: f"icon-{size}.png") -> bytes:
     """Build an ICO whose frames come from the exact-size committed PNGs."""
 
     payloads: list[tuple[int, bytes]] = []
-    for width, height in ICO_SIZES:
+    for width, height in ico_sizes:
         if width != height:
             raise ValueError(f"ICO frame must be square: {(width, height)}")
-        payloads.append((width, (png_root / f"icon-{width}.png").read_bytes()))
+        payloads.append((width, (png_root / name_fn(width)).read_bytes()))
 
     header = struct.pack("<HHH", 0, 1, len(payloads))
     offset = len(header) + (16 * len(payloads))
@@ -157,25 +167,56 @@ def build_ico(png_root: Path) -> bytes:
     return header + bytes(entries) + bytes(images)
 
 
-def main() -> None:
-    svg = SOURCE.read_bytes()
-    assert_safe_svg(svg)
+def generate_icon_family(
+    source: Path,
+    png_root: Path,
+    icon_root: Path,
+    png_sizes: tuple[int, ...],
+    ico_sizes: tuple[tuple[int, int], ...],
+    ico_name: str,
+    icns_name: str,
+    png_name_fn=lambda size: f"icon-{size}.png",
+) -> None:
+    svg = source.read_bytes()
+    assert_safe_svg(svg, source)
 
-    PNG_ROOT.mkdir(parents=True, exist_ok=True)
+    png_root.mkdir(parents=True, exist_ok=True)
     images: dict[int, Image.Image] = {}
     try:
-        for size in PNG_SIZES:
+        for size in png_sizes:
             image = rasterize(svg, size)
             images[size] = image
-            image.save(PNG_ROOT / f"icon-{size}.png", format="PNG", optimize=True)
+            image.save(png_root / png_name_fn(size), format="PNG", optimize=True)
 
-        (ICON_ROOT / "agent-dock.ico").write_bytes(build_ico(PNG_ROOT))
-        images[1024].save(ICON_ROOT / "agent-dock.icns", format="ICNS")
+        (icon_root / ico_name).write_bytes(build_ico(png_root, ico_sizes, png_name_fn))
+        images[1024].save(icon_root / icns_name, format="ICNS")
     finally:
         for image in images.values():
             image.close()
 
-    print(f"Generated {len(PNG_SIZES)} PNGs, ICO, and ICNS under {ICON_ROOT}")
+    print(f"Generated {len(png_sizes)} PNGs, ICO, and ICNS under {icon_root}")
+
+
+def main() -> None:
+    generate_icon_family(
+        SOURCE,
+        PNG_ROOT,
+        ICON_ROOT,
+        PNG_SIZES,
+        ICO_SIZES,
+        "agent-dock.ico",
+        "agent-dock.icns",
+    )
+    generate_icon_family(
+        PIPENZO_SOURCE,
+        PIPENZO_PNG_ROOT,
+        PIPENZO_ICON_ROOT,
+        PIPENZO_PNG_SIZES,
+        ICO_SIZES,
+        "pipenzo.ico",
+        "pipenzo.icns",
+        png_name_fn=lambda size: f"pipenzo-icon-{size}.png",
+    )
 
 
 if __name__ == "__main__":

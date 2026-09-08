@@ -137,6 +137,19 @@ header, runtime-status badge, and session timeline are visible, replace the matc
 captures no larger than 1440 × 900 to RGB at the exact target size; it cannot recover content
 clipped during capture.
 
+## Pipenzo's own brand + mascot pack
+
+Everything above is the inherited AgentDock identity, still consumed by the packaged app and
+`index.html` today. Pipenzo's own approved brand/mascot system was checked in separately at
+`apps/desktop/assets/pipenzo/` ([#239](https://github.com/jortega0033/pipenzo/issues/239)) rather
+than replacing the AgentDock files in place — see [`docs/brand/BRAND.md`](brand/BRAND.md) for the
+usage rules and [`docs/brand/ASSET_MANIFEST.md`](brand/ASSET_MANIFEST.md) for the filename → usage
+map. `pnpm assets:validate` checks every file in that pack against its own reviewed
+`manifest.json` (size + SHA-256 + dimensions), so it can't silently drift. Swapping the app's
+actual icon/favicon/title/electron-builder identity over to this pack is
+[#241](https://github.com/jortega0033/pipenzo/issues/241); wiring the mascot into the desktop UI is
+[#244](https://github.com/jortega0033/pipenzo/issues/244).
+
 ## Rebrand a fork
 
 1. Replace the eight SVG source files while preserving their filenames and view boxes.
