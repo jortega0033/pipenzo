@@ -36,6 +36,7 @@ import { DaemonGitHubCredential } from './github-credential.js';
 import { PipenzoPhaseMachine } from './pipenzo-phase-machine.js';
 import { PipenzoPhaseEventBus } from './pipenzo-phase-events.js';
 import { PipenzoCrashRecovery } from './pipenzo-crash-recovery.js';
+import { PipenzoReconciler } from './pipenzo-reconciler.js';
 
 async function settlesWithin(promise: Promise<unknown>, timeoutMs: number): Promise<boolean> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -238,6 +239,23 @@ async function main() {
     events: phaseEvents,
   });
 
+  // Pipenzo's polling reconciler (issue #231): the loop that makes the connected-repos list worth
+  // having. Same GitHub boundary and same shared cache/tracker as the phase machine above -- it
+  // reaches GitHub only through `phaseMachine.read()`, never through a client of its own, which is
+  // what makes every poll a conditional read against `githubConditionalCache` rather than a second,
+  // uncached implementation of "fetch this issue".
+  const pipenzoReconciler = new PipenzoReconciler({
+    repos: connectedRepos,
+    tickets: ticketStore,
+    machine: phaseMachine,
+    github: () =>
+      OctokitGitHubClient.fromToken(githubCredential.resolve(), {
+        cache: githubConditionalCache,
+        rateLimits: githubRateLimits,
+      }),
+    logger,
+  });
+
   // Pipenzo's crash recovery (issue #190). The two recovery reports read above already mark the
   // sessions interrupted; this is what maps them back onto tickets, parks each one in Needs-human,
   // and records what a human's two options are. Same GitHub boundary as everything else on this
@@ -311,11 +329,21 @@ async function main() {
   // safe rather than sloppy here: `writeLabels()` catches per ticket and cannot reject.
   void crashRecovery.writeLabels();
 
+  // Started after `listen()`, deliberately not awaited: `start()` runs its first tick immediately
+  // rather than after one interval, and that first tick is one conditional GitHub read per
+  // connected ticket. Awaiting it would make the daemon's startup wait on a rate-limited API the
+  // same way awaiting `writeLabels()` above would, for the same reason it is not done there.
+  pipenzoReconciler.start();
+
   let shuttingDown = false;
   async function shutdown(signal: string) {
     if (shuttingDown) return;
     shuttingDown = true;
     logger.info('shutting down', { signal });
+    // Stopped first and awaited: a `setTimeout` nobody clears keeps this process alive past its own
+    // shutdown, and a tick left in flight keeps spending GitHub quota after the window that wanted
+    // it has closed. `stop()` never rejects.
+    await pipenzoReconciler.stop();
     sessionManager.beginShutdown();
     await sessionManager.cancelAll();
     await closeAllMcpConnections().catch(() => {

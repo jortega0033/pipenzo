@@ -264,16 +264,25 @@ export type PipenzoPhaseMachineErrorCode = (typeof PIPENZO_PHASE_MACHINE_ERROR_C
 export class PipenzoPhaseMachineError extends Error {
   readonly code: PipenzoPhaseMachineErrorCode;
   readonly details: readonly string[];
+  /**
+   * Carried over from a wrapped `GitHubClientError('rate_limited', ...)`, unix ms. Preserved rather
+   * than dropped at the wrap because it is exactly what the reconciler (#231) needs to honour
+   * GitHub's own reset hint instead of guessing one from its own backoff ladder — see
+   * `MAX_RATE_LIMIT_SLEEP_SECONDS` in `github-client.ts` for where this value comes from.
+   */
+  readonly retryAfterMs: number | undefined;
 
   constructor(
     code: PipenzoPhaseMachineErrorCode,
     message: string,
     details: readonly string[] = [],
+    options?: { retryAfterMs?: number },
   ) {
     super(message);
     this.name = 'PipenzoPhaseMachineError';
     this.code = code;
     this.details = details.slice(0, 20).map((detail) => detail.slice(0, 500));
+    this.retryAfterMs = options?.retryAfterMs;
   }
 }
 
@@ -311,7 +320,9 @@ function toMachineError(error: unknown): PipenzoPhaseMachineError {
   if (error instanceof PipenzoPhaseMachineError) return error;
   if (error instanceof GitHubClientError) {
     // `GitHubClientError` redacts its own message at construction, so it is safe to surface.
-    return new PipenzoPhaseMachineError(GITHUB_CODES[error.code], error.message);
+    return new PipenzoPhaseMachineError(GITHUB_CODES[error.code], error.message, [], {
+      retryAfterMs: error.retryAfterMs,
+    });
   }
   return new PipenzoPhaseMachineError('github_failed', 'phase machine operation failed');
 }
