@@ -94,7 +94,23 @@ describe('RefusalPanel', () => {
       );
       expect(screen.getByText('> 20 files')).toBeInTheDocument();
       expect(screen.queryByText(/> 400 changed lines/)).not.toBeInTheDocument();
-      expect(screen.getByText(/50 lines · 21 files/)).toBeInTheDocument();
+      // The detail must not claim the line count alone declines too -- 50 lines is well within
+      // budget, so only the file count is the reason.
+      expect(screen.getByText(/50 lines is within budget/)).toBeInTheDocument();
+      expect(screen.queryByText(/either ceiling alone declines/)).not.toBeInTheDocument();
+    });
+
+    it('names the lines ceiling and says the file count is within budget, for a lines-only overrun', () => {
+      render(
+        <RefusalPanel
+          repo={REPO}
+          issueNumber={ISSUE_NUMBER}
+          estimate={{ changedLines: 450, filesTouched: 5, layered: true }}
+        />,
+      );
+      expect(screen.getByText('> 400 changed lines')).toBeInTheDocument();
+      expect(screen.queryByText(/> 20 files/)).not.toBeInTheDocument();
+      expect(screen.getByText(/5 files is within budget/)).toBeInTheDocument();
     });
   });
 

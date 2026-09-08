@@ -77,8 +77,8 @@ export function RefusalPanel({
             target="_blank"
             rel="noreferrer"
           >
-            Open on GitHub
             <Icon name="external" size="sm" />
+            Open on GitHub
           </a>
           {onRetryRefine && (
             <Button variant="ghost" icon="undo" onClick={onRetryRefine}>
@@ -156,10 +156,16 @@ function trippedBy(estimate: RefineEstimateV1): { headline: string; detail: stri
   const overFiles = estimate.filesTouched > stackMaxFiles;
   if (overLines || overFiles) {
     const headline = overLines ? `> ${stackMaxLines} changed lines` : `> ${stackMaxFiles} files`;
+    // Each branch states only what is actually true: when both crossed, naming that is accurate
+    // ("either one alone declines"); when only one did, saying the same thing about the other
+    // would claim a ceiling was breached that was not -- so that branch instead says the other
+    // number is the one within budget.
     const detail =
       overLines && overFiles
         ? `also > ${stackMaxFiles} files — either one alone declines`
-        : `${estimate.changedLines} lines · ${estimate.filesTouched} files — either ceiling alone declines`;
+        : overLines
+          ? `${estimate.filesTouched} files is within budget — the line count alone declines`
+          : `${estimate.changedLines} lines is within budget — the file count alone declines`;
     return { headline, detail };
   }
   return {

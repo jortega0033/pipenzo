@@ -21,6 +21,7 @@ import type {
   PipenzoReviewResultV1,
   RefineEstimateV1,
 } from '@agent-dock/shared';
+import { PIPENZO_DIFF_SIZE_THRESHOLDS } from '@agent-dock/shared';
 import {
   GitHubClientError,
   parseRepoRef,
@@ -631,15 +632,20 @@ export function blownEstimateCommentBody(report: PipenzoReviewResultV1): string 
 
 /**
  * The comment posted on a diff-size-gate refusal at Refine (issue #270). Names the estimate and
- * which of README's two conditions tripped -- over the 400-line/20-file ceiling, or inside the
- * 100–400/10–20 band with no clean layering -- since those are two different reasons a human
- * re-scoping the ticket needs to tell apart. No proposed split yet: nothing generates one
- * (#271); the comment says only what is real.
+ * which of README's two conditions tripped -- over the ceiling a dependency-ordered stack could
+ * still cover, or inside the stack band with no clean layering -- since those are two different
+ * reasons a human re-scoping the ticket needs to tell apart. No proposed split yet: nothing
+ * generates one (#271); the comment says only what is real.
+ *
+ * The ceiling itself comes from `PIPENZO_DIFF_SIZE_THRESHOLDS` (`@agent-dock/shared`), the same
+ * constant `refine-gate.ts`'s `evaluateDiffSizeGate` and `RefusalPanel.tsx`'s `trippedBy` (issue
+ * #100) read -- not a third copy of README's numbers.
  */
 export function refusalCommentBody(estimate: RefineEstimateV1): string {
-  const overCeiling = estimate.changedLines > 400 || estimate.filesTouched > 20;
+  const { stackMaxLines, stackMaxFiles } = PIPENZO_DIFF_SIZE_THRESHOLDS;
+  const overCeiling = estimate.changedLines > stackMaxLines || estimate.filesTouched > stackMaxFiles;
   const reason = overCeiling
-    ? 'past the 400-line / 20-file ceiling a dependency-ordered stack can still cover'
+    ? `past the ${stackMaxLines}-line / ${stackMaxFiles}-file ceiling a dependency-ordered stack can still cover`
     : 'no clean layering into a 2–4 PR stack at this size';
   return [
     `This ticket declined at Refine: **${reason}**.`,
