@@ -412,12 +412,30 @@ describe('ReviewGatesRunner — honesty of the evidence', () => {
     expect(report.diffScope?.exceededEstimate).toBe(false);
   });
 
-  it('fails the diff-scope gate on a blown estimate, and stops there', async () => {
+  it('fails the diff-scope gate on a blown estimate, reports estimate_blown, and stops there', async () => {
     const h = harness({ specTests: true, numstat: '900\t0\tsrc/enormous.ts' });
     const report = await h.runner.run(request());
-    expect(report.outcome).toBe('deterministic_failed');
+    // Issue #144/#265: a lone diff_scope failure is its own outcome, not generic
+    // deterministic_failed -- distinct so a consequence can attach to this reason specifically.
+    expect(report.outcome).toBe('estimate_blown');
     expect(report.deterministic.find((entry) => entry.id === 'diff_scope')?.status).toBe('failed');
     expect(h.ran).not.toContain('reviewer');
+  });
+
+  it('reports plain deterministic_failed when diff_scope fails alongside another gate', async () => {
+    // No specTests generator, so spec_tests reports 'skipped' rather than joining the failure --
+    // build and typecheck both shell out to 'pnpm' by default, so failing that executable fails
+    // both of them alongside diff_scope, which is enough to prove the point: more than one cause.
+    const h = harness({
+      numstat: '900\t0\tsrc/enormous.ts',
+      commandResults: { pnpm: { stdout: '', stderr: 'build broke', code: 1 } },
+    });
+    const report = await h.runner.run(request());
+    // A real multi-cause failure must not be collapsed into estimate_blown -- that outcome is for
+    // a blown estimate being the *whole* story, and here it is not.
+    expect(report.outcome).toBe('deterministic_failed');
+    expect(report.deterministic.find((entry) => entry.id === 'diff_scope')?.status).toBe('failed');
+    expect(report.deterministic.find((entry) => entry.id === 'build')?.status).toBe('failed');
   });
 
   /**

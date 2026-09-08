@@ -144,6 +144,16 @@ export const REVIEW_OUTCOMES = [
   'approved',
   'deterministic_failed',
   'awaiting_test_adjudication',
+  /**
+   * The final diff blew its Refine-time estimate by more than `DIFF_SCOPE_TOLERANCE` (README's
+   * 50% rule) — issue #144. A lone `diff_scope` gate failure, distinct from `deterministic_failed`
+   * so a consequence can be attached to it specifically (transition to
+   * `pipenzo:awaiting-stack-approval`, real-vs-predicted numbers posted as a comment) without that
+   * consequence also firing for a broken build, a typecheck error, or a gitleaks/semgrep hit. The
+   * numbers themselves already travel on `diffScope` below; this outcome is the flag that says
+   * which reason they belong to.
+   */
+  'estimate_blown',
   'verifier_rejected',
 ] as const;
 
