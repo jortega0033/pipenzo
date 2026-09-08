@@ -94,7 +94,10 @@ export function unavailableReasonLabel(
       return 'The only store available here encrypts with a published constant key, which is obfuscation rather than encryption. Pipenzo refuses it rather than keep a token under a false claim.';
     case 'unreadable':
       return 'A stored record exists but cannot be decrypted on this machine — usually a keyring that has been replaced or removed.';
-    default:
+    case undefined:
+      // Spelled out rather than left to `default:`, so that adding a member to
+      // `pipenzoCredentialUnavailableReasonV1Schema` fails the build here instead of silently
+      // rendering the vague sentence for a reason somebody went to the trouble of naming.
       return 'This machine cannot hold a credential right now.';
   }
 }

@@ -5071,6 +5071,10 @@
     color: var(--color-text-faint);
   }
 
+  /* `nowrap` is the canvas's, and it is right for the short values it drew. The longest real value
+     is `PIPENZO_GITHUB_TOKEN (inherited)` at ~32 mono characters, which in a narrow window would
+     push out of a `minmax(0, 1fr)` column rather than wrap -- so it ellipsises instead of
+     overflowing. `min-width: 0` is what lets a flex child shrink below its content at all. */
   .acct-v {
     font-family: var(--font-mono);
     font-size: 12px;
@@ -5078,6 +5082,9 @@
     line-height: 1.3;
     text-align: right;
     white-space: nowrap;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .danger-row {

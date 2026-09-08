@@ -72,6 +72,7 @@ export function AccountPanel() {
   const connection = useGitHubConnection();
   const [providers, setProviders] = useState<readonly ProviderStatusV2[] | undefined>(undefined);
   const [providersUnread, setProvidersUnread] = useState(false);
+  const [providersReloadKey, setProvidersReloadKey] = useState(0);
   const [confirming, setConfirming] = useState(false);
   const accountLabelId = useId();
   const providersLabelId = useId();
@@ -87,6 +88,8 @@ export function AccountPanel() {
 
   useEffect(() => {
     let cancelled = false;
+    setProvidersUnread(false);
+    setProviders(undefined);
     void getBridge()
       .listProvidersV2()
       .then((next) => {
@@ -103,7 +106,7 @@ export function AccountPanel() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [providersReloadKey]);
 
   const { run, reset } = disconnection;
   const disconnect = useCallback(() => {
@@ -136,10 +139,20 @@ export function AccountPanel() {
 
   const rows = providers === undefined ? undefined : providerRows(providers);
   const chip = connection === undefined ? undefined : connectionChip(connection.state);
+  /**
+   * The daemon is running on an inherited variable, which changes what a disconnect *does* and not
+   * just what it says. Clearing the vault restarts the daemon, and `resolveDaemonGitHubToken` then
+   * finds the same `PIPENZO_GITHUB_TOKEN` again -- so the honest sentence is "this comes back", not
+   * "this stops". Reachable with `state: 'connected'` too: a daemon spawned before the vault was
+   * written is on the environment while the vault holds a record.
+   */
+  const inheritedToken = connection !== undefined && isRunningOnInheritedToken(connection);
 
   return (
     <div className="form-panel">
-      <div className="fieldset">
+      {/* `role="group"` so the heading actually names the credential rows for a screen reader,
+          rather than the `id` being generated and referenced by nothing. */}
+      <div className="fieldset" role="group" aria-labelledby={accountLabelId}>
         <span className="f-lbl" id={accountLabelId}>
           Account
         </span>
@@ -195,9 +208,11 @@ export function AccountPanel() {
 
             <span className="f-help">
               The <span className="mono">repo</span> scope is what creating labels and opening pull
-              requests need, and no narrower scope grants one without the other. The token never
-              leaves the Electron main process — no provider subprocess receives it, and Pipenzo
-              never invokes the <span className="mono">gh</span> binary, so nothing on your{' '}
+              requests need, and no narrower scope grants one without the other. Electron main holds
+              the token and hands it to Pipenzo&apos;s own daemon over a pipe, never through its
+              environment — so no provider subprocess receives it or can read it out of its parent,
+              and it never reaches this window. Pipenzo also never invokes the{' '}
+              <span className="mono">gh</span> binary, so nothing on your{' '}
               <span className="mono">PATH</span> is part of the publish path.
             </span>
           </>
@@ -210,7 +225,21 @@ export function AccountPanel() {
         </span>
 
         {providersUnread ? (
-          <Notice tone="warn" icon="warning" title="Could not check your providers">
+          // A retry, because the reason this fails is one that stops being true: the daemon rejects
+          // the call while it is still starting, and the disconnect on this very panel restarts it.
+          // Naming a transient cause and then offering no way to re-ask leaves the only exit as
+          // navigating off Settings and back.
+          <Notice
+            tone="warn"
+            icon="warning"
+            title="Could not check your providers"
+            actions={[
+              {
+                label: 'Try again',
+                onClick: () => setProvidersReloadKey((key) => key + 1),
+              },
+            ]}
+          >
             The daemon rejects this while it is still starting. This says nothing about your
             provider sign-ins — the panel simply could not read them.
           </Notice>
@@ -242,24 +271,38 @@ export function AccountPanel() {
         </span>
       </div>
 
-      <div className="danger-row">
-        <span className="set-sub">
-          Clears the token from the vault and stops every poll. Worktrees, branches and the ticket
-          store stay on disk.
-        </span>
-        <Button
-          variant="danger"
-          icon="prohibit"
-          disabled={connection === undefined}
-          onClick={() => {
-            if (writing.current) return;
-            reset();
-            setConfirming(true);
-          }}
-        >
-          Disconnect GitHub
-        </Button>
-      </div>
+      {/* Offered only when there is something to clear. `tokenVault.clear()` reports whether it
+          actually removed a record, and `main.ts` restarts the daemon only when it did -- so on a
+          vault that is already empty this button is a guaranteed no-op that would still resolve,
+          close its dialog, and read as though it had done something. */}
+      {connection !== undefined && connection.state === 'connected' && (
+        <div className="danger-row">
+          <span className="set-sub">
+            {inheritedToken
+              ? 'Clears the token from the vault. This daemon would restart onto PIPENZO_GITHUB_TOKEN and keep working, because a shell variable is not Pipenzo’s to clear.'
+              : 'Clears the token from the vault, and the daemon restarts without one. Worktrees, branches and the ticket store stay on disk.'}
+          </span>
+          {/* No `writing.current` check here, deliberately. While a disconnect is in flight the
+              dialog is open over this button -- `.scrim` is `position: fixed; inset: 0` and `Dialog`
+              traps Tab -- and the latch is released before `confirming` goes back to false, so there
+              is no state in which this handler runs with the latch set. The guard that matters is
+              the one in `disconnect`, which is on the control a user can actually reach. */}
+          <Button
+            variant="danger"
+            icon="prohibit"
+            onClick={() => {
+              // Not load-bearing either: `status` can only be `error` while the dialog is open, and
+              // every path that closes it resets or succeeds. Kept because "opening a picker session
+              // starts it clean" is the invariant, and the next call site should not have to know
+              // which of those paths happens to have run.
+              reset();
+              setConfirming(true);
+            }}
+          >
+            Disconnect GitHub
+          </Button>
+        </div>
+      )}
 
       <Dialog
         open={confirming}
@@ -288,10 +331,19 @@ export function AccountPanel() {
             credential once, at startup, so forgetting one means restarting it — and that restart
             does not wait for work in flight to wind down.
           </p>
+          {inheritedToken && (
+            <Notice tone="warn" icon="warning" title="This will not revoke anything">
+              This daemon is running on <span className="mono">PIPENZO_GITHUB_TOKEN</span> from the
+              environment. Clearing the vault restarts it onto the same variable, so it comes back
+              with the same access. To actually stop it, unset the variable and restart Pipenzo —
+              and revoke the token on GitHub if it should no longer work anywhere.
+            </Notice>
+          )}
           <p className="set-sub">
             Your worktrees, branches and ticket store stay exactly where they are, and nothing on
-            GitHub changes: labels, branches and pull requests are untouched. Signing in again is
-            the same device flow as the first time.
+            GitHub changes: labels, branches and pull requests are untouched — a disconnect here
+            forgets a token, it does not revoke one. Signing in again is the same device flow as the
+            first time.
           </p>
           {disconnection.status === 'error' && (
             <Notice tone="danger" icon="warning" title="Could not disconnect">

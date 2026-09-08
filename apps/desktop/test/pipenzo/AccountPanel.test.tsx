@@ -96,8 +96,11 @@ describe('AccountPanel', () => {
     render(<AccountPanel />);
     await loaded();
 
+    // Scoped to the row. A global `queryByText(/detected/i)` would also match the empty-provider
+    // copy ("No agent CLI was detected on this machine"), so it would pass or fail on the fixture's
+    // provider list rather than on the claim this test is about.
     expect(detailValue('gh CLI')).toBe('not used');
-    expect(screen.queryByText(/detected/i)).not.toBeInTheDocument();
+    expect(detailValue('gh CLI')).not.toMatch(/detected/i);
     // And the help text carries the reason, so the row is not a bare denial.
     expect(screen.getByText(/never invokes the/i)).toBeInTheDocument();
   });
@@ -148,6 +151,72 @@ describe('AccountPanel', () => {
 
     expect(await screen.findByText(/could not check your providers/i)).toBeVisible();
     expect(screen.queryByText(/no agent cli was detected/i)).not.toBeInTheDocument();
+  });
+
+  /**
+   * The notice names a cause that stops being true -- the daemon rejects this while it is starting,
+   * and the disconnect on this panel restarts it -- so it has to offer a way to re-ask. Without
+   * this the only exit is leaving Settings and coming back.
+   */
+  it('can retry the provider read', async () => {
+    const bridge = installBridge({ providersReject: true });
+    render(<AccountPanel />);
+    await screen.findByText(/could not check your providers/i);
+
+    bridge.listProvidersV2.mockResolvedValue([provider()]);
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+
+    expect(await screen.findByText('Claude Code CLI')).toBeInTheDocument();
+    expect(bridge.listProvidersV2).toHaveBeenCalledTimes(2);
+  });
+
+  /**
+   * The panel's own security copy, which two review passes caught asserting something false. The
+   * token does leave Electron main: `main.ts` writes it to the daemon's stdin at spawn, and
+   * `github-credential.ts` says in as many words that the stdin handoff is "defence in depth, not a
+   * boundary, and saying otherwise would be the kind of claim this codebase is supposed to refuse
+   * to make". The true, narrower claims are the ones worth pinning.
+   */
+  it('does not claim the token never leaves Electron main', async () => {
+    installBridge();
+    render(<AccountPanel />);
+    await loaded();
+
+    expect(screen.queryByText(/never leaves the electron main process/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/over a pipe, never through its environment/i)).toBeInTheDocument();
+    expect(screen.getByText(/no provider subprocess receives it/i)).toBeInTheDocument();
+  });
+
+  /**
+   * `tokenVault.clear()` reports whether it removed anything, and `main.ts` restarts the daemon only
+   * when it did. On an empty vault the call resolves having done nothing at all -- so offering the
+   * button there would let the panel close its dialog and read as though it had acted.
+   */
+  it('offers no disconnect when there is nothing stored to clear', async () => {
+    installBridge({ connection: { state: 'disconnected', source: 'none' } });
+    render(<AccountPanel />);
+    await screen.findByText(/nothing is stored on this machine/i);
+
+    expect(screen.queryByRole('button', { name: /disconnect github/i })).not.toBeInTheDocument();
+  });
+
+  /**
+   * The vault can hold a record while the daemon is running on an inherited variable -- a daemon
+   * spawned before the vault was written. Clearing the vault restarts it straight back onto the
+   * same `PIPENZO_GITHUB_TOKEN`, so the dialog must not promise a revocation it cannot perform.
+   */
+  it('says a disconnect will not revoke an inherited token', async () => {
+    installBridge({
+      connection: { state: 'connected', login: 'octocat', source: 'environment' },
+    });
+    render(<AccountPanel />);
+    await loaded();
+
+    fireEvent.click(screen.getByRole('button', { name: /disconnect github/i }));
+    const dialog = await screen.findByRole('dialog');
+
+    expect(within(dialog).getByText(/will not revoke anything/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/comes back with the same access/i)).toBeInTheDocument();
   });
 
   /**
