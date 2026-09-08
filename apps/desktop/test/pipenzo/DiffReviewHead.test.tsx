@@ -54,6 +54,18 @@ describe('DiffReviewHead', () => {
     expect(screen.getByText('HIGH · publish')).toBeInTheDocument();
   });
 
+  it('renders the ready/waiting mascot decoratively, never pointing at or replacing the publish actions', () => {
+    installBridge();
+    render(
+      <DiffReviewHead idLine="#94" title="t" stat={STAT} worktreeId={WORKTREE_ID} branch="issue-94" />,
+    );
+    const mascot = screen.getByRole('presentation', { hidden: true });
+    expect(mascot).toHaveAttribute('alt', '');
+    expect(mascot).toHaveClass('pipenzo-mascot-sm');
+    // Real publish evidence is still driven by real buttons, not decoration.
+    expect(screen.getByRole('button', { name: 'Push branch' })).toBeInTheDocument();
+  });
+
   it('renders an over-budget chip with danger tone when the ticket exceeded its estimate', () => {
     installBridge();
     render(
