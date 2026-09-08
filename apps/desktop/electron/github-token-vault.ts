@@ -13,6 +13,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
+import { GITHUB_LOGIN_PATTERN, GITHUB_TOKEN_SHAPE_PATTERN } from '@agent-dock/shared';
 
 /**
  * Pipenzo's GitHub token vault (issue #165).
@@ -73,6 +74,19 @@ import { join } from 'node:path';
  * is a credential that expires: a GitHub App installation token or an OAuth token with refresh,
  * rather than a long-lived `repo` PAT. That is a decision for the device-flow ticket (#114), and it
  * is recorded here so it is a choice rather than an oversight.
+ *
+ * ## Crash dumps are credential-bearing too (issue #214)
+ *
+ * The resolved token exists as an ordinary V8 string at several points along the path described
+ * above — in this module's own `readToken()`, in the built stdin message, in the daemon's parsed
+ * copy — and none of those are things JavaScript can zero the way the daemon's own
+ * `readCredentialMessage` zeroes its intermediate `Buffer`s. Electron's Crashpad writes a local dump
+ * of the crashing process's memory under `app.getPath('crashDumps')` **by default**, independent of
+ * whether `crashReporter.start()` was ever called (this app does not call it, so nothing is
+ * uploaded) — so a main-process crash at the wrong moment leaves a file on disk containing the
+ * plaintext credential. There is no code fix for a heap dump; the actionable part is process: that
+ * directory must never be attached to a bug report without being told what it can contain, which is
+ * why this paragraph exists rather than a change to this file.
  *
  * ## What calls `store()`, and what still stands between it and a usable packaged build
  *
@@ -166,9 +180,12 @@ interface StoredVaultRecord {
 /**
  * A GitHub login, by GitHub's own rules. Validated because it is written to a file, read back, and
  * later shown in the UI — a value that round-trips through disk is a value that has to be checked
- * on the way back in, not just on the way out.
+ * on the way back in, not just on the way out. `GITHUB_LOGIN_PATTERN` (issue #214) rather than a
+ * copy declared here, since a divergence from the wire schema's own copy in
+ * `pipenzo-credential-v1.ts` would make `pipenzo:github-connection` throw permanently instead of
+ * degrading -- see that file's doc comment on the constant.
  */
-const LOGIN_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
+const LOGIN_PATTERN = GITHUB_LOGIN_PATTERN;
 
 /**
  * The Linux `safeStorage` backends that are real keyrings. Allowlisted rather than denylisting
@@ -187,8 +204,12 @@ const REAL_LINUX_BACKENDS = new Set(['gnome_libsecret', 'kwallet', 'kwallet5', '
  * other separator would do the same to whatever consumes it next.
  * Printable, non-whitespace ASCII covers every token format GitHub has ever issued (`ghp_`,
  * `gho_`, `github_pat_`, and the 40-hex classic) and excludes every separator.
+ *
+ * `GITHUB_TOKEN_SHAPE_PATTERN` (issue #214), not a copy declared here: this exact regex used to be
+ * independently declared in this file, `daemon-environment.ts`, and the daemon's own
+ * `github-credential.ts`, one hoisted source for all three now.
  */
-const TOKEN_PATTERN = /^[\x21-\x7e]{20,512}$/;
+const TOKEN_PATTERN = GITHUB_TOKEN_SHAPE_PATTERN;
 
 function assertToken(token: string): void {
   if (!TOKEN_PATTERN.test(token)) {

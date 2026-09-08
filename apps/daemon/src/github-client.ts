@@ -919,6 +919,17 @@ export interface OctokitGitHubClientOptions {
    * fed.
    */
   readonly rateLimits?: GitHubRateLimitTracker;
+  /**
+   * Forwarded to `createPipenzoOctokit`'s own `throttleObserver` (issue #214) -- the seam the
+   * rate-limit degradation surface (#75) is meant to subscribe through. Declared on
+   * `createPipenzoOctokit` since #161 but never threaded through this options bag until now, so no
+   * caller of `fromToken` -- the factory the shipped daemon actually calls -- had any way to supply
+   * one: the seam existed in source and was unreachable from the running app. Same shape as
+   * `rateLimits` above until #75 exists to hand one in: optional, unused today, wired rather than
+   * deleted because the type-level plumbing is cheap and #75's own PR should not have to start by
+   * re-discovering this gap.
+   */
+  readonly throttleObserver?: PipenzoThrottleObserver;
 }
 
 /** The one real implementation. Everything network-facing in Pipenzo's GitHub surface is here. */
@@ -973,7 +984,10 @@ export class OctokitGitHubClient implements GitHubClient {
     options: OctokitGitHubClientOptions = {},
   ): OctokitGitHubClient {
     return new OctokitGitHubClient(
-      createPipenzoOctokit(token, { rateLimits: options.rateLimits }),
+      createPipenzoOctokit(token, {
+        rateLimits: options.rateLimits,
+        throttleObserver: options.throttleObserver,
+      }),
       options.cache,
       options.rateLimits,
     );

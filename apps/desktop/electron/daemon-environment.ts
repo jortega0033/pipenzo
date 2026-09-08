@@ -1,5 +1,5 @@
 import { inspect } from 'node:util';
-import type { DaemonCredentialSourceV1 } from '@agent-dock/shared';
+import { GITHUB_TOKEN_SHAPE_PATTERN, type DaemonCredentialSourceV1 } from '@agent-dock/shared';
 import { resolveDaemonEntry, type ResolveDaemonEntryInput } from './resolve-daemon-entry.js';
 
 /**
@@ -108,8 +108,11 @@ export interface DaemonGitHubTokenResolution {
  * covers every token format GitHub has issued and excludes every separator. The floor is 20 rather
  * than 8 because every real format is at least 36 characters, so a truncated paste should read as
  * "not configured" rather than as a credential that 401s later.
+ *
+ * `GITHUB_TOKEN_SHAPE_PATTERN` (issue #214), not a copy declared here: this file, `github-token-vault.ts`,
+ * and the daemon's own `github-credential.ts` each independently declared this exact regex before.
  */
-const TOKEN_PATTERN = /^[\x21-\x7e]{20,512}$/;
+const TOKEN_PATTERN = GITHUB_TOKEN_SHAPE_PATTERN;
 
 export function isTokenShaped(value: string | undefined): value is string {
   return typeof value === 'string' && TOKEN_PATTERN.test(value);
