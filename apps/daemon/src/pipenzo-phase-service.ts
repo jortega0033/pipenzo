@@ -115,13 +115,15 @@ export interface PipenzoPhaseServiceOptions {
    */
   env?: Readonly<Record<string, string | undefined>>;
   /**
-   * The phase machine (issue #144), narrowed to `transition` only. Optional so a service built
-   * without one (every test that predates this ticket) still reviews exactly as before — it just
-   * has nothing to transition an `estimate_blown` outcome onto. Not the same object review()
+   * The phase machine (issue #144), narrowed to `read` and `transition`. Optional so a service
+   * built without one (every test that predates this ticket) still reviews exactly as before — it
+   * just has nothing to transition an `estimate_blown` outcome onto. Not the same object review()
    * builds its GitHub client from: the machine resolves its own client internally, the same lazy,
-   * per-call pattern this service already uses everywhere else.
+   * per-call pattern this service already uses everywhere else. `read` is here (and not just
+   * `transition`) so a retried review of the same outcome can tell it already recorded this one --
+   * see `#reportBlownEstimate`.
    */
-  machine?: Pick<PipenzoPhaseMachine, 'transition'>;
+  machine?: Pick<PipenzoPhaseMachine, 'read' | 'transition'>;
   /** Logs a failed blown-estimate consequence without failing the review call that produced a
    * perfectly good report — see `review()`'s own comment for why. */
   logger?: Logger;
@@ -135,7 +137,7 @@ export class PipenzoPhaseService {
   readonly #worktrees: ImplementWorktreeManager & OwnedWorktreeLocator;
   readonly #github: (() => GitHubClient) | undefined;
   readonly #env: Readonly<Record<string, string | undefined>>;
-  readonly #machine: Pick<PipenzoPhaseMachine, 'transition'> | undefined;
+  readonly #machine: Pick<PipenzoPhaseMachine, 'read' | 'transition'> | undefined;
   readonly #logger: Logger | undefined;
 
   constructor(options: PipenzoPhaseServiceOptions) {
@@ -288,10 +290,25 @@ export class PipenzoPhaseService {
    * The actual consequence of `estimate_blown` (issue #144): transitions the ticket to
    * `pipenzo:awaiting-stack-approval`, then posts the real-vs-predicted numbers as a comment on its
    * issue. Best-effort and logged, never thrown -- see `review()`'s own comment for why.
+   *
+   * ## Guarded against a retried `review()` call double-posting
+   *
+   * `GitHubClient.createIssueComment`'s own doc comment says plainly that GitHub has no
+   * idempotency key for a comment and "a caller that must not double-post gates itself" — this is
+   * that gate. A client that times out waiting for `/v2/pipenzo/review` after the daemon actually
+   * finished (transition committed, comment posted, 200 on the wire the client never saw) has a
+   * real, natural reason to retry the identical request, and `ReviewGatesRunner.run()` would
+   * reproduce `estimate_blown` again against the same worktree/commits. `read()` first and skip
+   * both the transition and the comment when the ticket is already on `awaiting-stack-approval` --
+   * unlike `transition()` itself (deliberately unconditional, so a move between two Needs-human
+   * variants still redraws the card, #80), the comment has no such reason to repeat for a state
+   * that was already reached.
    */
   async #reportBlownEstimate(ticketId: string, report: PipenzoReviewResultV1): Promise<void> {
     if (!this.#machine) return;
     try {
+      const current = await this.#machine.read(ticketId);
+      if (current.ticket.labels.includes('pipenzo:awaiting-stack-approval')) return;
       const result = await this.#machine.transition(ticketId, 'pipenzo:awaiting-stack-approval');
       const github = this.#requireGitHub();
       const ref = parseRepoRef(result.ticket.repo);

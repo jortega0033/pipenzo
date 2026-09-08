@@ -127,7 +127,7 @@ interface Harness {
   env?: Record<string, string | undefined>;
   withGitHub?: boolean;
   onSession?: (request: CreateSessionV2Request) => void;
-  machine?: Pick<PipenzoPhaseMachine, 'transition'>;
+  machine?: Pick<PipenzoPhaseMachine, 'read' | 'transition'>;
 }
 
 const TICKET_ID = '00000000-0000-4000-8000-0000000000aa';
@@ -153,24 +153,43 @@ function ticketRecord(overrides: Partial<PipenzoTicketRecordV1> = {}): PipenzoTi
   };
 }
 
-/** Records every call, and answers with a legal reconciliation for `pipenzo:awaiting-stack-approval`. */
-class FakeMachine implements Pick<PipenzoPhaseMachine, 'transition'> {
-  readonly calls: Array<{ ticketId: string; label: string }> = [];
+/**
+ * Records every `transition`/`read` call. `currentLabel` is the ticket's state before any call --
+ * defaults to `pipenzo:working`, i.e. not yet at `awaiting-stack-approval`, so the double-post
+ * guard in `#reportBlownEstimate` (issue #266) does not trip by default; the "already recorded"
+ * test constructs one with `currentLabel: 'pipenzo:awaiting-stack-approval'` instead.
+ */
+class FakeMachine implements Pick<PipenzoPhaseMachine, 'read' | 'transition'> {
+  readonly calls: Array<{ method: 'read' | 'transition'; ticketId: string; label?: string }> = [];
   #fail: unknown;
+  #currentLabel: PipenzoLaneBearingLabelV1;
+
+  constructor(currentLabel: PipenzoLaneBearingLabelV1 = 'pipenzo:working') {
+    this.#currentLabel = currentLabel;
+  }
 
   failNext(error: unknown): this {
     this.#fail = error;
     return this;
   }
 
+  async read(ticketId: string): Promise<PipenzoTicketReconciliation> {
+    this.calls.push({ method: 'read', ticketId });
+    return this.#reconciliationFor(ticketId, this.#currentLabel);
+  }
+
   async transition(ticketId: string, toLabel: string): Promise<PipenzoTicketReconciliation> {
-    this.calls.push({ ticketId, label: toLabel });
+    this.calls.push({ method: 'transition', ticketId, label: toLabel });
     if (this.#fail) {
       const error = this.#fail;
       this.#fail = undefined;
       throw error;
     }
-    const label = toLabel as PipenzoLaneBearingLabelV1;
+    this.#currentLabel = toLabel as PipenzoLaneBearingLabelV1;
+    return this.#reconciliationFor(ticketId, this.#currentLabel);
+  }
+
+  #reconciliationFor(ticketId: string, label: PipenzoLaneBearingLabelV1): PipenzoTicketReconciliation {
     const ticket = ticketRecord({ ticketId, labels: [label] });
     return {
       ticket,
@@ -471,8 +490,10 @@ describe('POST /v2/pipenzo/review', () => {
 
       expect(response.statusCode).toBe(200);
       expect(response.json().outcome).toBe('estimate_blown');
+      // read() first (the double-post guard, issue #266), then the actual transition.
       expect(machine.calls).toEqual([
-        { ticketId: TICKET_ID, label: 'pipenzo:awaiting-stack-approval' },
+        { method: 'read', ticketId: TICKET_ID },
+        { method: 'transition', ticketId: TICKET_ID, label: 'pipenzo:awaiting-stack-approval' },
       ]);
       const posted = github.issueComments({ owner: 'jortega0033', repo: 'pipenzo' }, 184);
       expect(posted).toHaveLength(1);
@@ -520,7 +541,24 @@ describe('POST /v2/pipenzo/review', () => {
 
       expect(response.statusCode).toBe(200);
       expect(response.json().outcome).toBe('estimate_blown');
-      expect(machine.calls).toHaveLength(1);
+      // read() succeeded (the guard found nothing recorded yet); transition() is the one that failed.
+      expect(machine.calls.map((call) => call.method)).toEqual(['read', 'transition']);
+    });
+
+    it('does not re-transition or re-comment when the ticket already carries the target label -- guards a retried review call', async () => {
+      const machine = new FakeMachine('pipenzo:awaiting-stack-approval');
+      const { app, github } = buildApp({ machine });
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/review',
+        headers: auth,
+        payload: blownEstimateRequest({ ticketId: TICKET_ID }),
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json().outcome).toBe('estimate_blown');
+      expect(machine.calls).toEqual([{ method: 'read', ticketId: TICKET_ID }]);
+      expect(github.issueComments({ owner: 'jortega0033', repo: 'pipenzo' }, 184)).toHaveLength(0);
     });
   });
 });
