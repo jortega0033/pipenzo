@@ -716,6 +716,88 @@ describe('POST /v2/pipenzo/issues', () => {
       htmlUrl: 'https://github.com/jortega0033/pipenzo/issues/900',
     });
   });
+
+  // A blank body stays allowed here, unlike a comment: a created issue with no description is a
+  // normal, valid GitHub issue, and #84's shipped route has always permitted one (issue #232).
+  it('still creates an issue with a blank body', async () => {
+    const github = new FakeGitHubClient().setNextIssueNumber(901);
+    const { app } = buildApp({ github });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v2/pipenzo/issues',
+      headers: auth,
+      payload: { title: 'Drafted from an idea', body: '' },
+    });
+    expect(response.statusCode).toBe(201);
+  });
+
+  /**
+   * Issue #232: the create body had no control-character rule at all, unlike the comment body's
+   * (#228) on the same surface -- a shipped-route oversight, not a deliberate divergence.
+   */
+  it('refuses a body with control characters, aligned with the comment body (issue #232)', async () => {
+    const github = new FakeGitHubClient().setNextIssueNumber(900);
+    const { app } = buildApp({ github });
+    for (const candidate of ['a\u0000b', 'a\u0007b']) {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/issues',
+        headers: auth,
+        payload: { title: 'Drafted from an idea', body: candidate },
+      });
+      expect(response.statusCode).toBe(400);
+      expect(response.json().code).toBe('invalid_request');
+    }
+    expect(github.calls).toHaveLength(0);
+  });
+
+  // Same CRLF exception as the comment body: bodies stitched out of captured command or git
+  // output on Windows are the norm, not the exception, for this product's primary platform.
+  it('accepts a CRLF body and posts it byte for byte, without rewriting the line endings', async () => {
+    const github = new FakeGitHubClient().setNextIssueNumber(900);
+    const { app } = buildApp({ github });
+    const crlf = 'Acceptance criteria:\r\n\r\n- one\r\n- two\r\n';
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v2/pipenzo/issues',
+      headers: auth,
+      payload: { title: 'Drafted from an idea', body: crlf },
+    });
+    expect(response.statusCode).toBe(201);
+    await expect(
+      github.getIssue({ owner: 'jortega0033', repo: 'pipenzo' }, 900),
+    ).resolves.toMatchObject({ body: crlf });
+  });
+
+  /**
+   * Issue #232: the create body's `.max(65_536)` counted UTF-16 units, the same bug #228 fixed for
+   * the comment body -- an emoji-heavy body was refused at roughly half GitHub's real allowance.
+   */
+  it('measures the body in code points, not UTF-16 units', async () => {
+    const github = new FakeGitHubClient().setNextIssueNumber(900);
+    const { app } = buildApp({ github });
+    // 65,536 code points, 131,072 UTF-16 units: at the limit, and accepted.
+    const atLimit = '🙂'.repeat(65_536);
+    const accepted = await app.inject({
+      method: 'POST',
+      url: '/v2/pipenzo/issues',
+      headers: auth,
+      payload: { title: 'Drafted from an idea', body: atLimit },
+    });
+    expect(accepted.statusCode).toBe(201);
+    // One code point over the cap, and deliberately *under* twice the cap in UTF-16 units, so
+    // nothing but the code-point comparison can be what rejects it.
+    const overLimit = `${'🙂'.repeat(65_000)}${'x'.repeat(537)}`;
+    expect([...overLimit]).toHaveLength(65_537);
+    const refused = await app.inject({
+      method: 'POST',
+      url: '/v2/pipenzo/issues',
+      headers: auth,
+      payload: { title: 'Drafted from an idea', body: overLimit },
+    });
+    expect(refused.statusCode).toBe(400);
+    expect(refused.json().code).toBe('invalid_request');
+  });
 });
 
 /**
