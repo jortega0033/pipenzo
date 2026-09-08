@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 import type { PipenzoTicketViewV1 } from '@agent-dock/shared';
 import { BoardScreen } from '../../src/pipenzo/BoardScreen.js';
 
@@ -98,5 +98,69 @@ describe('BoardScreen', () => {
     const well = workingLane?.querySelector('.lane-cards');
     expect(well).toBeInTheDocument();
     expect(well).toHaveTextContent('#5');
+  });
+
+  describe('first-run hero (issue #78)', () => {
+    it('renders the hero instead of the four-lane board when no repo is connected', () => {
+      const { container } = render(
+        <BoardScreen hasConnectedRepos={false} renderTicket={() => null} />,
+      );
+      expect(container.querySelector('.board')).not.toBeInTheDocument();
+      const hero = container.querySelector('.empty')!;
+      expect(hero.className).not.toContain('lane');
+      expect(screen.getByText('No repo connected yet')).toBeInTheDocument();
+      expect(
+        screen.getByText(/Nothing starts on connect/),
+      ).toBeInTheDocument();
+    });
+
+    it('ignores tickets while the hero is showing -- hasConnectedRepos is the authority, not an empty tickets array', () => {
+      const tickets = [makeTicket({ ticketId: 'a', lane: 'queued', issueNumber: 1 })];
+      render(<BoardScreen hasConnectedRepos={false} tickets={tickets} renderTicket={() => null} />);
+      expect(screen.getByText('No repo connected yet')).toBeInTheDocument();
+      expect(screen.queryByText('Queued')).not.toBeInTheDocument();
+    });
+
+    it('renders the four-lane board by default (hasConnectedRepos defaults to true), unchanged from before #78', () => {
+      const { container } = render(<BoardScreen renderTicket={() => null} />);
+      expect(container.querySelectorAll('.board > .lane')).toHaveLength(4);
+      expect(screen.queryByText('No repo connected yet')).not.toBeInTheDocument();
+    });
+
+    it('renders both actions and calls the right callback for each', () => {
+      const onConnectRepo = vi.fn();
+      const onNewFromIdea = vi.fn();
+      render(
+        <BoardScreen
+          hasConnectedRepos={false}
+          renderTicket={() => null}
+          onConnectRepo={onConnectRepo}
+          onNewFromIdea={onNewFromIdea}
+        />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Connect a repo' }));
+      fireEvent.click(screen.getByRole('button', { name: 'New from idea' }));
+      expect(onConnectRepo).toHaveBeenCalledTimes(1);
+      expect(onNewFromIdea).toHaveBeenCalledTimes(1);
+    });
+
+    it('renders neither action when neither callback is supplied', () => {
+      const { container } = render(
+        <BoardScreen hasConnectedRepos={false} renderTicket={() => null} />,
+      );
+      expect(container.querySelector('.e-act')).not.toBeInTheDocument();
+    });
+
+    it('renders only the supplied action when just one callback is given', () => {
+      render(
+        <BoardScreen
+          hasConnectedRepos={false}
+          renderTicket={() => null}
+          onConnectRepo={vi.fn()}
+        />,
+      );
+      expect(screen.getByRole('button', { name: 'Connect a repo' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'New from idea' })).not.toBeInTheDocument();
+    });
   });
 });
