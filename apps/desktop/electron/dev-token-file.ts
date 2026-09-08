@@ -1,4 +1,4 @@
-import { readFileSync, statSync } from 'node:fs';
+import { closeSync, constants as fsConstants, fstatSync, openSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 /**
@@ -29,7 +29,12 @@ import { join } from 'node:path';
  * `userData` directory is the same trust boundary the real vault (`github-token-vault.ts`) already
  * uses — same directory, same "runs as the same OS user" argument — just unencrypted and
  * developer-managed rather than main-written and encrypted, because this is a development
- * convenience, not the product's real credential store.
+ * convenience, not the product's real credential store. This module does not itself create or
+ * harden that directory (`readDevTokenFile` only ever reads); it relies on Electron's own
+ * per-app profile directory already being reasonably scoped, and on the vault's own `mkdirSync(...,
+ * { mode: 0o700 })` (`github-token-vault.ts`) tightening it further on POSIX the first time a real
+ * credential is ever stored. On a machine where the vault has never been written to, that second
+ * hardening has not happened, and this module trusts the directory's default permissions as-is.
  *
  * ## What this still does not fix, stated precisely so it is not read as more than it is
  *
@@ -42,6 +47,15 @@ import { join } from 'node:path';
  * fallback (`github-credential.ts`, used only when the daemon is started with no Electron parent at
  * all — `pnpm --filter @agent-dock/daemon dev`, the live-smoke harness, CI) — that path never went
  * through Electron main's environment in the first place, so this file has nothing to say about it.
+ *
+ * Nor does it change *where* the credential sits at rest: it trades a `/proc`-readable copy in
+ * Electron main's environment for a plaintext file (no ciphertext — `safeStorage` is main-only, and
+ * this file is written by a human before Electron ever starts) that persists on disk for as long as
+ * a developer leaves it there, with no expiry and no reminder to remove it, in the same directory as
+ * the real encrypted vault. That trade is net-positive against the PPid-walk threat this ticket
+ * exists to close, but it is a trade, not a strict improvement in every dimension — a developer
+ * using this should prefer a narrowly-scoped, short-lived token, the same advice already good
+ * practice for the shell-variable convenience it replaces.
  */
 export const DEV_GITHUB_TOKEN_FILE = 'dev-github-token';
 
@@ -64,19 +78,50 @@ export function devTokenFilePath(userDataDir: string): string {
  * "another local user (or process) could have gotten there first" concern `ensureSecureRuntimeDir`
  * documents, applied to a file instead of a directory.
  *
+ * Opened once, with `O_NOFOLLOW` where the platform has it, and every check below (owner, mode,
+ * content) reads from that one file descriptor rather than re-resolving the path — the same
+ * `open()`-then-operate-on-the-fd shape `github-token-vault.ts`'s own write path already uses. Two
+ * things this closes that a `statSync(path)` followed by a separate `readFileSync(path)` would not:
+ * `O_NOFOLLOW` refuses to open a symlink at all (a `statSync` on a path follows symlinks, so a
+ * same-user symlink pointing at some other 0600 file of theirs would otherwise be trusted); and
+ * `fstatSync(fd)` + reading from that same `fd` cannot be swapped out from under itself between the
+ * permission check and the read, the way two path-based operations against the same path can be.
+ *
  * POSIX-only for the permission check, for the same reason `ensureSecureRuntimeDir` and
  * `github-token-vault.ts`'s discovery-file counterpart are: Windows has no equivalent of a POSIX
  * file mode, and NTFS ACLs on a per-user profile directory are already restrictive by inheritance,
- * so a `chmod`-style check there would be a claim this codebase cannot actually verify.
+ * so a `chmod`-style check there would be a claim this codebase cannot actually verify. Unlike
+ * `ensureSecureRuntimeDir` (which hardens a directory a *program* creates), this file is written by
+ * a human with whatever tool they reach for, so the silence on Windows is worth naming rather than
+ * assuming: a file there is trusted with no verification of any kind, the same way the vault's own
+ * on-disk record already is on that platform.
  */
 export function readDevTokenFile(userDataDir: string): string | undefined {
   const path = devTokenFilePath(userDataDir);
-  let stats: ReturnType<typeof statSync>;
+  const flags =
+    fsConstants.O_RDONLY |
+    (typeof fsConstants.O_NOFOLLOW === 'number' ? fsConstants.O_NOFOLLOW : 0);
+  let fd: number;
   try {
-    stats = statSync(path);
+    fd = openSync(path, flags);
   } catch {
+    // Absent, a symlink refused by O_NOFOLLOW (POSIX), or any other reason the open failed --
+    // every one of them is "no development token configured" here.
     return undefined;
   }
+  try {
+    return readOpenDevTokenFile(fd, path);
+  } catch {
+    // `fstatSync`/`readFileSync` on an fd that just opened successfully should not throw, but the
+    // documented contract here is "never throws" without exception, so this is the backstop.
+    return undefined;
+  } finally {
+    closeSync(fd);
+  }
+}
+
+function readOpenDevTokenFile(fd: number, path: string): string | undefined {
+  const stats = fstatSync(fd);
   if (!stats.isFile()) return undefined;
   if (process.platform !== 'win32') {
     const ownedByUs = typeof process.getuid === 'function' ? stats.uid === process.getuid() : true;
@@ -92,7 +137,7 @@ export function readDevTokenFile(userDataDir: string): string | undefined {
   }
   let raw: string;
   try {
-    raw = readFileSync(path, 'utf8');
+    raw = readFileSync(fd, 'utf8');
   } catch {
     return undefined;
   }

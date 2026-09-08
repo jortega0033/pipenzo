@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -82,6 +82,21 @@ describe('readDevTokenFile', () => {
 
   it('does not fail the whole app when the file is actually a directory', () => {
     mkdirSync(devTokenFilePath(userDataDir));
+    expect(readDevTokenFile(userDataDir)).toBeUndefined();
+  });
+
+  /**
+   * `statSync` on a path follows symlinks; `O_NOFOLLOW` on `openSync` does not. Without it, a
+   * same-user symlink at the expected path pointing at some *other* 0600 file of theirs would pass
+   * the owner/mode check on the *target* and be trusted -- the exact gap a permission check on a
+   * path (rather than on an opened file descriptor) leaves open.
+   */
+  it('refuses a symlink even when its target is owned by the current user with mode 0600, on POSIX', () => {
+    if (process.platform === 'win32') return; // no O_NOFOLLOW there; see the module's own doc comment
+    const realFile = join(userDataDir, 'real-token-elsewhere');
+    writeFileSync(realFile, TOKEN, 'utf8');
+    chmodSync(realFile, 0o600);
+    symlinkSync(realFile, devTokenFilePath(userDataDir));
     expect(readDevTokenFile(userDataDir)).toBeUndefined();
   });
 

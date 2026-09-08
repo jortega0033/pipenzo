@@ -40,9 +40,11 @@ export type PipenzoCredentialUnavailableReasonV1 = z.infer<
  * Where the daemon's credential actually came from this run.
  *
  * Carried on the wire rather than left to inference, because a development build may still fall
- * back to an inherited `PIPENZO_GITHUB_TOKEN` when the vault is empty (see `daemon-environment.ts`).
- * "You are publishing with a shell variable, not with the account shown here" has to be a *visible*
- * state — the rule against credential fallbacks is really a rule against **silent** precedence.
+ * back to a development-only token when the vault is empty (a file under Electron's own data
+ * directory since issue #212 — an inherited `PIPENZO_GITHUB_TOKEN` shell variable before that; see
+ * `daemon-environment.ts`). "You are publishing with the development fallback, not with the
+ * account shown here" has to be a *visible* state — the rule against credential fallbacks is
+ * really a rule against **silent** precedence.
  *
  * One honest limit on that, so this field is not mistaken for more than it is: it is not yet
  * rendered anywhere (#113 owns the pre-app shell that will show it).

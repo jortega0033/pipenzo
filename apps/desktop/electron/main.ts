@@ -193,10 +193,11 @@ let credentialRestartPending = false;
 /**
  * Set once by `pipenzo:disconnect-github` and never cleared for the rest of this process's life
  * (issue #210). See `resolveDaemonGitHubToken`'s `developmentFallbackSuppressed` for why: without
- * it, a development build's next spawn falls straight back to the same inherited
- * `PIPENZO_GITHUB_TOKEN`, so "disconnect" would clear the vault and then immediately re-arm from
- * the shell. Signing in again (a real vault write) is unaffected — the vault always wins over this
- * flag, checked first in `resolveDaemonGitHubToken`.
+ * it, a development build's next spawn falls straight back to the same development-fallback token
+ * (a file since issue #212 -- an inherited `PIPENZO_GITHUB_TOKEN` shell variable before that), so
+ * "disconnect" would clear the vault and then immediately re-arm from it. Signing in again (a real
+ * vault write) is unaffected — the vault always wins over this flag, checked first in
+ * `resolveDaemonGitHubToken`.
  */
 let developmentFallbackSuppressed = false;
 
@@ -1077,16 +1078,17 @@ handle('pipenzo:disconnect-github', (): PipenzoGitHubConnectionV1 => {
   // which matters because `restartDaemonForCredentialChange` intentionally bypasses `killDaemon`'s
   // bounded `sessions.cancelAll`: every repetition kills in-flight sessions uncancelled.
   // Issue #210: an explicit disconnect must stick in a development build too, where the vault
-  // being empty would otherwise fall straight back to an inherited `PIPENZO_GITHUB_TOKEN` on the
-  // very next spawn -- silently turning "forget this credential" into "keep using it". Set
-  // unconditionally, before either branch below: harmless when there is nothing to suppress yet,
-  // and it must be in effect before a restart this same click triggers, not after.
+  // being empty would otherwise fall straight back to the same development-fallback token (a file
+  // since issue #212) on the very next spawn -- silently turning "forget this credential" into
+  // "keep using it". Set unconditionally, before either branch below: harmless when there is
+  // nothing to suppress yet, and it must be in effect before a restart this same click triggers,
+  // not after.
   developmentFallbackSuppressed = true;
   // Restarting when `clear()` found a real record to remove is the pre-existing guard (its own
   // comment above explains why an unconditional restart would loop). The `daemonTokenSource ===
   // 'environment'` half is new: a machine with no working credential store at all (`state:
   // 'unavailable'`, `os_encryption_unavailable`/`plaintext_backend`) has no vault file `clear()`
-  // could ever find, so without this a daemon already running on the inherited variable would
+  // could ever find, so without this a daemon already running on the development fallback would
   // keep running on it -- the flag above would be set but would do nothing until some unrelated
   // future restart. This still cannot loop: the second click finds `daemonTokenSource` already
   // `'none'` (the first restart's own confirmed report, issue #209), so the condition is false and
