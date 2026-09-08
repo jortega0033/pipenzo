@@ -5,6 +5,7 @@ import { Button } from '../components/primitives/Button.js';
 import { formatClockTimeUtc, formatDurationShort } from './connection-health-format.js';
 
 type RetryingHealth = Extract<PipenzoGitHubHealthV1, { state: 'retrying' }>;
+type UnreachableHealth = Extract<PipenzoGitHubHealthV1, { state: 'unreachable' }>;
 
 /**
  * The connection-health banner cluster (#70/#71/#72/#73): one banner at a time, in the slot
@@ -13,9 +14,9 @@ type RetryingHealth = Extract<PipenzoGitHubHealthV1, { state: 'retrying' }>;
  * this cluster needs and #257's transport now supplies real data for.
  *
  * Driven entirely by `PipenzoGitHubHealthV1` (#230) off `usePipenzoGitHubHealth()`. Built
- * incrementally, one state per ticket: #70 adds `retrying`. Every other state renders nothing
- * until its own ticket adds a branch here — an unhandled state is silence, not a placeholder
- * banner guessing at copy nobody has written yet.
+ * incrementally, one state per ticket: #70 adds `retrying`, #71 adds `unreachable`. Every other
+ * state renders nothing until its own ticket adds a branch here — an unhandled state is silence,
+ * not a placeholder banner guessing at copy nobody has written yet.
  */
 export function ConnectionHealthBanner({
   health,
@@ -32,6 +33,9 @@ export function ConnectionHealthBanner({
 }) {
   if (health?.state === 'retrying') {
     return <RetryingBanner health={health} onRetryNow={onRetryNow} />;
+  }
+  if (health?.state === 'unreachable') {
+    return <UnreachableBanner health={health} onRetryNow={onRetryNow} />;
   }
   return null;
 }
@@ -69,6 +73,51 @@ function RetryingBanner({
       ) : (
         'The board has not completed a clean poll since this run of failures began.'
       )}
+    </Banner>
+  );
+}
+
+/**
+ * #71's blocking "GitHub is unreachable" banner: the retry ladder is exhausted. Tinted (the one
+ * place this whole notice family tints a container, per `Banner`'s own `blocking` variant), since
+ * the label is the state model — nothing can start, change lane or push until the connection is
+ * back, though a running agent keeps working in its own worktree regardless.
+ *
+ * The backoff readout is a snapshot at render time, not a live countdown like #70's: this state is
+ * reached only once the ladder has already given up on a schedule of its own (`nextAttemptAt` is
+ * genuinely absent whenever nothing is scheduled — see `pipenzo-health-v1.ts`), and a fresh
+ * `health` push naturally re-renders this component whenever the number would meaningfully change.
+ * A per-second timer here would tick toward a moment `#71`'s own reference design does not treat
+ * as counting down, unlike #70's "retrying in 18s".
+ */
+function UnreachableBanner({
+  health,
+  onRetryNow,
+}: {
+  health: UnreachableHealth;
+  onRetryNow?: () => void;
+}) {
+  const backoffMs =
+    health.nextAttemptAt === undefined ? undefined : health.nextAttemptAt - Date.now();
+
+  return (
+    <Banner
+      icon="x"
+      tone="danger"
+      variant="blocking"
+      count={backoffMs === undefined ? undefined : `backoff ${formatDurationShort(backoffMs)}`}
+      action={
+        onRetryNow && (
+          <Button size="sm" onClick={onRetryNow}>
+            Retry now
+          </Button>
+        )
+      }
+    >
+      <b>GitHub is unreachable.</b> {health.consecutiveFailures} polls failed since{' '}
+      {formatClockTimeUtc(health.firstFailureAt)}. Labels are the state model, so nothing can
+      start, change lane or push until it is back — running agents keep working in their
+      worktrees.
     </Banner>
   );
 }

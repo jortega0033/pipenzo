@@ -323,4 +323,25 @@ describe('AppRoot connection-health banner (issue #257 -> #70)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Retry now' }));
     expect(bridge.pollGitHubHealthNow).toHaveBeenCalledTimes(1);
   });
+
+  it('renders the blocking unreachable banner (#71) from a real push, in the same slot', async () => {
+    let deliverHealth: ((health: import('@agent-dock/shared').PipenzoGitHubHealthV1) => void) | undefined;
+    const bridge = realBridge();
+    bridge.onPipenzoGitHubHealth = vi.fn((callback) => {
+      deliverHealth = callback;
+      return () => {};
+    });
+    (window as unknown as { agentDock: AgentDockBridge }).agentDock = bridge;
+    render(<AppRoot />);
+    await screen.findByRole('button', { name: 'Try a demo' });
+
+    deliverHealth?.({
+      state: 'unreachable',
+      consecutiveFailures: 5,
+      firstFailureAt: Date.now() - 60_000,
+      maxAttempts: 5,
+    });
+
+    expect(await screen.findByText('GitHub is unreachable.')).toBeInTheDocument();
+  });
 });
