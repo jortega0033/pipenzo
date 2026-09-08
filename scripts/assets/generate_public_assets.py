@@ -20,6 +20,11 @@ PNG_ICONS = DESKTOP_ASSETS / "app-icons" / "png"
 BRAND = DESKTOP_ASSETS / "brand"
 ILLUSTRATIONS = DESKTOP_ASSETS / "illustrations"
 
+# Pipenzo's own public/social campaign (#240) reuses the pack #239 checked in verbatim -- these
+# compositions are already reviewed and approved, so this script copies them rather than
+# recomposing (redrawing) them the way the AgentDock functions below do.
+PIPENZO_MARKETING = DESKTOP_ASSETS / "pipenzo" / "marketing"
+
 NAVY = "#0B1020"
 INK = "#0F172A"
 SLATE = "#64748B"
@@ -140,7 +145,17 @@ def hero_canvas() -> Image.Image:
     return canvas
 
 
-def make_readme_and_portfolio() -> None:
+def use_reviewed_source(source: Path, destination: Path) -> None:
+    """Copy an already-reviewed, checked-in Pipenzo composition verbatim -- never redrawn."""
+
+    destination.write_bytes(source.read_bytes())
+
+
+def make_portfolio() -> None:
+    # Still AgentDock's own composition (#246 owns replacing this with a Pipenzo equivalent
+    # derived from the approved hero asset; #240 only owns the README hero and GitHub/OG social
+    # images, so this function is unchanged from before except no longer also writing
+    # readme-hero.webp, which now comes from the approved Pipenzo source below instead).
     canvas = hero_canvas()
     draw = ImageDraw.Draw(canvas)
     draw.rounded_rectangle((44, 48, 470, 852), radius=30, fill=(7, 14, 30, 226), outline="#273449", width=2)
@@ -174,7 +189,6 @@ def make_readme_and_portfolio() -> None:
     canvas.alpha_composite(frame, (500, 178))
 
     rgb = canvas.convert("RGB")
-    rgb.save(SOCIAL / "readme-hero.webp", format="WEBP", quality=90, method=6)
     rgb.save(SOCIAL / "portfolio-project.png", format="PNG", optimize=True)
 
 
@@ -288,9 +302,19 @@ def make_icon_size_preview() -> None:
 def main() -> None:
     SOCIAL.mkdir(parents=True, exist_ok=True)
     normalize_screenshots()
-    make_readme_and_portfolio()
-    make_social(1280, 640, "github-social-preview.png")
-    make_social(1200, 630, "open-graph.png")
+    make_portfolio()
+    use_reviewed_source(
+        PIPENZO_MARKETING / "pipenzo-github-social-preview-1280x640.png",
+        SOCIAL / "github-social-preview.png",
+    )
+    use_reviewed_source(
+        PIPENZO_MARKETING / "pipenzo-github-social-preview-1200x630.png",
+        SOCIAL / "open-graph.png",
+    )
+    use_reviewed_source(
+        PIPENZO_MARKETING / "pipenzo-readme-hero-1600x520.webp",
+        SOCIAL / "readme-hero.webp",
+    )
     make_asset_system_preview()
     make_icon_size_preview()
     print(f"Generated public assets under {SOCIAL}")

@@ -69,7 +69,8 @@ docs/images/
     session-completed.png
     daemon-unavailable.png
   social/
-    readme-hero.webp              1440 × 900
+    readme-hero.webp              1600 × 520  (Pipenzo hero, #240; sourced from
+                                               apps/desktop/assets/pipenzo/marketing/)
     github-social-preview.png     1280 × 640
     open-graph.png                1200 × 630
     portfolio-project.png         1440 × 900

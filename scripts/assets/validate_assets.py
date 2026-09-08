@@ -85,7 +85,9 @@ PUBLIC_IMAGES = {
     SCREENSHOT_ROOT / "session-running.png": ((1440, 900), "PNG"),
     SCREENSHOT_ROOT / "session-completed.png": ((1440, 900), "PNG"),
     SCREENSHOT_ROOT / "daemon-unavailable.png": ((1440, 900), "PNG"),
-    SOCIAL_ROOT / "readme-hero.webp": ((1440, 900), "WEBP"),
+    # Pipenzo's own README hero (#240) is a wide banner sourced verbatim from the approved pack,
+    # a deliberately different aspect ratio than the inherited AgentDock hero it replaced.
+    SOCIAL_ROOT / "readme-hero.webp": ((1600, 520), "WEBP"),
     SOCIAL_ROOT / "github-social-preview.png": ((1280, 640), "PNG"),
     SOCIAL_ROOT / "open-graph.png": ((1200, 630), "PNG"),
     SOCIAL_ROOT / "portfolio-project.png": ((1440, 900), "PNG"),
