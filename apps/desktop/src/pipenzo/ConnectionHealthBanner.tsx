@@ -14,13 +14,15 @@ type UnreachableHealth = Extract<PipenzoGitHubHealthV1, { state: 'unreachable' }
  * this cluster needs and #257's transport now supplies real data for.
  *
  * Driven entirely by `PipenzoGitHubHealthV1` (#230) off `usePipenzoGitHubHealth()`. Built
- * incrementally, one state per ticket: #70 adds `retrying`, #71 adds `unreachable`. Every other
- * state renders nothing until its own ticket adds a branch here — an unhandled state is silence,
- * not a placeholder banner guessing at copy nobody has written yet.
+ * incrementally, one state per ticket: #70 adds `retrying`, #71 adds `unreachable`, #72 adds
+ * `credential_rejected`. Every other state renders nothing until its own ticket adds a branch
+ * here — an unhandled state is silence, not a placeholder banner guessing at copy nobody has
+ * written yet.
  */
 export function ConnectionHealthBanner({
   health,
   onRetryNow,
+  onReauthenticate,
 }: {
   health: PipenzoGitHubHealthV1 | undefined;
   /**
@@ -30,12 +32,23 @@ export function ConnectionHealthBanner({
    * this cluster's sibling.
    */
   onRetryNow?: () => void;
+  /**
+   * "Re-authenticate" (#72). Unlike `onRetryNow`, this one is wired to something real from the
+   * start (`AppRoot.tsx` calls `disconnectGitHub()`) rather than shipping decorative, because a
+   * revoked credential is not a thing polling harder ever fixes -- only a human signing in again
+   * does, and #72's whole point is that this is the one banner offering that as the primary
+   * action rather than a status.
+   */
+  onReauthenticate?: () => void;
 }) {
   if (health?.state === 'retrying') {
     return <RetryingBanner health={health} onRetryNow={onRetryNow} />;
   }
   if (health?.state === 'unreachable') {
     return <UnreachableBanner health={health} onRetryNow={onRetryNow} />;
+  }
+  if (health?.state === 'credential_rejected') {
+    return <CredentialRejectedBanner onReauthenticate={onReauthenticate} />;
   }
   return null;
 }
@@ -118,6 +131,42 @@ function UnreachableBanner({
       {formatClockTimeUtc(health.firstFailureAt)}. Labels are the state model, so nothing can
       start, change lane or push until it is back — running agents keep working in their
       worktrees.
+    </Banner>
+  );
+}
+
+/**
+ * #72's blocking "your GitHub sign-in expired" banner: `credential_rejected`, the one health
+ * state whose companion fields carry no attempt count and no `nextAttemptAt` at all
+ * (`pipenzo-health-v1.ts`) -- because retrying a credential GitHub has already rejected does not
+ * fix it. Only a human signing in again does, so unlike #70/#71's "Retry now" this banner's action
+ * is `primary`, not the default weight, and there is no count in the `.b-act` row for the same
+ * reason: nothing here is a number a user is waiting on.
+ *
+ * "Re-authenticate" does not open a new in-app sign-in surface of its own. It calls
+ * `disconnectGitHub()` (see `AppRoot.tsx`), which forgets the now-useless stored credential and
+ * lets the pre-app gate's own `routePipenzoStartup` route back to `ConnectScreen` -- the exact
+ * flow that already runs `DeviceCodeStep` (#114) and already handles the daemon restart once a
+ * fresh credential is stored. A second, parallel in-app re-auth surface would duplicate a flow
+ * this app already gets right rather than reuse it.
+ */
+function CredentialRejectedBanner({ onReauthenticate }: { onReauthenticate?: () => void }) {
+  return (
+    <Banner
+      icon="warning"
+      tone="danger"
+      variant="blocking"
+      action={
+        onReauthenticate && (
+          <Button size="sm" variant="primary" onClick={onReauthenticate}>
+            Re-authenticate
+          </Button>
+        )
+      }
+    >
+      <b>Your GitHub sign-in expired.</b> Pipenzo signs in with device flow and holds the token in
+      the Electron-main vault; it was revoked or timed out. Reading issues, writing labels and
+      opening pull requests all need it back.
     </Banner>
   );
 }

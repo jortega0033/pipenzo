@@ -141,4 +141,46 @@ describe('ConnectionHealthBanner', () => {
       expect(onRetryNow).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe('credential_rejected (#72)', () => {
+    const health: PipenzoGitHubHealthV1 = {
+      state: 'credential_rejected',
+      rejectedAt: NOW - 30_000,
+      lastCleanPollAt: NOW - 90_000,
+    };
+
+    it('renders the blocking banner explaining the expired sign-in', () => {
+      const { container } = render(<ConnectionHealthBanner health={health} />);
+      const banner = container.querySelector('.banner')!;
+      expect(banner.className).toBe('banner danger blocking');
+      expect(screen.getByText('Your GitHub sign-in expired.')).toBeInTheDocument();
+      expect(
+        screen.getByText(/Reading issues, writing labels and opening pull requests/),
+      ).toBeInTheDocument();
+    });
+
+    it('renders no count -- there is no number this state is waiting on', () => {
+      const { container } = render(<ConnectionHealthBanner health={health} />);
+      expect(container.querySelector('.b-count')).not.toBeInTheDocument();
+    });
+
+    it('renders "Re-authenticate" as the primary action and calls onReauthenticate on click', () => {
+      const onReauthenticate = vi.fn();
+      render(<ConnectionHealthBanner health={health} onReauthenticate={onReauthenticate} />);
+      const button = screen.getByRole('button', { name: 'Re-authenticate' });
+      expect(button.className).toBe('btn primary sm');
+      button.click();
+      expect(onReauthenticate).toHaveBeenCalledTimes(1);
+    });
+
+    it('renders no action row when onReauthenticate is not supplied', () => {
+      const { container } = render(<ConnectionHealthBanner health={health} />);
+      expect(container.querySelector('.b-act')).not.toBeInTheDocument();
+    });
+
+    it('never offers "Retry now" for this state, even when onRetryNow is supplied -- retrying a rejected credential does not fix it', () => {
+      render(<ConnectionHealthBanner health={health} onRetryNow={vi.fn()} />);
+      expect(screen.queryByRole('button', { name: 'Retry now' })).not.toBeInTheDocument();
+    });
+  });
 });

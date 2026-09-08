@@ -344,4 +344,22 @@ describe('AppRoot connection-health banner (issue #257 -> #70)', () => {
 
     expect(await screen.findByText('GitHub is unreachable.')).toBeInTheDocument();
   });
+
+  it('renders the credential-rejected banner (#72) and wires "Re-authenticate" to disconnectGitHub', async () => {
+    let deliverHealth: ((health: import('@agent-dock/shared').PipenzoGitHubHealthV1) => void) | undefined;
+    const bridge = realBridge();
+    bridge.onPipenzoGitHubHealth = vi.fn((callback) => {
+      deliverHealth = callback;
+      return () => {};
+    });
+    (window as unknown as { agentDock: AgentDockBridge }).agentDock = bridge;
+    render(<AppRoot />);
+    await screen.findByRole('button', { name: 'Try a demo' });
+
+    deliverHealth?.({ state: 'credential_rejected', rejectedAt: Date.now() - 30_000 });
+
+    expect(await screen.findByText('Your GitHub sign-in expired.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Re-authenticate' }));
+    expect(bridge.disconnectGitHub).toHaveBeenCalledTimes(1);
+  });
 });

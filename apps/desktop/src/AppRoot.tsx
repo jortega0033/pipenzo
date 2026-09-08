@@ -94,6 +94,12 @@ function PipenzoStartup({
       <ConnectionHealthBanner
         health={health}
         onRetryNow={() => void getBridge().pollGitHubHealthNow().catch(() => {})}
+        // Forgets the now-useless stored credential rather than opening a second sign-in surface;
+        // `useGitHubConnection` re-reads on the daemon's next `ready` and `routePipenzoStartup`
+        // sends a disconnected install straight back to `ConnectScreen` -- see
+        // `ConnectionHealthBanner.tsx`'s `CredentialRejectedBanner` doc comment for why reusing
+        // that flow beats a parallel one.
+        onReauthenticate={() => void getBridge().disconnectGitHub().catch(() => {})}
       />
       <App demoMode={demoMode} onEnterDemo={enterDemoMode} onExitDemo={exitDemoMode} />
     </>
