@@ -63,6 +63,7 @@ import type {
   PipenzoTicketTransitionRequestV1,
   PipenzoTicketReconciliationV1,
   PipenzoPhaseEventV1,
+  PipenzoGitHubHealthV1,
   PipenzoConnectReposRequestV1,
   PipenzoConnectedReposV1,
   PipenzoRepoListV1,
@@ -222,6 +223,12 @@ export interface AgentDockBridge {
    * Returns its own unsubscribe; call it on unmount.
    */
   onPipenzoPhaseEvent(callback: (event: PipenzoPhaseEventV1) => void): () => void;
+  /**
+   * The GitHub connection-health stream (issue #257): the current `PipenzoGitHubHealthV1` (#230)
+   * immediately on subscribe, then a live update on every change the reconciler (#231) publishes.
+   * Mirrors `preload.ts`'s declaration of the same method. Returns its own unsubscribe.
+   */
+  onPipenzoGitHubHealth(callback: (health: PipenzoGitHubHealthV1) => void): () => void;
   /**
    * The GitHub credential's state, never the credential (issue #165), and what the pre-app gate
    * routes on (issue #113). Mirrors `preload.ts`'s declaration of the same two methods, which is

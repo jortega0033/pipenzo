@@ -62,6 +62,7 @@ function realBridge(
     pipenzoTicketRead: vi.fn(),
     pipenzoTicketTransition: vi.fn(),
     onPipenzoPhaseEvent: vi.fn(() => () => {}),
+    onPipenzoGitHubHealth: vi.fn(() => () => {}),
     selectAndUploadAttachments: vi.fn().mockResolvedValue([]),
     validateStructuredOutput: vi.fn(),
     createSession: vi.fn(),

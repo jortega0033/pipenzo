@@ -2,6 +2,7 @@ export { AgentDockClient } from './client.js';
 export type {
   AgentDockClientOptions,
   HealthResponse,
+  PipenzoGitHubHealthEventsOptions,
   PipenzoTicketEventsOptions,
   SessionEventHistoryV2Options,
   SessionEventsOptions,

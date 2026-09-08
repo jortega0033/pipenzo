@@ -75,6 +75,7 @@ import {
   relayInteractiveSessionEvents,
 } from './interactive-session-lifecycle.js';
 import { relayPipenzoPhaseEvents } from './pipenzo-phase-stream.js';
+import { relayPipenzoGitHubHealthEvents } from './pipenzo-health-stream.js';
 import { InteractionBroker, type RendererInteractionResolution } from './interaction-broker.js';
 import {
   externalUrlLogSummary,
@@ -132,6 +133,8 @@ const interactiveStreamAborts = new Map<string, AbortController>();
  * daemon restart can tear the old one down before starting the next.
  */
 let phaseStreamAbort: AbortController | undefined;
+/** The single GitHub connection-health subscription (#257), held the same way `phaseStreamAbort` is. */
+let healthStreamAbort: AbortController | undefined;
 const pendingInteractiveCreates = new PendingInteractiveCreates();
 const interactionBroker = new InteractionBroker();
 // Startup may use the 30-second handshake bound plus graceful and hard-stop reap windows.
@@ -317,6 +320,10 @@ function spawnDaemon(): void {
     // local, and the next daemon gets a fresh `forwardPipenzoPhaseEvents` call.
     phaseStreamAbort?.abort();
     phaseStreamAbort = undefined;
+    // Same reasoning as the phase stream above: the next daemon starts its reconciler fresh, so the
+    // old connection's last-known value belongs to a process that no longer exists.
+    healthStreamAbort?.abort();
+    healthStreamAbort = undefined;
     if (wasAwaitingRespawn) {
       // `isQuitting` is the guard that stops a disconnect racing a quit from leaving an orphaned
       // daemon behind — one still holding a credential, still listening, and still blocking the
@@ -428,6 +435,7 @@ async function waitForDaemonReady(
         // Subscribed once here rather than on a renderer request: the board must not miss a
         // transition that happens between the daemon coming up and a window being opened.
         forwardPipenzoPhaseEvents();
+        forwardPipenzoGitHubHealthEvents();
         sendStatus({ state: 'ready' });
         return;
       } catch {
@@ -514,6 +522,35 @@ function forwardPipenzoPhaseEvents(): void {
     },
   }).finally(() => {
     if (phaseStreamAbort === controller) phaseStreamAbort = undefined;
+  });
+}
+
+/**
+ * Relays the daemon's GitHub connection-health stream (#257) to the renderer, for #70/#71/#72/#73/
+ * #75's banners.
+ *
+ * Simpler than `forwardPipenzoPhaseEvents` above for the reason `pipenzo-health-stream.ts`
+ * documents: no cursor, no replay gap, just "try again" on a drop.
+ */
+function forwardPipenzoGitHubHealthEvents(): void {
+  if (!client) return;
+  healthStreamAbort?.abort();
+  const controller = new AbortController();
+  healthStreamAbort = controller;
+  const activeClient = client;
+
+  void relayPipenzoGitHubHealthEvents({
+    signal: controller.signal,
+    events: (options) => activeClient.v2.pipenzo.githubHealthEvents(options),
+    onEvent: (health) => sendToRenderer(mainWindow, 'daemon:pipenzo-github-health', health),
+    onRetry: (error) => {
+      console.warn(`GitHub health stream reconnecting: ${boundedErrorMessage(error)}`);
+    },
+    onFatal: (error) => {
+      console.error(`GitHub health stream stopped: ${boundedErrorMessage(error)}`);
+    },
+  }).finally(() => {
+    if (healthStreamAbort === controller) healthStreamAbort = undefined;
   });
 }
 
@@ -732,6 +769,8 @@ async function killDaemon(): Promise<void> {
   for (const controller of interactiveStreamAborts.values()) controller.abort();
   phaseStreamAbort?.abort();
   phaseStreamAbort = undefined;
+  healthStreamAbort?.abort();
+  healthStreamAbort = undefined;
   await pendingInteractiveCreates.waitForPending(INTERACTIVE_CREATE_SHUTDOWN_TIMEOUT_MS);
   const activeClient = client;
   if (activeClient) {
