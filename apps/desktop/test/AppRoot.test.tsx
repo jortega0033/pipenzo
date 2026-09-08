@@ -98,7 +98,18 @@ beforeEach(() => {
 });
 
 describe('AppRoot demo-mode lifecycle', () => {
+  /**
+   * Since issue #274, "Try a demo" lives only in `ConnectScreen`'s pre-app (`<App>` -- the only
+   * place it used to also live -- is now reachable exclusively through `demoMode` itself). A
+   * token-less install is what reaches the button, so that is the bridge this exercises the
+   * bridge-swap lifecycle against, even though the assertions here are about bridge identity, not
+   * about which screen is showing.
+   */
   it('swaps in the demo bridge and shows the banner on entry, then restores the exact real bridge instance and hides the banner on exit', async () => {
+    (window as unknown as { agentDock: AgentDockBridge }).agentDock = realBridge({
+      state: 'disconnected',
+      source: 'none',
+    });
     const original = window.agentDock;
     render(<AppRoot />);
 
@@ -182,7 +193,9 @@ describe('AppRoot pre-app gate (issue #113)', () => {
   it('lets a connected install past the gate, with no banner', async () => {
     render(<AppRoot />);
 
-    expect(await screen.findByRole('button', { name: 'Try a demo' })).toBeInTheDocument();
+    // Since issue #274, past the gate means `PipenzoAppShell`'s own Board nav item, not `<App>`'s
+    // "Try a demo" -- `<App>` no longer renders for a real, connected session.
+    expect(await screen.findByRole('button', { name: 'Board' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '1 · Device code' })).not.toBeInTheDocument();
     expect(screen.queryByText(/PIPENZO_GITHUB_TOKEN/)).not.toBeInTheDocument();
   });
@@ -228,7 +241,7 @@ describe('AppRoot pre-app gate (issue #113)', () => {
 
     resolveRepos?.({ repositories: ['octocat/hello-world'] });
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Try a demo' })).toBeInTheDocument(),
+      expect(screen.getByRole('button', { name: 'Board' })).toBeInTheDocument(),
     );
   });
 
@@ -245,7 +258,7 @@ describe('AppRoot pre-app gate (issue #113)', () => {
     });
     render(<AppRoot />);
 
-    expect(await screen.findByRole('button', { name: 'Try a demo' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Board' })).toBeInTheDocument();
     expect(screen.getByText(/PIPENZO_GITHUB_TOKEN/)).toBeInTheDocument();
   });
 
@@ -275,7 +288,7 @@ describe('AppRoot pre-app gate (issue #113)', () => {
 
     resolveConnection?.(CONNECTED);
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Try a demo' })).toBeInTheDocument(),
+      expect(screen.getByRole('button', { name: 'Board' })).toBeInTheDocument(),
     );
   });
 
@@ -307,7 +320,9 @@ describe('AppRoot connection-health banner (issue #257 -> #70)', () => {
     (window as unknown as { agentDock: AgentDockBridge }).agentDock = bridge;
     render(<AppRoot />);
 
-    await screen.findByRole('button', { name: 'Try a demo' });
+    // Since issue #274, this waits on `PipenzoAppShell`'s Board nav item -- the same "we are past
+    // the gate" signal `Try a demo` used to serve before `<App>` became demo-only.
+    await screen.findByRole('button', { name: 'Board' });
     // No banner until the daemon actually pushes a value -- `undefined` is silence, not a guess.
     expect(screen.queryByText(/attempt \d+ of \d+/)).not.toBeInTheDocument();
 
@@ -334,7 +349,7 @@ describe('AppRoot connection-health banner (issue #257 -> #70)', () => {
     });
     (window as unknown as { agentDock: AgentDockBridge }).agentDock = bridge;
     render(<AppRoot />);
-    await screen.findByRole('button', { name: 'Try a demo' });
+    await screen.findByRole('button', { name: 'Board' });
 
     deliverHealth?.({
       state: 'unreachable',
@@ -355,7 +370,7 @@ describe('AppRoot connection-health banner (issue #257 -> #70)', () => {
     });
     (window as unknown as { agentDock: AgentDockBridge }).agentDock = bridge;
     render(<AppRoot />);
-    await screen.findByRole('button', { name: 'Try a demo' });
+    await screen.findByRole('button', { name: 'Board' });
 
     deliverHealth?.({ state: 'credential_rejected', rejectedAt: Date.now() - 30_000 });
 
@@ -379,7 +394,7 @@ describe('AppRoot connection-health banner (issue #257 -> #70)', () => {
     });
     (window as unknown as { agentDock: AgentDockBridge }).agentDock = bridge;
     render(<AppRoot />);
-    await screen.findByRole('button', { name: 'Try a demo' });
+    await screen.findByRole('button', { name: 'Board' });
 
     deliverHealth?.({
       state: 'unreachable',
@@ -408,7 +423,7 @@ describe('AppRoot connection-health banner (issue #257 -> #70)', () => {
     });
     (window as unknown as { agentDock: AgentDockBridge }).agentDock = bridge;
     render(<AppRoot />);
-    await screen.findByRole('button', { name: 'Try a demo' });
+    await screen.findByRole('button', { name: 'Board' });
 
     // Before any push: the pill reads "not synced yet" rather than guessing.
     expect(screen.getByText('Not synced yet')).toBeInTheDocument();
