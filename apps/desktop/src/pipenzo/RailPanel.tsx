@@ -14,6 +14,7 @@ import {
   verifierStandingText,
   type DiffScopeSummary,
 } from './rail.js';
+import { PipenzoMascot } from './PipenzoMascot.js';
 import { ScreenshotEvidence, type RailScreenshot } from './ScreenshotEvidence.js';
 
 export type { RailScreenshot };
@@ -90,6 +91,10 @@ export function RailPanel({
 
   return (
     <div className="rail">
+      {/* Phase-identity marker only (#244) -- decorative, small, and never a substitute for the
+          actual gate/finding evidence below it. Inspector is the Review-phase loadout of the same
+          Field Engineer operator, not a second mascot. */}
+      <PipenzoMascot role="inspector" pose="focused" size="mini" className="rail-mascot" />
       <VerificationBlock
         headLabel="Machine-verified"
         headSub="Deterministic gates. Each one ran on this machine and either passed or blocked the ticket."

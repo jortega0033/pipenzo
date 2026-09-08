@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import type { PipenzoPublishResultV1, PipenzoPullRequestInputV1 } from '@agent-dock/shared';
 import { Chip, RiskChip, type RiskLevel } from '../components/primitives/Chip.js';
+import { PipenzoMascot } from './PipenzoMascot.js';
 import { PublishActions } from './PublishActions.js';
 
 export interface DiffReviewStat {
@@ -55,6 +56,10 @@ export function DiffReviewHead({
   return (
     <div className="head">
       <div className="head-l">
+        {/* The signature "Pipenzo waits" moment (#244): work is done, the ready loadout, visibly
+            not pointing at or pre-selecting either publish action to the right -- it sits with the
+            id/title text, spatially apart from PublishActions' buttons. */}
+        <PipenzoMascot role="ready" pose="waiting" size="sm" className="head-mascot" />
         <span className="h-id mono">{idLine}</span>
         <span className="h-title">{title}</span>
         <div className="stat-row">

@@ -48,6 +48,15 @@ describe('RailPanel', () => {
     ]);
   });
 
+  it('renders the Inspector phase-identity mascot decoratively, ahead of the actual gate evidence', () => {
+    render(<RailPanel report={BASE_REPORT} />);
+    const mascot = screen.getByRole('presentation', { hidden: true });
+    expect(mascot).toHaveAttribute('alt', '');
+    expect(mascot).toHaveClass('pipenzo-mascot-mini');
+    // The gate evidence itself is unrelated real DOM, not replaced by the decoration above it.
+    expect(screen.getByText('Build and typecheck passed')).toBeInTheDocument();
+  });
+
   it('renders a passed gate with the ok tone and a skipped gate with warn, never the same icon', () => {
     const { container } = render(<RailPanel report={BASE_REPORT} />);
     const wells = container.querySelectorAll('.v-ic');
