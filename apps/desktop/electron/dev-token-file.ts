@@ -98,8 +98,14 @@ export function devTokenFilePath(userDataDir: string): string {
  */
 export function readDevTokenFile(userDataDir: string): string | undefined {
   const path = devTokenFilePath(userDataDir);
+  // `O_NONBLOCK` is a no-op for a regular file, and the reason it is here anyway: without it, a
+  // FIFO placed at this path (same-uid, so outside this module's own threat model, but a hang
+  // rather than a refusal is a worse failure than either) would make `openSync` block until a
+  // writer appeared, stalling Electron main's own startup on a file this module never promises to
+  // read from anything but a plain file.
   const flags =
     fsConstants.O_RDONLY |
+    (typeof fsConstants.O_NONBLOCK === 'number' ? fsConstants.O_NONBLOCK : 0) |
     (typeof fsConstants.O_NOFOLLOW === 'number' ? fsConstants.O_NOFOLLOW : 0);
   let fd: number;
   try {
