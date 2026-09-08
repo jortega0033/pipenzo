@@ -58,7 +58,7 @@ export const MAX_RATE_LIMIT_RESET_HORIZON_MS = 24 * 60 * 60 * 1000;
 export const MAX_RATE_LIMIT_RESOURCES = 16;
 
 /** Longest bucket name accepted. GitHub's are single short words; this only rules out abuse. */
-const MAX_RESOURCE_NAME_LENGTH = 64;
+export const MAX_RESOURCE_NAME_LENGTH = 64;
 
 /**
  * One reading of one rate-limit bucket, as of one response.
@@ -135,13 +135,23 @@ function integerHeader(headers: unknown, name: string): number | undefined {
  * expired. Its `remaining` describes a window that has since refilled, which is wrong in the
  * alarming direction, and refusing it here is what lets both halves of this module — the accessor
  * and the push notification — state the same rule.
+ *
+ * What this cannot do is tell an implausible header from a wrong local clock. `observedAt` is the
+ * daemon's own `Date.now()`, so a host running more than an hour fast refuses every legitimate
+ * reading and the product reads as "no information" indefinitely — the honest failure of the two
+ * available, and the same state a daemon starts in, but silent. Deriving `observedAt` from the
+ * response's own `Date` header would fix it and is deliberately not done here: it would put a
+ * second clock into a module whose whole job is to be a plain record of what GitHub said.
  */
 export function readRateLimitHeaders(
   headers: unknown,
   observedAt: number,
 ): GitHubRateLimitSnapshot | undefined {
   if (!Number.isFinite(observedAt)) return undefined;
-  const resource = headerValue(headers, 'x-ratelimit-resource')?.trim();
+  // Lowercased for the same reason `ConditionalRequestCache` lowercases owner and repo: a shape
+  // change to `Core` would otherwise open a second bucket in silence and leave `latest('core')`
+  // answering `undefined` forever, which reads exactly like "no requests yet".
+  const resource = headerValue(headers, 'x-ratelimit-resource')?.trim().toLowerCase();
   if (!resource || resource.length > MAX_RESOURCE_NAME_LENGTH) return undefined;
   const limit = integerHeader(headers, 'x-ratelimit-limit');
   const remaining = integerHeader(headers, 'x-ratelimit-remaining');
@@ -214,6 +224,12 @@ export class GitHubRateLimitTracker {
   record(headers: unknown, observedAt: number = Date.now()): GitHubRateLimitSnapshot | undefined {
     const snapshot = readRateLimitHeaders(headers, observedAt);
     if (snapshot === undefined) return undefined;
+    // Deleted before being set so that insertion order tracks *recency*. `Map` does not move a
+    // key on re-`set`, so without this a bucket's position is fixed at first sight -- and since the
+    // daemon's first response is billed to `core`, `core` would sit at index 0 forever and be the
+    // first thing `#evictOldestBeyondBound` threw away. The bound's only observable effect would
+    // have been to discard the one bucket epic #4's rule reads.
+    this.#byResource.delete(snapshot.resource);
     this.#byResource.set(snapshot.resource, snapshot);
     this.#evictOldestBeyondBound();
     for (const listener of this.#listeners) {
@@ -257,8 +273,9 @@ export class GitHubRateLimitTracker {
 
   /**
    * Keeps the map bounded. The key is a value a remote party supplies, and this daemon runs for
-   * days; `Map` iterates in insertion order, so the oldest bucket goes first. Evicting one costs
-   * nothing but a cold reading for that bucket on its next response.
+   * days. `record` re-inserts on every write, so iteration order is recency order and the
+   * least-recently-updated bucket goes first -- never the one being refreshed most often. Evicting
+   * one costs nothing but a cold reading for that bucket on its next response.
    */
   #evictOldestBeyondBound(): void {
     while (this.#byResource.size > MAX_RATE_LIMIT_RESOURCES) {

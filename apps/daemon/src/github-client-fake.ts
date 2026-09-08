@@ -73,6 +73,15 @@ export class FakeGitHubClient implements GitHubClient {
     return this.#rateLimits.latest(resource);
   }
 
+  /**
+   * Issue #229's push half. `seedRateLimitHeaders` publishes to these listeners exactly as a real
+   * response does, so a consumer that reacts to headroom changes (#231, #75) can be driven from a
+   * test without a network and without polling.
+   */
+  subscribeRateLimit(listener: (snapshot: GitHubRateLimitSnapshot) => void): () => void {
+    return this.#rateLimits.subscribe(listener);
+  }
+
   seedAuthenticatedLogin(login: string): this {
     this.#viewerLogin = login;
     return this;

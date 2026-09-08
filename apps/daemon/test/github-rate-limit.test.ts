@@ -4,6 +4,7 @@ import {
   GitHubRateLimitTracker,
   MAX_RATE_LIMIT_RESET_HORIZON_MS,
   MAX_RATE_LIMIT_RESOURCES,
+  MAX_RESOURCE_NAME_LENGTH,
   readRateLimitHeaders,
 } from '../src/github-rate-limit.js';
 import { FakeGitHubClient } from '../src/github-client-fake.js';
@@ -173,21 +174,40 @@ describe('GitHubRateLimitTracker', () => {
    * bounded the way `ConditionalRequestCache` is. `latest` only ever evicts the bucket it was
    * asked for, so nothing else would ever remove a bucket nobody reads.
    */
-  it('bounds how many buckets it retains, oldest first', () => {
+  it('bounds how many buckets it retains, least recently updated first', () => {
     const tracker = new GitHubRateLimitTracker();
-    for (let index = 0; index < MAX_RATE_LIMIT_RESOURCES + 4; index += 1) {
+    for (let index = 0; index < MAX_RATE_LIMIT_RESOURCES; index += 1) {
       tracker.record(headers({ 'x-ratelimit-resource': `bucket-${index}` }), NOW);
     }
-    expect(tracker.latest('bucket-0', NOW)).toBeUndefined();
-    expect(tracker.latest('bucket-3', NOW)).toBeUndefined();
-    expect(tracker.latest('bucket-4', NOW)).toMatchObject({ remaining: 4321 });
-    expect(tracker.latest(`bucket-${MAX_RATE_LIMIT_RESOURCES + 3}`, NOW)).toBeDefined();
+    // Refreshed, so it is now the *newest* entry rather than the oldest -- which is the whole
+    // point. `Map` does not reorder on a bare re-`set`, and the bucket written first in a real
+    // daemon is `core`: without recency ordering the bound would evict exactly the bucket epic
+    // #4's rule reads, and keep sixteen it does not.
+    tracker.record(headers({ 'x-ratelimit-resource': 'bucket-0' }), NOW + 1);
+    tracker.record(headers({ 'x-ratelimit-resource': 'one-too-many' }), NOW + 2);
+
+    expect(tracker.latest('bucket-0', NOW + 2)).toMatchObject({ remaining: 4321 });
+    expect(tracker.latest('bucket-1', NOW + 2)).toBeUndefined();
+    expect(tracker.latest('one-too-many', NOW + 2)).toBeDefined();
   });
 
   it('refuses a bucket name long enough to be abuse rather than a bucket', () => {
+    const tooLong = 'x'.repeat(MAX_RESOURCE_NAME_LENGTH + 1);
+    expect(readRateLimitHeaders(headers({ 'x-ratelimit-resource': tooLong }), NOW)).toBeUndefined();
+    const justInside = 'x'.repeat(MAX_RESOURCE_NAME_LENGTH);
     expect(
-      readRateLimitHeaders(headers({ 'x-ratelimit-resource': 'x'.repeat(65) }), NOW),
-    ).toBeUndefined();
+      readRateLimitHeaders(headers({ 'x-ratelimit-resource': justInside }), NOW),
+    ).toMatchObject({ resource: justInside });
+  });
+
+  /**
+   * A shape change to `Core` would otherwise open a second bucket in silence and leave
+   * `latest('core')` answering `undefined` forever, which reads exactly like "no requests yet".
+   */
+  it('normalises the bucket name, so `Core` and `core` are one bucket', () => {
+    const tracker = new GitHubRateLimitTracker();
+    tracker.record(headers({ 'x-ratelimit-resource': 'CORE' }), NOW);
+    expect(tracker.latest('core', NOW)).toMatchObject({ resource: 'core', remaining: 4321 });
   });
 
   /**
@@ -400,9 +420,35 @@ describe('rate-limit capture on the real transport', () => {
   it('captures nothing, and breaks nothing, when no tracker is wired', async () => {
     const fetchImpl = stubFetch([{ status: 200, headers: liveHeaders(), body: { login: 'someone' } }]);
     const octokit = createPipenzoOctokit('token-value');
+    // A *separate* tracker, deliberately: reading through a client built with no tracker would
+    // answer `undefined` whatever the hook did, so the assertion would hold even if
+    // `createPipenzoOctokit` started installing the capture unconditionally. This one is empty
+    // only if no capture ran.
+    const unwired = new GitHubRateLimitTracker();
     await expect(octokit.request('GET /user', { request: { fetch: fetchImpl } })).resolves.toMatchObject(
       { status: 200 },
     );
+    expect(unwired.latest('core')).toBeUndefined();
     expect(OctokitGitHubClient.withOctokit(octokit).rateLimit()).toBeUndefined();
+  });
+
+  /**
+   * The push half of the ticket's criterion 3, through the interface a consumer actually holds.
+   * A reconciler (#231) subscribing here reacts to headroom without polling, and can be driven
+   * from a test against the fake -- which is the reason it is on `GitHubClient` and not only on
+   * the tracker.
+   */
+  it('publishes readings through the client subscription, on the fake and unwired alike', () => {
+    const fake = new FakeGitHubClient();
+    const seen: number[] = [];
+    const unsubscribe = fake.subscribeRateLimit((snapshot) => seen.push(snapshot.remaining));
+    fake.seedRateLimitHeaders(liveHeaders({ 'x-ratelimit-remaining': '700' }));
+    unsubscribe();
+    fake.seedRateLimitHeaders(liveHeaders({ 'x-ratelimit-remaining': '650' }));
+    expect(seen).toEqual([700]);
+
+    // A client built without a tracker subscribes to nothing rather than refusing.
+    const bare = OctokitGitHubClient.withOctokit(createPipenzoOctokit('token-value'));
+    expect(() => bare.subscribeRateLimit(() => {})()).not.toThrow();
   });
 });

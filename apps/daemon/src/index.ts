@@ -203,7 +203,7 @@ async function main() {
   // and constructed here for exactly the reason the cache above is: each factory below builds a
   // fresh authenticated client per request, so a tracker a client owned would be discarded before
   // its second observation and the shipped daemon would capture nothing -- present in the source,
-  // absent from the running app. It holds no credential, only five numbers per rate-limit bucket.
+  // absent from the running app. It holds no credential: four numbers and a bucket name each.
   const githubRateLimits = new GitHubRateLimitTracker();
 
   const phaseService = new PipenzoPhaseService({

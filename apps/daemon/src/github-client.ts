@@ -370,6 +370,17 @@ export interface GitHubClient {
    */
   rateLimit(resource?: string): GitHubRateLimitSnapshot | undefined;
   /**
+   * The push half of the same reading (issue #229). Returns its own unsubscribe.
+   *
+   * On the interface for the reason `rateLimit` is, and it is the stronger case of the two: the
+   * point of the hook is that a long-lived consumer reacts *without* polling an accessor, so a
+   * consumer that could only subscribe through the concrete octokit client would be tested against
+   * the fake by polling — which is the thing the hook exists to avoid. A client with no tracker
+   * wired returns a no-op unsubscribe rather than refusing, because "nothing will ever be
+   * published here" is a legitimate configuration and not a caller error.
+   */
+  subscribeRateLimit(listener: (snapshot: GitHubRateLimitSnapshot) => void): () => void;
+  /**
    * Posts one comment on an issue (issue #228).
    *
    * Epic #4's diff-size gate ends two of its rows in a comment rather than in a lane move: the
@@ -877,6 +888,11 @@ export class OctokitGitHubClient implements GitHubClient {
     resource: string = GITHUB_CORE_RATE_LIMIT_RESOURCE,
   ): GitHubRateLimitSnapshot | undefined {
     return this.#rateLimits?.latest(resource);
+  }
+
+  /** Issue #229. A no-op subscription when this client was built without a tracker. */
+  subscribeRateLimit(listener: (snapshot: GitHubRateLimitSnapshot) => void): () => void {
+    return this.#rateLimits?.subscribe(listener) ?? ((): void => {});
   }
 
   /**
