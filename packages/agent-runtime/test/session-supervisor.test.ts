@@ -1128,6 +1128,38 @@ describe('interactive session supervisor', () => {
     expect(events.map((event) => event.type)).toEqual(['question.cancelled', 'session.cancelled']);
   });
 
+  /**
+   * Issue #219. The daemon fail-closes every interaction it has already taken off the event
+   * stream, under the reason it is closing for. One the provider emitted a moment earlier, still
+   * queued ahead of the consumer, is never seen by the daemon and is only ever resolved here --
+   * and `closeSession` used to hardcode `cancel` for it. A workspace whose trust had just been
+   * revoked therefore told the provider its session had merely been cancelled, and which of the
+   * two the provider heard depended on nothing but how far the daemon's drain happened to have
+   * got. `cancel` remains the default, because an ordinary close is an ordinary cancellation.
+   */
+  it('fail-closes what it still holds under the reason the session is being closed for', async () => {
+    const transport = new MemoryTransport();
+    const handle = await superviseInteractiveSession(transport, START_OPTIONS);
+    await startActiveSession(transport, handle);
+    transport.emit(questionRequest());
+    await nextEvent(handle.events);
+
+    await handle.close('trust_revoked');
+    const events = await collectRemaining(handle.events);
+
+    expect(transport.resolutions).toEqual([
+      {
+        kind: 'question',
+        requestId: REQUEST_ID,
+        turnId: TURN_ID,
+        reason: 'trust_revoked',
+      },
+    ]);
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: 'question.cancelled', reason: 'trust_revoked' }),
+    );
+  });
+
   it('denies the 33rd interaction provider-side and interrupts an overflowing question turn', async () => {
     const transport = new MemoryTransport();
     const handle = await superviseInteractiveSession(transport, START_OPTIONS);

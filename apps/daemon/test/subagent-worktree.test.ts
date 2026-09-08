@@ -7,6 +7,21 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { SubagentGraphStore } from '../src/subagent-graph-store.js';
 import { OwnedWorktreeManager, WorktreeManagerError } from '../src/worktree-manager.js';
 
+/**
+ * Every test here drives real Git, and a process spawn on Windows costs 100-300 ms before the
+ * command does anything. The slowest body measures ~10.6 s idle, against the 10-20 s budgets these
+ * carried -- roughly 1.5-2x headroom, on a runner this repository has already measured itself
+ * losing to: issue #60 records this very file taking 8.1 s isolated and
+ * exceeding 15 s in the full run (see the `run()` note below).
+ *
+ * Sized from that measurement rather than raised until the file went quiet. Nothing in these
+ * bodies waits on a poll or a sleep that a bigger number would hide, so there is no wrong wait to
+ * paper over. One budget for the file rather than eight bespoke ones is the deliberate trade: it
+ * costs a fast negative-path test a slower failure if it ever regresses into spawning Git, and
+ * buys a number that stays true as these bodies change.
+ */
+const GIT_HEAVY_TIMEOUT_MS = 45_000;
+
 const execFileAsync = promisify(execFile);
 const id = (suffix: string) => `123e4567-e89b-42d3-a456-4266141740${suffix}`;
 
@@ -125,13 +140,13 @@ describe('owned worktree manager', () => {
       requiresConfirmation: true,
     });
     expect(JSON.stringify(preview)).not.toContain('SECRET=never-log');
-  }, 10_000);
+  }, GIT_HEAVY_TIMEOUT_MS);
 
   it('rejects an invalid ref before creating anything', async () => {
     await expect(
       manager.create({ cwd: repo, name: 'invalid', ref: '--help', confirmIncludeCopy: true }),
     ).rejects.toMatchObject({ code: 'invalid_ref' } satisfies Partial<WorktreeManagerError>);
-  }, 10_000);
+  }, GIT_HEAVY_TIMEOUT_MS);
 
   it('creates a worktree, persists it, and a freshly-loaded manager instance recovers it', async () => {
     created = await manager.create({ cwd: repo, name: 'child', confirmIncludeCopy: true });
@@ -144,7 +159,7 @@ describe('owned worktree manager', () => {
     expect(await recovered.list()).toContainEqual(
       expect.objectContaining({ id: created.id, status: 'ready' }),
     );
-  }, 15_000);
+  }, GIT_HEAVY_TIMEOUT_MS);
 
   it('never cleans a worktree a caller has since made dirty', async () => {
     await writeFile(join(target, '.env'), 'SECRET=changed-after-copy');
@@ -155,7 +170,7 @@ describe('owned worktree manager', () => {
       code: 'worktree_dirty',
     } satisfies Partial<WorktreeManagerError>);
     expect((await recovered.list()).find((item) => item.id === created.id)?.status).toBe('dirty');
-  }, 10_000);
+  }, GIT_HEAVY_TIMEOUT_MS);
 
   it('refuses an untracked-only worktree by default, but removes it with deleteUntracked (issue #117)', async () => {
     const untracked = await manager.create({
@@ -175,7 +190,7 @@ describe('owned worktree manager', () => {
 
     const cleaned = await manager.cleanup(untracked.id, { deleteUntracked: true });
     expect(cleaned.status).toBe('missing');
-  }, 15_000);
+  }, GIT_HEAVY_TIMEOUT_MS);
 
   it('deletes the worktree branch when deleteBranch is set (issue #117)', async () => {
     await run('git', ['branch', 'feature-x'], { cwd: repo });
@@ -190,7 +205,7 @@ describe('owned worktree manager', () => {
     const cleaned = await manager.cleanup(branched.id, { deleteBranch: true });
     expect(cleaned.status).toBe('missing');
     expect(await run('git', ['branch', '--list', 'feature-x'], { cwd: repo })).toBe('');
-  }, 15_000);
+  }, GIT_HEAVY_TIMEOUT_MS);
 
   it('queues concurrent create() calls against the same source repo instead of throwing worktree_busy (issue #118)', async () => {
     const [first, second] = await Promise.all([
@@ -202,7 +217,7 @@ describe('owned worktree manager', () => {
     expect(first.id).not.toBe(second.id);
     const ids = (await manager.list()).map((entry) => entry.id);
     expect(ids).toEqual(expect.arrayContaining([first.id, second.id]));
-  }, 20_000);
+  }, GIT_HEAVY_TIMEOUT_MS);
 
   it('queues concurrent cleanup() calls against the same source repo instead of throwing worktree_busy (issue #118)', async () => {
     const [a, b] = await Promise.all([
@@ -215,5 +230,5 @@ describe('owned worktree manager', () => {
     ]);
     expect(cleanedA.status).toBe('missing');
     expect(cleanedB.status).toBe('missing');
-  }, 20_000);
+  }, GIT_HEAVY_TIMEOUT_MS);
 });

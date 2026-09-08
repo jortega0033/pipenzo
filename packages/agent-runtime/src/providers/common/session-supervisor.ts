@@ -658,20 +658,23 @@ class SessionSupervisor implements InteractiveProviderSessionHandle {
     }
   }
 
-  async close(): Promise<void> {
+  async close(reason: 'cancel' | 'shutdown' | 'trust_revoked' = 'cancel'): Promise<void> {
     if (this.failing) return this.failing;
     if (this.closing) return this.closing;
     if (this.terminal) return;
-    this.closing = Promise.resolve().then(() => this.closeSession());
+    this.closing = Promise.resolve().then(() => this.closeSession(reason));
     return this.closing;
   }
 
-  private async closeSession(): Promise<void> {
+  private async closeSession(reason: 'cancel' | 'shutdown' | 'trust_revoked'): Promise<void> {
     const preCloseDeadline = Date.now() + this.closeTimeoutMs;
     const interactions = this.takeAllInteractions();
+    // Whatever the supervisor still holds is fail-closed under the reason the session is actually
+    // being closed for, not a blanket `cancel`: a revocation that raced the daemon's own drain
+    // used to reach the provider as an ordinary cancellation (issue #219).
     await this.resolveInteractions(
       interactions,
-      'cancel',
+      reason,
       true,
       Math.max(1, preCloseDeadline - Date.now()),
     ).catch(() => undefined);

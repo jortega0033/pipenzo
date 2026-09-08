@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent, RefObject } from 'react';
 import type { ApprovalDecisionV2, WorkspaceTrustViewV2 } from '@agent-dock/shared';
 import type {
@@ -262,10 +262,20 @@ function QuestionDialog({
   const [text, setText] = useState<Record<string, string>>({});
   const trapFocus = useDialogFocus(dialogRef, interaction.interactionHandle);
 
-  useEffect(() => {
+  // Clears the previous question's answers when a *different* interaction takes over this mounted
+  // dialog. Written as a render-time adjustment rather than an effect (issue #204): as an effect it
+  // also ran once on mount, after the commit that put the dialog on screen, so anything the user
+  // managed to do in between was silently wiped -- and because `answers` is what enables "Send
+  // answers", the wipe left the submit button disabled with nothing to re-enable it. The window is
+  // small but it is real, it is exactly what CI's repetition-stress job kept catching on a loaded
+  // Windows runner, and a slow render on a slow machine is the same window a real user hits.
+  // Adjusting during render closes it: there is no commit in which the stale answers are live.
+  const [answeredHandle, setAnsweredHandle] = useState(interaction.interactionHandle);
+  if (answeredHandle !== interaction.interactionHandle) {
+    setAnsweredHandle(interaction.interactionHandle);
     setSelected({});
     setText({});
-  }, [interaction.interactionHandle]);
+  }
 
   const answers = useMemo<RendererQuestionResponse['answers'] | undefined>(() => {
     const built: RendererQuestionResponse['answers'] = [];

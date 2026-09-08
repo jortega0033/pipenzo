@@ -40,6 +40,22 @@ import { resolveWorkspaceIdentity } from '../src/workspace-identity.js';
 import { WorkspaceTrustStore } from '../src/workspace-trust-store.js';
 import { FileExecutionGraphStore } from '../src/execution-graph-store.js';
 
+/**
+ * The three tests that drive several full interactive session lifecycles end to end (fresh,
+ * resume and fork; a 6,000-event queue overflow; a sliding replay window) rather than one request.
+ * They measure ~7.2 s, ~7.2 s and ~5.5 s on an idle machine, so their previous 15 s left about 2x
+ * headroom -- and issue #219 records the first of them timing out at exactly that 15 s on the
+ * Windows runner, with the same commit green on the other Node version. A budget that a correct
+ * run misses because the runner was busy is not a budget, it is a coin flip, and it is what taught
+ * this repository to re-run red CI without reading it.
+ *
+ * Sized from those measurements rather than raised until the file went quiet: nothing in these
+ * bodies waits on a poll or a sleep that a bigger number would hide, and 45 s still fails a
+ * genuine hang far inside the job's 20-minute limit. Every other test in this file keeps the 5 s
+ * default.
+ */
+const SESSION_LIFECYCLE_TIMEOUT_MS = 45_000;
+
 const TOKEN = 'test-token-v2';
 
 class ObservationProvider implements AgentProvider {
@@ -743,7 +759,7 @@ describe('POST /v2/sessions capability negotiation', () => {
     // Three full interactive session lifecycles (fresh, resume, fork) genuinely exceed the
     // default 5000ms budget under Windows CI's parallel-worker CPU contention (issue #60); this
     // test-specific headroom isn't a blanket global timeout increase.
-  }, 15_000);
+  }, SESSION_LIFECYCLE_TIMEOUT_MS);
 
   it('rejects unsupported Claude legacy resume and fork alike before any provider dispatch, using a real-shaped detection fixture with no durable account/model binding evidence (issue #54)', async () => {
     const status: ProviderStatus = {
@@ -2066,7 +2082,7 @@ describe('interactive v2 command dispatch', () => {
     ).toEqual([
       expect.objectContaining({ type: 'session.failed', code: 'provider_queue_overflow' }),
     ]);
-  }, 15_000);
+  }, SESSION_LIFECYCLE_TIMEOUT_MS);
 
   it('resolves a pending question before failing a disconnected provider', async () => {
     const { app } = setupInteractive('disconnect');
@@ -2429,7 +2445,7 @@ describe('v2 event, cancellation, and deletion routes', () => {
       code: 'replay_gap',
       details: { earliestSequence: snapshot.earliestSequence },
     });
-  }, 15_000);
+  }, SESSION_LIFECYCLE_TIMEOUT_MS);
 
   it('returns the strict cancellation acknowledgement and 404s terminal cancellation', async () => {
     const { app } = setup('hang-until-cancelled');

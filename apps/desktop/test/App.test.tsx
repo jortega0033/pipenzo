@@ -789,7 +789,18 @@ describe('App security flow', () => {
 
     await screen.findByRole('dialog', { name: /answer to continue/i });
     fireEvent.click(screen.getByRole('checkbox', { name: /safe mode/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'Send answers' }));
+
+    // "Send answers" is `disabled={busy || !answers}`, and `answers` is only built once the
+    // checkbox selection is in state. A click on a disabled button is swallowed by the DOM and is
+    // never retried, so clicking it straight after the checkbox made the submission depend on that
+    // selection already being committed -- and when it was not, the failure surfaced a full second
+    // later as `answerQuestions` with "Number of calls: 0", which reads like a broken bridge
+    // rather than a lost click (issue #204). Waiting on the button's own enabled state is waiting
+    // on exactly what the submission needs, and it is what turned the CI failure into a legible
+    // one: it caught the dialog wiping the selection after mount, which is fixed in the component.
+    const send = screen.getByRole('button', { name: 'Send answers' });
+    await waitFor(() => expect(send).toBeEnabled());
+    fireEvent.click(send);
     await waitFor(() =>
       expect(bridge.answerQuestions).toHaveBeenCalledWith(interactionHandle, [
         {
@@ -798,5 +809,52 @@ describe('App security flow', () => {
         },
       ]),
     );
+  });
+
+  /**
+   * The dialog clears the previous question's answers when a *different* interaction takes over,
+   * so an answer cannot be submitted against a question the user never saw. That reset used to be
+   * an effect keyed on the handle, which also ran on mount and could wipe a selection the user had
+   * already made (issue #204); it is a render-time adjustment now. This pins the behaviour the
+   * reset exists for, which the rewrite has to keep.
+   */
+  it('clears a pending selection when a different question replaces it in the same dialog', async () => {
+    const { bridge, callbacks } = installBridge();
+    render(<App />);
+    await screen.findByText('Claude Code');
+    fillSessionForm();
+    fireEvent.click(screen.getByRole('button', { name: 'Run' }));
+    await waitFor(() => expect(bridge.createInteractiveSession).toHaveBeenCalledOnce());
+
+    const question = (handle: string, optionHandle: string): RendererInteraction => ({
+      kind: 'question',
+      interactionHandle: handle,
+      deadlineAt: '2026-08-31T00:05:00.000Z',
+      questions: [
+        {
+          questionHandle: `${handle.slice(0, 42)}Q`,
+          title: 'Choose a mode',
+          prompt: 'Which mode should be used?',
+          allowsFreeText: false,
+          options: [{ optionHandle, label: 'Safe mode' }],
+        },
+      ],
+    });
+
+    const first = 'A'.repeat(43);
+    callbacks.interaction?.(question(first, 'C'.repeat(43)));
+    callbacks.interaction?.(question('D'.repeat(43), 'E'.repeat(43)));
+    await screen.findByRole('dialog', { name: /answer to continue/i });
+    fireEvent.click(screen.getByRole('checkbox', { name: /safe mode/i }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Send answers' })).toBeEnabled());
+
+    // Resolving the first hands the queued second one to the same mounted dialog. Its own
+    // selection starts empty, so the submit button must go back to disabled rather than carry the
+    // previous question's answer forward into a question the user has not looked at.
+    callbacks.resolution?.({ interactionHandle: first, kind: 'question_resolved' });
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Send answers' })).toBeDisabled(),
+    );
+    expect(screen.getByRole('checkbox', { name: /safe mode/i })).not.toBeChecked();
   });
 });

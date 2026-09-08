@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { FastifyInstance } from 'fastify';
 import { FakeProvider, ProviderRegistry, noopLogger } from '@agent-dock/agent-runtime';
 import { agentSessionV2Schema } from '@agent-dock/shared';
 import { buildServer } from '../src/server.js';
@@ -13,11 +14,25 @@ import { WorkspaceTrustStore } from '../src/workspace-trust-store.js';
 const TOKEN = 'workspace-lease-token';
 let cwd: string;
 
+/**
+ * Teardown belongs here, not at the end of the test body, so it still runs when the body does not
+ * reach the end. It previously did not: a timeout skipped the shutdown, `rmSync` then deleted a
+ * directory the daemon and its provider still held open, and the real failure was buried under a
+ * second `EBUSY: rmdir` from `afterEach` (issue #219).
+ */
+let openApp: FastifyInstance | undefined;
+let openSessionManager: SessionManager | undefined;
+
 beforeEach(() => {
   cwd = mkdtempSync(join(tmpdir(), 'agent-dock-workspace-lease-'));
 });
 
-afterEach(() => {
+afterEach(async () => {
+  openSessionManager?.beginShutdown();
+  await openSessionManager?.cancelAll();
+  await openApp?.close();
+  openApp = undefined;
+  openSessionManager = undefined;
   rmSync(cwd, { recursive: true, force: true });
 });
 
@@ -52,6 +67,8 @@ describe('v2 workspace execution leases', () => {
       token: TOKEN,
       logger: noopLogger,
     });
+    openApp = app;
+    openSessionManager = sessionManager;
     const payload = {
       provider: 'claude',
       cwd,
@@ -117,11 +134,15 @@ describe('v2 workspace execution leases', () => {
     });
     expect(deleted.statusCode).toBe(204);
     expect(readFileSync(userFile, 'utf8')).toBe('preserve me');
-
-    sessionManager.beginShutdown();
-    await sessionManager.cancelAll();
-    await app.close();
-  }, 15_000);
+    // Budget sized from measurement, not raised until it went quiet. This test spawns `git init`
+    // and then drives three real interactive session starts, each of which resolves the workspace
+    // identity by spawning more Git -- a process spawn on Windows costs 100-300 ms, and the whole
+    // body measures ~7.3 s on an idle machine. Its 15 s was therefore about 2x headroom, which
+    // this suite has already been shown not to have: #219 records the identically-shaped
+    // `server-v2.test.ts` corrupted-queue test (~7.2 s idle) timing out at 15 s on the Windows
+    // runner. 45 s is ~6x the measured cost, and still fails a genuine hang two orders of
+    // magnitude inside the job's 20-minute limit.
+  }, 45_000);
 });
 
 function auth(): Record<string, string> {

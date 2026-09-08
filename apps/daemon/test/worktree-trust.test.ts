@@ -8,6 +8,21 @@ import { OwnedWorktreeManager, type WorktreeGitRunner } from '../src/worktree-ma
 import { resolveWorkspaceIdentity } from '../src/workspace-identity.js';
 import { WorkspaceTrustStore } from '../src/workspace-trust-store.js';
 
+/**
+ * Every test here drives real Git, and a process spawn on Windows costs 100-300 ms before the
+ * command does anything. The slowest body measures ~11.5 s idle, against the 15-20 s budgets these
+ * carried -- roughly 1.5-2x headroom, on a runner this repository has already measured itself
+ * losing to: issue #219 records `server-v2.test.ts`'s corrupted-queue
+ * test, ~7.2 s idle, timing out at 15 s there.
+ *
+ * Sized from that measurement rather than raised until the file went quiet. Nothing in these
+ * bodies waits on a poll or a sleep that a bigger number would hide, so there is no wrong wait to
+ * paper over. One budget for the file rather than eight bespoke ones is the deliberate trade: it
+ * costs a fast negative-path test a slower failure if it ever regresses into spawning Git, and
+ * buys a number that stays true as these bodies change.
+ */
+const GIT_HEAVY_TIMEOUT_MS = 45_000;
+
 const run = promisify(execFile);
 const temporaryDirectories: string[] = [];
 
@@ -86,7 +101,7 @@ describe('worktree trust gating', () => {
       manager.create({ cwd: repo, name: 'child', confirmIncludeCopy: true }),
     ).rejects.toMatchObject({ code: 'workspace_untrusted' });
     expect(spy.calls).toEqual([]);
-  }, 15_000);
+  }, GIT_HEAVY_TIMEOUT_MS);
 
   it('never runs Git against an already-created worktree whose source trust was later revoked, even on load/list', async () => {
     const base = await temporaryDirectory();
@@ -123,7 +138,7 @@ describe('worktree trust gating', () => {
     expect(spy.calls).toEqual([]);
     // Status is left as the last-known value rather than freshly (and unsafely) re-probed.
     expect(listed.find((item) => item.id === created.id)?.status).toBe('ready');
-  }, 15_000);
+  }, GIT_HEAVY_TIMEOUT_MS);
 
   it('creates and cleans up normally once the source repository is trusted', async () => {
     const base = await temporaryDirectory();
@@ -144,7 +159,7 @@ describe('worktree trust gating', () => {
     expect(created.status).toBe('ready');
     const cleaned = await manager.cleanup(created.id);
     expect(cleaned.status).toBe('missing');
-  }, 15_000);
+  }, GIT_HEAVY_TIMEOUT_MS);
 
   it('does not propagate trust to a newly created owned worktree', async () => {
     const base = await temporaryDirectory();
@@ -166,7 +181,7 @@ describe('worktree trust gating', () => {
     const worktreePath = join(base, 'owned', ownedDirs[0]!);
     const worktreeIdentity = await resolveWorkspaceIdentity(worktreePath);
     expect((await trustStore.inspect(worktreeIdentity)).state).toBe('untrusted');
-  }, 15_000);
+  }, GIT_HEAVY_TIMEOUT_MS);
 
   it('aborts before the mutating worktree-add command when trust is revoked mid-flight (TOCTOU)', async () => {
     const base = await temporaryDirectory();
@@ -195,7 +210,7 @@ describe('worktree trust gating', () => {
       manager.create({ cwd: repo, name: 'child', confirmIncludeCopy: true }),
     ).rejects.toMatchObject({ code: 'workspace_untrusted' });
     expect(calls.some((call) => call[0] === 'worktree' && call[1] === 'add')).toBe(false);
-  }, 15_000);
+  }, GIT_HEAVY_TIMEOUT_MS);
 
   it('aborts cleanup before worktree-remove when the source directory is replaced mid-flight', async () => {
     const base = await temporaryDirectory();
@@ -252,7 +267,7 @@ describe('worktree trust gating', () => {
     });
     expect(dirtyCheckCalls).toBe(2); // sanity: cleanup() did reach its own dirty-check call
     expect(calls.some((call) => call[0] === 'worktree' && call[1] === 'remove')).toBe(false);
-  }, 15_000);
+  }, GIT_HEAVY_TIMEOUT_MS);
 
   it('serializes concurrent create() calls against the same source repo instead of throwing worktree_busy (issue #118)', async () => {
     const base = await temporaryDirectory();
@@ -293,5 +308,5 @@ describe('worktree trust gating', () => {
     // The real proof this queues rather than merely not-throwing: at no point did this repo's two
     // create() calls have a Git command in flight at the same time.
     expect(maxActive).toBe(1);
-  }, 20_000);
+  }, GIT_HEAVY_TIMEOUT_MS);
 });
