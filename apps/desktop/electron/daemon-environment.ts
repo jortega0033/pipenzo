@@ -1,4 +1,5 @@
 import type { DaemonCredentialSourceV1 } from '@agent-dock/shared';
+import { resolveDaemonEntry, type ResolveDaemonEntryInput } from './resolve-daemon-entry.js';
 
 /**
  * The environment Electron main hands the daemon sidecar (issue #165).
@@ -258,4 +259,72 @@ export function buildDaemonEnvironment(
   target.AGENT_DOCK_APP_ID = options.appId;
   if (options.credentialOnStdin) target[CREDENTIAL_ON_STDIN_ENV_KEY] = '1';
   return target;
+}
+
+/** Everything `spawnDaemon` in `main.ts` needs to actually call `child_process.spawn`, computed
+ * without touching `electron`, `child_process`, or any module-level state. */
+export interface DaemonSpawnPlan {
+  /** Passed to `spawn` as `options.cwd`. */
+  readonly cwd: string;
+  /** Passed to `spawn` as its own `args` parameter. */
+  readonly args: readonly string[];
+  /** Passed to `spawn` as `options.env` -- the daemon child's actual environment, already stripped
+   * and marked (see `buildDaemonEnvironment`). Never contains the credential itself. */
+  readonly env: Readonly<Record<string, string | undefined>>;
+  /** Written to the child's stdin verbatim, then the stream is closed. The one place the resolved
+   * credential's plaintext value appears in this whole plan. */
+  readonly credentialMessage: string;
+  /** `resolveDaemonGitHubToken`'s own verdict -- main's pre-handoff *intent*, unconfirmed until the
+   * daemon's own `/health` report lands (issue #209); not carried anywhere in `env` or the message
+   * above, since nothing here needs the label, only the daemon's later confirmation does. */
+  readonly credentialSource: DaemonGitHubTokenSource;
+}
+
+export interface BuildDaemonSpawnPlanInput {
+  readonly entry: ResolveDaemonEntryInput;
+  readonly appId: string;
+  /** The parent process's own environment -- `buildDaemonEnvironment` strips from a copy of this,
+   * never mutates it. Explicit rather than read from `process.env` here so a test can hand in a
+   * fixture instead of this process's real one. */
+  readonly parentEnv: Readonly<Record<string, string | undefined>>;
+  readonly vaultToken: string | undefined;
+  readonly developmentToken: string | undefined;
+  readonly isPackaged: boolean;
+  readonly isDevelopmentBuild: boolean;
+  readonly developmentFallbackSuppressed: boolean;
+}
+
+/**
+ * The whole decision `spawnDaemon` makes, before it ever calls `child_process.spawn` (issue #213).
+ *
+ * Pulled out specifically so the properties the token-boundary tests care about -- what environment
+ * the child would actually be given, what would actually be written to its stdin -- are assertions
+ * against a real returned object instead of a regex over `main.ts`'s source text. A source-regex
+ * assertion tracks spellings, not properties: `github-token-boundary.test.ts`'s own history is that
+ * `env: { ...buildDaemonEnvironment(...), PIPENZO_GITHUB_TOKEN: token }` would still satisfy both
+ * `not.toMatch(/env:\s*\{\s*\.\.\.process\.env/)` and `toMatch(/env:\s*buildDaemonEnvironment\(/)`,
+ * the exact regression those assertions exist to catch. Testing the *value* `env` resolves to
+ * instead makes that regression fail for what it actually does, not for how it happens to be typed.
+ *
+ * `main.ts`'s own `spawnDaemon` is now a thin wrapper: build this plan from real values (`app.*`,
+ * `tokenVault.readToken()`, `process.env`), then actually spawn the child and write its stdin from
+ * the plan's own fields. Nothing here performs I/O or touches `electron`, so it needs no Electron
+ * runtime and no real child process to test.
+ */
+export function buildDaemonSpawnPlan(input: BuildDaemonSpawnPlanInput): DaemonSpawnPlan {
+  const { cwd, args } = resolveDaemonEntry(input.entry);
+  const credential = resolveDaemonGitHubToken({
+    vaultToken: input.vaultToken,
+    developmentToken: input.developmentToken,
+    isPackaged: input.isPackaged,
+    isDevelopmentBuild: input.isDevelopmentBuild,
+    developmentFallbackSuppressed: input.developmentFallbackSuppressed,
+  });
+  return {
+    cwd,
+    args,
+    env: buildDaemonEnvironment(input.parentEnv, { appId: input.appId, credentialOnStdin: true }),
+    credentialMessage: buildDaemonCredentialMessage(credential.token),
+    credentialSource: credential.source,
+  };
 }
