@@ -260,7 +260,9 @@ export class DaemonGitHubCredential {
    * trusting it — see `@agent-dock/shared`'s `daemonCredentialSourceV1Schema` for the full
    * reasoning on why this is a different, narrower question than "vault or environment".
    */
-  resolvedSource(env: Readonly<Record<string, string | undefined>> = process.env): DaemonCredentialSourceV1 {
+  resolvedSource(
+    env: Readonly<Record<string, string | undefined>> = process.env,
+  ): DaemonCredentialSourceV1 {
     if (this.injected) return 'injected';
     return this.tryResolve(env) !== undefined ? 'environment' : 'none';
   }

@@ -212,7 +212,14 @@ function spawnDaemon(): void {
     isPackaged: app.isPackaged,
     isDevelopmentBuild: IS_DEVELOPMENT_BUILD,
   });
-  daemonTokenSource = credential.source;
+  // Not `credential.source` here (issue #209): that is main's pre-handoff *intent*, unconfirmed
+  // until the daemon's own `/health` report lands in `waitForDaemonReady`'s success branch, which
+  // is the only place `daemonTokenSource` is set to anything more specific than `'none'`. A daemon
+  // that never becomes ready -- a spawn failure, a timeout -- must not leave a stale, optimistic
+  // `'vault'` behind for `gitHubConnectionStatus()` to keep reporting; unconfirmed is `'none'`
+  // until proven otherwise, the same fail-honest default `reconcileDaemonTokenSource` applies to
+  // every other unconfirmed case.
+  daemonTokenSource = 'none';
   if (credential.source === 'environment') {
     console.warn(
       '[pipenzo] no GitHub token in the vault; this development build is using the inherited PIPENZO_GITHUB_TOKEN. A packaged build would refuse.',
@@ -300,6 +307,11 @@ function spawnDaemon(): void {
     if (isCurrent) {
       client = undefined;
       daemonChild = undefined;
+      // No live daemon means no confirmed credential source (issue #209) -- harmless to also set
+      // this on the credential-change respawn path below, since `spawnDaemon()` sets it again for
+      // the next child; what it must not do is leave a *dead* daemon's last-confirmed (or never-
+      // confirmed) source on display after an ordinary, non-respawning crash.
+      daemonTokenSource = 'none';
     }
     // Teardown is for *this* child's state. It runs whether or not the daemon ever became ready —
     // every collection below is empty in that case, so clearing costs nothing, and skipping it on

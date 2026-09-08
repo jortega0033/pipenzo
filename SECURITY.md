@@ -106,6 +106,18 @@ The daemon generates a random 32-byte token (`crypto.randomBytes(32).toString('h
 Authorization: Bearer <token>
 ```
 
+`GET /health` itself discloses `status`, `uptimeSeconds`, `protocolVersion`, and (issue #209) a
+`githubCredentialSource` field: a closed three-value enum (`injected`/`environment`/`none`) naming
+where the daemon's GitHub credential actually came from, never the credential's value. Electron
+main polls it to confirm its own pre-handoff intent actually landed rather than trusting it
+unconfirmed (`apps/desktop/electron/daemon-environment.ts`'s `reconcileDaemonTokenSource`). Exempt
+from the bearer token for the same reason the rest of this route is: the Origin check below runs
+first and unconditionally, so no browser tab can read it regardless, and the only remaining reader
+is a same-user local process — already outside this token's threat model (see
+[What this does NOT claim to protect against](#what-this-does-not-claim-to-protect-against)), and
+already able to read the discovery file this section describes next, which carries the bearer
+token itself.
+
 Requests without a valid token get `401`, compared with `crypto.timingSafeEqual` to avoid a timing
 side-channel (`apps/daemon/src/auth-token.ts`).
 

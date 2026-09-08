@@ -454,6 +454,24 @@ describe('confirming what the daemon actually resolved, not just what main sent 
       /daemonTokenSource = reconcileDaemonTokenSource\(\s*intendedSource,\s*health\.githubCredentialSource \?\? 'none',?\s*\)/,
     );
   });
+
+  /**
+   * The two edges a first cut of this fix missed, both caught by review: the pre-handoff intent
+   * was still assigned eagerly at spawn (surviving unconfirmed forever if the daemon never became
+   * ready -- a spawn failure, a health timeout), and nothing cleared it when a live daemon's
+   * process exited. Both would leave `gitHubConnectionStatus()` reporting a source no daemon ever
+   * confirmed, which is the exact bug #209 exists to close.
+   */
+  it('never assigns the unconfirmed intent to daemonTokenSource, at spawn or on exit', async () => {
+    const main = await readElectron('main.ts');
+    expect(main).not.toMatch(/daemonTokenSource = credential\.source/);
+    expect(main).toMatch(/daemonTokenSource = 'none';\s*\n\s*if \(credential\.source === 'environment'\)/);
+    // The `isCurrent` branch of the exit handler, alongside the client/daemonChild teardown it
+    // already does.
+    expect(main).toMatch(
+      /daemonChild = undefined;[\s\S]{0,300}?daemonTokenSource = 'none';\s*\n\s*\}/,
+    );
+  });
 });
 
 describe('nothing on the renderer bridge can obtain the token', () => {
