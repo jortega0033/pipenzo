@@ -13,6 +13,11 @@ import {
   type GitHubPullRequestDiff,
   type RepoRef,
 } from './github-client.js';
+import {
+  GITHUB_CORE_RATE_LIMIT_RESOURCE,
+  GitHubRateLimitTracker,
+  type GitHubRateLimitSnapshot,
+} from './github-rate-limit.js';
 
 /**
  * In-memory `GitHubClient` (issue #177, README's Testing suite 2).
@@ -43,6 +48,39 @@ export class FakeGitHubClient implements GitHubClient {
   /** What `listAccessibleRepositories` answers. Empty until a test seeds it. */
   #repositories: readonly GitHubRepository[] = [];
   #repositoriesTruncated = false;
+  /**
+   * Issue #229's quota readings. A real tracker rather than a stored literal, so a test seeds
+   * headers in GitHub's own shape and the fake exercises the same parser the shipped client does --
+   * including its refusal to invent a snapshot from a malformed header.
+   */
+  readonly #rateLimits = new GitHubRateLimitTracker();
+
+  /**
+   * Seeds a remaining-quota reading (issue #229), for the reconciler (#231) and the status pill
+   * (#75) to be tested against.
+   *
+   * Takes headers, not a snapshot: the point of a fake is to stand where GitHub stands, and a
+   * seeder that accepted an already-parsed snapshot would let a test assert degradation against a
+   * reading the real client would never have produced.
+   */
+  seedRateLimitHeaders(headers: Record<string, string>, observedAt: number = Date.now()): this {
+    this.#rateLimits.record(headers, observedAt);
+    return this;
+  }
+
+  /** Issue #229. Reads what `seedRateLimitHeaders` recorded, under the same expiry rule. */
+  rateLimit(resource: string = GITHUB_CORE_RATE_LIMIT_RESOURCE): GitHubRateLimitSnapshot | undefined {
+    return this.#rateLimits.latest(resource);
+  }
+
+  /**
+   * Issue #229's push half. `seedRateLimitHeaders` publishes to these listeners exactly as a real
+   * response does, so a consumer that reacts to headroom changes (#231, #75) can be driven from a
+   * test without a network and without polling.
+   */
+  subscribeRateLimit(listener: (snapshot: GitHubRateLimitSnapshot) => void): () => void {
+    return this.#rateLimits.subscribe(listener);
+  }
 
   seedAuthenticatedLogin(login: string): this {
     this.#viewerLogin = login;
