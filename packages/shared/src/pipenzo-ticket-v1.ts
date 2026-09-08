@@ -1,6 +1,9 @@
 import { z } from 'zod';
 import { pipenzoIssueNumberV1Schema, pipenzoRepoRefV1Schema } from './pipenzo-phase-v1.js';
 import { modelTierSchema } from './pipenzo-review-v1.js';
+import { pipenzoTicketIdV1Schema } from './schemas.js';
+
+export { pipenzoTicketIdV1Schema } from './schemas.js';
 
 /**
  * The ticket-store schema and the `pipenzo:` label vocabulary (build step 3, Pipenzo issue #187).
@@ -159,9 +162,6 @@ export type PipenzoTaskTypeV1 = (typeof PIPENZO_TASK_TYPES)[number];
 export const pipenzoTaskTypeV1Schema = z.enum(PIPENZO_TASK_TYPES);
 
 /* ---------------------------------------------------------------------------------- sub-shapes */
-
-/** The store's own primary key. A UUID, like every other daemon-generated id (session, worktree). */
-export const pipenzoTicketIdV1Schema = z.string().uuid();
 
 /**
  * The diff-size prediction, persisted under the field names README's own ticket-store JSON uses —

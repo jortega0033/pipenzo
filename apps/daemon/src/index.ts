@@ -207,6 +207,29 @@ async function main() {
   // absent from the running app. It holds no credential: four numbers and a bucket name each.
   const githubRateLimits = new GitHubRateLimitTracker();
 
+  // Pipenzo's phase machine (issue #188): README's precedence rule made executable -- GitHub labels
+  // are authoritative for a ticket's lane, the ticket store for everything GitHub cannot hold, and
+  // when the two disagree the label wins. Same GitHub boundary as the phase service below: the
+  // client is built lazily from a token read at call time, so no authenticated client is retained
+  // between requests and nothing in the agent-runtime path holds a reference to it.
+  // The phase-change stream (issue #189). Held here rather than inside the machine so the routes
+  // can subscribe to the same bus the machine publishes to, and so a daemon assembled for a test can
+  // leave it out entirely.
+  //
+  // Built before the phase service (rather than after, as originally written) because the service
+  // now needs it too (issue #144): a blown-estimate review outcome transitions the ticket through
+  // this same machine.
+  const phaseEvents = new PipenzoPhaseEventBus();
+  const phaseMachine = new PipenzoPhaseMachine({
+    tickets: ticketStore,
+    github: () =>
+      OctokitGitHubClient.fromToken(githubCredential.resolve(), {
+        cache: githubConditionalCache,
+        rateLimits: githubRateLimits,
+      }),
+    events: phaseEvents,
+  });
+
   const phaseService = new PipenzoPhaseService({
     refineSessions: new AwaitedPhaseSessions({ sessionManager }),
     reviewSessions: new AwaitedPhaseSessions({ sessionManager }),
@@ -218,25 +241,10 @@ async function main() {
         rateLimits: githubRateLimits,
       }),
     commands: new ExecFileGateCommands({ probeCwd: durableStateDirectory }),
-  });
-
-  // Pipenzo's phase machine (issue #188): README's precedence rule made executable -- GitHub labels
-  // are authoritative for a ticket's lane, the ticket store for everything GitHub cannot hold, and
-  // when the two disagree the label wins. Same GitHub boundary as the phase service above: the
-  // client is built lazily from a token read at call time, so no authenticated client is retained
-  // between requests and nothing in the agent-runtime path holds a reference to it.
-  // The phase-change stream (issue #189). Held here rather than inside the machine so the routes
-  // can subscribe to the same bus the machine publishes to, and so a daemon assembled for a test can
-  // leave it out entirely.
-  const phaseEvents = new PipenzoPhaseEventBus();
-  const phaseMachine = new PipenzoPhaseMachine({
-    tickets: ticketStore,
-    github: () =>
-      OctokitGitHubClient.fromToken(githubCredential.resolve(), {
-        cache: githubConditionalCache,
-        rateLimits: githubRateLimits,
-      }),
-    events: phaseEvents,
+    // Issue #144: lets a blown-estimate review outcome transition the ticket to
+    // pipenzo:awaiting-stack-approval and post the real-vs-predicted numbers as a comment.
+    machine: phaseMachine,
+    logger,
   });
 
   // Pipenzo's polling reconciler (issue #231): the loop that makes the connected-repos list worth

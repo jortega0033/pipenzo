@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { providerIdSchema } from './schemas.js';
+import { pipenzoTicketIdV1Schema, providerIdSchema } from './schemas.js';
 import { refineSpecV1Schema } from './pipenzo-refine-v1.js';
 import { modelTierSchema, reviewReportV1Schema } from './pipenzo-review-v1.js';
 
@@ -175,6 +175,16 @@ export const pipenzoReviewRequestV1Schema = z
     implementerProvider: providerIdSchema.optional(),
     reviewer: pipenzoModelChoiceV1Schema,
     verifier: pipenzoModelChoiceV1Schema,
+    /**
+     * Which ticket this review is for (issue #144). Optional, deliberately: a review is a
+     * worktree-scoped operation that has never needed a ticket to run, and every existing caller
+     * (and every existing test posting to `/v2/pipenzo/review`) omits it. Its only effect is
+     * consequential — when the outcome is `estimate_blown` (#265) and a ticket id is present, the
+     * daemon transitions that ticket to `pipenzo:awaiting-stack-approval` and posts the real-vs-
+     * predicted numbers as a comment (`PipenzoPhaseService.review()`). A review run without one
+     * still reports its outcome exactly as before; it simply has nowhere to attach the consequence.
+     */
+    ticketId: pipenzoTicketIdV1Schema.optional(),
   })
   .strict();
 

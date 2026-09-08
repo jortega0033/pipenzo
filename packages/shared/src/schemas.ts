@@ -3,6 +3,16 @@ import { AUTH_SOURCES, PROVIDER_IDS } from './provider.js';
 
 export const providerIdSchema = z.enum(PROVIDER_IDS);
 
+/**
+ * The ticket store's own primary key. A UUID, like every other daemon-generated id (session,
+ * worktree). Defined here rather than in `pipenzo-ticket-v1.ts` (which re-exports it, so nothing
+ * that already imports it from there needs to change) because `pipenzo-phase-v1.ts` needs it too
+ * (issue #144's `ticketId` on a review request) and `pipenzo-ticket-v1.ts` itself already imports
+ * from `pipenzo-phase-v1.ts` — a leaf module with no pipenzo-specific dependencies is what breaks
+ * that cycle, not a third pipenzo-* file that would just move the cycle sideways.
+ */
+export const pipenzoTicketIdV1Schema = z.string().uuid();
+
 // AD-15: every key is optional and unknown keys pass through rather than being rejected or
 // silently stripped: "absent means unsupported" is a documented, valid state (see
 // ProviderCapabilities), not a validation failure. This is what makes adding a 6th capability

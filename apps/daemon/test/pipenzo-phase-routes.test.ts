@@ -12,6 +12,12 @@ import { GitHubClientError, type GitHubIssue } from '../src/github-client.js';
 import type { CommandResult, GateCommandRunner } from '../src/review-gates.js';
 import type { GitCommandResult, PipenzoGitRunner } from '../src/pipenzo-git.js';
 import type { ImplementWorktreeManager } from '../src/implement-orchestrator.js';
+import type {
+  PipenzoLaneBearingLabelV1,
+  PipenzoPhaseMachine,
+  PipenzoTicketReconciliation,
+} from '../src/pipenzo-phase-machine.js';
+import type { PipenzoTicketRecordV1 } from '@agent-dock/shared';
 
 const TOKEN = 'test-token-pipenzo-phases';
 const WORKTREE_ID = '77777777-8888-4999-8aaa-bbbbbbbbbbbb';
@@ -121,6 +127,81 @@ interface Harness {
   env?: Record<string, string | undefined>;
   withGitHub?: boolean;
   onSession?: (request: CreateSessionV2Request) => void;
+  machine?: Pick<PipenzoPhaseMachine, 'read' | 'transition'>;
+}
+
+const TICKET_ID = '00000000-0000-4000-8000-0000000000aa';
+
+function ticketRecord(overrides: Partial<PipenzoTicketRecordV1> = {}): PipenzoTicketRecordV1 {
+  return {
+    schemaVersion: 1,
+    ticketId: TICKET_ID,
+    repo: 'jortega0033/pipenzo',
+    issueNumber: 184,
+    lane: 'needs-human',
+    phase: 'review',
+    labels: ['pipenzo:awaiting-stack-approval'],
+    estimate: { lines: 400, files: 8, layered: false },
+    taskType: 'feature',
+    stack: { parentId: null, childIds: [], index: null },
+    attempts: [],
+    budget: { tokensUsed: 0, limit: 0 },
+    risk: { score: 0, lastResetAt: '2026-01-01T00:00:00.000Z' },
+    precommits: [],
+    etags: {},
+    ...overrides,
+  };
+}
+
+/**
+ * Records every `transition`/`read` call. `currentLabel` is the ticket's state before any call --
+ * defaults to `pipenzo:working`, i.e. not yet at `awaiting-stack-approval`, so the double-post
+ * guard in `#reportBlownEstimate` (issue #266) does not trip by default; the "already recorded"
+ * test constructs one with `currentLabel: 'pipenzo:awaiting-stack-approval'` instead.
+ */
+class FakeMachine implements Pick<PipenzoPhaseMachine, 'read' | 'transition'> {
+  readonly calls: Array<{ method: 'read' | 'transition'; ticketId: string; label?: string }> = [];
+  #fail: unknown;
+  #currentLabel: PipenzoLaneBearingLabelV1;
+
+  constructor(currentLabel: PipenzoLaneBearingLabelV1 = 'pipenzo:working') {
+    this.#currentLabel = currentLabel;
+  }
+
+  failNext(error: unknown): this {
+    this.#fail = error;
+    return this;
+  }
+
+  async read(ticketId: string): Promise<PipenzoTicketReconciliation> {
+    this.calls.push({ method: 'read', ticketId });
+    return this.#reconciliationFor(ticketId, this.#currentLabel);
+  }
+
+  async transition(ticketId: string, toLabel: string): Promise<PipenzoTicketReconciliation> {
+    this.calls.push({ method: 'transition', ticketId, label: toLabel });
+    if (this.#fail) {
+      const error = this.#fail;
+      this.#fail = undefined;
+      throw error;
+    }
+    this.#currentLabel = toLabel as PipenzoLaneBearingLabelV1;
+    return this.#reconciliationFor(ticketId, this.#currentLabel);
+  }
+
+  #reconciliationFor(ticketId: string, label: PipenzoLaneBearingLabelV1): PipenzoTicketReconciliation {
+    const ticket = ticketRecord({ ticketId, labels: [label] });
+    return {
+      ticket,
+      divergence: 'none',
+      previousLane: 'working',
+      // Narrower than `ticket.labels` on purpose, matching the real machine's `read()`/
+      // `transition()`: `observedLabels` is only ever the lane-bearing subset, and every label
+      // this fake ever hands out is a lane-bearing transition target.
+      observedLabels: [label],
+      changed: true,
+    };
+  }
 }
 
 function buildApp(harness: Harness = {}) {
@@ -161,6 +242,7 @@ function buildApp(harness: Harness = {}) {
     commands: harness.commands ?? noCommands,
     runGit,
     env: harness.env ?? REPO_ENV,
+    ...(harness.machine ? { machine: harness.machine } : {}),
   });
   return {
     github,
@@ -375,6 +457,109 @@ describe('POST /v2/pipenzo/review', () => {
     });
     expect(response.statusCode).toBe(409);
     expect(response.json()).toMatchObject({ code: 'verifier_tier_too_low' });
+  });
+
+  /**
+   * Issue #144(c): a blown estimate's actual consequence. `spec()`'s estimate is shrunk to 1
+   * line/1 file so the shared `runGit` fixture's fixed 12-line/2-file diff blows it well past
+   * README's 50% tolerance, reaching `estimate_blown` without needing a second `runGit` fixture.
+   */
+  function blownEstimateRequest(overrides: Record<string, unknown> = {}) {
+    return {
+      spec: spec({ estimate: { changedLines: 1, filesTouched: 1, layered: false } }),
+      worktreeId: WORKTREE_ID,
+      baseCommit: BASE_SHA,
+      headCommit: HEAD_SHA,
+      implementerTier: 'mid',
+      reviewer: { provider: 'claude', model: 'reviewer-model', tier: 'mid' },
+      verifier: { provider: 'codex', model: 'verifier-model', tier: 'frontier' },
+      ...overrides,
+    };
+  }
+
+  describe('a blown estimate (issue #144)', () => {
+    it('transitions the ticket and posts the real-vs-predicted numbers as a comment', async () => {
+      const machine = new FakeMachine();
+      const { app, github } = buildApp({ machine });
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/review',
+        headers: auth,
+        payload: blownEstimateRequest({ ticketId: TICKET_ID }),
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json().outcome).toBe('estimate_blown');
+      // read() first (the double-post guard, issue #266), then the actual transition.
+      expect(machine.calls).toEqual([
+        { method: 'read', ticketId: TICKET_ID },
+        { method: 'transition', ticketId: TICKET_ID, label: 'pipenzo:awaiting-stack-approval' },
+      ]);
+      const posted = github.issueComments({ owner: 'jortega0033', repo: 'pipenzo' }, 184);
+      expect(posted).toHaveLength(1);
+      expect(posted[0]?.body).toContain('estimate');
+      expect(posted[0]?.body).toContain('Predicted');
+    });
+
+    it('does not transition anything when no ticketId was given', async () => {
+      const machine = new FakeMachine();
+      const { app } = buildApp({ machine });
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/review',
+        headers: auth,
+        payload: blownEstimateRequest(),
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json().outcome).toBe('estimate_blown');
+      expect(machine.calls).toEqual([]);
+    });
+
+    it('does not throw when no phase machine was configured -- the report still comes back', async () => {
+      const { app } = buildApp();
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/review',
+        headers: auth,
+        payload: blownEstimateRequest({ ticketId: TICKET_ID }),
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json().outcome).toBe('estimate_blown');
+    });
+
+    it('reports the review outcome even when the transition itself fails -- best-effort, never thrown', async () => {
+      const machine = new FakeMachine().failNext(new Error('github is down'));
+      const { app } = buildApp({ machine });
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/review',
+        headers: auth,
+        payload: blownEstimateRequest({ ticketId: TICKET_ID }),
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json().outcome).toBe('estimate_blown');
+      // read() succeeded (the guard found nothing recorded yet); transition() is the one that failed.
+      expect(machine.calls.map((call) => call.method)).toEqual(['read', 'transition']);
+    });
+
+    it('does not re-transition or re-comment when the ticket already carries the target label -- guards a retried review call', async () => {
+      const machine = new FakeMachine('pipenzo:awaiting-stack-approval');
+      const { app, github } = buildApp({ machine });
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/review',
+        headers: auth,
+        payload: blownEstimateRequest({ ticketId: TICKET_ID }),
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json().outcome).toBe('estimate_blown');
+      expect(machine.calls).toEqual([{ method: 'read', ticketId: TICKET_ID }]);
+      expect(github.issueComments({ owner: 'jortega0033', repo: 'pipenzo' }, 184)).toHaveLength(0);
+    });
   });
 });
 
