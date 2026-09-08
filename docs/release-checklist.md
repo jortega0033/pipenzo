@@ -111,6 +111,16 @@ To publish:
    see [signingStatus](#reading-the-manifest) above and
    [packaging.md](packaging.md#unsigned-installer-and-smartscreen).
 
+### Announcing a release ([#246](https://github.com/jortega0033/pipenzo/issues/246))
+
+If you're posting about a release anywhere image previews matter (a pinned issue, a social post,
+an external announcement), reuse
+`apps/desktop/assets/pipenzo/marketing/pipenzo-github-social-preview-1280x640.png` as the header
+image rather than composing a new one. It's already approved and carries no version/date/platform
+claims baked into the pixels, so the same file works for every release; put the actual version, the
+tag, and what changed as real text in the post/notes next to it, never as a one-off edit to the
+image itself.
+
 ## Recommended environment protection for `release`
 
 `release-publish.yml` targets a GitHub Environment named `release`

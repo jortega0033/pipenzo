@@ -109,6 +109,13 @@ and rollback path. The complete v2 route, status, and wire-shape tables live in
 
 ## Pipenzo ticket phase machine
 
+![The Refine, Implement, Review, Verify workflow, with the human-approval step visually separate at the end](images/social/pipenzo-workflow-roles.png)
+
+The lanes below are what that strip maps onto in the running system: each phase transition this
+machine records corresponds to one step in the strip above, and the final "you approve" step is
+never one of this machine's own transitions -- it's the human action `publish-service.ts` (see
+[architecture.md](architecture.md)) gates on, not a lane this state machine can reach on its own.
+
 `PipenzoPhaseMachine` (`apps/daemon/src/pipenzo-phase-machine.ts`) is a daemon-internal component
 behind two of the routes documented in [protocol-v2.md](protocol-v2.md):
 `POST /v2/pipenzo/tickets/read` and `POST /v2/pipenzo/tickets/transition`. It is the implementation

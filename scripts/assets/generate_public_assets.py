@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Build AgentDock documentation and social images from reviewed local sources."""
+"""Build Pipenzo documentation and social images from reviewed local sources.
+
+Screenshot normalization is generated (a deterministic canvas/crop over a real browser capture);
+every Pipenzo composition below is either copied verbatim from the approved pack (#239) or a
+deterministic derivative of one (a crop, a labelled contact sheet of real pasted-in files) -- never
+a redrawn character, per the epic's #1 rule.
+"""
 
 from __future__ import annotations
 
@@ -7,7 +13,7 @@ import io
 from pathlib import Path
 
 import cairosvg
-from PIL import Image, ImageDraw, ImageEnhance, ImageFont
+from PIL import Image, ImageDraw, ImageFont
 from generate_assets import assert_safe_svg
 
 
@@ -15,15 +21,14 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DESKTOP_ASSETS = PROJECT_ROOT / "apps" / "desktop" / "assets"
 SCREENSHOTS = PROJECT_ROOT / "docs" / "images" / "screenshots"
 SOCIAL = PROJECT_ROOT / "docs" / "images" / "social"
-ARTWORK = PROJECT_ROOT / "docs" / "images" / "artwork" / "agent-dock-runtime.png"
-PNG_ICONS = DESKTOP_ASSETS / "app-icons" / "png"
-BRAND = DESKTOP_ASSETS / "brand"
-ILLUSTRATIONS = DESKTOP_ASSETS / "illustrations"
 
-# Pipenzo's own public/social campaign (#240) reuses the pack #239 checked in verbatim -- these
-# compositions are already reviewed and approved, so this script copies them rather than
-# recomposing (redrawing) them the way the AgentDock functions below do.
-PIPENZO_MARKETING = DESKTOP_ASSETS / "pipenzo" / "marketing"
+PIPENZO_ROOT = DESKTOP_ASSETS / "pipenzo"
+PIPENZO_MARKETING = PIPENZO_ROOT / "marketing"
+PIPENZO_BRAND = PIPENZO_ROOT / "brand"
+PIPENZO_PNG_ICONS = PIPENZO_ROOT / "app-icons" / "png"
+PIPENZO_MINI = PIPENZO_ROOT / "mascot" / "mini"
+PIPENZO_ILLUSTRATIONS = PIPENZO_ROOT / "illustrations"
+PIPENZO_PNG_SIZES = (16, 20, 24, 32, 48, 64, 128, 256)
 
 NAVY = "#0B1020"
 INK = "#0F172A"
@@ -31,8 +36,6 @@ SLATE = "#64748B"
 PAPER = "#F8FAFC"
 CANVAS = "#F6F8FC"
 BORDER = "#D8E1ED"
-COBALT = "#5B6CFF"
-MINT = "#2DD4BF"
 
 SCREENSHOT_NAMES = (
     "desktop-ready.png",
@@ -66,14 +69,6 @@ def fit_crop(image: Image.Image, target: tuple[int, int]) -> Image.Image:
     left = (resized.width - width) // 2
     top = (resized.height - height) // 2
     return resized.crop((left, top, left + width, top + height))
-
-
-def rounded_mask(size: tuple[int, int], radius: int) -> Image.Image:
-    mask = Image.new("L", size, 0)
-    ImageDraw.Draw(mask).rounded_rectangle(
-        (0, 0, size[0] - 1, size[1] - 1), radius=radius, fill=255
-    )
-    return mask
 
 
 def rasterize_svg(path: Path, width: int, height: int, color: str | None = None) -> Image.Image:
@@ -121,30 +116,6 @@ def normalize_screenshots() -> None:
         canvas.save(path, format="PNG", optimize=True)
 
 
-def framed_screenshot(source: Image.Image, size: tuple[int, int]) -> Image.Image:
-    frame = Image.new("RGBA", (size[0] + 28, size[1] + 28), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(frame)
-    draw.rounded_rectangle(
-        (0, 0, frame.width - 1, frame.height - 1),
-        radius=24,
-        fill="#111827",
-        outline="#334155",
-        width=2,
-    )
-    crop = fit_crop(source, size)
-    frame.paste(crop, (14, 14), rounded_mask(size, 14))
-    return frame
-
-
-def hero_canvas() -> Image.Image:
-    with Image.open(ARTWORK) as source:
-        artwork = fit_crop(source.convert("RGB"), (1440, 900))
-    artwork = ImageEnhance.Brightness(artwork).enhance(0.68)
-    canvas = artwork.convert("RGBA")
-    canvas.alpha_composite(Image.new("RGBA", canvas.size, (5, 11, 24, 72)))
-    return canvas
-
-
 def use_reviewed_source(source: Path, destination: Path) -> None:
     """Copy an already-reviewed, checked-in Pipenzo composition verbatim -- never redrawn."""
 
@@ -152,138 +123,70 @@ def use_reviewed_source(source: Path, destination: Path) -> None:
 
 
 def make_portfolio() -> None:
-    # Still AgentDock's own composition (#246 owns replacing this with a Pipenzo equivalent
-    # derived from the approved hero asset; #240 only owns the README hero and GitHub/OG social
-    # images, so this function is unchanged from before except no longer also writing
-    # readme-hero.webp, which now comes from the approved Pipenzo source below instead).
-    canvas = hero_canvas()
-    draw = ImageDraw.Draw(canvas)
-    draw.rounded_rectangle((44, 48, 470, 852), radius=30, fill=(7, 14, 30, 226), outline="#273449", width=2)
+    """Portfolio/project-card art (#246): a deterministic resize of the approved GitHub social
+    composition, not a redrawn composition -- the "responsive raster derivative" #239 explicitly
+    allows, not new artwork. Sourced from the social preview rather than the landing-page hero:
+    the landing hero (#245) bakes in a "VIEW ON GITHUB" pixel button that makes sense on the site
+    it sits next to a real clickable one, but reads as a broken/fake control on a static portfolio
+    thumbnail with no real button anywhere near it. Target size (1440x720) matches the source's
+    own 2:1 aspect ratio exactly -- a plain resize, not a fill-crop, so no baked text ever clips.
+    """
 
-    icon = Image.open(PNG_ICONS / "icon-128.png").convert("RGBA").resize((88, 88), Image.Resampling.LANCZOS)
-    canvas.alpha_composite(icon, (78, 84))
-    draw.text((78, 210), "AgentDock", fill=PAPER, font=font(58, bold=True))
-    draw.multiline_text(
-        (78, 292),
-        "Forkable Electron boilerplate\nfor desktop products using\nClaude Agent or Codex CLI.",
-        fill="#CBD5E1",
-        font=font(23),
-        spacing=8,
-    )
-
-    chips = ("Local daemon included", "CLI auth stays local", "Typed provider events")
-    y = 418
-    for label in chips:
-        draw.rounded_rectangle((78, y, 390, y + 48), radius=14, fill="#121A2B", outline="#334155")
-        draw.ellipse((96, y + 18, 108, y + 30), fill=MINT if y == 418 else COBALT)
-        draw.text((122, y + 12), label, fill="#E2E8F0", font=font(17, bold=True))
-        y += 64
-    draw.text((78, 786), "Electron · Fastify · TypeScript", fill="#94A3B8", font=font(16))
-
-    with Image.open(SCREENSHOTS / "session-completed.png") as source:
-        screenshot = source.convert("RGB")
-    frame = framed_screenshot(screenshot, (840, 525))
-    shadow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
-    ImageDraw.Draw(shadow).rounded_rectangle((524, 205, 1404, 775), radius=28, fill=(0, 0, 0, 90))
-    canvas.alpha_composite(shadow)
-    canvas.alpha_composite(frame, (500, 178))
-
-    rgb = canvas.convert("RGB")
-    rgb.save(SOCIAL / "portfolio-project.png", format="PNG", optimize=True)
-
-
-def make_social(width: int, height: int, filename: str) -> None:
-    with Image.open(ARTWORK) as source:
-        background = fit_crop(source.convert("RGB"), (width, height))
-    background = ImageEnhance.Brightness(background).enhance(0.62).convert("RGBA")
-    background.alpha_composite(Image.new("RGBA", background.size, (4, 10, 22, 88)))
-    draw = ImageDraw.Draw(background)
-
-    pad = round(width * 0.06)
-    icon_size = round(height * 0.14)
-    icon = Image.open(PNG_ICONS / "icon-128.png").convert("RGBA").resize(
-        (icon_size, icon_size), Image.Resampling.LANCZOS
-    )
-    background.alpha_composite(icon, (pad, pad))
-    title_size = round(height * 0.105)
-    draw.text((pad, pad + icon_size + 28), "AgentDock", fill=PAPER, font=font(title_size, bold=True))
-    draw.multiline_text(
-        (pad, pad + icon_size + title_size + 50),
-        "Electron boilerplate.\nLocal daemon included.",
-        fill="#CBD5E1",
-        font=font(round(height * 0.043)),
-        spacing=8,
-    )
-    draw.text(
-        (pad, height - pad - 30),
-        "Fork it · Claude Agent · Codex CLI",
-        fill="#94A3B8",
-        font=font(round(height * 0.027)),
-    )
-    background.convert("RGB").save(SOCIAL / filename, format="PNG", optimize=True)
+    with Image.open(PIPENZO_MARKETING / "pipenzo-github-social-preview-1280x640.png") as source:
+        resized = source.convert("RGB").resize((1440, 720), Image.Resampling.LANCZOS)
+    resized.save(SOCIAL / "portfolio-project.png", format="PNG", optimize=True)
 
 
 def make_asset_system_preview() -> None:
+    """Contributor-facing asset preview (#246): a documentation sheet of the real, checked-in
+    Pipenzo pack (#239) -- the icon, lockups, and mini portraits are pasted in verbatim from
+    approved files, only the labels/layout are generated. Not a new generative concept sheet."""
+
     canvas = Image.new("RGB", (1600, 1040), CANVAS)
     draw = ImageDraw.Draw(canvas)
-    draw.text((70, 54), "AgentDock · Asset System", fill=INK, font=font(44, bold=True))
-    draw.text((70, 112), "Forkable boilerplate · local daemon · provider-neutral", fill=SLATE, font=font(22))
+    draw.text((70, 54), "Pipenzo · Asset System", fill=INK, font=font(44, bold=True))
+    draw.text((70, 112), "Approved brand + mascot pack -- see docs/brand/BRAND.md", fill=SLATE, font=font(22))
 
-    icon = Image.open(PNG_ICONS / "icon-512.png").convert("RGBA").resize((290, 290), Image.Resampling.LANCZOS)
+    icon = Image.open(PIPENZO_PNG_ICONS / "pipenzo-icon-256.png").convert("RGBA").resize(
+        (290, 290), Image.Resampling.LANCZOS
+    )
     canvas.paste(icon, (70, 188), icon)
     draw.text((70, 504), "Application icon", fill=INK, font=font(22, bold=True))
-    draw.text((70, 540), "Agent module inside a trusted local dock", fill=SLATE, font=font(18))
+    draw.text((70, 540), "Monochrome helmet + p, never the full mascot at this size", fill=SLATE, font=font(18))
 
     draw.rounded_rectangle((420, 188, 1520, 350), radius=20, fill=PAPER, outline=BORDER, width=2)
-    light = rasterize_svg(BRAND / "agent-dock-lockup-horizontal-light.svg", 720, 144)
+    light = rasterize_svg(PIPENZO_BRAND / "pipenzo-lockup-horizontal-light.svg", 720, 144)
     canvas.paste(light, (490, 197), light)
     draw.rounded_rectangle((420, 382, 1520, 544), radius=20, fill=NAVY, outline="#273449", width=2)
-    dark = rasterize_svg(BRAND / "agent-dock-lockup-horizontal-dark.svg", 720, 144)
+    dark = rasterize_svg(PIPENZO_BRAND / "pipenzo-lockup-horizontal-dark.svg", 720, 144)
     canvas.paste(dark, (490, 391), dark)
 
-    names = (
-        "empty-prompt",
-        "empty-events",
-        "empty-session",
-        "no-providers",
-        "empty-working-directory",
-        "provider-unavailable",
-        "runtime-unavailable",
-    )
+    expressions = ("neutral", "focused", "thinking", "skeptical", "waiting", "alert", "commander")
     x0, y0 = 70, 650
-    for index, name in enumerate(names):
+    for index, name in enumerate(expressions):
         x = x0 + index * 215
         draw.rounded_rectangle((x, y0, x + 185, y0 + 260), radius=16, fill=PAPER, outline=BORDER, width=2)
-        illustration = rasterize_svg(ILLUSTRATIONS / f"{name}.svg", 142, 142, INK)
-        canvas.paste(illustration, (x + 21, y0 + 20), illustration)
-        label = name.replace("-", " ").title()
-        words = label.split()
-        lines: list[str] = []
-        line = ""
-        for word in words:
-            candidate = f"{line} {word}".strip()
-            if line and draw.textlength(candidate, font=font(16, bold=True)) > 153:
-                lines.append(line)
-                line = word
-            else:
-                line = candidate
-        if line:
-            lines.append(line)
-        for row, text in enumerate(lines[:2]):
-            draw.text((x + 16, y0 + 180 + row * 22), text, fill=INK, font=font(16, bold=True))
+        with Image.open(PIPENZO_MINI / f"pipenzo-head-{name}-128.png") as source:
+            portrait = source.convert("RGBA").resize((142, 142), Image.Resampling.LANCZOS)
+        canvas.paste(portrait, (x + 21, y0 + 20), portrait)
+        label = f"mini/{name}"
+        text_width = draw.textlength(label, font=font(16, bold=True))
+        draw.text((x + (185 - text_width) / 2, y0 + 180), label, fill=INK, font=font(16, bold=True))
     canvas.save(SOCIAL / "asset-system-preview.png", format="PNG", optimize=True)
 
 
 def make_icon_size_preview() -> None:
+    """Same production-size preview as before, re-sourced from the approved Pipenzo icon family
+    (#241) instead of AgentDock's."""
+
     canvas = Image.new("RGB", (1180, 430), CANVAS)
     draw = ImageDraw.Draw(canvas)
-    draw.text((35, 25), "AgentDock icon at production sizes", fill=INK, font=font(26, bold=True))
-    sizes = (16, 24, 32, 44, 48, 64, 128, 256)
+    draw.text((35, 25), "Pipenzo icon at production sizes", fill=INK, font=font(26, bold=True))
     x = 35
-    for size in sizes:
+    for size in PIPENZO_PNG_SIZES:
         card_width = max(90, size + 34)
         draw.rounded_rectangle((x, 85, x + card_width, 365), radius=14, fill=PAPER, outline=BORDER, width=2)
-        with Image.open(PNG_ICONS / f"icon-{size}.png") as source:
+        with Image.open(PIPENZO_PNG_ICONS / f"pipenzo-icon-{size}.png") as source:
             icon = source.convert("RGBA")
         display_size = min(size, 210)
         if display_size != size:
@@ -314,6 +217,12 @@ def main() -> None:
     use_reviewed_source(
         PIPENZO_MARKETING / "pipenzo-readme-hero-1600x520.webp",
         SOCIAL / "readme-hero.webp",
+    )
+    # docs/daemon.md's phase-machine section (#246): the same approved role strip, reused verbatim
+    # rather than a second illustration invented for docs specifically.
+    use_reviewed_source(
+        PIPENZO_ILLUSTRATIONS / "pipenzo-workflow-roles-1800x650.png",
+        SOCIAL / "pipenzo-workflow-roles.png",
     )
     make_asset_system_preview()
     make_icon_size_preview()
