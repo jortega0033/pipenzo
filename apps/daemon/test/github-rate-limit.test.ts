@@ -2,8 +2,11 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   GITHUB_CORE_RATE_LIMIT_RESOURCE,
   GitHubRateLimitTracker,
+  MAX_RATE_LIMIT_RESET_HORIZON_MS,
+  MAX_RATE_LIMIT_RESOURCES,
   readRateLimitHeaders,
 } from '../src/github-rate-limit.js';
+import { FakeGitHubClient } from '../src/github-client-fake.js';
 import { OctokitGitHubClient, createPipenzoOctokit } from '../src/github-client.js';
 
 /**
@@ -15,11 +18,27 @@ import { OctokitGitHubClient, createPipenzoOctokit } from '../src/github-client.
 const NOW = Date.UTC(2026, 8, 8, 12, 0, 0);
 const RESET_SECONDS = Math.floor(NOW / 1000) + 3_600;
 
+/**
+ * The same fixture with its reset derived from the *real* clock.
+ *
+ * Two accessors on this surface take no `now` and read `Date.now()` for themselves --
+ * `OctokitGitHubClient.rateLimit()` and `FakeGitHubClient.rateLimit()` -- and the parser refuses a
+ * reading whose window has already closed. A pinned `RESET_SECONDS` in those tests would therefore
+ * pass until that instant and fail forever after: a test with an expiry date rather than an
+ * assertion. Faking the clock instead is not an option here, because the transport runs on real
+ * timers (octokit throttles through bottleneck) and faking them deadlocks the request.
+ */
+function liveHeaders(overrides: Record<string, string | undefined> = {}): Record<string, string> {
+  return headers({
+    'x-ratelimit-reset': String(Math.floor(Date.now() / 1000) + 3_600),
+    ...overrides,
+  });
+}
+
 function headers(overrides: Record<string, string | undefined> = {}): Record<string, string> {
   const base: Record<string, string | undefined> = {
     'x-ratelimit-limit': '5000',
     'x-ratelimit-remaining': '4321',
-    'x-ratelimit-used': '679',
     'x-ratelimit-reset': String(RESET_SECONDS),
     'x-ratelimit-resource': 'core',
     ...overrides,
@@ -35,7 +54,6 @@ describe('readRateLimitHeaders', () => {
       resource: 'core',
       limit: 5000,
       remaining: 4321,
-      used: 679,
       resetAt: RESET_SECONDS * 1000,
       observedAt: NOW,
     });
@@ -81,6 +99,30 @@ describe('readRateLimitHeaders', () => {
     expect(readRateLimitHeaders(headers({ 'x-ratelimit-remaining': '5001' }), NOW)).toBeUndefined();
   });
 
+  /**
+   * The failure this guard exists for: `x-ratelimit-reset` in milliseconds instead of seconds
+   * passes every digit and safe-integer check and lands the reset around the year 57000. Stored,
+   * it would be permanent -- `latest` would never expire it -- so epic #4's threshold would be
+   * silently disabled for the life of the daemon, with no log and no error.
+   */
+  it('refuses a reset instant that is implausibly far away, such as one sent in milliseconds', () => {
+    const asMilliseconds = String(RESET_SECONDS * 1000);
+    expect(readRateLimitHeaders(headers({ 'x-ratelimit-reset': asMilliseconds }), NOW)).toBeUndefined();
+    const justInside = String(Math.floor((NOW + MAX_RATE_LIMIT_RESET_HORIZON_MS) / 1000) - 1);
+    expect(readRateLimitHeaders(headers({ 'x-ratelimit-reset': justInside }), NOW)).toBeDefined();
+  });
+
+  /**
+   * Refused here as well as in `latest`, so the accessor and the push notification can state the
+   * same rule: a reading born expired describes a window that has already refilled.
+   */
+  it('refuses a reset instant that has already passed', () => {
+    const passed = String(Math.floor(NOW / 1000) - 1);
+    expect(readRateLimitHeaders(headers({ 'x-ratelimit-reset': passed }), NOW)).toBeUndefined();
+    const exactlyNow = String(Math.floor(NOW / 1000));
+    expect(readRateLimitHeaders(headers({ 'x-ratelimit-reset': exactlyNow }), NOW)).toBeUndefined();
+  });
+
   it('keeps a genuine zero remaining, which is the reading a consumer most needs', () => {
     expect(readRateLimitHeaders(headers({ 'x-ratelimit-remaining': '0' }), NOW)).toMatchObject({
       remaining: 0,
@@ -95,10 +137,6 @@ describe('readRateLimitHeaders', () => {
     expect(
       readRateLimitHeaders({ ...headers(), 'x-ratelimit-remaining': ['4321'] }, NOW),
     ).toBeUndefined();
-  });
-
-  it('leaves `used` undefined rather than inventing one when GitHub omits it', () => {
-    expect(readRateLimitHeaders(headers({ 'x-ratelimit-used': undefined }), NOW)?.used).toBeUndefined();
   });
 });
 
@@ -121,27 +159,35 @@ describe('GitHubRateLimitTracker', () => {
     expect(tracker.latest(undefined, NOW)).toMatchObject({ resource: 'core' });
   });
 
-  /**
-   * The reconciler polls many issues at once, so responses complete out of order and a request
-   * billed *earlier* can land *later* carrying more headroom than one already recorded. Within a
-   * window `remaining` only falls, so a same-window increase is an out-of-order arrival.
-   */
-  it('does not let an out-of-order response raise the recorded headroom within one window', () => {
-    const tracker = new GitHubRateLimitTracker();
-    tracker.record(headers({ 'x-ratelimit-remaining': '100' }), NOW);
-    expect(tracker.record(headers({ 'x-ratelimit-remaining': '140' }), NOW + 5)).toBeUndefined();
-    expect(tracker.latest('core', NOW + 5)).toMatchObject({ remaining: 100 });
-    // A genuine further spend still lands.
-    tracker.record(headers({ 'x-ratelimit-remaining': '90' }), NOW + 10);
-    expect(tracker.latest('core', NOW + 10)).toMatchObject({ remaining: 90 });
-  });
-
-  it('accepts a refilled window, which is the one case where remaining legitimately rises', () => {
+  it('keeps the latest reading, including a refilled window where remaining rises', () => {
     const tracker = new GitHubRateLimitTracker();
     tracker.record(headers({ 'x-ratelimit-remaining': '12' }), NOW);
+    expect(tracker.latest('core', NOW)).toMatchObject({ remaining: 12 });
     const later = String(RESET_SECONDS + 3_600);
     tracker.record(headers({ 'x-ratelimit-remaining': '5000', 'x-ratelimit-reset': later }), NOW + 1);
     expect(tracker.latest('core', NOW + 1)).toMatchObject({ remaining: 5000 });
+  });
+
+  /**
+   * The key is a value a remote party supplies and this daemon runs for days, so the map is
+   * bounded the way `ConditionalRequestCache` is. `latest` only ever evicts the bucket it was
+   * asked for, so nothing else would ever remove a bucket nobody reads.
+   */
+  it('bounds how many buckets it retains, oldest first', () => {
+    const tracker = new GitHubRateLimitTracker();
+    for (let index = 0; index < MAX_RATE_LIMIT_RESOURCES + 4; index += 1) {
+      tracker.record(headers({ 'x-ratelimit-resource': `bucket-${index}` }), NOW);
+    }
+    expect(tracker.latest('bucket-0', NOW)).toBeUndefined();
+    expect(tracker.latest('bucket-3', NOW)).toBeUndefined();
+    expect(tracker.latest('bucket-4', NOW)).toMatchObject({ remaining: 4321 });
+    expect(tracker.latest(`bucket-${MAX_RATE_LIMIT_RESOURCES + 3}`, NOW)).toBeDefined();
+  });
+
+  it('refuses a bucket name long enough to be abuse rather than a bucket', () => {
+    expect(
+      readRateLimitHeaders(headers({ 'x-ratelimit-resource': 'x'.repeat(65) }), NOW),
+    ).toBeUndefined();
   });
 
   /**
@@ -158,17 +204,24 @@ describe('GitHubRateLimitTracker', () => {
     expect(tracker.latest('core', NOW)).toBeUndefined();
   });
 
-  it('pushes each recorded reading to a subscriber, so a poller need not poll', () => {
+  /**
+   * A method rather than a constructor option because of construction order in `index.ts`: the
+   * tracker is built before the components that would subscribe to it, so a listener supplied only
+   * at construction could never be supplied by the consumer it exists for (#231).
+   */
+  it('pushes every recorded reading to subscribers, and stops on unsubscribe', () => {
     const seen: number[] = [];
-    const tracker = new GitHubRateLimitTracker({
-      onSnapshot: (snapshot) => seen.push(snapshot.remaining),
-    });
+    const tracker = new GitHubRateLimitTracker();
+    const unsubscribe = tracker.subscribe((snapshot) => seen.push(snapshot.remaining));
     tracker.record(headers({ 'x-ratelimit-remaining': '100' }), NOW);
     tracker.record(headers({ 'x-ratelimit-remaining': '99' }), NOW + 1);
-    // Not notified: a malformed set is not a reading, and an out-of-order one is not a change.
+    // Not notified: a malformed set is not a reading at all.
     tracker.record(headers({ 'x-ratelimit-remaining': 'none' }), NOW + 2);
-    tracker.record(headers({ 'x-ratelimit-remaining': '140' }), NOW + 3);
+    unsubscribe();
+    tracker.record(headers({ 'x-ratelimit-remaining': '98' }), NOW + 3);
     expect(seen).toEqual([100, 99]);
+    // The reading itself still landed; only the notification stopped.
+    expect(tracker.latest('core', NOW + 3)).toMatchObject({ remaining: 98 });
   });
 
   /**
@@ -176,10 +229,9 @@ describe('GitHubRateLimitTracker', () => {
    * GitHub request.
    */
   it('records the reading even when the subscriber throws', () => {
-    const tracker = new GitHubRateLimitTracker({
-      onSnapshot: () => {
-        throw new Error('subscriber is broken');
-      },
+    const tracker = new GitHubRateLimitTracker();
+    tracker.subscribe(() => {
+      throw new Error('subscriber is broken');
     });
     expect(() => tracker.record(headers(), NOW)).not.toThrow();
     expect(tracker.latest('core', NOW)).toMatchObject({ remaining: 4321 });
@@ -191,6 +243,10 @@ describe('GitHubRateLimitTracker', () => {
  * has to be asserted is that it sees real traffic — including the two shapes a per-method capture
  * would have missed: `paginate`'s internal requests, and the `304` that `@octokit/request` raises
  * rather than returns.
+ *
+ * Everything here uses `liveHeaders` and the real clock. The hook stamps `observedAt` with
+ * `Date.now()` itself, and the parser refuses a reading whose window has already closed, so a
+ * pinned reset instant would quietly turn these into tests that expire.
  */
 describe('rate-limit capture on the real transport', () => {
   function stubFetch(
@@ -209,12 +265,22 @@ describe('rate-limit capture on the real transport', () => {
 
   it('records from an ordinary 200 without making a request of its own', async () => {
     const tracker = new GitHubRateLimitTracker();
-    const fetchImpl = stubFetch([{ status: 200, headers: headers(), body: { login: 'someone' } }]);
-    const octokit = createPipenzoOctokit('token-value', { rateLimits: tracker });
-    await octokit.request('GET /user', { request: { fetch: fetchImpl } });
+    const fetchImpl = stubFetch([{ status: 200, headers: liveHeaders(), body: { login: 'someone' } }]);
+    // Stubbed *globally*, not injected as `request.fetch`, and that is the whole point of this
+    // test. A capture that issued a request of its own -- `GET /rate_limit`, say -- would build it
+    // without the caller's `request` options and it would leave through global fetch: the injected
+    // stub would still show exactly one call and this assertion would pass while a second request
+    // went to the real network. Counting against the global covers any request the client makes.
+    vi.stubGlobal('fetch', fetchImpl);
+    try {
+      const octokit = createPipenzoOctokit('token-value', { rateLimits: tracker });
+      await octokit.request('GET /user');
+    } finally {
+      vi.unstubAllGlobals();
+    }
 
-    expect(tracker.latest('core', NOW)).toMatchObject({ remaining: 4321, limit: 5000 });
-    // The whole premise: the reading is free. One request went out, and it is the caller's own.
+    expect(tracker.latest('core')).toMatchObject({ remaining: 4321, limit: 5000 });
+    // The premise of the whole ticket: the reading is free. One request went out, the caller's own.
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
@@ -227,7 +293,7 @@ describe('rate-limit capture on the real transport', () => {
   it('records from a 304, which arrives as a thrown error, and still rethrows it', async () => {
     const tracker = new GitHubRateLimitTracker();
     const fetchImpl = stubFetch([
-      { status: 304, headers: headers({ 'x-ratelimit-remaining': '4000' }) },
+      { status: 304, headers: liveHeaders({ 'x-ratelimit-remaining': '4000' }) },
     ]);
     const octokit = createPipenzoOctokit('token-value', { rateLimits: tracker });
     await expect(
@@ -239,7 +305,7 @@ describe('rate-limit capture on the real transport', () => {
         request: { fetch: fetchImpl },
       }),
     ).rejects.toMatchObject({ status: 304 });
-    expect(tracker.latest('core', NOW)).toMatchObject({ remaining: 4000 });
+    expect(tracker.latest('core')).toMatchObject({ remaining: 4000 });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
@@ -252,7 +318,7 @@ describe('rate-limit capture on the real transport', () => {
     const tracker = new GitHubRateLimitTracker();
     const page = (remaining: string, link?: string): { status: number; headers: Record<string, string>; body: unknown } => ({
       status: 200,
-      headers: { ...headers({ 'x-ratelimit-remaining': remaining }), ...(link ? { link } : {}) },
+      headers: { ...liveHeaders({ 'x-ratelimit-remaining': remaining }), ...(link ? { link } : {}) },
       body: [{ name: 'pipenzo:refining', color: 'ededed', description: '' }],
     });
     const fetchImpl = stubFetch([
@@ -278,7 +344,7 @@ describe('rate-limit capture on the real transport', () => {
 
     expect(fetchImpl).toHaveBeenCalledTimes(2);
     // The second page's reading, not the first's.
-    expect(tracker.latest('core', NOW)).toMatchObject({ remaining: 299 });
+    expect(tracker.latest('core')).toMatchObject({ remaining: 299 });
   });
 
   it('records an exhausted quota from the 403 that reports it', async () => {
@@ -286,18 +352,18 @@ describe('rate-limit capture on the real transport', () => {
     const fetchImpl = stubFetch([
       {
         status: 403,
-        headers: headers({ 'x-ratelimit-remaining': '0' }),
+        headers: liveHeaders({ 'x-ratelimit-remaining': '0' }),
         body: { message: 'API rate limit exceeded' },
       },
     ]);
     const octokit = createPipenzoOctokit('token-value', { rateLimits: tracker });
     await expect(octokit.request('GET /user', { request: { fetch: fetchImpl } })).rejects.toBeTruthy();
-    expect(tracker.latest('core', NOW)).toMatchObject({ remaining: 0 });
+    expect(tracker.latest('core')).toMatchObject({ remaining: 0 });
   });
 
   it('exposes the reading through the client accessor the reconciler will call', async () => {
     const tracker = new GitHubRateLimitTracker();
-    const fetchImpl = stubFetch([{ status: 200, headers: headers(), body: { login: 'someone' } }]);
+    const fetchImpl = stubFetch([{ status: 200, headers: liveHeaders(), body: { login: 'someone' } }]);
     const octokit = createPipenzoOctokit('token-value', { rateLimits: tracker });
     const client = OctokitGitHubClient.withOctokit(octokit, { rateLimits: tracker });
 
@@ -310,8 +376,29 @@ describe('rate-limit capture on the real transport', () => {
     expect(snapshot && snapshot.remaining / snapshot.limit).toBeCloseTo(0.8642, 4);
   });
 
+  /**
+   * The fake is what #231's reconciler and #75's pill will be tested against, so it has to answer
+   * the same accessor under the same rules -- including the parser's refusals, which is why the
+   * seeder takes headers rather than a ready-made snapshot. (Expiry itself is asserted directly on
+   * the tracker above, where an explicit `now` can be passed.)
+   */
+  it('answers the same accessor on the fake, under the same parse rules', () => {
+    expect(new FakeGitHubClient().rateLimit()).toBeUndefined();
+    expect(
+      new FakeGitHubClient()
+        .seedRateLimitHeaders(liveHeaders({ 'x-ratelimit-remaining': '600' }))
+        .rateLimit(),
+    ).toMatchObject({ resource: 'core', remaining: 600, limit: 5000 });
+    // A malformed seed is not a reading, on the fake exactly as on the real client.
+    expect(
+      new FakeGitHubClient()
+        .seedRateLimitHeaders(liveHeaders({ 'x-ratelimit-remaining': 'none' }))
+        .rateLimit(),
+    ).toBeUndefined();
+  });
+
   it('captures nothing, and breaks nothing, when no tracker is wired', async () => {
-    const fetchImpl = stubFetch([{ status: 200, headers: headers(), body: { login: 'someone' } }]);
+    const fetchImpl = stubFetch([{ status: 200, headers: liveHeaders(), body: { login: 'someone' } }]);
     const octokit = createPipenzoOctokit('token-value');
     await expect(octokit.request('GET /user', { request: { fetch: fetchImpl } })).resolves.toMatchObject(
       { status: 200 },
