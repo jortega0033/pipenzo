@@ -10,21 +10,6 @@ import { SessionManager } from '../src/session-manager.js';
 import { OwnedWorktreeManager } from '../src/worktree-manager.js';
 import { WorkspaceTrustStore } from '../src/workspace-trust-store.js';
 import { resolveWorkspaceIdentity } from '../src/workspace-identity.js';
-/**
- * Every test in this file drives real Git. A process spawn on Windows costs 100-300 ms before the
- * command itself does anything, these bodies spawn tens of them, and the slowest measures ~4.7 s on
- * an idle machine -- so the 10-20 s budgets they carried were roughly 1.5-2x headroom. This suite
- * has already been shown not to have that much: issue #219 records `server-v2.test.ts`'s
- * corrupted-queue test (~7.2 s idle) timing out at 15 s on the Windows runner, and reproducing the
- * CI conditions locally times these out too.
- *
- * These are budgets sized from measurement, not budgets raised until the file went quiet -- the
- * work is real, correct and genuinely slow, and nothing here waits on a poll or a sleep that a
- * bigger number would paper over. 30_000 is ~4x the slowest measured body, and still fails a
- * genuine hang far inside the job's 20-minute limit.
- */
-const GIT_HEAVY_TIMEOUT_MS = 30_000;
-
 
 const TOKEN = 'test-token-worktree-routes';
 const run = promisify(execFile);
@@ -99,7 +84,7 @@ describe('POST /v2/worktrees* trust admission', () => {
     });
     expect(create.statusCode).toBe(409);
     expect(create.json()).toMatchObject({ code: 'workspace_untrusted' });
-  }, GIT_HEAVY_TIMEOUT_MS);
+  }, 15_000);
 
   it('allows preview and create once the repository is trusted, and cleanup 409s again after revocation', async () => {
     const base = await temporaryDirectory();
@@ -137,5 +122,5 @@ describe('POST /v2/worktrees* trust admission', () => {
     });
     expect(cleanup.statusCode).toBe(409);
     expect(cleanup.json()).toMatchObject({ code: 'workspace_untrusted' });
-  }, GIT_HEAVY_TIMEOUT_MS);
+  }, 15_000);
 });

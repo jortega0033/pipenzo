@@ -20,18 +20,19 @@ let cwd: string;
  * directory the daemon and its provider still held open, and the real failure was buried under a
  * second `EBUSY: rmdir` from `afterEach` (issue #219).
  */
-const opened: Array<{ app: FastifyInstance; sessionManager: SessionManager }> = [];
+let openApp: FastifyInstance | undefined;
+let openSessionManager: SessionManager | undefined;
 
 beforeEach(() => {
   cwd = mkdtempSync(join(tmpdir(), 'agent-dock-workspace-lease-'));
 });
 
 afterEach(async () => {
-  for (const { app, sessionManager } of opened.splice(0)) {
-    sessionManager.beginShutdown();
-    await sessionManager.cancelAll();
-    await app.close();
-  }
+  openSessionManager?.beginShutdown();
+  await openSessionManager?.cancelAll();
+  await openApp?.close();
+  openApp = undefined;
+  openSessionManager = undefined;
   rmSync(cwd, { recursive: true, force: true });
 });
 
@@ -66,7 +67,8 @@ describe('v2 workspace execution leases', () => {
       token: TOKEN,
       logger: noopLogger,
     });
-    opened.push({ app, sessionManager });
+    openApp = app;
+    openSessionManager = sessionManager;
     const payload = {
       provider: 'claude',
       cwd,

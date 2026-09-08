@@ -223,6 +223,18 @@ describe('v2 workspace and audit routes', () => {
         .filter((line): line is string => !!line)
         .map((line) => JSON.parse(line.slice('data: '.length)) as { type: string });
       expect(events.filter((event) => event.type === 'session.cancelled')).toHaveLength(1);
+      // Measured, not raised until it went quiet. The body is 207 ms idle, but four of its six
+      // HTTP round trips resolve the workspace identity, and resolving an identity spawns Git --
+      // on Windows, 100-300 ms of process creation before the command runs. Instrumenting each
+      // step over fourteen full-suite runs on a six-core machine put the create-session round trip
+      // alone at 2.4 s and the whole body at 4.4 s of its 5 s default, so the passing runs were
+      // passing by ~600 ms and the failing ones tipped over with no single step stalled. That is
+      // why this is #219's most-reported flake.
+      //
+      // Nothing here waits on a poll, a sleep or a state it has not asked for: every step awaits a
+      // real response, and both `vi.waitFor`s watch observable state. 30 s is ~7x the worst
+      // contended cost measured and still fails a genuine hang fast.
     },
+    30_000,
   );
 });

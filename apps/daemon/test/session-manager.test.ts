@@ -370,8 +370,7 @@ describe('SessionManager — v1 replay byte ceiling (issue #51)', () => {
     await collected;
 
     const fullWarnings = logger.warn.mock.calls.filter(
-      ([message]) =>
-        message === 'session event history full; further events will not be replayable',
+      ([message]) => message === 'session event history full; further events will not be replayable',
     );
     expect(fullWarnings.length).toBe(1);
   }, 15_000);
@@ -411,10 +410,7 @@ describe('SessionManager — v1 oversized-envelope safety (issue #51)', () => {
     const testSession = provider.sessions.get(session.id)!;
     const collected = collectUntilTerminal(sessionManager, session.id);
 
-    testSession.push({
-      type: 'assistant.message',
-      text: `PAYLOAD_CANARY${'x'.repeat(2 * 1024 * 1024)}`,
-    });
+    testSession.push({ type: 'assistant.message', text: `PAYLOAD_CANARY${'x'.repeat(2 * 1024 * 1024)}` });
     await collected;
 
     expect(JSON.stringify(logger.warn.mock.calls)).not.toContain('PAYLOAD_CANARY');
@@ -698,7 +694,7 @@ interface InteractiveSessionOptions {
   send?: (command: AgentCommandV2, index: number) => Promise<void>;
   resolveInteraction?: (requestId: string, reason: string) => Promise<void>;
   interrupt?: () => Promise<void>;
-  close?: () => Promise<void>;
+  close?: (reason?: string) => Promise<void>;
   providerSessionId?: string;
   runtimeMetadata?: ProviderRuntimeMetadata;
 }
@@ -707,6 +703,8 @@ function makeControllableInteractiveSession(options: InteractiveSessionOptions =
   const queue: AgentEventV2[] = [];
   const waiters: Array<(result: IteratorResult<AgentEventV2>) => void> = [];
   const sent: AgentCommandV2[] = [];
+  /** Recorded so a test can assert the daemon told the provider *why* it closed (issue #219). */
+  const closeReasons: Array<string | undefined> = [];
   let closed = false;
   let interruptCalls = 0;
   let closeCalls = 0;
@@ -756,10 +754,11 @@ function makeControllableInteractiveSession(options: InteractiveSessionOptions =
       interruptCalls += 1;
       await options.interrupt?.();
     },
-    close: async () => {
+    close: async (reason) => {
       closeCalls += 1;
+      closeReasons.push(reason);
       if (options.close) {
-        await options.close();
+        await options.close(reason);
         return;
       }
       push({ type: 'session.cancelled', reason: 'test close' });
@@ -772,6 +771,7 @@ function makeControllableInteractiveSession(options: InteractiveSessionOptions =
     push,
     finish,
     sent,
+    closeReasons,
     interruptCalls: () => interruptCalls,
     closeCalls: () => closeCalls,
   };
@@ -1796,7 +1796,7 @@ describe('SessionManager — secured approvals', () => {
       const entered = deferred<void>();
       const realAppend = fixture.auditStore.append.bind(fixture.auditStore);
       let first = true;
-      const append = vi.spyOn(fixture.auditStore, 'append').mockImplementation(async (entry) => {
+      vi.spyOn(fixture.auditStore, 'append').mockImplementation(async (entry) => {
         if (first) {
           first = false;
           entered.resolve();
@@ -1838,9 +1838,84 @@ describe('SessionManager — secured approvals', () => {
       // `session.cancelled` was queued behind the parked approval, so it is only ever seen by a
       // drain that survived the failed send.
       expect(sessionManager.get(session.id)?.status).toBe('cancelled');
-      expect(append).toHaveBeenCalledWith(
-        expect.objectContaining({ actor: 'policy', decision: 'deny' }),
+      // And the provider was told why the session went away, not merely that it did.
+      expect(interactive.closeReasons).toEqual(['trust_revoked']);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  /**
+   * The other half of issue #219. A publication deadline fires its fail-closed resolution and
+   * audit write with nothing awaiting them, so the session could be reported terminal -- and its
+   * state directory deleted -- while an audit append still held the file open. On Windows that is
+   * an `ENOTEMPTY` on the next `rm`; everywhere it is a write outliving the session that made it.
+   *
+   * Asserted through the audit store's own append, held open on a deferred, rather than through a
+   * temp directory that may or may not delete: the question is whether shutdown *waits*, and this
+   * answers it directly.
+   */
+  it('does not report shutdown complete while a timed-out approval is still being audited', async () => {
+    const fixture = await trustedWorkspaceFixture();
+    const interactive = makeControllableInteractiveSession();
+    try {
+      const provider = new InteractiveTestProvider(interactive);
+      const registry = new ProviderRegistry();
+      registry.register(provider);
+      const held = deferred<void>();
+      const entered = deferred<void>();
+      const realAppend = fixture.auditStore.append.bind(fixture.auditStore);
+      let appendCompleted = false;
+      vi.spyOn(fixture.auditStore, 'append').mockImplementation(async (entry) => {
+        entered.resolve();
+        await held.promise;
+        const written = await realAppend(entry);
+        appendCompleted = true;
+        return written;
+      });
+      const sessionManager = new SessionManager(registry, noopLogger, undefined, {
+        auditStore: fixture.auditStore,
+        // Short enough that the deadline fires on its own during the test.
+        interactionTimeoutMs: 20,
+        trustStore: fixture.trustStore,
+      });
+      fixture.register(sessionManager);
+      const session = await sessionManager.createInteractive(
+        provider.id,
+        fixture.identity.canonicalPath,
+        'hello',
+        APPROVAL_SELECTION,
+        INTERACTIVE_TRANSPORT,
+        INTERACTIVE_EXECUTION_ID,
+        INTERACTIVE_TURN_ID,
+        undefined,
+        fixture.identity,
       );
+      const published = deferred<void>();
+      sessionManager.subscribeInteractive(session.id, 0, (_index, event) => {
+        if (event.type === 'approval.requested') published.resolve();
+      });
+      const request = approvalRequest(uuid(60_040));
+      interactive.push(request);
+      await published.promise;
+      expect(sessionManager.markInteractionPublished(session.id, request.requestId)).toBe(true);
+
+      // The deadline has fired and its audit write is in flight, unawaited by anyone.
+      await entered.promise;
+      await finishInteractive(interactive);
+      expect(appendCompleted).toBe(false);
+
+      const shutdown = sessionManager.cancelAll();
+      let shutdownReturned = false;
+      void shutdown.then(() => {
+        shutdownReturned = true;
+      });
+      await tick();
+      expect(shutdownReturned).toBe(false);
+
+      held.resolve();
+      await shutdown;
+      expect(appendCompleted).toBe(true);
     } finally {
       await fixture.cleanup();
     }

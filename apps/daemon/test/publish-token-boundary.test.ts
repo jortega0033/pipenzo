@@ -59,7 +59,7 @@ const SECRET_VALUES = [
 ];
 
 /** Strips comments, so prose *about* a forbidden pattern never reads as an occurrence of it. */
-function rawStripComments(source: string): string {
+function stripComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 }
 
@@ -68,12 +68,12 @@ function rawStripComments(source: string): string {
  * them that is ~400 opens of ~2.3 MB, four times over, inside single tests -- cheap on an idle
  * POSIX box and not cheap at all on a loaded Windows runner, where every open goes through the
  * filesystem filter stack. It is also pure waste: the trees do not change during a run. Reading
- * each file once and reusing it keeps every assertion byte-for-byte identical while removing the
- * reason this file kept exceeding its budget under full parallel load (issue #219).
+ * each file once keeps every assertion byte-for-byte identical (a failed read is cached as a
+ * rejection, so an unreadable file still fails loudly) while removing the reason this file kept
+ * exceeding its budget under full parallel load (issue #219).
  */
 const treeCache = new Map<string, Promise<string[]>>();
 const sourceCache = new Map<string, Promise<string>>();
-const strippedCache = new Map<string, string>();
 
 function sourceFiles(root: string): Promise<string[]> {
   const cached = treeCache.get(root);
@@ -103,17 +103,14 @@ function readSource(file: string): Promise<string> {
 }
 
 async function stripped(file: string): Promise<string> {
-  const cached = strippedCache.get(file);
-  if (cached !== undefined) return cached;
-  const code = rawStripComments(await readSource(file));
-  strippedCache.set(file, code);
-  return code;
+  return stripComments(await readSource(file));
 }
 
 /**
  * Warms those caches before any assertion runs, with a budget sized for the one-time tree read
- * rather than for an assertion. Reading the ~136 files of apps/daemon/src and packages/agent-runtime/src cold is legitimately slow on a loaded Windows
- * runner, and leaving that cost inside whichever test happened to scan first is exactly how a
+ * rather than for an assertion. Reading the ~136 files of apps/daemon/src and
+ * packages/agent-runtime/src cold is legitimately slow on a loaded Windows runner, and leaving
+ * that cost inside whichever test happened to scan first is exactly how a
  * *file read* came to fail an assertion's 5 s default (issue #219). Files are read in parallel
  * here, which the sequential per-test scans could not do. Every assertion below keeps the default
  * budget and now runs against memory, so a guard that genuinely misbehaves still fails fast.
@@ -259,11 +256,7 @@ describe('the publish surface is not reachable from agent-runtime', () => {
     for (const file of files) {
       const text = await readSource(file);
       // Matches a tool-definition-shaped mention, not a comment about the boundary.
-      if (
-        /['"`](?:git_push|gh_pr_create|github_create_pull_request|create_pull_request|publish)['"`]/.test(
-          text,
-        )
-      ) {
+      if (/['"`](?:git_push|gh_pr_create|github_create_pull_request|create_pull_request|publish)['"`]/.test(text)) {
         offenders.push(relative(runtimeSrc, file));
       }
     }
@@ -297,9 +290,7 @@ describe('the publish surface is not reachable from agent-runtime', () => {
     const ghCallers: string[] = [];
     for (const file of files) {
       const code = await stripped(file);
-      if (
-        /execFile\(\s*['"`]gh['"`]|spawn\(\s*['"`]gh['"`]|execFile\(\s*['"`]git['"`]/.test(code)
-      ) {
+      if (/execFile\(\s*['"`]gh['"`]|spawn\(\s*['"`]gh['"`]|execFile\(\s*['"`]git['"`]/.test(code)) {
         ghCallers.push(relative(runtimeSrc, file));
       }
     }
@@ -352,9 +343,7 @@ describe('the publish service holds its credential narrowly', () => {
     // The credential is read once, at startup, from the stdin channel — not from this process's
     // environment (issue #165).
     expect(code).toMatch(/DaemonGitHubCredential\.fromStartup\(/);
-    expect(code).toMatch(
-      /resolveGitHubCredential:\s*\(env\)\s*=>\s*githubCredential\.resolve\(env\)/,
-    );
+    expect(code).toMatch(/resolveGitHubCredential:\s*\(env\)\s*=>\s*githubCredential\.resolve\(env\)/);
 
     // Both client factories resolve through that credential, and each is handed the one per-daemon
     // conditional-request cache (issue #161). Two call sites: the phase service and the phase

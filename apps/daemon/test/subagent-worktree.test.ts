@@ -6,21 +6,21 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { SubagentGraphStore } from '../src/subagent-graph-store.js';
 import { OwnedWorktreeManager, WorktreeManagerError } from '../src/worktree-manager.js';
+
 /**
- * Every test in this file drives real Git. A process spawn on Windows costs 100-300 ms before the
- * command itself does anything, these bodies spawn tens of them, and the slowest measures ~10.6 s on
- * an idle machine -- so the 10-20 s budgets they carried were roughly 1.5-2x headroom. This suite
- * has already been shown not to have that much: issue #219 records `server-v2.test.ts`'s
- * corrupted-queue test (~7.2 s idle) timing out at 15 s on the Windows runner, and reproducing the
- * CI conditions locally times these out too.
+ * Every test here drives real Git, and a process spawn on Windows costs 100-300 ms before the
+ * command does anything. The slowest body measures ~10.6 s idle, against the 10-20 s budgets these
+ * carried -- roughly 1.5-2x headroom, on a runner this repository has already measured itself
+ * losing to: issue #60 records this very file taking 8.1 s isolated and
+ * exceeding 15 s in the full run (see the `run()` note below).
  *
- * These are budgets sized from measurement, not budgets raised until the file went quiet -- the
- * work is real, correct and genuinely slow, and nothing here waits on a poll or a sleep that a
- * bigger number would paper over. 45_000 is ~4x the slowest measured body, and still fails a
- * genuine hang far inside the job's 20-minute limit.
+ * Sized from that measurement rather than raised until the file went quiet. Nothing in these
+ * bodies waits on a poll or a sleep that a bigger number would hide, so there is no wrong wait to
+ * paper over. One budget for the file rather than eight bespoke ones is the deliberate trade: it
+ * costs a fast negative-path test a slower failure if it ever regresses into spawning Git, and
+ * buys a number that stays true as these bodies change.
  */
 const GIT_HEAVY_TIMEOUT_MS = 45_000;
-
 
 const execFileAsync = promisify(execFile);
 const id = (suffix: string) => `123e4567-e89b-42d3-a456-4266141740${suffix}`;

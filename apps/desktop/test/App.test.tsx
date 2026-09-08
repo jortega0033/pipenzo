@@ -305,7 +305,9 @@ describe('App security flow', () => {
     expect(
       screen.getByText(/Configuration and inspection only, for either provider/),
     ).toBeInTheDocument();
-    expect(screen.getByText(/never sent to a provider from this panel/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/never sent to a provider from this panel/),
+    ).toBeInTheDocument();
     expect(screen.getByText(/Select a session to see its child-agent state/)).toBeInTheDocument();
   });
 

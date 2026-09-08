@@ -492,7 +492,12 @@ export class SessionManager {
         ? await this.workspaceIsTrusted(workspace, workspaceEpoch)
         : true;
       if (controller.signal.aborted || this.shuttingDown || !workspaceStillTrusted) {
-        await handle.close();
+        // The same reason that has to travel with a close in `closeRuntime`: a start abandoned
+        // because the workspace lost its trust mid-handshake is a revocation, not a cancellation,
+        // and `blockWorkspace` aborts exactly these pending starts (issue #219).
+        await handle.close(
+          !workspaceStillTrusted ? 'trust_revoked' : this.shuttingDown ? 'shutdown' : 'cancel',
+        );
         if (!workspaceStillTrusted) throw new WorkspaceAccessError();
         throw new InteractiveSessionError('session_terminal', 'session start was cancelled');
       }
@@ -673,10 +678,21 @@ export class SessionManager {
     });
   }
 
-  /** Waits out every in-flight `backgroundWork` entry, including any a drained entry started. */
+  /**
+   * Waits out every in-flight `backgroundWork` entry, including any a drained entry started. The
+   * provider half of that work is already bounded by the supervisor's command timeout, but the
+   * audit append is not, so the wait is bounded too: `done` is awaited by revocation and by
+   * shutdown, and neither may hang for as long as a stuck disk.
+   */
   private async drainBackgroundWork(runtime: InteractiveRuntimeState): Promise<void> {
-    while (runtime.backgroundWork.size > 0) {
-      await Promise.allSettled([...runtime.backgroundWork]);
+    const deadline = Date.now() + INTERACTIVE_CLOSE_TIMEOUT_MS;
+    while (runtime.backgroundWork.size > 0 && Date.now() < deadline) {
+      await Promise.race([
+        Promise.allSettled([...runtime.backgroundWork]),
+        new Promise<void>((resolve) => {
+          setTimeout(resolve, Math.max(1, deadline - Date.now())).unref?.();
+        }),
+      ]);
     }
   }
 
@@ -709,17 +725,29 @@ export class SessionManager {
             }
           }
         } catch (error) {
-          this.logger.warn('failed to process an interactive session event', {
+          // Logged at error level, and without the exception's text: a rejected provider command
+          // carries the provider's own message, and this file does not copy provider-controlled
+          // strings into logs. The event type is a closed set the supervisor already normalized.
+          this.logger.error('failed to process an interactive session event', {
             sessionId: id,
             eventType: sourceEvent.type,
-            error: error instanceof Error ? error.message : String(error),
+            errorCode: error instanceof InteractiveSessionError ? error.code : 'unknown',
           });
         }
       }
     } finally {
-      // Only now is every piece of this session's work finished, so `done` (and therefore
-      // `revokeWorkspace`, `cancelAll` and daemon shutdown) genuinely means "nothing of this
-      // session is still touching the provider or the audit file".
+      // The stream is over, so nothing can answer a still-pending interaction any more and its
+      // publication deadline must not be left armed to fire against a session that is finished --
+      // that timer is the one producer of background work, and work it started after the drain
+      // below would be attached to nothing. Fail it closed first, then drain, and `done` (and
+      // therefore `revokeWorkspace`, `cancelAll` and daemon shutdown) genuinely means "nothing of
+      // this session is still touching the provider or the audit file".
+      await this.resolveClaimedInteractions(
+        id,
+        runtime,
+        runtime.interactions.claimAll(),
+        'disconnect',
+      ).catch(() => undefined);
       await this.drainBackgroundWork(runtime);
     }
     this.markCompleted(id);
@@ -887,61 +915,96 @@ export class SessionManager {
     const workspaceEpoch = runtime.workspace
       ? this.currentWorkspaceEpoch(runtime.workspace.workspaceId)
       : undefined;
+    // Everything from here runs against a request this call already owns: `claim` moved it to
+    // `resolving` and cleared its publication deadline, so no timeout, no `claimAll` and no
+    // responder can answer it any more. Anything that escapes would therefore strand the request
+    // unanswered for the life of the session, which is why the whole body is guarded and the
+    // `finally` always settles.
     try {
-      await this.appendApprovalAudit(id, runtime, event, action, decision, actor);
-      auditRecorded = true;
-    } catch {
-      providerDecision = 'deny';
-      this.logger.warn('approval audit failed; denying provider request', {
-        sessionId: id,
-        requestId: event.requestId,
-      });
-    }
-    if (
-      providerDecision === 'allow_once' &&
-      runtime.workspace &&
-      !(await this.workspaceIsTrusted(runtime.workspace, workspaceEpoch))
-    ) {
-      providerDecision = 'deny';
-      if (auditRecorded) {
-        try {
+      try {
+        await this.appendApprovalAudit(id, runtime, event, action, decision, actor);
+        auditRecorded = true;
+      } catch {
+        providerDecision = 'deny';
+        this.logger.warn('approval audit failed; denying provider request', {
+          sessionId: id,
+          requestId: event.requestId,
+        });
+      }
+      if (
+        providerDecision === 'allow_once' &&
+        runtime.workspace &&
+        !(await this.workspaceIsTrusted(runtime.workspace, workspaceEpoch))
+      ) {
+        providerDecision = 'deny';
+        if (auditRecorded) {
           // The first row records the requested allow. The same request ID plus this later policy
           // denial records the effective outcome when revocation wins the race.
-          await this.appendApprovalAudit(id, runtime, event, action, 'deny', 'policy');
-        } catch {
-          this.logger.warn('approval correction audit failed', {
-            sessionId: id,
-            requestId: event.requestId,
-          });
+          await this.appendCorrectionAudit(id, runtime, event, action);
         }
       }
-    }
-    try {
-      await runtime.handle.send({
-        type: 'approval.respond',
-        commandId: randomUUID(),
-        sessionId: id,
-        turnId: event.turnId,
-        requestId: event.requestId,
-        decision: providerDecision,
-      });
-    } catch (error) {
-      // Deciding this approval needs the trust store and the audit file, so the session can go
-      // terminal underneath us while we are awaiting them -- cancellation, shutdown, or the
-      // workspace revocation that produced this very `deny` (issue #219). There is nothing left
-      // to tell the provider: the supervisor fail-closes every interaction it still holds as part
-      // of going terminal, and the audit row above already records the decision. Anything else is
-      // a real dispatch failure and still propagates.
-      if (!(error instanceof InteractiveSessionError) || error.code !== 'session_terminal') {
-        throw error;
+      try {
+        await runtime.handle.send({
+          type: 'approval.respond',
+          commandId: randomUUID(),
+          sessionId: id,
+          turnId: event.turnId,
+          requestId: event.requestId,
+          decision: providerDecision,
+        });
+      } catch (error) {
+        // Deciding this approval needs the trust store and the audit file, so the session can go
+        // terminal underneath us while we are awaiting them -- cancellation, shutdown, or the
+        // workspace revocation that produced this very `deny` (issue #219). There is nothing left
+        // to tell the provider: the supervisor fail-closes every interaction it still holds as
+        // part of going terminal. Anything else is a real dispatch failure and is handled below.
+        if (!(error instanceof InteractiveSessionError) || error.code !== 'session_terminal') {
+          throw error;
+        }
+        this.logger.warn('approval decision was not sent: session went terminal first', {
+          sessionId: id,
+          requestId: event.requestId,
+        });
+        // The supervisor denied it on the way down, so an audit row still saying `allow_once`
+        // would be the trail's last word on a request that was refused.
+        if (auditRecorded && providerDecision === 'allow_once') {
+          await this.appendCorrectionAudit(id, runtime, event, action);
+        }
       }
-      this.logger.warn('approval decision was not sent: session went terminal first', {
+    } catch {
+      // A trust-store read or an audit write that failed outright. The request is this call's and
+      // nothing else will ever answer it, so fail it closed here rather than leave the provider
+      // waiting on a turn that can no longer be resolved.
+      this.logger.warn('approval decision failed; failing the request closed', {
         sessionId: id,
         requestId: event.requestId,
       });
+      await runtime.handle.resolveInteraction(event.requestId, 'timeout').catch(() => undefined);
+      await this.auditFailClosedApproval(id, runtime, claimed, 'timeout');
     } finally {
       runtime.interactions.settle(event.requestId);
       runtime.approvalActions.delete(event.requestId);
+    }
+  }
+
+  /**
+   * Records the effective denial of a request whose `allow_once` did not survive -- revocation won
+   * the race, or the session went terminal before the allow could be sent. Written as a second row
+   * against the same request ID rather than as an edit, because an audit entry is never rewritten.
+   */
+  private async appendCorrectionAudit(
+    id: string,
+    runtime: InteractiveRuntimeState,
+    event: Extract<AgentEventV2, { type: 'approval.requested' }>,
+    action: PermissionActionV2,
+  ): Promise<void> {
+    try {
+      await this.appendApprovalAudit(id, runtime, event, action, 'deny', 'policy');
+    } catch {
+      this.logger.warn('approval correction audit failed', {
+        sessionId: id,
+        requestId: event.requestId,
+      });
     }
   }
 
@@ -1660,25 +1723,24 @@ export class SessionManager {
       (pending) => protocolVersion === undefined || pending.protocolVersion === protocolVersion,
     );
     for (const pending of pendingStarts) pending.controller.abort();
-    const activeRuntimes = this.store
-      .list()
-      .filter((session) => isSessionActive(session) && this.ownedBy(session.id, protocolVersion))
-      .map((session) => ({ id: session.id, runtime: this.runtime.get(session.id) }))
-      .filter(
-        (entry): entry is { id: string; runtime: RuntimeState } => entry.runtime !== undefined,
-      );
-    const closeReason = this.shuttingDown ? 'shutdown' : 'cancel';
     // A session that has already reached a terminal *status* can still be finishing work of its
     // own -- the fail-closed audit write a publication timeout fired off, an attachment release
-    // (issue #219). Nothing closes those, but shutdown must not return while one is mid-write, so
-    // every retained runtime's `done` is awaited even though only the active ones are closed.
+    // (issue #219). Nothing closes those, so only the active ones are closed, but every retained
+    // runtime is waited on: shutdown must not return while one is still mid-write.
     const retainedRuntimes = this.store
       .list()
       .filter((session) => this.ownedBy(session.id, protocolVersion))
-      .map((session) => this.runtime.get(session.id))
-      .filter((runtime): runtime is RuntimeState => runtime !== undefined);
+      .map((session) => ({ session, runtime: this.runtime.get(session.id) }))
+      .filter(
+        (entry): entry is { session: AgentSession; runtime: RuntimeState } =>
+          entry.runtime !== undefined,
+      );
+    const activeRuntimes = retainedRuntimes.filter(({ session }) => isSessionActive(session));
+    const closeReason = this.shuttingDown ? 'shutdown' : 'cancel';
     const stopping = Promise.allSettled(
-      activeRuntimes.map(({ id, runtime }) => this.closeRuntime(id, runtime, closeReason)),
+      activeRuntimes.map(({ session, runtime }) =>
+        this.closeRuntime(session.id, runtime, closeReason),
+      ),
     );
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timedOut = new Promise<void>((resolve) => {
@@ -1689,7 +1751,12 @@ export class SessionManager {
       await Promise.race([
         stopping.then(() =>
           Promise.allSettled([
-            ...retainedRuntimes.map((runtime) => runtime.done),
+            // Bounded per runtime, not just by the outer race: a runtime that is not in
+            // `activeRuntimes` is never closed here, so nothing else would ever make its `done`
+            // resolve, and one misbehaving transport would burn the whole shutdown budget.
+            ...retainedRuntimes.map(({ runtime }) =>
+              this.waitForDone(runtime, INTERACTIVE_CLOSE_TIMEOUT_MS),
+            ),
             ...pendingStarts.map((pending) => pending.done),
           ]),
         ),

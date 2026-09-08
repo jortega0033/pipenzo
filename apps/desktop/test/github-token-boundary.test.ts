@@ -58,7 +58,7 @@ function stripComments(source: string): string {
 }
 
 /**
- * These scans walk three source trees and read every file in them, and several of them walk the
+ * These scans walk two source trees and read every file in them, and several of them walk the
  * same tree over again. On an idle POSIX box that is free; on a loaded Windows runner every open
  * goes through the filesystem filter stack, and this file was overrunning its per-test budget
  * under full parallel load because of it (issue #219, same shape as
@@ -68,7 +68,6 @@ function stripComments(source: string): string {
  */
 const treeCache = new Map<string, Promise<string[]>>();
 const sourceCache = new Map<string, Promise<string>>();
-const strippedCache = new Map<string, string>();
 
 function sourceFiles(root: string): Promise<string[]> {
   const cached = treeCache.get(root);
@@ -101,19 +100,16 @@ function readSource(file: string): Promise<string> {
 }
 
 async function stripped(file: string): Promise<string> {
-  const cached = strippedCache.get(file);
-  if (cached !== undefined) return cached;
-  const code = stripComments(await readSource(file));
-  strippedCache.set(file, code);
-  return code;
+  return stripComments(await readSource(file));
 }
 
 const readElectron = (name: string): Promise<string> => stripped(join(electronSrc(), name));
 
 /**
  * Warms those caches before any assertion runs, with a budget sized for the one-time tree read
- * rather than for an assertion. Reading the ~120 files of apps/desktop/electron and apps/desktop/src cold is legitimately slow on a loaded Windows
- * runner, and leaving that cost inside whichever test happened to scan first is exactly how a
+ * rather than for an assertion. Reading the ~120 files of apps/desktop/electron and
+ * apps/desktop/src cold is legitimately slow on a loaded Windows runner, and leaving that cost
+ * inside whichever test happened to scan first is exactly how a
  * *file read* came to fail an assertion's 5 s default (issue #219). Files are read in parallel
  * here, which the sequential per-test scans could not do. Every assertion below keeps the default
  * budget and now runs against memory, so a guard that genuinely misbehaves still fails fast.

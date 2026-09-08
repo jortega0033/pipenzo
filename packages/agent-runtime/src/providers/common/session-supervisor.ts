@@ -666,9 +666,7 @@ class SessionSupervisor implements InteractiveProviderSessionHandle {
     return this.closing;
   }
 
-  private async closeSession(
-    reason: 'cancel' | 'shutdown' | 'trust_revoked' = 'cancel',
-  ): Promise<void> {
+  private async closeSession(reason: 'cancel' | 'shutdown' | 'trust_revoked'): Promise<void> {
     const preCloseDeadline = Date.now() + this.closeTimeoutMs;
     const interactions = this.takeAllInteractions();
     // Whatever the supervisor still holds is fail-closed under the reason the session is actually
