@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { pipenzoTicketIdV1Schema, providerIdSchema } from './schemas.js';
+import { GITHUB_LOGIN_PATTERN } from './pipenzo-credential-v1.js';
 import { refineSpecV1Schema } from './pipenzo-refine-v1.js';
 import { modelTierSchema, reviewReportV1Schema } from './pipenzo-review-v1.js';
 
@@ -237,7 +238,7 @@ export const pipenzoIssueClaimRequestV1Schema = z
       .string()
       .min(1)
       .max(39)
-      .regex(/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/, 'must be a GitHub login')
+      .regex(GITHUB_LOGIN_PATTERN, 'must be a GitHub login')
       .optional(),
   })
   .strict();

@@ -143,6 +143,13 @@ export function readCredentialMessage(
     // of `finish()` (issue #214), not only the overflow case below: the chunks read off the wire are
     // an extra live copy of the credential that has done its job the instant `Buffer.concat` has run,
     // and there is no reason to leave that copy sitting in heap for the GC to get to on its own time.
+    //
+    // This makes `chunks` destructive to read: every `Buffer` pushed into it is zeroed in place once
+    // this function is done with it, including a chunk handed in directly by `stream` rather than
+    // one this function allocated itself (`Buffer.from(chunk, 'utf8')` below only runs for a string
+    // chunk). Fine for the real stdin this reads in production, where every chunk is a fresh
+    // allocation the stream will not reuse; a caller feeding this the same `Buffer` object twice, or
+    // one it still needs after this call, would see it come back zeroed.
     const wipeChunks = (): void => {
       for (const chunk of chunks) chunk.fill(0);
       chunks.length = 0;
@@ -170,7 +177,10 @@ export function readCredentialMessage(
       bytes += buffer.length;
       if (bytes > maxBytes) {
         // Keep nothing: a message this size is not one this protocol produced, and a truncated
-        // prefix of it is not a credential either.
+        // prefix of it is not a credential either. `buffer` itself -- the chunk that tipped `bytes`
+        // over the limit -- was never pushed to `chunks`, so `wipeChunks()` alone would miss it and
+        // leave whatever prefix of the credential it holds unzeroed; wipe it directly first.
+        buffer.fill(0);
         wipeChunks();
         finish();
         return;

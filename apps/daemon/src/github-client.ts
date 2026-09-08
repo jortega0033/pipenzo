@@ -3,6 +3,7 @@ import { paginateRest, type PaginateInterface } from '@octokit/plugin-paginate-r
 import { retry } from '@octokit/plugin-retry';
 import { throttling } from '@octokit/plugin-throttling';
 import {
+  GITHUB_LOGIN_PATTERN,
   MAX_ISSUE_COMMENT_CHARS,
   PIPENZO_LABEL_NAMESPACE,
   isPipenzoLabel,
@@ -1614,9 +1615,13 @@ function assertPositiveInteger(value: number, field: string, operation: string):
   }
 }
 
-/** GitHub's own login rules: alphanumeric with single hyphens, at most 39 characters. */
+/**
+ * GitHub's own login rules: alphanumeric with single hyphens, at most 39 characters.
+ * `GITHUB_LOGIN_PATTERN` (issue #214) rather than a copy declared here -- see that constant's own
+ * doc comment in `@agent-dock/shared` for why a divergence here is worth avoiding.
+ */
 function assertLogin(login: string, operation: string): void {
-  if (!/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/.test(login)) {
+  if (!GITHUB_LOGIN_PATTERN.test(login)) {
     throw new GitHubClientError('invalid_request', `${operation}: not a usable GitHub login`);
   }
 }

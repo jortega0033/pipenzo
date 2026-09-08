@@ -20,14 +20,21 @@ import { z } from 'zod';
 export const GITHUB_TOKEN_SHAPE_PATTERN = /^[\x21-\x7e]{20,512}$/;
 
 /**
- * A GitHub login, by GitHub's own rules (issue #214). Declared once and shared between
- * `github-token-vault.ts` (which validates a login on the way in and re-validates it on the way back
- * out, since it round-trips through disk) and this schema's own `login` field below. Unlike the
- * token pattern above, a divergence here does not fail closed: the vault could return `connected`
- * with a login this schema's old, separately-written copy of the same regex rejected, and
- * `pipenzo:github-connection` would throw permanently instead of degrading -- precisely the bug class
- * this file's `storedAt` re-validation (see `github-token-vault.ts`) already exists to prevent for a
- * different field.
+ * A GitHub login, by GitHub's own rules (issue #214). Shared between `github-token-vault.ts` (which
+ * validates a login on the way in and re-validates it on the way back out, since it round-trips
+ * through disk), this schema's own `login`/`assignee` fields, and `apps/daemon/src/github-client.ts`'s
+ * `assertLogin`. Unlike the token pattern above, a divergence here does not fail closed: the vault
+ * could return `connected` with a login this schema's old, separately-written copy of the same regex
+ * rejected, and `pipenzo:github-connection` would throw permanently instead of degrading --
+ * precisely the bug class this file's `storedAt` re-validation (see `github-token-vault.ts`) already
+ * exists to prevent for a different field.
+ *
+ * One exception, left as-is rather than forced through this constant: `github-client.ts`'s
+ * `parseRepoRef` embeds this exact character class as a capture group inside one combined
+ * `owner/repo` regex, not as a standalone login check. Rewriting that one to interpolate
+ * `GITHUB_LOGIN_PATTERN.source` would trade a plainly-readable literal for a harder-to-read
+ * construction just to avoid a fourth copy of an already-simple pattern; noted here so this doc
+ * comment does not overstate what got hoisted.
  */
 export const GITHUB_LOGIN_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
 

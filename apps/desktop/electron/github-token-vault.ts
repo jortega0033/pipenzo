@@ -75,18 +75,23 @@ import { GITHUB_LOGIN_PATTERN, GITHUB_TOKEN_SHAPE_PATTERN } from '@agent-dock/sh
  * rather than a long-lived `repo` PAT. That is a decision for the device-flow ticket (#114), and it
  * is recorded here so it is a choice rather than an oversight.
  *
- * ## Crash dumps are credential-bearing too (issue #214)
+ * ## A process memory dump is credential-bearing too (issue #214)
  *
  * The resolved token exists as an ordinary V8 string at several points along the path described
  * above — in this module's own `readToken()`, in the built stdin message, in the daemon's parsed
  * copy — and none of those are things JavaScript can zero the way the daemon's own
- * `readCredentialMessage` zeroes its intermediate `Buffer`s. Electron's Crashpad writes a local dump
- * of the crashing process's memory under `app.getPath('crashDumps')` **by default**, independent of
- * whether `crashReporter.start()` was ever called (this app does not call it, so nothing is
- * uploaded) — so a main-process crash at the wrong moment leaves a file on disk containing the
- * plaintext credential. There is no code fix for a heap dump; the actionable part is process: that
- * directory must never be attached to a bug report without being told what it can contain, which is
- * why this paragraph exists rather than a change to this file.
+ * `readCredentialMessage` zeroes its intermediate `Buffer`s.
+ *
+ * This app never calls Electron's `crashReporter.start()` (confirmed: no such call exists anywhere
+ * in this codebase), and Electron's own docs are explicit that Crashpad collects nothing until that
+ * call runs — so `app.getPath('crashDumps')` names a directory that stays empty here, not a live
+ * exposure today. What *is* real, and outside this app's control either way: the operating system's
+ * own crash facilities (Windows Error Reporting, macOS's `~/Library/Logs/DiagnosticReports`, a Linux
+ * core dump) can still capture main's memory on a crash, and if a `crashReporter.start()` call is
+ * ever added later, `crashDumps` joins that list too. There is no code fix for a heap dump of either
+ * kind; the actionable part is process: nobody should attach a memory dump or core file taken while
+ * a real credential was loaded to a bug report without being told what it can contain, which is why
+ * this paragraph exists rather than a change to this file.
  *
  * ## What calls `store()`, and what still stands between it and a usable packaged build
  *
