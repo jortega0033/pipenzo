@@ -86,7 +86,8 @@ export interface DaemonGitHubTokenResolution {
  * The shape a credential must have before it is handed to the daemon.
  *
  * Applied to **both** sources, not just the vault's. The vault validates on the way in, but the
- * development fallback reads a value straight out of a shell, and that value becomes an HTTP
+ * development fallback reads a value out of a file a developer wrote by hand (`dev-token-file.ts`,
+ * issue #212 -- a shell-exported variable before that), and that value becomes an HTTP
  * `Authorization` header — where a newline is request splitting. Printable, non-whitespace ASCII
  * covers every token format GitHub has issued and excludes every separator. The floor is 20 rather
  * than 8 because every real format is at least 36 characters, so a truncated paste should read as
@@ -101,16 +102,30 @@ export function isTokenShaped(value: string | undefined): value is string {
 /**
  * Decides which credential the daemon gets, and says out loud which one it was.
  *
- * The vault always wins. The inherited environment is consulted **only in a development build and
+ * The vault always wins. The development fallback is consulted **only in a development build and
  * only when the vault is empty**, which is a deliberate, narrow exception rather than a general
- * "vault, or else env" fallback:
+ * "vault, or else fallback" rule:
  *
  * - In a **packaged** app there is no exception at all. A shipped Pipenzo authenticates with the
  *   token the user connected in the UI or with nothing, full stop.
- * - In **development** the vault cannot be filled until the device-code connect step (#114) is
- *   built, and the repository's own live-run harness starts the daemon from an exported PAT. Losing
- *   that would mean this ticket broke every existing local workflow to deliver a vault nothing can
- *   write to yet.
+ * - In **development**, before the device-code connect step (#114) existed, the vault could not be
+ *   filled at all, so this fallback was the only way a local run could authenticate — hence
+ *   `developmentToken` staying supported even now that #114 has shipped and the vault is the normal
+ *   path: a developer testing without going through a full device-flow sign-in each time still has
+ *   a documented, opt-in way to supply one.
+ *
+ * `developmentToken` used to be read straight out of `process.env.PIPENZO_GITHUB_TOKEN` by main.ts's
+ * own call site — sitting in **Electron main's own environment block** for the life of the app,
+ * which a provider subprocess could read by walking its own PPid chain on Linux/macOS regardless of
+ * what it was told to inherit (issue #212, the same reasoning issue #165 already established one
+ * process further down the chain). It is now read from a file (`dev-token-file.ts`) that never
+ * enters any process's environment at all -- the parameter is renamed `developmentToken` to say so.
+ * The reported `source` value stays `'environment'`, deliberately not renamed to match: every
+ * caller of this function outside this file (the wire schema, `AccountPanel.tsx`'s copy,
+ * `startup-route.ts`) already treats that string as "not the vault, the development-only fallback
+ * is in play," and none of them depend on it literally naming a shell variable. Renaming it would
+ * have meant touching every one of those call sites for a label whose meaning has not changed, only
+ * its delivery mechanism has.
  *
  * ## Why two gates and not just `isPackaged`
  *
@@ -126,13 +141,13 @@ export function isTokenShaped(value: string | undefined): value is string {
  * `PipenzoGitHubConnectionV1` the `pipenzo:github-connection` channel answers with.
  *
  * Reportable is not yet the same as reported. No renderer code reads that field today — the
- * pre-app shell that will show it is #113 — so at the moment "you are running on a shell variable,
- * not the account you connected" reaches a console warning and nothing a user sees. The field is
- * the mechanism; the surface is still owed.
+ * pre-app shell that will show it is #113 — so at the moment "you are running on the development
+ * fallback, not the account you connected" reaches a console warning and nothing a user sees. The
+ * field is the mechanism; the surface is still owed.
  */
 export function resolveDaemonGitHubToken(input: {
   readonly vaultToken: string | undefined;
-  readonly environmentToken: string | undefined;
+  readonly developmentToken: string | undefined;
   readonly isPackaged: boolean;
   readonly isDevelopmentBuild: boolean;
   /**
@@ -140,9 +155,9 @@ export function resolveDaemonGitHubToken(input: {
    * vault still always wins over this flag -- signing in again writes a real vault record, which
    * the check above already returns from before this one is ever reached -- but while the vault is
    * empty, an explicit disconnect must not be a no-op in a development build: without this, the
-   * very next spawn falls straight back to the same inherited `PIPENZO_GITHUB_TOKEN`, and "forget
-   * this credential" silently becomes "keep using it". Deliberately process-lifetime, not cleared
-   * by anything short of restarting the app -- the fallback exists for developer convenience, and
+   * very next spawn falls straight back to the same development-fallback token, and "forget this
+   * credential" silently becomes "keep using it". Deliberately process-lifetime, not cleared by
+   * anything short of restarting the app -- the fallback exists for developer convenience, and
    * convenience is exactly what an explicit disconnect is supposed to override.
    */
   readonly developmentFallbackSuppressed?: boolean;
@@ -151,9 +166,9 @@ export function resolveDaemonGitHubToken(input: {
   if (isTokenShaped(vaultToken)) return { token: vaultToken, source: 'vault' };
   if (input.isPackaged || !input.isDevelopmentBuild) return { token: undefined, source: 'none' };
   if (input.developmentFallbackSuppressed) return { token: undefined, source: 'none' };
-  const environmentToken = input.environmentToken?.trim();
-  if (isTokenShaped(environmentToken)) {
-    return { token: environmentToken, source: 'environment' };
+  const developmentToken = input.developmentToken?.trim();
+  if (isTokenShaped(developmentToken)) {
+    return { token: developmentToken, source: 'environment' };
   }
   return { token: undefined, source: 'none' };
 }

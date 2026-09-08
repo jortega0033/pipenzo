@@ -29,6 +29,18 @@ root `package.json`'s `packageManager` field. `pnpm install` runs a preflight ch
 [README.md#quick-start](README.md#quick-start) for the Corepack-present and Corepack-absent
 bootstrap paths, including when Corepack itself isn't available.
 
+### Testing the desktop app with a real GitHub credential
+
+Signing in through the app's own device-flow UI is the normal path and needs nothing extra. To
+skip that (a quick local check, a script), a development build of the desktop app also reads a
+token from a file, not an environment variable — put a token in
+`<userData>/dev-github-token`, mode `0600`, owned by you (find `<userData>` by running the app
+once and checking Electron's own per-platform app-data path for the app id, `agent-dock` by
+default). This is deliberately not a shell variable: exporting one into the process that launches
+Electron would put it in Electron main's own environment block, readable by any of the app's own
+provider subprocesses walking their own parent chain (see `apps/desktop/electron/dev-token-file.ts`
+for the full reasoning). Never used in a packaged build.
+
 ## Project structure
 
 See [docs/architecture.md](docs/architecture.md) for the full picture, and

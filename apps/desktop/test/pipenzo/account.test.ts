@@ -77,7 +77,10 @@ describe('account', () => {
   describe('tokenLocationLabel', () => {
     it('names each source distinctly', () => {
       expect(tokenLocationLabel('vault')).toBe('Electron-main vault');
-      expect(tokenLocationLabel('environment')).toContain('PIPENZO_GITHUB_TOKEN');
+      // Issue #212: no longer names a shell variable -- the development fallback moved to a file,
+      // specifically so it stops sitting in Electron main's own process environment.
+      expect(tokenLocationLabel('environment')).not.toContain('PIPENZO_GITHUB_TOKEN');
+      expect(tokenLocationLabel('environment')).toBe('development token file');
       expect(tokenLocationLabel('none')).toBe('no token in this daemon');
     });
   });

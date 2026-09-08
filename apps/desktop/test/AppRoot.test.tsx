@@ -197,7 +197,7 @@ describe('AppRoot pre-app gate (issue #113)', () => {
     // "Try a demo" -- `<App>` no longer renders for a real, connected session.
     expect(await screen.findByRole('button', { name: 'Board' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '1 · Device code' })).not.toBeInTheDocument();
-    expect(screen.queryByText(/PIPENZO_GITHUB_TOKEN/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/own local file, not a stored account/)).not.toBeInTheDocument();
   });
 
   /**
@@ -247,11 +247,12 @@ describe('AppRoot pre-app gate (issue #113)', () => {
 
   /**
    * The case `pipenzo-credential-v1.ts` carries `source` on the wire for: an empty vault and a
-   * daemon running on an inherited shell variable. Routing this install to "Connect GitHub" would
-   * be both false (it can reach GitHub right now) and unfixable from that screen (connecting writes
-   * to a vault this daemon is not reading), so it goes to the app -- and says so.
+   * daemon running on the development fallback (a file, issue #212 -- an inherited shell variable
+   * before that). Routing this install to "Connect GitHub" would be both false (it can reach
+   * GitHub right now) and unfixable from that screen (connecting writes to a vault this daemon is
+   * not reading), so it goes to the app -- and says so.
    */
-  it('lets a development build on an inherited token through, and names it', async () => {
+  it('lets a development build on the development fallback through, and names it', async () => {
     (window as unknown as { agentDock: AgentDockBridge }).agentDock = realBridge({
       state: 'disconnected',
       source: 'environment',
@@ -259,7 +260,7 @@ describe('AppRoot pre-app gate (issue #113)', () => {
     render(<AppRoot />);
 
     expect(await screen.findByRole('button', { name: 'Board' })).toBeInTheDocument();
-    expect(screen.getByText(/PIPENZO_GITHUB_TOKEN/)).toBeInTheDocument();
+    expect(screen.getByText(/own local file, not a stored account/)).toBeInTheDocument();
   });
 
   /**

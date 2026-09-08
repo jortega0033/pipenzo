@@ -31,16 +31,27 @@ export default defineConfig(({ command }) => ({
           // The result is stronger than a gate. With the constant folded to `false`, Rollup's
           // dead-code elimination removes the fallback branch from `resolveDaemonGitHubToken`
           // outright: in `dist-electron/main.js` that function reduces to the vault lookup and a
-          // `{ token: undefined, source: 'none' }` return, and does not read `environmentToken` at
+          // `{ token: undefined, source: 'none' }` return, and does not read `developmentToken` at
           // all. A packaged build cannot take a code path it does not contain.
           //
+          // Issue #212 made the call site's own guard provably eliminable too, not just the
+          // callee's: `main.ts` calls `IS_DEVELOPMENT_BUILD ? readDevTokenFile(...) : undefined`
+          // rather than a bare call, so the same folding removes the *call* to `readDevTokenFile`
+          // from a packaged build -- `dist-electron/main.js` contains zero occurrences of
+          // `readDevTokenFile`, verified by grepping the built output, not inferred. A packaged
+          // Pipenzo never even opens the development-token file, let alone reads one.
+          //
           // What remains in the artifact, stated precisely so this note is not read as more than it
-          // is: the *call site* still evaluates `process.env.PIPENZO_GITHUB_TOKEN` and passes it in
-          // as an argument the callee now ignores, the `source === 'environment'` warning string
-          // survives in a branch that can no longer be reached, and the variable's name is in the
-          // environment-stripping list, where it must be. So the token is still *read* in a
-          // packaged build; it is simply discarded. The eliminated branch is what carries the
-          // guarantee. (Verified by inspecting the built output, not inferred.)
+          // is: `devTokenFilePath` (a plain path-join, no filesystem access) still appears, because
+          // it is also called unconditionally inside the `source === 'environment'` console warning
+          // -- a runtime branch on `credential.source`, one level removed from the build-time
+          // constant, that the minifier does not prove unreachable at this call site the way it
+          // proves the internal one. That branch cannot actually run in a packaged build (nothing
+          // upstream of it can ever produce `source: 'environment'` once the internal branch is
+          // gone), so this is the same class of harmless dead-but-not-eliminated residue the
+          // pre-#212 comment already accepted for the environment variable's own name surviving in
+          // the stripping list -- non-sensitive metadata, not the credential path itself.
+          // (Verified by inspecting the built output, not inferred.)
           define: {
             __PIPENZO_DEVELOPMENT_BUILD__: JSON.stringify(command !== 'build'),
           },

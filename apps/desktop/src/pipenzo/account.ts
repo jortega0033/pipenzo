@@ -71,24 +71,33 @@ export function storedOnLabel(storedAt: string | undefined): string | undefined 
  * Where the token the *running daemon* is using came from.
  *
  * This is `source`, deliberately not `state`, and the two can disagree: a development build whose
- * vault is empty may still be running on an inherited `PIPENZO_GITHUB_TOKEN` (see
+ * vault is empty may still be running on the development-fallback token (see
  * `resolveDaemonGitHubToken`). `daemon-environment.ts` says of that field, in as many words, that
  * "the field is the mechanism; the surface is still owed" — this panel is the surface, so the
  * environment case is named rather than smoothed into "connected".
+ *
+ * The `'environment'` case's own label no longer names a shell variable: issue #212 moved that
+ * fallback from an inherited `PIPENZO_GITHUB_TOKEN` to a file under Electron's own data directory
+ * (`dev-token-file.ts`), specifically so the value stops sitting in Electron main's own process
+ * environment where a provider subprocess could otherwise reach it by walking its own PPid chain.
+ * The wire value `source` carries is still `'environment'` (kept for compatibility with everything
+ * else that reads it — see `resolveDaemonGitHubToken`'s own note on why the label outlived the
+ * mechanism); only what this function displays for it changed.
  */
 export function tokenLocationLabel(source: PipenzoCredentialSourceV1): string {
   switch (source) {
     case 'vault':
       return 'Electron-main vault';
     case 'environment':
-      return 'PIPENZO_GITHUB_TOKEN (inherited)';
+      return 'development token file';
     case 'none':
       return 'no token in this daemon';
   }
 }
 
 /**
- * True when the daemon is publishing with a shell variable rather than with the account above it.
+ * True when the daemon is publishing with the development fallback rather than with the account
+ * above it.
  *
  * The rule against credential fallbacks is really a rule against *silent* precedence, so this is
  * the one combination the panel raises a notice for rather than printing in a row.

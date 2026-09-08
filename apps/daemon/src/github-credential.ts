@@ -51,6 +51,16 @@ import {
  * an operator who exported the variable themselves, and it is documented rather than hidden.
  * Electron main strips the variable from the daemon's environment entirely, so the two sources can
  * never both be live in the shipped app.
+ *
+ * This is now the *only* place in Pipenzo a GitHub credential still passes through a process
+ * environment block at all (issue #212). Electron main used to have an equivalent fallback of its
+ * own — reading an inherited `PIPENZO_GITHUB_TOKEN` into **its own** environment when testing the
+ * desktop app in development — which put the same `/proc`-walk exposure one process further up the
+ * chain than this file's own reasoning above accounted for (a provider subprocess can walk its own
+ * PPid chain past the daemon to Electron main, not just read the daemon's own environment). Main now
+ * reads that value from a file instead (`apps/desktop/electron/dev-token-file.ts`), which never
+ * enters any process's environment at all. This module's own direct-start path was never affected
+ * either way — it never went through Electron main's environment in the first place.
  */
 
 /**

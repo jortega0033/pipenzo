@@ -69,11 +69,13 @@ export type PipenzoStartupRoute =
   | {
       readonly screen: 'app';
       /**
-       * True when the running daemon's credential came from an inherited `PIPENZO_GITHUB_TOKEN`
-       * rather than the vault. The rule epic #4 actually cares about is not "no fallbacks" but "no
-       * **silent** precedence" — a development build publishing with a shell variable is fine, and
-       * publishing with one while the UI implies a stored account is not. `pipenzo-credential-v1.ts`
-       * records this field as unrendered and names this ticket as the one that renders it.
+       * True when the running daemon's credential came from the development fallback (a file
+       * under Electron's own data directory, issue #212 -- an inherited `PIPENZO_GITHUB_TOKEN`
+       * shell variable before that) rather than the vault. The rule epic #4 actually cares about is
+       * not "no fallbacks" but "no **silent** precedence" — a development build publishing with
+       * the fallback is fine, and publishing with one while the UI implies a stored account is not.
+       * `pipenzo-credential-v1.ts` records this field as unrendered and names this ticket as the
+       * one that renders it.
        */
       readonly environmentCredential: boolean;
     };
@@ -91,8 +93,8 @@ export interface PipenzoStartupInput {
  *
  * The ordering below is the argument. **Whether a usable credential exists** is asked first and is
  * asked of `source`, not of `state`: `state` describes the vault, and the vault is not the only
- * place a credential can come from. A development build with an empty vault and a
- * `PIPENZO_GITHUB_TOKEN` in its environment has a daemon that can reach GitHub right now, and
+ * place a credential can come from. A development build with an empty vault and a development
+ * fallback token in place (issue #212) has a daemon that can reach GitHub right now, and
  * sending that install to "Connect GitHub" would be both false and unfixable from that screen —
  * connecting stores into a vault the daemon is not reading this run.
  */

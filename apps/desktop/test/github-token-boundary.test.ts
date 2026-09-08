@@ -296,14 +296,14 @@ describe('no GitHub credential survives into the daemon environment', () => {
 
 describe('which credential the daemon runs on is decided once, and named', () => {
   const vaultToken = 'vaultStoredTokenValue0000001';
-  const environmentToken = 'shellExportedTokenValue00001';
+  const developmentToken = 'devTokenFileValue000000000001';
 
   it('always prefers the vault', () => {
     for (const isPackaged of [true, false]) {
       expect(
         resolveDaemonGitHubToken({
           vaultToken,
-          environmentToken,
+          developmentToken,
           isPackaged,
           isDevelopmentBuild: true,
         }),
@@ -316,7 +316,7 @@ describe('which credential the daemon runs on is decided once, and named', () =>
     expect(
       resolveDaemonGitHubToken({
         vaultToken: undefined,
-        environmentToken,
+        developmentToken,
         isPackaged: true,
         isDevelopmentBuild: true,
       }),
@@ -332,7 +332,7 @@ describe('which credential the daemon runs on is decided once, and named', () =>
     expect(
       resolveDaemonGitHubToken({
         vaultToken: undefined,
-        environmentToken,
+        developmentToken,
         isPackaged: false,
         isDevelopmentBuild: false,
       }),
@@ -343,24 +343,25 @@ describe('which credential the daemon runs on is decided once, and named', () =>
     expect(
       resolveDaemonGitHubToken({
         vaultToken: undefined,
-        environmentToken,
+        developmentToken,
         isPackaged: false,
         isDevelopmentBuild: true,
       }),
-    ).toEqual({ token: environmentToken, source: 'environment' });
+    ).toEqual({ token: developmentToken, source: 'environment' });
   });
 
   /**
-   * The environment branch reads a value straight out of a shell, and that value becomes an HTTP
-   * `Authorization` header — where a newline is request splitting. The vault validates on the way
-   * in; this is the same rule applied to the source that does not.
+   * The development branch reads a value out of a file (issue #212 -- a shell variable before
+   * that), and that value becomes an HTTP `Authorization` header — where a newline is request
+   * splitting. The vault validates on the way in; this is the same rule applied to the source that
+   * does not.
    */
   it('refuses a value from either source that is not token-shaped', () => {
     for (const bad of ['short', 'has a space in it', 'with\nnewline', '']) {
       expect(
         resolveDaemonGitHubToken({
           vaultToken: bad,
-          environmentToken: undefined,
+          developmentToken: undefined,
           isPackaged: false,
           isDevelopmentBuild: true,
         }).source,
@@ -368,7 +369,7 @@ describe('which credential the daemon runs on is decided once, and named', () =>
       expect(
         resolveDaemonGitHubToken({
           vaultToken: undefined,
-          environmentToken: bad,
+          developmentToken: bad,
           isPackaged: false,
           isDevelopmentBuild: true,
         }).source,
@@ -380,7 +381,7 @@ describe('which credential the daemon runs on is decided once, and named', () =>
     expect(
       resolveDaemonGitHubToken({
         vaultToken: undefined,
-        environmentToken: undefined,
+        developmentToken: undefined,
         isPackaged: false,
         isDevelopmentBuild: true,
       }),
@@ -389,7 +390,7 @@ describe('which credential the daemon runs on is decided once, and named', () =>
 
   /**
    * Issue #210: without this, disconnecting on a development build with an empty vault is a
-   * no-op -- the very next spawn falls straight back to the same inherited `PIPENZO_GITHUB_TOKEN`,
+   * no-op -- the very next spawn falls straight back to the same development-fallback token,
    * silently turning "forget this credential" into "keep using it".
    */
   describe('developmentFallbackSuppressed', () => {
@@ -397,7 +398,7 @@ describe('which credential the daemon runs on is decided once, and named', () =>
       expect(
         resolveDaemonGitHubToken({
           vaultToken: undefined,
-          environmentToken,
+          developmentToken,
           isPackaged: false,
           isDevelopmentBuild: true,
           developmentFallbackSuppressed: true,
@@ -409,7 +410,7 @@ describe('which credential the daemon runs on is decided once, and named', () =>
       expect(
         resolveDaemonGitHubToken({
           vaultToken,
-          environmentToken,
+          developmentToken,
           isPackaged: false,
           isDevelopmentBuild: true,
           developmentFallbackSuppressed: true,
