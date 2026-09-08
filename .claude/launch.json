@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "pipenzo-web",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@agent-dock/web", "run", "dev"],
+      "port": 5173
+    }
+  ]
+}
