@@ -83,11 +83,10 @@ export function connectCtaLabel(count: number): string {
 }
 
 /**
- * Whether a repository may be selected at all.
+ * Whether a repository may be *newly chosen*.
  *
- * One exported predicate rather than an `archived` check written at each of the three places that
- * needs it — the row's click handler, the row's rendering, and the submit that must not send one.
- * The canvas states the reason: no pull request can be opened against an archived repository, and
+ * One exported predicate rather than an `archived` check written at each place that needs it. The
+ * canvas states the reason: no pull request can be opened against an archived repository, and
  * Pipenzo needs write access to manage one at all.
  */
 export function isSelectable(repo: PipenzoRepoV1): boolean {
@@ -95,17 +94,46 @@ export function isSelectable(repo: PipenzoRepoV1): boolean {
 }
 
 /**
- * The selection, with anything unselectable removed.
+ * Whether a click on this row should do anything.
  *
- * Applied at submit as well as at click, because the two are reachable independently: a repository
- * can be archived on GitHub *while* it sits selected in an open picker, and a refresh would then
- * leave a checked row that must not be sent. Filtering only on click would send it.
+ * Asymmetric on purpose: an archived repository can never be **ticked**, but one that is already
+ * connected can always be **unticked**. Without the second half, a repository archived after it was
+ * connected would be permanently stuck in the list with no control anywhere in this screen able to
+ * remove it.
  */
-export function selectableSelection(
+export function canToggle(repo: PipenzoRepoV1, checked: boolean): boolean {
+  return isSelectable(repo) || checked;
+}
+
+/**
+ * What a save writes: the selection itself, sorted.
+ *
+ * This deliberately does **not** filter against the current listing, and that is the whole point.
+ * `PUT /repos/connected` replaces the list, so filtering here would silently delete every connected
+ * repository that happens to be invisible right now — access revoked, org SSO lapsed, permission
+ * dropped to read-only, or simply beyond a truncated page cap. `pipenzo-repos-v1.ts` says in as
+ * many words that the connected list has to *survive* a repository temporarily disappearing from
+ * the listing, and an earlier draft of this function was exactly the filtered copy it warns
+ * against.
+ *
+ * Removal stays possible because the set is what the user edits: unticking a row removes it here.
+ * A row nobody can see is a row nobody unticked, so it is kept.
+ */
+export function selectionToSave(selected: ReadonlySet<string>): readonly string[] {
+  return [...selected].sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * The connected repositories this listing does not contain.
+ *
+ * Surfaced rather than silently carried: "three of your connected repositories are not in this
+ * list and are being kept" is a fact the user needs in order to understand a count that does not
+ * match the ticked boxes in front of them.
+ */
+export function unlistedSelection(
   repositories: readonly PipenzoRepoV1[],
   selected: ReadonlySet<string>,
 ): readonly string[] {
-  return repositories
-    .filter((repo) => isSelectable(repo) && selected.has(repo.fullName))
-    .map((repo) => repo.fullName);
+  const listed = new Set(repositories.map((repo) => repo.fullName));
+  return [...selected].filter((fullName) => !listed.has(fullName)).sort();
 }

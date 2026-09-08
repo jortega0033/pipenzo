@@ -101,6 +101,55 @@ describe('RepoPicker', () => {
     expect(bridge.pipenzoConnectRepos).not.toHaveBeenCalled();
   });
 
+  /**
+   * An archived repository that is *already* connected. Two things have to hold at once, and an
+   * earlier draft got both wrong: it renders as connected — because it is, and an empty box for
+   * something that is in the list is the UI stating a falsehood the next save would then make true
+   * — and it can be unticked, or it would be stuck there with nothing on this screen able to remove
+   * it.
+   */
+  it('shows a connected-but-archived repository as connected, and lets it be removed', async () => {
+    installBridge({ connected: ['octocat/retired'] });
+    render(<RepoPicker />);
+    await listed();
+
+    const archived = screen.getByRole('checkbox', { name: /retired/ });
+    expect(archived).toHaveAttribute('aria-checked', 'true');
+    // A live control, because there is still something it can do.
+    expect(archived).not.toHaveAttribute('aria-disabled');
+    expect(screen.getByText(/untick to remove it/)).toBeInTheDocument();
+
+    fireEvent.click(archived);
+    expect(archived).toHaveAttribute('aria-checked', 'false');
+    // ...and inert once removed, because ticking it back is not allowed.
+    expect(archived).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(archived);
+    expect(archived).toHaveAttribute('aria-checked', 'false');
+  });
+
+  /**
+   * The data-loss bug the review found. The save replaces the whole list, so a picker that sent
+   * only what it could see would delete every connected repository that is invisible right now —
+   * access revoked, org SSO lapsed, or beyond a truncated page cap. `pipenzo-repos-v1.ts` says the
+   * connected list must survive exactly that.
+   */
+  it('does not delete a connected repository that this listing cannot show', async () => {
+    const bridge = installBridge({ connected: ['octocat/hello-world', 'someorg/invisible'] });
+    render(<RepoPicker />);
+    await listed();
+
+    // Counted, and explained: a count that does not match the ticked boxes needs a reason.
+    expect(screen.getByText('2 repos selected')).toBeInTheDocument();
+    expect(screen.getByText('Some connected repositories are not in this list')).toBeInTheDocument();
+    expect(screen.getByText(/someorg\/invisible/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Connect 2 repos' }));
+    await waitFor(() => expect(bridge.pipenzoConnectRepos).toHaveBeenCalled());
+    expect(bridge.pipenzoConnectRepos).toHaveBeenCalledWith({
+      repositories: ['octocat/hello-world', 'someorg/invisible'],
+    });
+  });
+
   it('toggles a row and keeps a running count', async () => {
     installBridge();
     render(<RepoPicker />);
@@ -214,7 +263,12 @@ describe('RepoPicker', () => {
     expect(await screen.findByText('Could not load your repositories')).toBeInTheDocument();
     // And it does not guess at a cause it cannot know.
     expect(screen.queryByText(/permission/i)).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+    // Clicked, not merely asserted present: `setReloadKey` could be a no-op and nothing would
+    // notice, which is the shape of a test that passes with its own subject deleted.
+    const retryBridge = installBridge({ repositories: [] });
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByText('No repositories Pipenzo can manage')).toBeInTheDocument();
+    expect(retryBridge.pipenzoListRepos).toHaveBeenCalled();
   });
 
   it('explains an account with nothing it can manage', async () => {

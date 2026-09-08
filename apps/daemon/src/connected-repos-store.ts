@@ -74,10 +74,21 @@ export class ConnectedReposStore {
 
   constructor(private readonly filePath: string) {}
 
-  /** The current list. Cached after the first read, since only this class writes it. */
+  /**
+   * The current list. Cached after the first read, since only this class writes it.
+   *
+   * The re-check after the await is not redundant. `GET` and `PUT` are independent HTTP requests,
+   * so a cold-cache read can be in flight while a write lands — and without this, `#load()`'s
+   * pre-rename answer would overwrite the value the write just cached, leaving every later read
+   * serving a list older than the file for the life of the process. The gate would then read `0`
+   * for a configured install and route it back to the picker on every launch.
+   */
   async read(): Promise<PipenzoConnectedReposV1> {
     if (this.#cached) return this.#cached;
-    this.#cached = await this.#load();
+    const loaded = await this.#load();
+    // A write that landed during the load is newer than anything the load could have seen.
+    if (this.#cached) return this.#cached;
+    this.#cached = loaded;
     return this.#cached;
   }
 

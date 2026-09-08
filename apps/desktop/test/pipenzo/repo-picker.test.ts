@@ -1,14 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import type { PipenzoRepoV1 } from '@agent-dock/shared';
 import {
+  canToggle,
   connectCtaLabel,
   filterRepos,
   isSelectable,
   relativeTime,
   repoMonogram,
-  selectableSelection,
   selectionSummary,
+  selectionToSave,
   splitFullName,
+  unlistedSelection,
 } from '../../src/pipenzo/repo-picker.js';
 
 const repo = (fullName: string, overrides: Partial<PipenzoRepoV1> = {}): PipenzoRepoV1 => ({
@@ -116,30 +118,64 @@ describe('selectability', () => {
     expect(isSelectable(repo('octocat/old', { archived: true }))).toBe(false);
   });
 
-  it('keeps only the selectable repositories that are actually selected', () => {
-    const repositories = [
-      repo('octocat/a'),
-      repo('octocat/b'),
-      repo('octocat/archived', { archived: true }),
-    ];
-    expect(
-      selectableSelection(repositories, new Set(['octocat/a', 'octocat/archived'])),
-    ).toEqual(['octocat/a']);
+  /**
+   * Asymmetric, and the second half is the load-bearing one: a repository archived *after* it was
+   * connected would otherwise be stuck in the list with no control on this screen able to remove it.
+   */
+  it('lets an archived row be unticked but never ticked', () => {
+    const archived = repo('octocat/old', { archived: true });
+    expect(canToggle(archived, false)).toBe(false);
+    expect(canToggle(archived, true)).toBe(true);
+
+    const live = repo('octocat/live');
+    expect(canToggle(live, false)).toBe(true);
+    expect(canToggle(live, true)).toBe(true);
+  });
+});
+
+describe('selectionToSave', () => {
+  it('is the selection itself, sorted and stable', () => {
+    expect(selectionToSave(new Set(['octocat/zebra', 'octocat/apple']))).toEqual([
+      'octocat/apple',
+      'octocat/zebra',
+    ]);
   });
 
   /**
-   * The case that motivates applying this at submit rather than only at click: a repository can be
-   * archived on GitHub *while* it sits checked in an open picker. A refresh then leaves a checked
-   * row that must not be sent, and filtering only in the click handler would send it.
+   * The bug the review found, and the reason this function takes no listing at all.
+   *
+   * The save replaces the whole list, so filtering the selection against the *current* listing
+   * silently deletes every connected repository that happens to be invisible right now — access
+   * revoked, org SSO lapsed, permission dropped to read-only, or simply beyond a truncated page
+   * cap. `pipenzo-repos-v1.ts` says in as many words that the connected list must survive exactly
+   * that, and the filtered version was the thing it warns against.
+   *
+   * Removal still works, because the set is what the user edits: unticking removes it here.
    */
-  it('drops a selection that became archived after it was made', () => {
-    const selected = new Set(['octocat/a']);
-    expect(selectableSelection([repo('octocat/a')], selected)).toEqual(['octocat/a']);
-    expect(selectableSelection([repo('octocat/a', { archived: true })], selected)).toEqual([]);
+  it('keeps a connected repository that is not in the listing at all', () => {
+    expect(selectionToSave(new Set(['octocat/invisible', 'octocat/visible']))).toEqual([
+      'octocat/invisible',
+      'octocat/visible',
+    ]);
   });
 
-  it('ignores a selected name that is no longer in the listing at all', () => {
-    // Access revoked, or the repository deleted. It simply is not offered.
-    expect(selectableSelection([repo('octocat/a')], new Set(['octocat/gone']))).toEqual([]);
+  it('drops what the user unticked, because that is what unticking is', () => {
+    const selected = new Set(['octocat/a', 'octocat/b']);
+    selected.delete('octocat/b');
+    expect(selectionToSave(selected)).toEqual(['octocat/a']);
+  });
+});
+
+describe('unlistedSelection', () => {
+  /** So the user can be told *why* the count does not match the ticked boxes in front of them. */
+  it('names the connected repositories this listing does not contain', () => {
+    const repositories = [repo('octocat/a'), repo('octocat/archived', { archived: true })];
+    expect(
+      unlistedSelection(repositories, new Set(['octocat/a', 'octocat/archived', 'octocat/gone'])),
+    ).toEqual(['octocat/gone']);
+  });
+
+  it('is empty when everything selected is on screen', () => {
+    expect(unlistedSelection([repo('octocat/a')], new Set(['octocat/a']))).toEqual([]);
   });
 });

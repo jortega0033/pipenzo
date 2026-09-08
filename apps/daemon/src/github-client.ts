@@ -980,6 +980,15 @@ export class OctokitGitHubClient implements GitHubClient {
         sort: 'pushed',
         direction: 'desc',
       })) {
+        // Checked *before* this page is counted, not after the previous one. Breaking as soon as
+        // the cap is reached would report `truncated` for an account with exactly
+        // `GITHUB_REPO_PAGE_CAP` pages and nothing beyond them — telling the user their list is
+        // incomplete when it is complete, which is the one thing this flag exists to prevent.
+        // Arriving here at all means the iterator produced a further page, so there really is more.
+        if (pages >= GITHUB_REPO_PAGE_CAP) {
+          truncated = true;
+          break;
+        }
         pages += 1;
         if (!Array.isArray(response.data)) {
           throw new GitHubClientError(
@@ -990,10 +999,6 @@ export class OctokitGitHubClient implements GitHubClient {
         for (const entry of response.data) {
           const repository = normalizeRepository(entry as Record<string, unknown>, operation);
           if (repository) collected.push(repository);
-        }
-        if (pages >= GITHUB_REPO_PAGE_CAP) {
-          truncated = true;
-          break;
         }
       }
     } catch (error) {

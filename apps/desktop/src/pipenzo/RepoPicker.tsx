@@ -7,13 +7,15 @@ import { Icon } from '../components/primitives/Icon.js';
 import { LoadLine } from '../components/primitives/LoadLine.js';
 import { Notice } from '../components/primitives/Notice.js';
 import {
+  canToggle,
   connectCtaLabel,
   filterRepos,
   isSelectable,
   relativeTime,
   repoMonogram,
-  selectableSelection,
   selectionSummary,
+  selectionToSave,
+  unlistedSelection,
 } from './repo-picker.js';
 
 /**
@@ -73,16 +75,23 @@ export function RepoPicker({
   }, [reloadKey]);
 
   const visible = useMemo(() => filterRepos(repositories ?? [], query), [repositories, query]);
-  const selectedCount = useMemo(
-    () => selectableSelection(repositories ?? [], selected).length,
+  // The count is the *selection*, not the ticked-and-visible rows. A user whose org access lapsed
+  // has three repositories connected and none of them on screen, and telling them "0 repos
+  // selected" beside a disabled button would be false twice over.
+  const selectedCount = selected.size;
+  const unlisted = useMemo(
+    () => unlistedSelection(repositories ?? [], selected),
     [repositories, selected],
   );
 
   const toggle = useCallback((repo: PipenzoRepoV1) => {
-    if (!isSelectable(repo)) return;
     setSelected((current) => {
+      const checked = current.has(repo.fullName);
+      // Tick only what may be chosen; untick anything. See `canToggle` for why the asymmetry
+      // matters -- without it a repository archived after connecting could never be removed here.
+      if (!canToggle(repo, checked)) return current;
       const next = new Set(current);
-      if (next.has(repo.fullName)) next.delete(repo.fullName);
+      if (checked) next.delete(repo.fullName);
       else next.add(repo.fullName);
       return next;
     });
@@ -91,9 +100,11 @@ export function RepoPicker({
   const submit = useCallback(() => {
     setSaving(true);
     setSaveError(undefined);
-    // Re-filtered at submit, not trusted from the click handler: a repository can be archived on
-    // GitHub while it sits checked in an open picker, and a refresh would leave it selected.
-    const payload = selectableSelection(repositories ?? [], selected);
+    // The selection itself, unfiltered. See `selectionToSave`: this write replaces the whole list,
+    // so filtering against the current listing would silently delete every connected repository
+    // that is invisible right now -- which is precisely what the wire contract says must not
+    // happen.
+    const payload = selectionToSave(selected);
     void getBridge()
       .pipenzoConnectRepos({ repositories: [...payload] })
       .then((saved) => {
@@ -104,7 +115,9 @@ export function RepoPicker({
         setSaving(false);
         setSaveError(error instanceof Error ? error.message : 'could not save your selection');
       });
-  }, [repositories, selected, onConnected]);
+    // `repositories` is deliberately not a dependency: the save is the *selection*, and the listing
+    // stopped being an input to it when filtering against the listing turned out to be the bug.
+  }, [selected, onConnected]);
 
   if (loadError !== undefined) {
     return (
@@ -194,6 +207,14 @@ export function RepoPicker({
         </Notice>
       )}
 
+      {unlisted.length > 0 && (
+        <Notice icon="info" title="Some connected repositories are not in this list">
+          {unlisted.length === 1 ? 'One repository is' : `${unlisted.length} repositories are`}{' '}
+          connected but not visible here — access may have changed, or they may be beyond the page
+          limit. They are kept as they are: {unlisted.join(', ')}.
+        </Notice>
+      )}
+
       {truncated && (
         <Notice tone="warn" icon="warning" title="This list is not complete">
           This account can reach more repositories than Pipenzo lists in one pass, so the ones you
@@ -235,8 +256,11 @@ function RepoRow({
 }) {
   const selectable = isSelectable(repo);
   const classes = ['ws-menu-item'];
+  // `off` is about *choosing*, so an archived row still dims -- but if it is connected it still
+  // renders as connected, because it is. Showing an unchecked box for a repository that is in the
+  // list would be the UI telling the user something untrue, and then the next save making it true.
   if (!selectable) classes.push('off');
-  else if (checked) classes.push('on');
+  if (checked) classes.push('on');
 
   return (
     <button
@@ -245,17 +269,19 @@ function RepoRow({
       // `aria-checked` with `role="checkbox"` rather than a nested input: the whole row is the hit
       // target, and a checkbox inside a button would be two controls where the user sees one.
       role="checkbox"
-      aria-checked={selectable ? checked : false}
+      aria-checked={checked}
       // The canvas leaves an archived row focusable and inert, which announces as an ordinary
       // control that silently does nothing. `aria-disabled` says so instead -- and it is not
       // `disabled`, because a disabled button is skipped by a screen reader's control list
       // entirely, and "this repository exists and cannot be chosen" is the thing the row is for.
-      aria-disabled={selectable ? undefined : true}
+      // Only inert when it can do nothing at all. An archived row that *is* connected can still be
+      // unticked, so it is a live control.
+      aria-disabled={canToggle(repo, checked) ? undefined : true}
       onClick={() => onToggle(repo)}
     >
       <span className="check">
-        <span className={checked && selectable ? 'box on' : 'box'}>
-          {checked && selectable && <Icon name="check" size="sm" />}
+        <span className={checked ? 'box on' : 'box'}>
+          {checked && <Icon name="check" size="sm" />}
         </span>
       </span>
       <span className="ws-ic" aria-hidden="true">
@@ -272,7 +298,9 @@ function RepoRow({
               ]
                 .filter(Boolean)
                 .join(' · ')
-            : 'archived on GitHub — no PR can be opened against it'}
+            : checked
+              ? 'connected, but archived on GitHub — untick to remove it'
+              : 'archived on GitHub — no PR can be opened against it'}
         </span>
       </span>
       <span className="pick-note">

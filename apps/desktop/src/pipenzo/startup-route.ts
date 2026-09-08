@@ -25,7 +25,21 @@ export type PreAppStep = 'device-code' | 'choose-repos';
  * every user out of an app they are correctly credentialed for. #115 is what starts passing a real
  * count, at which point `0` begins routing to step 2 on its own.
  */
-export type ConnectedRepoState = 'not-tracked' | number;
+export type ConnectedRepoState =
+  /**
+   * No answer *yet* — the first read is still outstanding. Routes to `loading`, for the same reason
+   * an unread connection does: a credentialed install with no repositories chosen would otherwise
+   * render the board and then have it replaced by the picker a moment later, which is precisely the
+   * flash the loading screen exists to prevent, reintroduced for the second gate condition.
+   */
+  | 'unknown'
+  /**
+   * No answer, and none coming — the daemon could not be asked. Treated as *satisfied*, because
+   * the alternative is routing a fully-configured install to the repo picker every time its daemon
+   * is slow to start, and the daemon restarts as part of connecting GitHub.
+   */
+  | 'not-tracked'
+  | number;
 
 export type PipenzoStartupRoute =
   /**
@@ -87,8 +101,12 @@ export function routePipenzoStartup(input: PipenzoStartupInput): PipenzoStartupR
   if (!connection) return { screen: 'loading' };
 
   const connectedRepos = input.connectedRepos ?? 'not-tracked';
+  // Asked before anything else, and only when a credential exists: a token-less install belongs in
+  // the pre-app regardless of what it has chosen, so waiting on a repository count there would just
+  // delay the screen it is going to see anyway.
   const hasCredential = connection.source !== 'none';
-  const reposSatisfied = connectedRepos === 'not-tracked' || connectedRepos > 0;
+  if (hasCredential && connectedRepos === 'unknown') return { screen: 'loading' };
+  const reposSatisfied = typeof connectedRepos !== 'number' || connectedRepos > 0;
 
   // Note what this does *not* do for `state: 'unavailable'` with a working `source`: the vault
   // being unreadable while a development daemon runs on an inherited variable routes to the app,

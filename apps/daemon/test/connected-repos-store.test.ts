@@ -108,8 +108,15 @@ describe('ConnectedReposStore', () => {
     expect(await new ConnectedReposStore(filePath).read()).toEqual({ repositories: [] });
   });
 
-  /** Two picker submissions must not interleave their renames and leave a half-written file. */
-  it('serialises concurrent writes', async () => {
+  /**
+   * The property serialisation actually buys.
+   *
+   * An earlier version of this test asserted only that the file was "one of the three, never a
+   * mixture" — which the unique-temp-file-plus-atomic-rename scheme guarantees on its own, so it
+   * passed with `#writeTail` deleted entirely. What the chain is for is *ordering*: the last write
+   * issued is the one on disk afterwards, and the cache agrees with it.
+   */
+  it('serialises concurrent writes, so the last one issued is the one that survives', async () => {
     const store = new ConnectedReposStore(filePath);
     await Promise.all([
       store.replace(['octocat/a']),
@@ -117,12 +124,36 @@ describe('ConnectedReposStore', () => {
       store.replace(['octocat/c']),
     ]);
 
-    const settled = await new ConnectedReposStore(filePath).read();
-    // Whichever won, the file is exactly one of the three -- never a mixture, never truncated.
-    expect([['octocat/a'], ['octocat/b'], ['octocat/c']]).toContainEqual(settled.repositories);
+    expect((await new ConnectedReposStore(filePath).read()).repositories).toEqual(['octocat/c']);
+    // ...and the in-memory answer is not a different one from the file's.
+    expect((await store.read()).repositories).toEqual(['octocat/c']);
   });
 
-  it('leaves no temporary files behind', async () => {
+  /**
+   * `GET` and `PUT` are independent requests, so a cold-cache read can be in flight while a write
+   * lands. Without the re-check after the load, the load's pre-rename answer overwrote the value
+   * the write had just cached — and every later read served a list older than the file for the life
+   * of the process, which the gate reads as "no repositories chosen".
+   */
+  it('does not let a read that overlapped a write serve a stale answer', async () => {
+    const store = new ConnectedReposStore(filePath);
+    // Started first, against a file that does not exist yet.
+    const reading = store.read();
+    await store.replace(['octocat/a']);
+    await reading;
+
+    expect((await store.read()).repositories).toEqual(['octocat/a']);
+  });
+
+  it('leaves the cache alone when a write fails', async () => {
+    const store = new ConnectedReposStore(filePath);
+    await store.replace(['octocat/a']);
+    await expect(store.replace(['not a repo ref'])).rejects.toBeTruthy();
+    // The failed write must not be able to claim a list that never landed.
+    expect((await store.read()).repositories).toEqual(['octocat/a']);
+  });
+
+  it('leaves no temporary files behind on the happy path', async () => {
     const store = new ConnectedReposStore(filePath);
     await store.replace(['octocat/a']);
     await store.replace(['octocat/b']);
@@ -131,6 +162,23 @@ describe('ConnectedReposStore', () => {
     const entries = await readdir(directory);
     expect(entries.filter((name) => name.endsWith('.tmp'))).toEqual([]);
     expect(entries).toContain('connected-repos-v1.json');
+  });
+
+  /**
+   * The path the previous test could not reach: on success the rename consumes the temporary file,
+   * so the `finally` that unlinks it never runs and could be deleted unnoticed. A write into a
+   * directory that cannot be created fails before the rename, which is where the cleanup matters.
+   */
+  it('leaves no temporary file behind when the write itself fails', async () => {
+    const { writeFile, readdir } = await import('node:fs/promises');
+    // A *file* where the store expects a directory: `ensureStateDirectory` fails, so `#persist`
+    // throws before it can create anything -- and nothing is left over.
+    const blocked = join(directory, 'blocked');
+    await writeFile(blocked, 'not a directory', 'utf8');
+    const store = new ConnectedReposStore(join(blocked, 'connected-repos-v1.json'));
+
+    await expect(store.replace(['octocat/a'])).rejects.toBeTruthy();
+    expect((await readdir(directory)).filter((name) => name.endsWith('.tmp'))).toEqual([]);
   });
 
   it('writes a versioned envelope, so a future shape change is a new number', async () => {

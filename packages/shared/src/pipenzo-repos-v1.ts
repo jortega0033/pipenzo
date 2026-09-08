@@ -76,9 +76,22 @@ export type PipenzoRepoV1 = z.infer<typeof pipenzoRepoV1Schema>;
  * with more repositories than it allows would otherwise get a complete-looking list that is not
  * complete. Saying so is the difference between a missing repository and a mystery.
  */
+/**
+ * The ceiling, which must not be *lower* than what the daemon is willing to collect.
+ *
+ * It was, and the consequence was worse than a truncated list: the daemon walks up to
+ * `GITHUB_REPO_PAGE_CAP` pages of 100, so an account with more repositories than this validated on
+ * the way out and became a 500 the picker could only offer to retry — forever. The `truncated` flag
+ * exists precisely so "more than we can show" is an answer rather than a failure, and a cap below
+ * the collector's own routed straight past it.
+ *
+ * Kept in agreement with `GITHUB_REPO_PAGE_CAP * 100` by a test in `github-client-repos.test.ts`.
+ */
+export const PIPENZO_MAX_LISTED_REPOS = 5000;
+
 export const pipenzoRepoListV1Schema = z
   .object({
-    repositories: z.array(pipenzoRepoV1Schema).max(3000),
+    repositories: z.array(pipenzoRepoV1Schema).max(PIPENZO_MAX_LISTED_REPOS),
     truncated: z.boolean(),
   })
   .strict();

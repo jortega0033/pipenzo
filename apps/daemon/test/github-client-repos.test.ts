@@ -150,14 +150,43 @@ describe('OctokitGitHubClient.listAccessibleRepositories', () => {
     const pages = Array.from({ length: GITHUB_REPO_PAGE_CAP + 10 }, (_, index) => [
       writable(`octocat/repo-${index}`),
     ]);
-    const { octokit, pagesFetched } = stubPaginatingOctokit(pages);
+    const { octokit } = stubPaginatingOctokit(pages);
     const { repositories, truncated } = await OctokitGitHubClient.withOctokit(
       octokit,
     ).listAccessibleRepositories();
 
     expect(truncated).toBe(true);
-    expect(pagesFetched()).toBe(GITHUB_REPO_PAGE_CAP);
     expect(repositories).toHaveLength(GITHUB_REPO_PAGE_CAP);
+  });
+
+  /**
+   * The boundary the flag is easiest to get wrong at. An account with *exactly* the cap's worth of
+   * pages and nothing beyond them has a complete list, and reporting `truncated` there tells the
+   * user their repositories are missing when they are all present -- the precise confusion this
+   * flag exists to prevent. Breaking as soon as the cap is reached, rather than on discovering a
+   * further page, produces exactly that.
+   */
+  it('does not claim truncation for an account that fits exactly', async () => {
+    const pages = Array.from({ length: GITHUB_REPO_PAGE_CAP }, (_, index) => [
+      writable(`octocat/repo-${index}`),
+    ]);
+    const { octokit } = stubPaginatingOctokit(pages);
+    const { repositories, truncated } = await OctokitGitHubClient.withOctokit(
+      octokit,
+    ).listAccessibleRepositories();
+
+    expect(truncated).toBe(false);
+    expect(repositories).toHaveLength(GITHUB_REPO_PAGE_CAP);
+  });
+
+  it('does not claim truncation for an ordinary short list', async () => {
+    const { octokit } = stubPaginatingOctokit([[writable('octocat/a')], [writable('octocat/b')]]);
+    const { repositories, truncated } = await OctokitGitHubClient.withOctokit(
+      octokit,
+    ).listAccessibleRepositories();
+
+    expect(truncated).toBe(false);
+    expect(repositories).toHaveLength(2);
   });
 
   it('refuses a page that is not an array rather than guessing', async () => {

@@ -13,10 +13,16 @@ import type { ConnectedRepoState } from './startup-route.js';
  * precisely when the gate is deciding whether to show the repo picker.
  *
  * Answering `0` during that window would route a fully-configured install to "choose your repos"
- * on every launch, for as long as the daemon took to come up. So an unknown count is reported as
+ * on every launch, for as long as the daemon took to come up. So a failed read is reported as
  * `'not-tracked'`, which `routePipenzoStartup` treats as satisfied — the same honest default the
  * router shipped with in #113. The gate only ever *adds* a step once it knows for certain that
  * nothing has been chosen.
+ *
+ * But "no answer yet" and "no answer coming" are not the same state, and collapsing them produced
+ * the symmetric bug: an install with a credential and *zero* repositories chosen rendered the
+ * board, then had it replaced by the picker the moment the first real answer arrived. So the first
+ * read is `'unknown'`, which routes to `loading`, and it degrades to `'not-tracked'` the instant
+ * that read settles either way — a window measured in one IPC round trip, not in daemon startup.
  *
  * Re-read on `daemon:status` going `ready`, for the same reason `useGitHubConnection` is: that edge
  * is already on the wire, and it is the moment the answer becomes knowable again.
@@ -25,7 +31,7 @@ export function useConnectedRepos(): {
   connectedRepos: ConnectedRepoState;
   refresh: (count?: number) => void;
 } {
-  const [count, setCount] = useState<ConnectedRepoState>('not-tracked');
+  const [count, setCount] = useState<ConnectedRepoState>('unknown');
   const [revision, setRevision] = useState(0);
 
   /**
@@ -59,7 +65,10 @@ export function useConnectedRepos(): {
         .catch(() => {
           // A daemon that is not ready rejects this call, and that is the common case rather than
           // an error -- it is what happens on every launch before the daemon finishes starting.
-          // Reporting `0` here is the bug this whole module exists to avoid.
+          // Reporting `0` here is the bug this whole module exists to avoid. But the gate must not
+          // wait forever either, so this settles to `'not-tracked'`: unknown, and not coming.
+          if (cancelled || generation !== latest) return;
+          setCount((current) => (current === 'unknown' ? 'not-tracked' : current));
         });
     };
 
