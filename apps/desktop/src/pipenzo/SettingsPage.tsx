@@ -1,3 +1,4 @@
+import { AccountPanel } from './AccountPanel.js';
 import { ConnectedReposPanel } from './ConnectedReposPanel.js';
 
 /**
@@ -16,12 +17,13 @@ import { ConnectedReposPanel } from './ConnectedReposPanel.js';
  * ## Why the grid, and why it is only half full
  *
  * `.cols` is a two-column CSS grid with `align-items: start`, so each column's panels stack to
- * their own heights instead of the taller column stretching the shorter one. Today the left column
- * holds the one panel this ticket ships. The rest of the canvas's panels are their own tickets —
- * Concurrency (#126), Default mode (#127), Lesson memory (#128), Notifications (#129), and Account
- * / Providers / Disconnect (#130) — and each drops into a column here rather than restating the
- * layout. The second `.col` element is deliberately absent until something occupies it: an empty
- * grid child is markup that renders nothing and that a later reader has to prove is unused.
+ * their own heights instead of the taller column stretching the shorter one. The left column holds
+ * Connected repos (#125); the right holds Account / Providers / Disconnect (#130), which is where
+ * the canvas puts it. The remaining canvas panels are their own tickets — Concurrency (#126),
+ * Default mode (#127), Lesson memory (#128), Notifications (#129) — and each drops into a column
+ * here rather than restating the layout. A `.col` element stays absent until something occupies it:
+ * an empty grid child is markup that renders nothing and that a later reader has to prove is
+ * unused.
  *
  * ## What this is not
  *
@@ -42,6 +44,9 @@ export function SettingsPage() {
       <div className="cols">
         <div className="col">
           <ConnectedReposPanel />
+        </div>
+        <div className="col">
+          <AccountPanel />
         </div>
       </div>
     </div>

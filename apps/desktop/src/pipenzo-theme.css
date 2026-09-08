@@ -4988,6 +4988,104 @@
     color: var(--color-text);
     font-weight: 700;
   }
+
+  /* Settings' Account panel (issue #130), ported from Settings.dc.html. `.avatar`, `.f-row`,
+     `.chip`/`.chip-ok` and `.self-tag` were already here for other screens and are reused as-is. */
+  .ident {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--color-surface-3);
+    border-radius: var(--radius-pipenzo-sm);
+    padding: 12px;
+  }
+
+  .ident-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .ident-name {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.2;
+    /* A GitHub login is up to 39 characters and the chip beside it must not be pushed off. */
+    overflow-wrap: anywhere;
+  }
+
+  .ident-sub {
+    font-size: 12px;
+    color: var(--color-text-faint);
+    line-height: 1.3;
+  }
+
+  .prov-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .prov {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+    color: var(--color-text-soft);
+    line-height: 1.3;
+  }
+
+  .prov .p-ic {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--color-ok);
+    color: var(--color-ok-fg);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  /* The canvas draws only authenticated providers, so it has no rule for the other states. A green
+     tick is the entire signal a user reads off this list, so anything that is not signed in gets a
+     neutral disc instead -- "not installed" and "sign-in unknown" must not borrow the affirmative. */
+  .prov .p-ic.off {
+    background: var(--color-surface-3);
+    color: var(--color-text-faint);
+  }
+
+  .prov .grow {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .prov .mono {
+    font-size: 11px;
+    color: var(--color-text-faint);
+  }
+
+  .acct-v {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--color-text-soft);
+    line-height: 1.3;
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .danger-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
 }
 
 @keyframes pulse-warn {

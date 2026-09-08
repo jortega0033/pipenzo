@@ -933,9 +933,16 @@ function gitHubConnectionStatus(): PipenzoGitHubConnectionV1 {
  * path.** `child.kill()` is SIGTERM on POSIX but maps to `TerminateProcess` on Windows — the
  * platform this app packages for — so the bounded HTTP `sessions.cancelAll` that `killDaemon`
  * exists to perform does not happen here. Provider trees are still reaped by the Job Object host,
- * but in-flight sessions die uncancelled. That is acceptable because connecting or disconnecting
- * GitHub is a pre-app action taken before any ticket is running; it would not be if this were ever
- * reachable mid-run.
+ * but in-flight sessions die uncancelled. That was acceptable while connecting and disconnecting
+ * were pre-app actions taken before any ticket could be running.
+ *
+ * **That premise no longer holds.** Settings' Account panel (#130) puts "Disconnect GitHub" on a
+ * screen reachable with work in flight, which is exactly the case this comment used to rule out.
+ * Issue #224 owns the real fix — routing a credential change through a bounded `sessions.cancelAll`
+ * before the kill, or refusing the disconnect until the work finishes. Until then the mitigation is
+ * in the UI rather than here: the panel confirms first and says in the dialog that anything running
+ * stops without a clean cancel, and it latches the in-flight call so a second click cannot turn one
+ * restart into a loop.
  */
 function restartDaemonForCredentialChange(): void {
   // A restart during shutdown is how an orphaned, credential-holding daemon outlives the app.
