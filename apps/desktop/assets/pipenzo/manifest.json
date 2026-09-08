@@ -1749,8 +1749,8 @@
     },
     {
       "file": "mascot/mini/pipenzo-head-waiting-128.png",
-      "bytes": 23837,
-      "sha256": "cccf8e69a7ec3f99c206cf0963e762377f31ede46566324b81f32d29152d832a",
+      "bytes": 28626,
+      "sha256": "dddb27f072daa8f14f64c8e62cc26e5bc67904ca085c213d9a37e9c227d41c9f",
       "dimensions": [
         128,
         128
@@ -1760,8 +1760,8 @@
     },
     {
       "file": "mascot/mini/pipenzo-head-waiting-256.png",
-      "bytes": 81823,
-      "sha256": "ca99a9650330dc57e6c8b9f89bc4b102ad8b199f637eea0320fa7253e3cb0107",
+      "bytes": 94131,
+      "sha256": "ce0ed6833307ecc39b02c272eb8db831ce2f5397c096a023251da797f44b7bdf",
       "dimensions": [
         256,
         256
@@ -1771,8 +1771,8 @@
     },
     {
       "file": "mascot/mini/pipenzo-head-waiting-32.png",
-      "bytes": 1976,
-      "sha256": "54ddd235c39915dbe54ed59cc8003dabef5c66e65130cdd9f56cafa6b6389c70",
+      "bytes": 2775,
+      "sha256": "ec65ba5bc25a89011cd321977b51b29b66977a7ee84953a28db3376b96a04c82",
       "dimensions": [
         32,
         32
@@ -1782,8 +1782,8 @@
     },
     {
       "file": "mascot/mini/pipenzo-head-waiting-48.png",
-      "bytes": 4293,
-      "sha256": "da0543a62b2e13ecba7b1a9163748ff8fea68c56c2f430e1a0165756a449e829",
+      "bytes": 5451,
+      "sha256": "1e3a4857f9daeaa663bcc179c9b7a1d9b4050bb9abbe47c0f3adb6641a074b2d",
       "dimensions": [
         48,
         48
@@ -1793,8 +1793,8 @@
     },
     {
       "file": "mascot/mini/pipenzo-head-waiting-512.png",
-      "bytes": 276393,
-      "sha256": "77a9d53106f84341842eaa9ab9695784159768bbb1571fad212d985f321b2a02",
+      "bytes": 308968,
+      "sha256": "45665173d3e60f0ff21c09e46a092b4ae6defc110d7598cdaa155000b67ac50e",
       "dimensions": [
         512,
         512
@@ -1804,8 +1804,8 @@
     },
     {
       "file": "mascot/mini/pipenzo-head-waiting-512.webp",
-      "bytes": 58974,
-      "sha256": "16129012aabe13ea7cf16791614640555ec1973438299e36f68af3c6106c77e5",
+      "bytes": 58482,
+      "sha256": "865509d3eaac7e7a3208db052d572182636e65ce02951db7f4fd3e44be7e2297",
       "dimensions": [
         512,
         512
@@ -1815,8 +1815,8 @@
     },
     {
       "file": "mascot/mini/pipenzo-head-waiting-64.png",
-      "bytes": 6976,
-      "sha256": "a8bd3b76aa83a6593dc866b682a064cf9592ced6fbb18a2cb8e55345f53fdd29",
+      "bytes": 8817,
+      "sha256": "ec89a74debf1249931243ac534d3a588eff4c98e715eb6d875c0d65a956b2aba",
       "dimensions": [
         64,
         64
@@ -1826,8 +1826,8 @@
     },
     {
       "file": "mascot/mini/pipenzo-head-waiting-64.webp",
-      "bytes": 2802,
-      "sha256": "12cd301f3e04338c0e06f35aed73472f88e322dda46f98fa62bec6bc55bd0b30",
+      "bytes": 3316,
+      "sha256": "758469796c67a2aac03522eb656880613b8d3ee50f3c949edffc215a0ea43fe3",
       "dimensions": [
         64,
         64
@@ -1837,8 +1837,8 @@
     },
     {
       "file": "mascot/mini/pipenzo-head-waiting-96.png",
-      "bytes": 14677,
-      "sha256": "cb73acfd7e72d468b2e22b7f17a96d6aa73152608540b52ee1dd983bf5bc20f9",
+      "bytes": 17431,
+      "sha256": "7475948727501e8632b9843db1609b87392425819416787e14ec6c4560dfc3c7",
       "dimensions": [
         96,
         96
@@ -1848,8 +1848,8 @@
     },
     {
       "file": "mascot/mini/pipenzo-head-waiting-96.webp",
-      "bytes": 4786,
-      "sha256": "82ef2c36e335a6fb2b7d566b78b21070dd5ed2861966316f6cebce0de88b8b29",
+      "bytes": 5648,
+      "sha256": "8d79bc3b7687f0b6245b1989395745ed607a0d8c8aa1602cc48e83a3aa5cac47",
       "dimensions": [
         96,
         96
