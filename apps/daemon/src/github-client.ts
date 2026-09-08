@@ -9,6 +9,11 @@ import {
   issueCommentBodyProblem,
 } from '@agent-dock/shared';
 import { ConditionalRequestCache } from './github-conditional-cache.js';
+import {
+  GITHUB_CORE_RATE_LIMIT_RESOURCE,
+  GitHubRateLimitTracker,
+  type GitHubRateLimitSnapshot,
+} from './github-rate-limit.js';
 
 /**
  * Pipenzo's GitHub API client (issue #177).
@@ -350,6 +355,21 @@ export interface GitHubClient {
   /** Creates an issue (issue #184, for #84's "New from idea"). Never opens a pull request. */
   createIssue(ref: RepoRef, input: GitHubIssueDraft): Promise<GitHubIssue>;
   /**
+   * The latest remaining-quota reading for one rate-limit bucket (issue #229), or `undefined` when
+   * there is none worth believing -- nothing observed yet, or a reading whose window has since
+   * refilled.
+   *
+   * Synchronous and free: it returns what a previous response already said, and never makes a
+   * request of its own. Epic #4's rule is *"below ~15% remaining quota: degrade, don't fail"*, and
+   * `remaining / limit` is that fraction; the threshold itself belongs to the consumer that reacts
+   * to it, not here.
+   *
+   * On the interface rather than only on the octokit implementation because the polling reconciler
+   * (#231) is the caller, and a reconciler that could not be tested against `FakeGitHubClient`
+   * would have its degradation behaviour tested nowhere at all.
+   */
+  rateLimit(resource?: string): GitHubRateLimitSnapshot | undefined;
+  /**
    * Posts one comment on an issue (issue #228).
    *
    * Epic #4's diff-size gate ends two of its rows in a comment rather than in a lane move: the
@@ -536,14 +556,61 @@ function pipenzoThrottleOptions(observer: PipenzoThrottleObserver | undefined): 
  */
 export function createPipenzoOctokit(
   token: string,
-  options: { throttleObserver?: PipenzoThrottleObserver } = {},
+  options: {
+    throttleObserver?: PipenzoThrottleObserver;
+    /**
+     * Where remaining-quota readings are recorded (issue #229). Optional, and shared rather than
+     * owned, for the same reason `cache` is: `index.ts` builds a fresh authenticated client per
+     * request, so a tracker a client constructed for itself would be discarded before its second
+     * observation.
+     */
+    rateLimits?: GitHubRateLimitTracker;
+  } = {},
 ): PipenzoOctokit {
-  return new OctokitWithPagination({
+  const octokit = new OctokitWithPagination({
     auth: token,
     userAgent: PIPENZO_USER_AGENT,
     throttle: pipenzoThrottleOptions(options.throttleObserver),
     log: redactingOctokitLog(),
   }) as PipenzoOctokit;
+  const rateLimits = options.rateLimits;
+  if (rateLimits) installRateLimitCapture(octokit, rateLimits);
+  return octokit;
+}
+
+/**
+ * Records remaining quota off every response this client receives (issue #229).
+ *
+ * ## Why a hook rather than a line in each method
+ *
+ * There are a dozen call sites in this file and `paginate` makes requests of its own that none of
+ * them can see. A capture written per method would miss the paginated pages, and the next method
+ * added would miss it entirely -- silently, because nothing fails when a reading is not taken. The
+ * hook sits under all of it, including `paginate`'s internal requests, and costs no extra HTTP
+ * request: these are headers on responses the client was making anyway.
+ *
+ * ## Why the error path is hooked too, and what that has to do with 304s
+ *
+ * `@octokit/request` *raises* a `304 Not Modified` rather than returning it, so a capture written
+ * only into the success path would see nothing during exactly the traffic the conditional-request
+ * layer (#161) produces -- a reconciler polling unchanged issues gets 304s and almost nothing else.
+ * The reading on a 304 is recorded, and it is the reading that matters most: a 304 costs no quota,
+ * so its headers report the *current* headroom for free, and refusing to record them would leave
+ * the tracker's last reading ageing out (`latest` drops an expired snapshot) precisely while the
+ * daemon was busiest.
+ *
+ * The same hook sees 403s and 429s, which is deliberate: an exhausted `remaining: 0` is a true
+ * reading and the one a consumer most needs. The error is always rethrown -- this observes, it
+ * never handles.
+ */
+function installRateLimitCapture(octokit: PipenzoOctokit, rateLimits: GitHubRateLimitTracker): void {
+  octokit.hook.after('request', (response) => {
+    rateLimits.record((response as { headers?: unknown }).headers);
+  });
+  octokit.hook.error('request', (error) => {
+    rateLimits.record(responseHeadersOf(error));
+    throw error;
+  });
 }
 
 /**
@@ -775,16 +842,41 @@ export interface OctokitGitHubClientOptions {
    * is what the unit tests that assert unconditional behaviour want.
    */
   readonly cache?: ConditionalRequestCache;
+  /**
+   * Where remaining-quota readings are recorded and read back (issue #229). Shared for the same
+   * reason `cache` is, and omitting it turns capture off entirely -- which is what the unit tests
+   * asserting request behaviour without a tracker want.
+   *
+   * Only `fromToken` can wire this to the transport, because that is the factory that builds the
+   * octokit instance the hook is installed on. `withOctokit` accepts a tracker so a caller that
+   * built its own instance through `createPipenzoOctokit` can hand back the same one; it cannot
+   * install the hook for you, and a tracker passed there without that wiring will simply never be
+   * fed.
+   */
+  readonly rateLimits?: GitHubRateLimitTracker;
 }
 
 /** The one real implementation. Everything network-facing in Pipenzo's GitHub surface is here. */
 export class OctokitGitHubClient implements GitHubClient {
   readonly #octokit: PipenzoOctokit;
   readonly #cache: ConditionalRequestCache | undefined;
+  readonly #rateLimits: GitHubRateLimitTracker | undefined;
 
-  private constructor(octokit: PipenzoOctokit, cache: ConditionalRequestCache | undefined) {
+  private constructor(
+    octokit: PipenzoOctokit,
+    cache: ConditionalRequestCache | undefined,
+    rateLimits: GitHubRateLimitTracker | undefined,
+  ) {
     this.#octokit = octokit;
     this.#cache = cache;
+    this.#rateLimits = rateLimits;
+  }
+
+  /** Issue #229. Reads the shared tracker; never a request. */
+  rateLimit(
+    resource: string = GITHUB_CORE_RATE_LIMIT_RESOURCE,
+  ): GitHubRateLimitSnapshot | undefined {
+    return this.#rateLimits?.latest(resource);
   }
 
   /**
@@ -810,7 +902,11 @@ export class OctokitGitHubClient implements GitHubClient {
     token: string,
     options: OctokitGitHubClientOptions = {},
   ): OctokitGitHubClient {
-    return new OctokitGitHubClient(createPipenzoOctokit(token), options.cache);
+    return new OctokitGitHubClient(
+      createPipenzoOctokit(token, { rateLimits: options.rateLimits }),
+      options.cache,
+      options.rateLimits,
+    );
   }
 
   /** Injection seam for tests and for a caller that already holds a configured octokit. */
@@ -818,7 +914,7 @@ export class OctokitGitHubClient implements GitHubClient {
     octokit: PipenzoOctokit,
     options: OctokitGitHubClientOptions = {},
   ): OctokitGitHubClient {
-    return new OctokitGitHubClient(octokit, options.cache);
+    return new OctokitGitHubClient(octokit, options.cache, options.rateLimits);
   }
 
   /**

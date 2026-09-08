@@ -355,7 +355,7 @@ describe('the publish service holds its credential narrowly', () => {
    * of its own tests passed. A conflict resolution is precisely where this class of bug hides, so
    * the wiring gets a tripwire of its own.
    */
-  it('builds its GitHub clients from the injected credential and the shared ETag cache', async () => {
+  it('builds its GitHub clients from the injected credential and the shared per-daemon stores', async () => {
     const code = await stripped(join(daemonSrc, 'index.ts'));
 
     // The credential is read once, at startup, from the stdin channel — not from this process's
@@ -367,10 +367,16 @@ describe('the publish service holds its credential narrowly', () => {
     // conditional-request cache (issue #161). Two call sites: the phase service and the phase
     // machine.
     expect(code).toMatch(/const githubConditionalCache = new ConditionalRequestCache\(\)/);
+    // And the one per-daemon rate-limit tracker (issue #229), which is here for exactly the reason
+    // the cache is: each factory below builds a fresh client per request, so a tracker a client
+    // owned would be discarded before its second observation and the shipped daemon would capture
+    // no quota readings at all -- while every test of the capture itself stayed green. Same class
+    // of bug, same tripwire.
+    expect(code).toMatch(/const githubRateLimits = new GitHubRateLimitTracker\(\)/);
     const allCallSites = code.match(/OctokitGitHubClient\.fromToken\(/g) ?? [];
     const wired =
       code.match(
-        /OctokitGitHubClient\.fromToken\(\s*githubCredential\.resolve\(\),\s*\{\s*cache:\s*githubConditionalCache,?\s*\}/g,
+        /OctokitGitHubClient\.fromToken\(\s*githubCredential\.resolve\(\),\s*\{\s*cache:\s*githubConditionalCache,\s*rateLimits:\s*githubRateLimits,?\s*\}/g,
       ) ?? [];
     // Both of today's call sites, and at least those two — an exact `toHaveLength(2)` would fail on
     // a legitimately-added third consumer, and would report it as "the cache wiring broke" when the

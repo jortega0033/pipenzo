@@ -31,6 +31,7 @@ import {
 import { ExecFileGateCommands } from './gate-commands.js';
 import { OctokitGitHubClient } from './github-client.js';
 import { ConditionalRequestCache } from './github-conditional-cache.js';
+import { GitHubRateLimitTracker } from './github-rate-limit.js';
 import { DaemonGitHubCredential } from './github-credential.js';
 import { PipenzoPhaseMachine } from './pipenzo-phase-machine.js';
 import { PipenzoPhaseEventBus } from './pipenzo-phase-events.js';
@@ -198,6 +199,12 @@ async function main() {
   // no credential, only response bodies and ETags, so sharing it across those short-lived clients
   // costs nothing the boundary was protecting.
   const githubConditionalCache = new ConditionalRequestCache();
+  // Remaining GitHub quota, read off responses the daemon was making anyway (issue #229). Shared
+  // and constructed here for exactly the reason the cache above is: each factory below builds a
+  // fresh authenticated client per request, so a tracker a client owned would be discarded before
+  // its second observation and the shipped daemon would capture nothing -- present in the source,
+  // absent from the running app. It holds no credential, only five numbers per rate-limit bucket.
+  const githubRateLimits = new GitHubRateLimitTracker();
 
   const phaseService = new PipenzoPhaseService({
     refineSessions: new AwaitedPhaseSessions({ sessionManager }),
@@ -207,6 +214,7 @@ async function main() {
     github: () =>
       OctokitGitHubClient.fromToken(githubCredential.resolve(), {
         cache: githubConditionalCache,
+        rateLimits: githubRateLimits,
       }),
     commands: new ExecFileGateCommands({ probeCwd: durableStateDirectory }),
   });
@@ -225,6 +233,7 @@ async function main() {
     github: () =>
       OctokitGitHubClient.fromToken(githubCredential.resolve(), {
         cache: githubConditionalCache,
+        rateLimits: githubRateLimits,
       }),
     events: phaseEvents,
   });
@@ -274,6 +283,7 @@ async function main() {
     pipenzoGitHubClient: () =>
       OctokitGitHubClient.fromToken(githubCredential.resolve(), {
         cache: githubConditionalCache,
+        rateLimits: githubRateLimits,
       }),
   });
 
