@@ -1,10 +1,12 @@
+![Pipenzo: small autonomous changes, human-approved pull requests. Refine, Implement, Review, then you approve.](docs/images/social/readme-hero.webp)
+
 # Pipenzo
 
-Open-source Electron desktop app that turns a GitHub issue into a small, human-reviewable pull
-request, built by wrapping autonomous coding agents (Claude Code, Codex) in a structured
-Plan → Refine → Implement → Review pipeline. You point it at a repo, click **Implement** on an
-issue, and an agent does the work — but it never pushes anything or opens a PR without you saying
-so first.
+Pipenzo delegates engineering work without delegating authority. Open-source Electron desktop app
+that turns a GitHub issue into a small, human-reviewable pull request, built by wrapping autonomous
+coding agents (Claude Code, Codex) in a structured Plan → Refine → Implement → Review pipeline. You
+point it at a repo, click **Implement** on an issue, and an agent does the work — but it never
+pushes anything or opens a PR without you saying so first.
 
 No monetization plan. This is a portfolio / open-source project, built on top of
 [agentdock](https://github.com/jortega0033/agentdock), an Electron + local-daemon boilerplate for
