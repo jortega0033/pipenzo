@@ -19,6 +19,7 @@ import type {
   PipenzoRefineResultV1,
   PipenzoReviewRequestV1,
   PipenzoReviewResultV1,
+  RefineEstimateV1,
 } from '@agent-dock/shared';
 import {
   GitHubClientError,
@@ -47,6 +48,7 @@ import { detectScreenshotCapability } from './screenshot-capture.js';
 import { IssueDraftError, IssueDrafter } from './issue-drafter.js';
 import { readPipenzoRepoConfig, type PipenzoCommandConfig } from './pipenzo-repo-config.js';
 import type { PipenzoPhaseMachine } from './pipenzo-phase-machine.js';
+import { evaluateDiffSizeGate } from './refine-gate.js';
 
 /**
  * The one service the Refine / Implement / Review routes call (Pipenzo issue #184).
@@ -178,8 +180,9 @@ export class PipenzoPhaseService {
     } catch (error) {
       throw toPhaseError(error);
     }
+    let result: { sessionId: string; spec: PipenzoRefineResultV1['spec']; toolsUsed: readonly string[] };
     try {
-      const result = await this.#refine.refine({
+      result = await this.#refine.refine({
         issue: {
           repo: `${ref.owner}/${ref.repo}`,
           number: issue.number,
@@ -190,9 +193,55 @@ export class PipenzoPhaseService {
         provider: request.provider,
         ...(request.model ? { model: request.model } : {}),
       });
-      return { sessionId: result.sessionId, spec: result.spec, toolsUsed: [...result.toolsUsed] };
     } catch (error) {
       throw toPhaseError(error);
+    }
+
+    // README's diff-size gate (issue #270): a pure decision over the spec's own estimate, reported
+    // on the wire rather than left for a renderer to re-derive (see refineGateVerdictV1Schema's
+    // doc comment). Outside the try above: the spec is already valid and already the thing refine()
+    // promises to return, and the gate itself cannot throw -- it is a pure function.
+    const gateVerdict = evaluateDiffSizeGate(result.spec.estimate);
+
+    // Same reasoning as #144/#266's review-time consequence: a refusal's transition + comment is
+    // real but secondary, best-effort and logged, never turning a successful refine into an error.
+    if (gateVerdict === 'refuse' && request.ticketId) {
+      await this.#reportRefusal(request.ticketId, result.spec);
+    }
+
+    return {
+      sessionId: result.sessionId,
+      spec: result.spec,
+      toolsUsed: [...result.toolsUsed],
+      gateVerdict,
+    };
+  }
+
+  /**
+   * The actual consequence of a diff-size-gate refusal (issue #270): transitions the ticket to
+   * `pipenzo:needs-pre-scoping`, then posts the estimate and what tripped as a comment on its
+   * issue. Guarded against a retried `refine()` double-posting the same way
+   * `#reportBlownEstimate` is (#266) -- `read()` first, skip both writes if the ticket is already
+   * on `pipenzo:needs-pre-scoping`.
+   */
+  async #reportRefusal(ticketId: string, spec: PipenzoRefineResultV1['spec']): Promise<void> {
+    if (!this.#machine) return;
+    try {
+      const current = await this.#machine.read(ticketId);
+      if (current.ticket.labels.includes('pipenzo:needs-pre-scoping')) return;
+      const result = await this.#machine.transition(ticketId, 'pipenzo:needs-pre-scoping');
+      const github = this.#requireGitHub();
+      const ref = parseRepoRef(result.ticket.repo);
+      await github.createIssueComment(
+        ref,
+        result.ticket.issueNumber,
+        refusalCommentBody(spec.estimate),
+      );
+    } catch (error) {
+      this.#logger?.warn('could not record a diff-size refusal against its ticket', {
+        ticketId,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
@@ -577,6 +626,27 @@ export function blownEstimateCommentBody(report: PipenzoReviewResultV1): string 
     `| Files | ${estimate.filesTouched} | ${implementation.filesTouched} |`,
     '',
     'Parked in `pipenzo:awaiting-stack-approval` for a human to decide: accept the overrun, or split it into a stack.',
+  ].join('\n');
+}
+
+/**
+ * The comment posted on a diff-size-gate refusal at Refine (issue #270). Names the estimate and
+ * which of README's two conditions tripped -- over the 400-line/20-file ceiling, or inside the
+ * 100–400/10–20 band with no clean layering -- since those are two different reasons a human
+ * re-scoping the ticket needs to tell apart. No proposed split yet: nothing generates one
+ * (#271); the comment says only what is real.
+ */
+export function refusalCommentBody(estimate: RefineEstimateV1): string {
+  const overCeiling = estimate.changedLines > 400 || estimate.filesTouched > 20;
+  const reason = overCeiling
+    ? 'past the 400-line / 20-file ceiling a dependency-ordered stack can still cover'
+    : 'no clean layering into a 2–4 PR stack at this size';
+  return [
+    `This ticket declined at Refine: **${reason}**.`,
+    '',
+    `Estimate: **${estimate.changedLines}** changed lines across **${estimate.filesTouched}** files.`,
+    '',
+    'Parked in `pipenzo:needs-pre-scoping`. Nothing was written and no runs will be spent until a person re-scopes it.',
   ].join('\n');
 }
 

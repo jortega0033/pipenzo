@@ -339,6 +339,97 @@ describe('POST /v2/pipenzo/refine', () => {
     expect(response.statusCode).toBe(412);
     expect(response.json()).toMatchObject({ code: 'repository_not_configured' });
   });
+
+  /** A spec whose estimate is well inside a one-PR budget: `refine-gate.ts` should report `single`. */
+  function smallSpecOutput(): string {
+    return JSON.stringify(
+      spec({ estimate: { changedLines: 40, filesTouched: 2, layered: false } }),
+    );
+  }
+
+  /** Past README's ceiling either way -- refuses regardless of `layered`. */
+  function refusedSpecOutput(): string {
+    return JSON.stringify(
+      spec({ estimate: { changedLines: 900, filesTouched: 40, layered: false } }),
+    );
+  }
+
+  describe('the diff-size gate (issue #270)', () => {
+    it('reports "single" for a one-PR-sized estimate, with no ticket consequence', async () => {
+      const { app } = buildApp({ refineOutput: smallSpecOutput() });
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/refine',
+        headers: auth,
+        payload: { issueNumber: 184, repositoryPath: REPO_PATH, provider: 'claude' },
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json().gateVerdict).toBe('single');
+    });
+
+    it('reports "refuse" and transitions the ticket, posting the estimate as a comment', async () => {
+      const machine = new FakeMachine();
+      const { app, github } = buildApp({ refineOutput: refusedSpecOutput(), machine });
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/refine',
+        headers: auth,
+        payload: { issueNumber: 184, repositoryPath: REPO_PATH, provider: 'claude', ticketId: TICKET_ID },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json().gateVerdict).toBe('refuse');
+      expect(machine.calls).toEqual([
+        { method: 'read', ticketId: TICKET_ID },
+        { method: 'transition', ticketId: TICKET_ID, label: 'pipenzo:needs-pre-scoping' },
+      ]);
+      const posted = github.issueComments({ owner: 'jortega0033', repo: 'pipenzo' }, 184);
+      expect(posted).toHaveLength(1);
+      expect(posted[0]?.body).toContain('900');
+      expect(posted[0]?.body).toContain('needs-pre-scoping');
+    });
+
+    it('does not transition anything when no ticketId was given, even on a refusal', async () => {
+      const machine = new FakeMachine();
+      const { app } = buildApp({ refineOutput: refusedSpecOutput(), machine });
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/refine',
+        headers: auth,
+        payload: { issueNumber: 184, repositoryPath: REPO_PATH, provider: 'claude' },
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json().gateVerdict).toBe('refuse');
+      expect(machine.calls).toEqual([]);
+    });
+
+    it('does not re-transition or re-comment when the ticket already carries the target label', async () => {
+      const machine = new FakeMachine('pipenzo:needs-pre-scoping');
+      const { app, github } = buildApp({ refineOutput: refusedSpecOutput(), machine });
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/refine',
+        headers: auth,
+        payload: { issueNumber: 184, repositoryPath: REPO_PATH, provider: 'claude', ticketId: TICKET_ID },
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json().gateVerdict).toBe('refuse');
+      expect(machine.calls).toEqual([{ method: 'read', ticketId: TICKET_ID }]);
+      expect(github.issueComments({ owner: 'jortega0033', repo: 'pipenzo' }, 184)).toHaveLength(0);
+    });
+
+    it('does not throw when no phase machine is configured -- the spec still comes back', async () => {
+      const { app } = buildApp({ refineOutput: refusedSpecOutput() });
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/refine',
+        headers: auth,
+        payload: { issueNumber: 184, repositoryPath: REPO_PATH, provider: 'claude', ticketId: TICKET_ID },
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json().gateVerdict).toBe('refuse');
+    });
+  });
 });
 
 describe('POST /v2/pipenzo/implement', () => {
