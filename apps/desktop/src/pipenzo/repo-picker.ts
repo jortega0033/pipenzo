@@ -83,6 +83,18 @@ export function connectCtaLabel(count: number): string {
 }
 
 /**
+ * The same button in Settings (issue #125), where the verb is wrong.
+ *
+ * "Connect 3 repos" is a first-run promise — it describes what pressing it will start. Reopening
+ * the picker from Settings to untick one and being told you are about to *connect* two is the
+ * screen describing the wrong half of the change: what the press actually does there is replace
+ * the list with what is ticked, which is a save.
+ */
+export function settingsSaveCtaLabel(count: number): string {
+  return count === 1 ? 'Save 1 repo' : `Save ${count} repos`;
+}
+
+/**
  * Whether a repository may be *newly chosen*.
  *
  * One exported predicate rather than an `archived` check written at each place that needs it. The

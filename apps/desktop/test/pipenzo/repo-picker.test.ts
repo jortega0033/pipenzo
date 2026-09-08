@@ -9,6 +9,7 @@ import {
   repoMonogram,
   selectionSummary,
   selectionToSave,
+  settingsSaveCtaLabel,
   splitFullName,
   unlistedSelection,
 } from '../../src/pipenzo/repo-picker.js';
@@ -104,6 +105,15 @@ describe('the counting copy', () => {
   it('pluralises the CTA', () => {
     expect(connectCtaLabel(1)).toBe('Connect 1 repo');
     expect(connectCtaLabel(3)).toBe('Connect 3 repos');
+  });
+
+  /**
+   * Settings (issue #125) reopens the same picker to edit an existing list, where "Connect 2 repos"
+   * would describe the wrong half of a press that also *disconnects* whatever was unticked.
+   */
+  it('says save rather than connect in the Settings framing', () => {
+    expect(settingsSaveCtaLabel(1)).toBe('Save 1 repo');
+    expect(settingsSaveCtaLabel(3)).toBe('Save 3 repos');
   });
 });
 
