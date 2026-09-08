@@ -1,3 +1,4 @@
+import type { Logger } from '@agent-dock/agent-runtime';
 import type {
   PipenzoIdeaDraftRequestV1,
   PipenzoIdeaDraftResultV1,
@@ -45,6 +46,7 @@ import type { PipenzoGitRunner } from './pipenzo-git.js';
 import { detectScreenshotCapability } from './screenshot-capture.js';
 import { IssueDraftError, IssueDrafter } from './issue-drafter.js';
 import { readPipenzoRepoConfig, type PipenzoCommandConfig } from './pipenzo-repo-config.js';
+import type { PipenzoPhaseMachine } from './pipenzo-phase-machine.js';
 
 /**
  * The one service the Refine / Implement / Review routes call (Pipenzo issue #184).
@@ -112,6 +114,17 @@ export interface PipenzoPhaseServiceOptions {
    * service takes it explicitly: a test can prove what this service reads.
    */
   env?: Readonly<Record<string, string | undefined>>;
+  /**
+   * The phase machine (issue #144), narrowed to `transition` only. Optional so a service built
+   * without one (every test that predates this ticket) still reviews exactly as before — it just
+   * has nothing to transition an `estimate_blown` outcome onto. Not the same object review()
+   * builds its GitHub client from: the machine resolves its own client internally, the same lazy,
+   * per-call pattern this service already uses everywhere else.
+   */
+  machine?: Pick<PipenzoPhaseMachine, 'transition'>;
+  /** Logs a failed blown-estimate consequence without failing the review call that produced a
+   * perfectly good report — see `review()`'s own comment for why. */
+  logger?: Logger;
 }
 
 export class PipenzoPhaseService {
@@ -122,6 +135,8 @@ export class PipenzoPhaseService {
   readonly #worktrees: ImplementWorktreeManager & OwnedWorktreeLocator;
   readonly #github: (() => GitHubClient) | undefined;
   readonly #env: Readonly<Record<string, string | undefined>>;
+  readonly #machine: Pick<PipenzoPhaseMachine, 'transition'> | undefined;
+  readonly #logger: Logger | undefined;
 
   constructor(options: PipenzoPhaseServiceOptions) {
     this.#refine = new RefineSubagent(options.refineSessions);
@@ -146,6 +161,8 @@ export class PipenzoPhaseService {
     this.#worktrees = options.worktrees;
     this.#github = options.github;
     this.#env = options.env ?? process.env;
+    this.#machine = options.machine;
+    this.#logger = options.logger;
   }
 
   /* ---------------------------------------------------------------- refine */
@@ -238,8 +255,9 @@ export class PipenzoPhaseService {
     if (!location) {
       throw new PipenzoPhaseError('worktree_not_found', 'no such owned worktree');
     }
+    let report: PipenzoReviewResultV1;
     try {
-      return await this.#review.run({
+      report = await this.#review.run({
         spec: request.spec,
         worktreePath: location.path,
         baseCommit: request.baseCommit,
@@ -253,6 +271,40 @@ export class PipenzoPhaseService {
       });
     } catch (error) {
       throw toPhaseError(error);
+    }
+
+    // Outside the try above, and its own try below: the report is already valid and already the
+    // thing this call promises to return. A blown estimate's consequence (issue #144) is real but
+    // secondary -- a label write and a GitHub comment that fails must not turn a successful review
+    // into a thrown error, the same reasoning `crash-recovery.ts`'s best-effort label write uses.
+    if (report.outcome === 'estimate_blown' && request.ticketId) {
+      await this.#reportBlownEstimate(request.ticketId, report);
+    }
+
+    return report;
+  }
+
+  /**
+   * The actual consequence of `estimate_blown` (issue #144): transitions the ticket to
+   * `pipenzo:awaiting-stack-approval`, then posts the real-vs-predicted numbers as a comment on its
+   * issue. Best-effort and logged, never thrown -- see `review()`'s own comment for why.
+   */
+  async #reportBlownEstimate(ticketId: string, report: PipenzoReviewResultV1): Promise<void> {
+    if (!this.#machine) return;
+    try {
+      const result = await this.#machine.transition(ticketId, 'pipenzo:awaiting-stack-approval');
+      const github = this.#requireGitHub();
+      const ref = parseRepoRef(result.ticket.repo);
+      await github.createIssueComment(
+        ref,
+        result.ticket.issueNumber,
+        blownEstimateCommentBody(report),
+      );
+    } catch (error) {
+      this.#logger?.warn('could not record a blown estimate against its ticket', {
+        ticketId,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
@@ -475,6 +527,41 @@ const GITHUB_CODES: Record<GitHubClientError['code'], PipenzoPhaseErrorCodeV1> =
   invalid_response: 'github_failed',
   network: 'github_failed',
 };
+
+/**
+ * The comment posted on a blown estimate (issue #144), composed here rather than in
+ * `review-gates.ts`: that module reports what happened, this service decides what a human reading
+ * the issue is told about it. Exported so a test can assert its exact shape without re-running a
+ * whole review.
+ *
+ * Every number comes from `report.diffScope`, which `computeDiffScope` already split into
+ * implementation-only figures (`isGeneratedTestPath` excludes `test/pipenzo-generated/`, issue
+ * #145) — the same numbers the `diff_scope` gate's own summary already names, restated here as a
+ * public comment rather than a private evidence-pane line.
+ */
+export function blownEstimateCommentBody(report: PipenzoReviewResultV1): string {
+  const scope = report.diffScope;
+  if (!scope) {
+    // Cannot happen for a real `estimate_blown` report -- `diffScope` is always attached
+    // alongside a deterministic-gate outcome -- but a comment must never assert numbers it does
+    // not have, so this is the honest fallback rather than a thrown error over a public write.
+    return (
+      'This ticket’s implementation diff blew its Refine-time estimate by more than 50%. ' +
+      'Parked in `pipenzo:awaiting-stack-approval` for a human to decide: accept the overrun, or split it into a stack.'
+    );
+  }
+  const { implementation, estimate, ratio } = scope;
+  return [
+    `This ticket’s implementation diff came in at **${ratio.toFixed(2)}x** its Refine-time estimate, past README’s 50% blown-estimate tolerance.`,
+    '',
+    '| | Predicted | Actual |',
+    '|---|---|---|',
+    `| Lines | ${estimate.changedLines} | ${implementation.changedLines} |`,
+    `| Files | ${estimate.filesTouched} | ${implementation.filesTouched} |`,
+    '',
+    'Parked in `pipenzo:awaiting-stack-approval` for a human to decide: accept the overrun, or split it into a stack.',
+  ].join('\n');
+}
 
 /**
  * Maps a module's own typed failure onto the wire union.

@@ -12,6 +12,8 @@ import { GitHubClientError, type GitHubIssue } from '../src/github-client.js';
 import type { CommandResult, GateCommandRunner } from '../src/review-gates.js';
 import type { GitCommandResult, PipenzoGitRunner } from '../src/pipenzo-git.js';
 import type { ImplementWorktreeManager } from '../src/implement-orchestrator.js';
+import type { PipenzoPhaseMachine, PipenzoTicketReconciliation } from '../src/pipenzo-phase-machine.js';
+import type { PipenzoTicketRecordV1 } from '@agent-dock/shared';
 
 const TOKEN = 'test-token-pipenzo-phases';
 const WORKTREE_ID = '77777777-8888-4999-8aaa-bbbbbbbbbbbb';
@@ -121,6 +123,58 @@ interface Harness {
   env?: Record<string, string | undefined>;
   withGitHub?: boolean;
   onSession?: (request: CreateSessionV2Request) => void;
+  machine?: Pick<PipenzoPhaseMachine, 'transition'>;
+}
+
+const TICKET_ID = '00000000-0000-4000-8000-0000000000aa';
+
+function ticketRecord(overrides: Partial<PipenzoTicketRecordV1> = {}): PipenzoTicketRecordV1 {
+  return {
+    schemaVersion: 1,
+    ticketId: TICKET_ID,
+    repo: 'jortega0033/pipenzo',
+    issueNumber: 184,
+    lane: 'needs-human',
+    phase: 'review',
+    labels: ['pipenzo:awaiting-stack-approval'],
+    estimate: { lines: 400, files: 8, layered: false },
+    taskType: 'feature',
+    stack: { parentId: null, childIds: [], index: null },
+    attempts: [],
+    budget: { tokensUsed: 0, limit: 0 },
+    risk: { score: 0, lastResetAt: '2026-01-01T00:00:00.000Z' },
+    precommits: [],
+    etags: {},
+    ...overrides,
+  };
+}
+
+/** Records every call, and answers with a legal reconciliation for `pipenzo:awaiting-stack-approval`. */
+class FakeMachine implements Pick<PipenzoPhaseMachine, 'transition'> {
+  readonly calls: Array<{ ticketId: string; label: string }> = [];
+  #fail: unknown;
+
+  failNext(error: unknown): this {
+    this.#fail = error;
+    return this;
+  }
+
+  async transition(ticketId: string, toLabel: string): Promise<PipenzoTicketReconciliation> {
+    this.calls.push({ ticketId, label: toLabel });
+    if (this.#fail) {
+      const error = this.#fail;
+      this.#fail = undefined;
+      throw error;
+    }
+    const ticket = ticketRecord({ ticketId, labels: [toLabel as PipenzoTicketRecordV1['labels'][number]] });
+    return {
+      ticket,
+      divergence: 'none',
+      previousLane: 'working',
+      observedLabels: ticket.labels,
+      changed: true,
+    };
+  }
 }
 
 function buildApp(harness: Harness = {}) {
@@ -161,6 +215,7 @@ function buildApp(harness: Harness = {}) {
     commands: harness.commands ?? noCommands,
     runGit,
     env: harness.env ?? REPO_ENV,
+    ...(harness.machine ? { machine: harness.machine } : {}),
   });
   return {
     github,
@@ -375,6 +430,90 @@ describe('POST /v2/pipenzo/review', () => {
     });
     expect(response.statusCode).toBe(409);
     expect(response.json()).toMatchObject({ code: 'verifier_tier_too_low' });
+  });
+
+  /**
+   * Issue #144(c): a blown estimate's actual consequence. `spec()`'s estimate is shrunk to 1
+   * line/1 file so the shared `runGit` fixture's fixed 12-line/2-file diff blows it well past
+   * README's 50% tolerance, reaching `estimate_blown` without needing a second `runGit` fixture.
+   */
+  function blownEstimateRequest(overrides: Record<string, unknown> = {}) {
+    return {
+      spec: spec({ estimate: { changedLines: 1, filesTouched: 1, layered: false } }),
+      worktreeId: WORKTREE_ID,
+      baseCommit: BASE_SHA,
+      headCommit: HEAD_SHA,
+      implementerTier: 'mid',
+      reviewer: { provider: 'claude', model: 'reviewer-model', tier: 'mid' },
+      verifier: { provider: 'codex', model: 'verifier-model', tier: 'frontier' },
+      ...overrides,
+    };
+  }
+
+  describe('a blown estimate (issue #144)', () => {
+    it('transitions the ticket and posts the real-vs-predicted numbers as a comment', async () => {
+      const machine = new FakeMachine();
+      const { app, github } = buildApp({ machine });
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/review',
+        headers: auth,
+        payload: blownEstimateRequest({ ticketId: TICKET_ID }),
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json().outcome).toBe('estimate_blown');
+      expect(machine.calls).toEqual([
+        { ticketId: TICKET_ID, label: 'pipenzo:awaiting-stack-approval' },
+      ]);
+      const posted = github.issueComments({ owner: 'jortega0033', repo: 'pipenzo' }, 184);
+      expect(posted).toHaveLength(1);
+      expect(posted[0]?.body).toContain('estimate');
+      expect(posted[0]?.body).toContain('Predicted');
+    });
+
+    it('does not transition anything when no ticketId was given', async () => {
+      const machine = new FakeMachine();
+      const { app } = buildApp({ machine });
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/review',
+        headers: auth,
+        payload: blownEstimateRequest(),
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json().outcome).toBe('estimate_blown');
+      expect(machine.calls).toEqual([]);
+    });
+
+    it('does not throw when no phase machine was configured -- the report still comes back', async () => {
+      const { app } = buildApp();
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/review',
+        headers: auth,
+        payload: blownEstimateRequest({ ticketId: TICKET_ID }),
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json().outcome).toBe('estimate_blown');
+    });
+
+    it('reports the review outcome even when the transition itself fails -- best-effort, never thrown', async () => {
+      const machine = new FakeMachine().failNext(new Error('github is down'));
+      const { app } = buildApp({ machine });
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/review',
+        headers: auth,
+        payload: blownEstimateRequest({ ticketId: TICKET_ID }),
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json().outcome).toBe('estimate_blown');
+      expect(machine.calls).toHaveLength(1);
+    });
   });
 });
 
