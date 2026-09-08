@@ -9,7 +9,7 @@ const CAPABILITY_ID_PATTERN = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$/;
 /**
  * Requires at least a `major.minor` numeric shape before any suffix -- every real pinned version
  * in `compatibility-manifest.ts`/`sdk-version.ts` looks like this (`2.1.228`, `0.147.0`,
- * `0.3.251`). Deliberately tighter than "any CLI-output-shaped token": a detector bug that
+ * `0.3.260`). Deliberately tighter than "any CLI-output-shaped token": a detector bug that
  * captures an error string or an account-ish identifier (`claude_user_123`, `api-key-abcd`)
  * starts with a letter, not a digit, so it's rejected here rather than recorded as if it were a
  * real version.

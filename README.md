@@ -196,7 +196,7 @@ pnpm typecheck
 pnpm test
 ```
 
-Needs Node 20.x or 22.x and the exact pnpm version pinned in the root `package.json`'s
+Needs Node 22.x and the exact pnpm version pinned in the root `package.json`'s
 `packageManager` field (`pnpm@10.29.2` as of this writing). If the preflight check fails on the
 pnpm version:
 
