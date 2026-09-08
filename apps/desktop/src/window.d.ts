@@ -230,6 +230,10 @@ export interface AgentDockBridge {
    */
   onPipenzoGitHubHealth(callback: (health: PipenzoGitHubHealthV1) => void): () => void;
   /**
+   * "Retry now" / "Poll now" (#70/#71/#75). Mirrors `preload.ts`'s declaration of the same method.
+   */
+  pollGitHubHealthNow(): Promise<void>;
+  /**
    * The GitHub credential's state, never the credential (issue #165), and what the pre-app gate
    * routes on (issue #113). Mirrors `preload.ts`'s declaration of the same two methods, which is
    * the actual implementation — this interface is the renderer's view of that bridge, and the two

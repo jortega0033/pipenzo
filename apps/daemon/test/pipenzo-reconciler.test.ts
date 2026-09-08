@@ -591,4 +591,60 @@ describe('PipenzoReconciler', () => {
 
     await reconciler.stop();
   });
+
+  describe('pollNow', () => {
+    it('forces an immediate tick, cancelling the scheduled one', async () => {
+      const ticket = makeTicket({ issueNumber: 11 });
+      const github = new FakeGitHubClient().seedIssue(makeIssue(11, ['pipenzo:working']));
+      const { repos, reconciler, scheduler } = harness({
+        tickets: [ticket],
+        github,
+        pollIntervalMs: 60_000,
+      });
+      await repos.replace([REPO]);
+
+      reconciler.start();
+      scheduler.advance(0);
+      await waitFor(() =>
+        expect(github.calls.filter((call) => call.method === 'getIssue')).toHaveLength(1),
+      );
+      // The clean tick just scheduled the next one ~60s out.
+      expect(scheduler.timers.size).toBe(1);
+
+      reconciler.pollNow();
+      // The old ~60s-out timer is gone, replaced with one due now.
+      expect(scheduler.timers.size).toBe(1);
+      scheduler.advance(0);
+      await waitFor(() =>
+        expect(github.calls.filter((call) => call.method === 'getIssue')).toHaveLength(2),
+      );
+
+      await reconciler.stop();
+    });
+
+    it('is a no-op while stopped', () => {
+      const { reconciler, scheduler } = harness();
+      reconciler.pollNow();
+      expect(scheduler.timers.size).toBe(0);
+    });
+
+    it('is a no-op while a tick is already in flight, since that tick schedules the next one itself', async () => {
+      const ticket = makeTicket({ issueNumber: 11 });
+      const github = new FakeGitHubClient().seedIssue(makeIssue(11, ['pipenzo:working']));
+      const { repos, reconciler, scheduler } = harness({ tickets: [ticket], github });
+      await repos.replace([REPO]);
+
+      reconciler.start();
+      // The timer fired (scheduling `#tick()`), but the async tick itself has not resolved yet, so
+      // nothing is in `scheduler.timers` right now -- calling `pollNow()` here must not throw or
+      // schedule a second, overlapping tick.
+      scheduler.advance(0);
+      expect(scheduler.timers.size).toBe(0);
+      reconciler.pollNow();
+      expect(scheduler.timers.size).toBe(0);
+
+      await waitFor(() => expect(reconciler.health().state).toBe('healthy'));
+      await reconciler.stop();
+    });
+  });
 });

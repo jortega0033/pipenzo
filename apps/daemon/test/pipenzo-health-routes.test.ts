@@ -8,10 +8,11 @@ import type { PipenzoHealthSource } from '../src/routes/pipenzo-health.js';
 const TOKEN = 'test-token-pipenzo-health';
 const auth = { authorization: `Bearer ${TOKEN}` };
 
-/** A minimal stand-in for `PipenzoReconciler` -- only the two members the route calls. */
+/** A minimal stand-in for `PipenzoReconciler` -- only the members the route calls. */
 class FakeHealthSource implements PipenzoHealthSource {
   #health: PipenzoGitHubHealthV1;
   #listeners = new Set<(health: PipenzoGitHubHealthV1) => void>();
+  pollNowCalls = 0;
 
   constructor(initial: PipenzoGitHubHealthV1) {
     this.#health = initial;
@@ -26,6 +27,10 @@ class FakeHealthSource implements PipenzoHealthSource {
     return () => {
       this.#listeners.delete(listener);
     };
+  }
+
+  pollNow(): void {
+    this.pollNowCalls += 1;
   }
 
   publish(health: PipenzoGitHubHealthV1): void {
@@ -127,4 +132,40 @@ describe('GET /v2/pipenzo/github/health/events', () => {
       await app.close();
     }
   }, 15_000);
+});
+
+describe('POST /v2/pipenzo/github/health/poll', () => {
+  it('forces a poll and answers 204 before it finishes -- fire and forget', async () => {
+    const { app, source } = buildApp();
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v2/pipenzo/github/health/poll',
+      headers: auth,
+    });
+
+    expect(response.statusCode).toBe(204);
+    expect(response.body).toBe('');
+    expect(source!.pollNowCalls).toBe(1);
+  });
+
+  it('is not registered at all when the daemon was built without a source', async () => {
+    const { app } = buildApp({ withHealth: false });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v2/pipenzo/github/health/poll',
+      headers: auth,
+    });
+
+    expect(response.statusCode).toBe(404);
+  });
+
+  it('requires the bearer token like every other route on this surface', async () => {
+    const { app } = buildApp();
+
+    const response = await app.inject({ method: 'POST', url: '/v2/pipenzo/github/health/poll' });
+
+    expect(response.statusCode).toBe(401);
+  });
 });

@@ -251,6 +251,12 @@ export interface AgentDockBridge {
    */
   onPipenzoGitHubHealth(callback: (health: PipenzoGitHubHealthV1) => void): () => void;
   /**
+   * "Retry now" / "Poll now" (#70/#71/#75): forces the reconciler's next tick to run immediately.
+   * Fire-and-forget -- the triggered tick's result reaches `onPipenzoGitHubHealth` above rather
+   * than this call's own return.
+   */
+  pollGitHubHealthNow(): Promise<void>;
+  /**
    * The GitHub credential's state, never the credential (issue #165). There is no counterpart that
    * *sets* a token: the device-code flow runs in main, so a `repo`-scoped credential never crosses
    * this bridge in either direction. `disconnectGitHub` is the only write, and it only forgets.
@@ -922,6 +928,9 @@ const api: AgentDockBridge = {
     };
     ipcRenderer.on('daemon:pipenzo-github-health', listener);
     return () => ipcRenderer.removeListener('daemon:pipenzo-github-health', listener);
+  },
+  async pollGitHubHealthNow() {
+    await ipcRenderer.invoke('daemon:pipenzo-github-health-poll');
   },
   /**
    * The device-code sign-in (issue #114). Three verbs, and between them they carry no credential

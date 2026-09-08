@@ -461,6 +461,16 @@ export class AgentDockClient {
         options?: PipenzoGitHubHealthEventsOptions,
       ): AsyncGenerator<PipenzoGitHubHealthV1, void, void> =>
         this.streamPipenzoGitHubHealthEventsV1(options),
+      /**
+       * "Retry now" / "Poll now" (#70/#71/#75): forces the reconciler's next tick to run
+       * immediately instead of waiting out its current interval or backoff delay.
+       *
+       * Fire-and-forget by design -- the daemon answers as soon as it has accepted the request, not
+       * once the triggered tick finishes, and the result of that tick reaches this client through
+       * `githubHealthEvents` above rather than through this call's own response.
+       */
+      pollGitHubHealthNow: (options?: SessionRequestOptions): Promise<void> =>
+        this.pollPipenzoGitHubHealthV1(options),
     },
     integrations: {
       mcp: {
@@ -1467,6 +1477,13 @@ export class AgentDockClient {
       maxFrameBytes: MAX_V2_SSE_FRAME_BYTES,
       fatalUtf8: true,
       rejectUnterminatedFrame: true,
+    });
+  }
+
+  private async pollPipenzoGitHubHealthV1(options: SessionRequestOptions = {}): Promise<void> {
+    await this.requestV2NoContent('/v2/pipenzo/github/health/poll', {
+      method: 'POST',
+      signal: options.signal,
     });
   }
 

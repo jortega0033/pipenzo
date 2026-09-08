@@ -10,6 +10,8 @@ import { BoundedPipenzoHealthSseWriter, toHealthStreamEvent } from '../pipenzo-h
 export type PipenzoHealthSource = {
   health(): PipenzoGitHubHealthV1;
   subscribeHealth(listener: (health: PipenzoGitHubHealthV1) => void): () => void;
+  /** Forces the next poll to run now instead of waiting out the current interval/backoff. */
+  pollNow(): void;
 };
 
 /**
@@ -27,6 +29,25 @@ export type PipenzoHealthSource = {
  * would lock a banner out of live data at exactly the moment it most needs it.
  */
 export function registerPipenzoHealthRoutes(app: FastifyInstance, source: PipenzoHealthSource): void {
+  /**
+   * "Retry now" / "Poll now" (#70/#71/#75). Human-paced like the rest of this surface's write-ish
+   * routes, so it gets the same rate limit as the phase routes rather than the stream's unlimited
+   * one -- a person clicks this at most a few times a minute, and the reconciler's own ladder
+   * already governs everything unattended.
+   *
+   * Fire-and-forget on purpose: the tick this triggers is asynchronous and its result already
+   * reaches the caller through the health stream above, so this answers as soon as the request is
+   * accepted rather than making the click wait on a round trip to GitHub.
+   */
+  app.post(
+    '/v2/pipenzo/github/health/poll',
+    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    async (_req, reply) => {
+      source.pollNow();
+      reply.code(204).send();
+    },
+  );
+
   app.get('/v2/pipenzo/github/health/events', async (req, reply) => {
     reply.hijack();
     reply.raw.writeHead(200, {

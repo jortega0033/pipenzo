@@ -160,6 +160,7 @@ export function createDemoBridge(): AgentDockBridge {
     // Demo mode has no daemon to stream from; subscribing is inert rather than an error.
     onPipenzoPhaseEvent: () => () => {},
     onPipenzoGitHubHealth: () => () => {},
+    pollGitHubHealthNow: async () => {},
     // Reports a credential so the pre-app gate (issue #113) lets the demo through. This is the one
     // Pipenzo method in this file that answers rather than throwing, and the reason is that a
     // throw here is not neutral: a failed read routes to "Connect GitHub", and demo mode would

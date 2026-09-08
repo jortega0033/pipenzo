@@ -1287,6 +1287,15 @@ handle('daemon:pipenzo-ticket-transition', async (_event, input: unknown) => {
   if (!client) throw new Error('daemon is not ready yet');
   return client.v2.pipenzo.transitionTicket(pipenzoTicketTransitionRequestV1Schema.parse(input));
 });
+/**
+ * "Retry now" / "Poll now" (#70/#71/#75): forces the reconciler's next tick to run immediately.
+ * Fire-and-forget, same as the client method it calls -- the triggered tick's result reaches the
+ * renderer through `onPipenzoGitHubHealth` (#257) rather than through this call's own return.
+ */
+handle('daemon:pipenzo-github-health-poll', async () => {
+  if (!client) throw new Error('daemon is not ready yet');
+  await client.v2.pipenzo.pollGitHubHealthNow();
+});
 
 handle('dialog:select-and-upload-attachments', async (_event, input: unknown) => {
   if (!client) throw new Error('daemon is not ready yet');

@@ -63,6 +63,7 @@ function realBridge(
     pipenzoTicketTransition: vi.fn(),
     onPipenzoPhaseEvent: vi.fn(() => () => {}),
     onPipenzoGitHubHealth: vi.fn(() => () => {}),
+    pollGitHubHealthNow: vi.fn(async () => {}),
     selectAndUploadAttachments: vi.fn().mockResolvedValue([]),
     validateStructuredOutput: vi.fn(),
     createSession: vi.fn(),
@@ -291,5 +292,35 @@ describe('AppRoot pre-app gate (issue #113)', () => {
     render(<AppRoot />);
 
     expect(await screen.findByText(/published constant key/i)).toBeInTheDocument();
+  });
+});
+
+describe('AppRoot connection-health banner (issue #257 -> #70)', () => {
+  it('renders the retrying banner from a real onPipenzoGitHubHealth push, and wires "Retry now" to pollGitHubHealthNow', async () => {
+    let deliverHealth: ((health: import('@agent-dock/shared').PipenzoGitHubHealthV1) => void) | undefined;
+    const bridge = realBridge();
+    bridge.onPipenzoGitHubHealth = vi.fn((callback) => {
+      deliverHealth = callback;
+      return () => {};
+    });
+    (window as unknown as { agentDock: AgentDockBridge }).agentDock = bridge;
+    render(<AppRoot />);
+
+    await screen.findByRole('button', { name: 'Try a demo' });
+    // No banner until the daemon actually pushes a value -- `undefined` is silence, not a guess.
+    expect(screen.queryByText(/attempt \d+ of \d+/)).not.toBeInTheDocument();
+
+    deliverHealth?.({
+      state: 'retrying',
+      attempt: 2,
+      maxAttempts: 5,
+      nextAttemptAt: Date.now() + 18_000,
+      consecutiveFailures: 2,
+      firstFailureAt: Date.now() - 40_000,
+    });
+
+    expect(await screen.findByText('attempt 2 of 5')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry now' }));
+    expect(bridge.pollGitHubHealthNow).toHaveBeenCalledTimes(1);
   });
 });
