@@ -537,11 +537,15 @@ describe('POST /v2/pipenzo/issues/comment', () => {
       payload: { issueNumber: 184, body: atLimit },
     });
     expect(accepted.statusCode).toBe(201);
+    // One code point over the cap, and deliberately *under* twice the cap in UTF-16 units
+    // (130,537), so nothing but the code-point comparison can be what rejects it.
+    const overLimit = `${'🙂'.repeat(65_000)}${'x'.repeat(537)}`;
+    expect([...overLimit]).toHaveLength(65_537);
     const refused = await app.inject({
       method: 'POST',
       url: '/v2/pipenzo/issues/comment',
       headers: auth,
-      payload: { issueNumber: 184, body: `${atLimit}🙂` },
+      payload: { issueNumber: 184, body: overLimit },
     });
     expect(refused.statusCode).toBe(400);
     expect(refused.json().code).toBe('invalid_request');

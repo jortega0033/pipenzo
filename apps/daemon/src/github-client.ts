@@ -222,13 +222,6 @@ export interface GitHubIssueComment {
   readonly createdAt: string;
 }
 
-/**
- * Re-exported so this module's own callers and tests keep one import site for the client's limits.
- * The value is defined once, on the wire contract, because both ends enforce it — see the docstring
- * on `MAX_ISSUE_COMMENT_CHARS` in `@agent-dock/shared`.
- */
-export { MAX_ISSUE_COMMENT_CHARS };
-
 export interface GitHubLabel {
   readonly name: string;
   /** Six lowercase hex digits, no leading `#` — GitHub's own wire shape. */
@@ -1115,8 +1108,10 @@ export class OctokitGitHubClient implements GitHubClient {
    *   stops the client sending a validator that could not have matched. "Very likely", not
    *   "certainly" — GitHub's caching layer is eventually consistent and a post-write `304` from a
    *   replica is a real, observed behaviour, which is the reason `invalidateRepo` exists at all.
-   * - **It is not free globally.** `ConditionalRequestCache` keeps a *single* process-wide
-   *   `#generation` counter, and `invalidate()` bumps it. `#conditional` captures the counter
+   * - **It is not free globally.** `ConditionalRequestCache` keeps one `#generation` counter per
+   *   cache instance rather than one per key, and `invalidate()` bumps it — and `index.ts` shares
+   *   a single instance between the phase machine's reconciler and the phase service's
+   *   request-scoped clients, so in the shipped daemon that counter is process-wide. `#conditional` captures the counter
    *   before its await and refuses a `304` whose generation no longer matches, so a comment landing
    *   while the reconciler has N conditional reads in flight on *other* resources turns each of
    *   those free `304`s into a paid `200` and evicts N warm entries.
@@ -1504,11 +1499,15 @@ function normalizeIssueComment(
 ): GitHubIssueComment {
   return {
     id: requireNumber(data.id, 'id', operation),
-    // GitHub echoes the body it stored. Taken from the response rather than from the argument so
-    // that any server-side normalisation is what the caller is told was posted. `requireString`
-    // like every neighbouring field: a comment-create response without a body is a response this
-    // client does not understand, and silently substituting `''` would hide that.
-    body: requireString(data.body, 'body', operation),
+    // Deliberately tolerant, and the only field here that is. `requireString` throws, and this
+    // function runs *after* the POST returned 201 — the comment is already public by then, so a
+    // throw would report a landed write as `github_failed`/502 and invite a retry that posts a
+    // duplicate. That cost buys nothing: nothing reads this field on the real path.
+    // `commentOnIssue` returns only the id, the permalink and the timestamp, and
+    // `pipenzoIssueCommentResultV1Schema` deliberately does not echo the body at all. The three
+    // fields that *are* consumed use `requireString`, because for those a missing value really is
+    // a response this client cannot work with.
+    body: typeof data.body === 'string' ? data.body : '',
     htmlUrl: requireString(data.html_url, 'html_url', operation),
     createdAt: requireString(data.created_at, 'created_at', operation),
   };

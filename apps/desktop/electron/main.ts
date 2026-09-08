@@ -1218,7 +1218,9 @@ handle('daemon:pipenzo-create-issue', async (_event, input: unknown) => {
 });
 // Issue #228. Same boundary as `daemon:pipenzo-create-issue` directly above and for a sharper
 // reason: this posts prose that becomes public under the operator's GitHub identity, so it lives
-// in main and is invoked by a renderer click, never by anything a model can reach.
+// in main, behind the same sender guard, and can only ever be reached by a renderer click rather
+// than by anything a model can reach. There is no renderer caller yet -- #100's refusal panel is
+// the one this exists for. What is here is the wire, not the button.
 handle('daemon:pipenzo-comment-issue', async (_event, input: unknown) => {
   if (!client) throw new Error('daemon is not ready yet');
   return client.v2.pipenzo.commentOnIssue(pipenzoIssueCommentRequestV1Schema.parse(input));

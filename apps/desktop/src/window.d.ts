@@ -175,9 +175,11 @@ export interface AgentDockBridge {
   createPipenzoIssue(input: PipenzoIssueCreateRequestV1): Promise<PipenzoIssueCreateResultV1>;
   /**
    * Posts one comment on an issue (issue #228) -- what #100's refusal panel and #144's
-   * blown-estimate record both publish through. The body becomes public under the operator's
-   * GitHub identity, so like `createPipenzoIssue` this is a human's click, never an agent's call,
-   * and there is no retry behind it: GitHub has no idempotency key for a comment.
+   * blown-estimate record will publish through. Nothing in the renderer calls it yet; it is wired
+   * ahead of those panels so the route is reachable rather than shipped dark. The body becomes
+   * public under the operator's GitHub identity, so like `createPipenzoIssue` it must only ever be
+   * called from a human's click, never on an agent's behalf -- and there is no retry behind it,
+   * because GitHub has no idempotency key for a comment.
    */
   commentOnPipenzoIssue(input: PipenzoIssueCommentRequestV1): Promise<PipenzoIssueCommentResultV1>;
   /**

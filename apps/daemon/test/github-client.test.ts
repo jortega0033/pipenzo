@@ -6,7 +6,6 @@ import {
 import {
   GITHUB_TOKEN_ENV_KEYS,
   GitHubClientError,
-  MAX_ISSUE_COMMENT_CHARS,
   MAX_RATE_LIMIT_RETRIES,
   MAX_RATE_LIMIT_SLEEP_SECONDS,
   OctokitGitHubClient,
@@ -22,6 +21,7 @@ import {
   type RepoRef,
 } from '../src/github-client.js';
 import { ConditionalRequestCache } from '../src/github-conditional-cache.js';
+import { MAX_ISSUE_COMMENT_CHARS } from '@agent-dock/shared';
 
 const REF: RepoRef = { owner: 'jortega0033', repo: 'pipenzo' };
 

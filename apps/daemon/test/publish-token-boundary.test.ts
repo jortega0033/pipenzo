@@ -275,15 +275,21 @@ describe('the publish surface is not reachable from agent-runtime', () => {
     // covered by the argv assertion below, and the environment assertions above hold for all of
     // them regardless of tool set.
     const options = readFileSync(join(runtimeSrc, 'providers', 'claude', 'sdk-options.ts'), 'utf8');
-    const trusted = /TRUSTED_TOOLS = Object\.freeze\(\[([\s\S]*?)\]/.exec(options)?.[1] ?? '';
+    const trusted = /const TRUSTED_TOOLS = Object\.freeze\(\[([\s\S]*?)\]/.exec(options)?.[1] ?? '';
+    const untrusted = /UNTRUSTED_TOOLS = Object\.freeze\(\[([\s\S]*?)\]/.exec(options)?.[1] ?? '';
     expect(trusted).not.toBe('');
+    expect(untrusted).not.toBe('');
     expect(trusted).toMatch(/'Read'/);
-    // `Comment` joined this list with issue #228. The blacklist above scans for *snake_case tool
-    // names* anywhere in the runtime; this line is the one that constrains what the SDK session is
-    // actually handed, so a `Comment`/`IssueComment`/`PostComment` entry has to fail here too —
-    // otherwise a tool that can publish text under the operator's GitHub identity reaches a
-    // model-driven session while every assertion in this file stays green.
-    expect(trusted).not.toMatch(/Push|PullRequest|Publish|Git|Comment/i);
+    // Both lists, not just the trusted one: `sdk-options.ts` picks between them on `trustState`,
+    // so an entry in either reaches a model-driven session and asserting only one is a false pass.
+    //
+    // `Comment` joined the forbidden set with issue #228. The blacklist above scans for
+    // *snake_case* tool names anywhere in the runtime and so cannot see a PascalCase SDK tool name
+    // at all; these two lines are what stop a `Comment`/`IssueComment`/`PostComment` entry — a tool
+    // that could publish text under the operator's GitHub identity — from being handed to a model.
+    for (const list of [trusted, untrusted]) {
+      expect(list).not.toMatch(/Push|PullRequest|Publish|Git|Comment/i);
+    }
     // Bash is explicitly disallowed, which is what stops `git push` reaching the shell that way.
     expect(options).toMatch(/disallowedTools:\s*\[[^\]]*'Bash'/);
   });

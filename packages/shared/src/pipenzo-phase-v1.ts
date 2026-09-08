@@ -43,9 +43,12 @@ const noControlCharacters = (value: string): boolean =>
  * title and a one-line instruction, where a carriage return is a caller bug. A comment body is the
  * first multi-line field on this surface, and the bodies #100 and #144 compose are stitched out of
  * captured command and git output on Windows — which is CRLF. Refusing that would fail the
- * operator with a flat 400 for a line ending they never typed, on this product's primary platform,
- * and it would put this field out of step with `pipenzoIssueCreateRequestV1Schema.body`, the other
- * public-markdown payload on the same surface.
+ * operator with a flat 400 for a line ending they never typed, on this product's primary platform.
+ *
+ * The other public-markdown payload on this surface, `pipenzoIssueCreateRequestV1Schema.body`,
+ * carries no control-character rule at all and bounds its length in UTF-16 units rather than code
+ * points. That is a real divergence and not a shared rule this one is being kept in step with;
+ * bringing it into line is a change to a shipped route (#84) and is filed separately.
  */
 const noProseControlCharacters = (value: string): boolean =>
   [...value].every((character) => {
@@ -265,7 +268,7 @@ export type IssueCommentBodyProblem = 'blank' | 'too_long' | 'control_characters
 /**
  * The one comment-body rule, in one place (issue #228).
  *
- * The wire schema above and `assertCommentBody` in the daemon's GitHub client both call this, and
+ * The wire schema below and `assertCommentBody` in the daemon's GitHub client both call this, and
  * the client is the floor: the HTTP route is not the only way in, because a daemon-side caller
  * (#100's refusal panel, #144's blown-estimate record) reaches `PipenzoPhaseService` and the client
  * directly and would otherwise get no validation at all. A predicate returning *which* rule failed,
@@ -314,21 +317,24 @@ const ISSUE_COMMENT_BODY_MESSAGES: Record<IssueCommentBodyProblem, string> = {
  * reachable from any agent-facing tool: a model that could call it could publish arbitrary text as
  * a human.
  *
- * Control characters are refused for the same reason every other prose field here refuses them,
- * with the newline, carriage-return and tab exceptions that make a multi-paragraph comment
- * expressible at all.
+ * Control characters are refused for the same reason the title fields here refuse them, but under
+ * a rule of this field's own: `noProseControlCharacters` adds a carriage-return exception to the
+ * newline and tab ones, because this is the only multi-line field on the surface. No other field
+ * has that exception, and the issue-create body has no such rule at all — see
+ * `noProseControlCharacters` for why the divergence is deliberate rather than an oversight.
  */
 export const pipenzoIssueCommentRequestV1Schema = z
   .object({
     repo: pipenzoRepoRefV1Schema.optional(),
     issueNumber: pipenzoIssueNumberV1Schema,
+    // No `.max()` here on purpose. A zod string check that fails marks the result *dirty*, not
+    // aborted, so the `superRefine` below runs regardless and a `.max()` would cap nothing — it
+    // would only add a second issue naming a number (131,072) that is not the documented limit.
+    // The walk is capped inside `issueCommentBodyProblem`, which is also the only guard the
+    // daemon-internal callers get, since they never reach zod at all.
     body: z
       .string()
       .min(1)
-      // A code-*unit* prefilter, not the real bound: a body of at most MAX_ISSUE_COMMENT_CHARS code
-      // points is at most twice that many UTF-16 units, so this rejects nothing valid while
-      // capping what `issueCommentBodyProblem` has to walk.
-      .max(MAX_ISSUE_COMMENT_CHARS * 2)
       .superRefine((value, ctx) => {
         const problem = issueCommentBodyProblem(value);
         if (problem !== undefined) {
