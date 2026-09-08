@@ -34,13 +34,13 @@ try {
   // the last argument) sets the install directory and requires an absolute path.
   await execFileAsync(installer, ['/S', `/D=${installDir}`], { timeout: INSTALL_TIMEOUT_MS });
 
-  const installedExe = join(installDir, 'AgentDock.exe');
-  await assertExists(installedExe, 'silent install did not produce AgentDock.exe');
+  const installedExe = join(installDir, 'Pipenzo.exe');
+  await assertExists(installedExe, 'silent install did not produce Pipenzo.exe');
 
   const uninstaller = await findUninstaller(installDir);
   await assertExists(uninstaller, 'silent install did not produce an uninstaller');
 
-  console.log(`Installer lifecycle: silent install to ${installDir} produced a real, runnable AgentDock.exe.`);
+  console.log(`Installer lifecycle: silent install to ${installDir} produced a real, runnable Pipenzo.exe.`);
 
   // electron-builder's generated NSIS uninstaller also accepts /S for a silent run, and (for a
   // non-perMachine install, this project's default) needs no elevation. NSIS's own uninstaller
@@ -62,9 +62,9 @@ try {
 
 async function findInstaller() {
   const entries = await readdir(DIST_PACKAGES).catch(() => []);
-  const match = entries.find((name) => /^AgentDock-Setup-.*\.exe$/.test(name));
+  const match = entries.find((name) => /^Pipenzo-Setup-.*\.exe$/.test(name));
   if (!match) {
-    throw new Error(`no NSIS installer found under ${DIST_PACKAGES} matching AgentDock-Setup-*.exe`);
+    throw new Error(`no NSIS installer found under ${DIST_PACKAGES} matching Pipenzo-Setup-*.exe`);
   }
   return join(DIST_PACKAGES, match);
 }

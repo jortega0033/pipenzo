@@ -5,7 +5,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 
 const ROOT = resolve(import.meta.dirname, '..', '..', '..');
-const PACKAGED_APP = join(ROOT, 'dist-packages', 'win-unpacked', 'AgentDock.exe');
+const PACKAGED_APP = join(ROOT, 'dist-packages', 'win-unpacked', 'Pipenzo.exe');
 const PACKAGED_DAEMON = join(
   ROOT,
   'dist-packages',

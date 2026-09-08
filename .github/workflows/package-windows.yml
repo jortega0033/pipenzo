@@ -56,14 +56,14 @@ jobs:
       - name: Verify installer was produced
         shell: pwsh
         run: |
-          $installer = Get-ChildItem -Path "dist-packages" -Filter "AgentDock-Setup-*.exe" -ErrorAction SilentlyContinue
+          $installer = Get-ChildItem -Path "dist-packages" -Filter "Pipenzo-Setup-*.exe" -ErrorAction SilentlyContinue
           if (-not $installer) {
-            Write-Error "No NSIS installer found matching dist-packages/AgentDock-Setup-*.exe"
+            Write-Error "No NSIS installer found matching dist-packages/Pipenzo-Setup-*.exe"
             exit 1
           }
           Write-Host "Found installer: $($installer.FullName)"
 
-          $exePath = "dist-packages/win-unpacked/AgentDock.exe"
+          $exePath = "dist-packages/win-unpacked/Pipenzo.exe"
           if (-not (Test-Path $exePath)) {
             Write-Error "Unpacked executable not found at $exePath"
             exit 1
@@ -77,6 +77,6 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: AgentDock-Windows-CI
-          path: dist-packages/AgentDock-Setup-*.exe
+          path: dist-packages/Pipenzo-Setup-*.exe
           retention-days: 7
           if-no-files-found: error

@@ -7,13 +7,13 @@ import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 const ROOT = resolve(import.meta.dirname, '..', '..', '..');
-const PACKAGED_APP = join(ROOT, 'dist-packages', 'win-unpacked', 'AgentDock.exe');
+const PACKAGED_APP = join(ROOT, 'dist-packages', 'win-unpacked', 'Pipenzo.exe');
 const DISCOVERY_TIMEOUT_MS = 30_000;
 const SHUTDOWN_TIMEOUT_MS = 15_000;
 
 /**
  * Proves what issue #66 asks for: "Packaged-app launch proves the real executable starts its
- * bundled daemon" -- launches the actual `AgentDock.exe` electron-builder produced (not the
+ * bundled daemon" -- launches the actual `Pipenzo.exe` electron-builder produced (not the
  * daemon bundle directly, unlike `packaged-daemon-win-smoke.mjs`), waits for it to write a real
  * daemon discovery file and answer a real health check, then closes it the way a user closing the
  * window would (a non-forceful `taskkill`, which delivers WM_CLOSE to the app's real top-level

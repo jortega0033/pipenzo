@@ -117,9 +117,9 @@ jobs:
         continue-on-error: true
         shell: pwsh
         run: |
-          $installer = Get-ChildItem -Path "dist-packages" -Filter "AgentDock-Setup-*.exe" -ErrorAction SilentlyContinue
+          $installer = Get-ChildItem -Path "dist-packages" -Filter "Pipenzo-Setup-*.exe" -ErrorAction SilentlyContinue
           if (-not $installer) { Write-Error "No NSIS installer found"; exit 1 }
-          $exePath = "dist-packages/win-unpacked/AgentDock.exe"
+          $exePath = "dist-packages/win-unpacked/Pipenzo.exe"
           if (-not (Test-Path $exePath)) { Write-Error "Unpacked executable not found"; exit 1 }
 
       - name: Packaged daemon smoke (fake Codex CLI)
@@ -160,7 +160,7 @@ jobs:
         continue-on-error: true
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          subject-path: dist-packages/AgentDock-Setup-*.exe
+          subject-path: dist-packages/Pipenzo-Setup-*.exe
 
       - name: Generate release-candidate manifest
         id: manifest
@@ -177,7 +177,7 @@ jobs:
             @{ name = 'package'; passed = '${{ steps.package.outcome }}' -eq 'success' },
             @{ name = 'installer-present'; passed = '${{ steps.installer-present.outcome }}' -eq 'success' },
             @{ name = 'packaged-daemon-smoke'; passed = '${{ steps.packaged-daemon-smoke.outcome }}' -eq 'success' },
-            @{ name = 'packaged-app-smoke'; passed = '${{ steps.packaged-app-smoke.outcome }}' -eq 'success'; detail = 'Real AgentDock.exe launch, bundled-daemon discovery/health, graceful shutdown' },
+            @{ name = 'packaged-app-smoke'; passed = '${{ steps.packaged-app-smoke.outcome }}' -eq 'success'; detail = 'Real Pipenzo.exe launch, bundled-daemon discovery/health, graceful shutdown' },
             @{ name = 'installer-lifecycle'; passed = '${{ steps.installer-lifecycle.outcome }}' -eq 'success'; detail = 'Silent NSIS install/uninstall in an isolated directory' },
             @{ name = 'sbom'; passed = '${{ steps.sbom.outcome }}' -eq 'success'; detail = 'CycloneDX SBOM via anchore/sbom-action (real syft scan of the pnpm workspace)' },
             @{ name = 'provenance'; passed = '${{ steps.provenance.outcome }}' -eq 'success'; detail = 'SLSA-style build provenance attestation for the installer artifact' }
@@ -185,8 +185,8 @@ jobs:
           $gatesJson = ($gates | ConvertTo-Json -Compress -AsArray)
 
           $artifacts = @(
-            @{ name = 'installer'; path = (Get-ChildItem -Path "dist-packages" -Filter "AgentDock-Setup-*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName) },
-            @{ name = 'unpacked-exe'; path = 'dist-packages/win-unpacked/AgentDock.exe' }
+            @{ name = 'installer'; path = (Get-ChildItem -Path "dist-packages" -Filter "Pipenzo-Setup-*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName) },
+            @{ name = 'unpacked-exe'; path = 'dist-packages/win-unpacked/Pipenzo.exe' }
           ) | Where-Object { $_.path -and (Test-Path $_.path) }
           $artifactsJson = ($artifacts | ConvertTo-Json -Compress -AsArray)
 
@@ -236,7 +236,7 @@ jobs:
           name: release-candidate-evidence
           path: |
             release-candidate-manifest.json
-            dist-packages/AgentDock-Setup-*.exe
+            dist-packages/Pipenzo-Setup-*.exe
             sbom.cdx.json
           if-no-files-found: warn
           retention-days: 90

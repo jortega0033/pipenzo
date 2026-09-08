@@ -83,7 +83,7 @@ page says. See [docs/capability-matrix.md#keeping-this-matrix-honest](docs/capab
 
 If you touched anything under `apps/desktop/electron/` (main process, preload, or packaging
 config), also run `pnpm package:win` (Windows) and confirm the app still launches from
-`dist-packages/win-unpacked/AgentDock.exe`, since packaging has its own failure modes that `pnpm build`
+`dist-packages/win-unpacked/Pipenzo.exe`, since packaging has its own failure modes that `pnpm build`
 alone won't catch (see [docs/packaging.md#verifying-a-packaging-sensitive-change](docs/packaging.md#verifying-a-packaging-sensitive-change)
 for real ones this project already hit).
 

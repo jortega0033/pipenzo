@@ -24,7 +24,7 @@ involved: two only ever produce evidence and never run automatically or publish 
 2. **Release-candidate evidence bundle** (issue #66, `.github/workflows/release-candidate.yml`,
    `workflow_dispatch` only): runs the full quality gate (frozen install, assets, lint, typecheck,
    the full Windows test suite, build, production dependency audit, provider conformance),
-   packages the Windows NSIS installer, proves the *real packaged `AgentDock.exe`* starts its
+   packages the Windows NSIS installer, proves the *real packaged `Pipenzo.exe`* starts its
    bundled daemon and shuts down cleanly, silently installs and uninstalls that installer in an
    isolated directory, and aggregates all of it -- plus, optionally, the live-provider matrix's
    evidence -- into one `release-candidate-manifest.json` (schema:

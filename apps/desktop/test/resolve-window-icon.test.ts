@@ -4,7 +4,7 @@ import { resolveWindowIcon } from '../electron/resolve-window-icon.js';
 
 const APP_PATH = join('D:', 'app', 'apps', 'desktop');
 const RESOURCES_PATH = join('D:', 'app', 'resources');
-const ICON_SUFFIX = ['assets', 'app-icons', 'png', 'icon-256.png'];
+const ICON_SUFFIX = ['assets', 'app-icons', 'png', 'pipenzo-icon-256.png'];
 
 describe('resolveWindowIcon', () => {
   it('resolves development and unpacked builds from app.getAppPath()', () => {

@@ -98,7 +98,7 @@ jobs:
         run: |
           set -euo pipefail
           manifest="evidence/release-candidate-manifest.json"
-          installer=$(ls evidence/AgentDock-Setup-*.exe 2>/dev/null | head -n1)
+          installer=$(ls evidence/Pipenzo-Setup-*.exe 2>/dev/null | head -n1)
           if [ -z "$installer" ]; then
             echo "::error::No installer .exe found in the downloaded evidence bundle"
             exit 1
@@ -127,7 +127,7 @@ jobs:
           # sbom.cdx.json is best-effort in release-candidate.yml (continue-on-error), so it may
           # be absent from this evidence bundle even on an otherwise-ready candidate -- hash only
           # what's actually present rather than assuming every optional artifact exists.
-          files=(AgentDock-Setup-*.exe release-candidate-manifest.json)
+          files=(Pipenzo-Setup-*.exe release-candidate-manifest.json)
           if [ -f sbom.cdx.json ]; then files+=(sbom.cdx.json); fi
           sha256sum "${files[@]}" > SHA256SUMS.txt
           cat SHA256SUMS.txt
@@ -140,7 +140,7 @@ jobs:
           draft_flag="--draft"
           if [ "${{ inputs.draft }}" != "true" ]; then draft_flag=""; fi
           assets=(
-            evidence/AgentDock-Setup-*.exe
+            evidence/Pipenzo-Setup-*.exe
             evidence/release-candidate-manifest.json
             evidence/SHA256SUMS.txt
           )
