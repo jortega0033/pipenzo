@@ -4846,6 +4846,148 @@
     color: var(--color-text);
     font-weight: 700;
   }
+
+  /* Settings (issue #125) — ported from Settings.dc.html. `.page`, `.cols`, `.col`, `.form-panel`
+     and `.set-sub` are the canvas's shared screen-body block rather than anything specific to
+     Settings, which is why the panel tickets that follow (#126-#130) add panels here and not
+     layout. `.form-panel` in particular was already being used by DeterministicGatesPanel and
+     AgentCapturedPanel with no rule behind it — those two rendered as bare stacked children on a
+     transparent ground, and gain their surface here. */
+  .page {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    background: var(--color-bg);
+    padding: 0 24px 24px;
+  }
+
+  .sec-note {
+    font-size: 12px;
+    color: var(--color-text-faint);
+    margin: 0;
+    line-height: 1.5;
+    /* Capped at a readable measure rather than the window's width: this note is a paragraph of
+       prose in a layout otherwise made of short rows, and on a wide window an uncapped line runs
+       past the point where the eye reliably finds the start of the next one. */
+    max-width: 104ch;
+    text-wrap: pretty;
+  }
+
+  .sec-note b {
+    color: var(--color-text-soft);
+    font-weight: 700;
+  }
+
+  .form-panel {
+    background: var(--color-surface-2);
+    border-radius: var(--radius-pipenzo);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .form-panel .field {
+    background: var(--color-surface-3);
+  }
+
+  /* `align-items: start` is the load-bearing half: without it the grid stretches both columns to
+     the taller one's height, and a column holding one short panel grows a block of empty surface
+     under it. */
+  .cols {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    align-items: start;
+  }
+
+  .col {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .repo-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    background: var(--color-surface);
+    border-radius: var(--radius-pipenzo);
+    padding: 6px;
+  }
+
+  /* `width: 100%` is not in the canvas and is required by this codebase's own base rule: there
+     `.ws-menu-item` is a `<button>` sized `calc(100% - 8px)` to sit inside its `margin: 0 4px`,
+     and dropping the margin without the width leaves every row 8px short of the well. */
+  .repo-list .ws-menu-item {
+    min-height: 52px;
+    margin: 0;
+    width: 100%;
+  }
+
+  .repo-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  /* The base `.ws-menu-item` is written for the workspace switcher, where the whole row is the
+     button. Here the row is an `<li>` and only the remove control inside it does anything, so the
+     inherited `cursor: pointer` would promise a click target that is not there. The hover tint
+     stays -- it reads as "this row is under the pointer", which is true and useful when the row
+     carries a control. */
+  .repo-rows .ws-menu-item {
+    cursor: default;
+  }
+
+  .repo-list .ws-menu-item .icon-btn {
+    width: 28px;
+    height: 28px;
+    background: transparent;
+    color: var(--color-text-faint);
+    flex-shrink: 0;
+  }
+
+  /* The one place in this design where hovering a control tints it danger: removing is the only
+     thing this button does, and the row it sits in is otherwise inert. */
+  .repo-list .ws-menu-item .icon-btn:hover:not(:disabled) {
+    background: var(--color-danger);
+    color: var(--color-danger-fg);
+  }
+
+  .repo-list .ws-menu-item.foot {
+    min-height: 40px;
+    color: var(--color-text-soft);
+  }
+
+  /* Not in the canvas, which draws only a populated list. Sits inside `.repo-list` so the empty
+     case keeps the panel's shape rather than collapsing the well to the height of its one
+     remaining row. */
+  .repo-list-empty {
+    margin: 0;
+    padding: 10px 12px 4px;
+    font-size: 12px;
+    color: var(--color-text-faint);
+    line-height: 1.45;
+    text-wrap: pretty;
+  }
+
+  .set-sub {
+    font-size: 12px;
+    color: var(--color-text-faint);
+    line-height: 1.45;
+    text-wrap: pretty;
+  }
+
+  .set-sub b {
+    color: var(--color-text);
+    font-weight: 700;
+  }
 }
 
 @keyframes pulse-warn {

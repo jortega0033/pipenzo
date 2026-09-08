@@ -141,8 +141,8 @@ export function RepoPicker({
     return (
       <Empty icon="board" title="No repositories Pipenzo can manage">
         This account has write access to nothing Pipenzo could open a pull request against.
-        Repositories you can only read are deliberately not listed, since Pipenzo could never
-        manage one.
+        Repositories you can only read are deliberately not listed, since Pipenzo could never manage
+        one.
       </Empty>
     );
   }
@@ -191,9 +191,10 @@ export function RepoPicker({
           size="lg"
           icon="check"
           pending={saving}
-          // Zero is a real selection to *save* in Settings (#125 removes the last repo that way),
-          // but it is not a way to finish first-run, so the caller decides by relabelling rather
-          // than this component guessing. What it will not do is submit while a save is in flight.
+          // Zero stays unsubmittable in both framings. In first-run it is not a way to finish; in
+          // Settings (#125) it would be a way to disconnect every repository through a control
+          // labelled "save", which is a destructive action wearing a neutral word. Removing the
+          // last repository has its own button on its own row there, where it names what it does.
           disabled={saving || selectedCount === 0}
           onClick={submit}
         >
