@@ -2041,12 +2041,6 @@
     line-height: 1;
   }
 
-  .lane-r {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
   .lane-cards {
     flex: 1;
     overflow-y: auto;

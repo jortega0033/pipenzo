@@ -1,8 +1,9 @@
 import { PIPENZO_LANES, type PipenzoLaneV1 } from '@agent-dock/shared';
 
 /**
- * The board's lane list and its presentation (issue #81), built directly on the phase machine's
- * own vocabulary rather than restating it.
+ * The board's lane list and its presentation (issue #81). `BOARD_LANES` is built on
+ * `PIPENZO_LANES` — the same lane order the daemon's phase machine already resolves against via
+ * `PIPENZO_LABEL_LANES`, verified in this file's test rather than re-imported here.
  *
  * ## Why this file defines no lane <-> label mapping of its own
  *
