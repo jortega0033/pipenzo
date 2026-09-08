@@ -278,7 +278,12 @@ describe('the publish surface is not reachable from agent-runtime', () => {
     const trusted = /TRUSTED_TOOLS = Object\.freeze\(\[([\s\S]*?)\]/.exec(options)?.[1] ?? '';
     expect(trusted).not.toBe('');
     expect(trusted).toMatch(/'Read'/);
-    expect(trusted).not.toMatch(/Push|PullRequest|Publish|Git/i);
+    // `Comment` joined this list with issue #228. The blacklist above scans for *snake_case tool
+    // names* anywhere in the runtime; this line is the one that constrains what the SDK session is
+    // actually handed, so a `Comment`/`IssueComment`/`PostComment` entry has to fail here too —
+    // otherwise a tool that can publish text under the operator's GitHub identity reaches a
+    // model-driven session while every assertion in this file stays green.
+    expect(trusted).not.toMatch(/Push|PullRequest|Publish|Git|Comment/i);
     // Bash is explicitly disallowed, which is what stops `git push` reaching the shell that way.
     expect(options).toMatch(/disallowedTools:\s*\[[^\]]*'Bash'/);
   });

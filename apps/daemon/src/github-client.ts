@@ -2,7 +2,12 @@ import { Octokit } from '@octokit/core';
 import { paginateRest, type PaginateInterface } from '@octokit/plugin-paginate-rest';
 import { retry } from '@octokit/plugin-retry';
 import { throttling } from '@octokit/plugin-throttling';
-import { PIPENZO_LABEL_NAMESPACE, isPipenzoLabel } from '@agent-dock/shared';
+import {
+  MAX_ISSUE_COMMENT_CHARS,
+  PIPENZO_LABEL_NAMESPACE,
+  isPipenzoLabel,
+  issueCommentBodyProblem,
+} from '@agent-dock/shared';
 import { ConditionalRequestCache } from './github-conditional-cache.js';
 
 /**
@@ -218,18 +223,11 @@ export interface GitHubIssueComment {
 }
 
 /**
- * The longest comment body this client will send.
- *
- * GitHub's own limit on an issue comment is 65,536 characters and it answers a longer one with a
- * 422. Refusing here rather than there is what makes the failure legible: the caller composing a
- * comment out of an estimate and a proposed split (#100) learns it was too long, instead of
- * learning that GitHub rejected an unspecified field of an unspecified request.
- *
- * Refused, never truncated. A truncated comment is a *wrong* comment — the half of a proposed split
- * that survived reads as the whole proposal — and it would be posted publicly under the operator's
- * name with nothing marking it as incomplete.
+ * Re-exported so this module's own callers and tests keep one import site for the client's limits.
+ * The value is defined once, on the wire contract, because both ends enforce it — see the docstring
+ * on `MAX_ISSUE_COMMENT_CHARS` in `@agent-dock/shared`.
  */
-export const MAX_ISSUE_COMMENT_CHARS = 65_536;
+export { MAX_ISSUE_COMMENT_CHARS };
 
 export interface GitHubLabel {
   readonly name: string;
@@ -1090,6 +1088,16 @@ export class OctokitGitHubClient implements GitHubClient {
   /**
    * Posts one comment (issue #228).
    *
+   * ## Why there is no pull-request guard, unlike `getIssue` and `assignIssue`
+   *
+   * Both of those refuse a number that turns out to be a PR, because both read or write the
+   * *issue* GitHub would hand back and a PR is not one. This one deliberately does not, and the
+   * divergence is a decision rather than an oversight: GitHub's comment endpoint genuinely accepts
+   * a PR number and posts to the PR's conversation, and the only way to know beforehand is an extra
+   * `GET` on every comment — a read on the hot path to forbid something the operator asked for by
+   * number. Commenting on a PR is a legitimate thing to do with this route, and the route itself is
+   * human-gated and agent-unreachable, so the guard would buy nothing the boundary does not.
+   *
    * ## Why this invalidates the cached issue
    *
    * A comment is not a field of `GitHubIssue`, so nothing this write produces is stored in the
@@ -1099,10 +1107,23 @@ export class OctokitGitHubClient implements GitHubClient {
    * that timed out may still have landed, and a conditional read afterwards must not be answered
    * from a body recorded before it.
    *
-   * The invalidation is close to free, which is worth writing down so a later edit does not
-   * "optimise" it away: a bumped `updated_at` changes the issue's ETag, so the next conditional
-   * read was going to be answered `200` regardless. Dropping the entry does not turn a free `304`
-   * into a paid read; it only stops the client sending a validator that could not have matched.
+   * What the invalidation costs, written down so a later edit neither "optimises" it away nor
+   * believes it is free:
+   *
+   * - **For this issue, it is very likely free.** A comment bumps `updated_at`, so we expect the
+   *   next conditional read of `issue:<n>` to be answered `200` anyway; dropping the entry mostly
+   *   stops the client sending a validator that could not have matched. "Very likely", not
+   *   "certainly" — GitHub's caching layer is eventually consistent and a post-write `304` from a
+   *   replica is a real, observed behaviour, which is the reason `invalidateRepo` exists at all.
+   * - **It is not free globally.** `ConditionalRequestCache` keeps a *single* process-wide
+   *   `#generation` counter, and `invalidate()` bumps it. `#conditional` captures the counter
+   *   before its await and refuses a `304` whose generation no longer matches, so a comment landing
+   *   while the reconciler has N conditional reads in flight on *other* resources turns each of
+   *   those free `304`s into a paid `200` and evicts N warm entries.
+   *
+   * That is conservative and correct — a write that may have landed must not be read around — and
+   * it is the price of a shared cache. Making it per-key (a `Map<string, number>` compared in
+   * `#conditional`) is the durable fix and belongs in its own ticket, not here.
    */
   async createIssueComment(
     ref: RepoRef,
@@ -1116,7 +1137,14 @@ export class OctokitGitHubClient implements GitHubClient {
     try {
       response = await this.#octokit.request(
         'POST /repos/{owner}/{repo}/issues/{issue_number}/comments',
-        { owner: ref.owner, repo: ref.repo, issue_number: issueNumber, body },
+        {
+          owner: ref.owner,
+          repo: ref.repo,
+          issue_number: issueNumber,
+          body,
+          // Same as the sibling writes: no intermediary may answer a later read from a copy of this.
+          headers: { 'cache-control': 'no-cache' },
+        },
       );
     } catch (error) {
       throw toGitHubClientError(error, operation);
@@ -1433,23 +1461,40 @@ function assertIssueDraft(input: GitHubIssueDraft, operation: string): void {
 }
 
 /**
- * One comment-body rule, shared by the real client and the fake (issue #228).
+ * One comment-body rule, called by both the real client and the fake (issue #228).
  *
- * Emptiness is tested on the *trimmed* string but the untrimmed value is what gets sent. A comment
- * of pure whitespace is a caller bug — it renders as an empty box on the issue under the
- * operator's name — while leading or trailing whitespace inside a real body is the caller's
- * formatting to keep, and a client that silently rewrote what gets published would be a client
- * whose output nobody can predict from its input.
+ * Exported for exactly one reason: `FakeGitHubClient.createIssueComment` calls this, rather than
+ * re-implementing the checks. #100's refusal panel and #144's blown-estimate record are both tested
+ * against the fake, and a fake that re-derived the rule would let a later edit here leave those
+ * tests green against a client that would refuse the identical call.
+ *
+ * The rule itself lives on the wire contract (`issueCommentBodyProblem` in `@agent-dock/shared`),
+ * not here, so that the HTTP route and this client cannot drift apart. What this function adds is
+ * the client's error type and the operation name in the message.
+ *
+ * This is also the *floor*, not a duplicate of the route's check: a daemon-side caller reaching
+ * `PipenzoPhaseService.commentOnIssue` or this method directly never passes through the route's
+ * `safeParse`, and both #100 and #144 are that shape.
  */
-function assertCommentBody(body: string, operation: string): void {
-  if (typeof body !== 'string' || body.trim().length === 0) {
-    throw new GitHubClientError('invalid_request', `${operation}: a comment body cannot be empty`);
-  }
-  if (body.length > MAX_ISSUE_COMMENT_CHARS) {
-    throw new GitHubClientError(
-      'invalid_request',
-      `${operation}: a comment body must be at most ${MAX_ISSUE_COMMENT_CHARS} characters`,
-    );
+export function assertCommentBody(body: string, operation: string): void {
+  switch (issueCommentBodyProblem(body)) {
+    case 'blank':
+      throw new GitHubClientError(
+        'invalid_request',
+        `${operation}: a comment body cannot be empty`,
+      );
+    case 'too_long':
+      throw new GitHubClientError(
+        'invalid_request',
+        `${operation}: a comment body must be at most ${MAX_ISSUE_COMMENT_CHARS} characters`,
+      );
+    case 'control_characters':
+      throw new GitHubClientError(
+        'invalid_request',
+        `${operation}: a comment body must not contain control characters`,
+      );
+    default:
+      return;
   }
 }
 
@@ -1460,8 +1505,10 @@ function normalizeIssueComment(
   return {
     id: requireNumber(data.id, 'id', operation),
     // GitHub echoes the body it stored. Taken from the response rather than from the argument so
-    // that any server-side normalisation is what the caller is told was posted.
-    body: typeof data.body === 'string' ? data.body : '',
+    // that any server-side normalisation is what the caller is told was posted. `requireString`
+    // like every neighbouring field: a comment-create response without a body is a response this
+    // client does not understand, and silently substituting `''` would hide that.
+    body: requireString(data.body, 'body', operation),
     htmlUrl: requireString(data.html_url, 'html_url', operation),
     createdAt: requireString(data.created_at, 'created_at', operation),
   };

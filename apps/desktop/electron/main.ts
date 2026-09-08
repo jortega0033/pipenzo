@@ -34,6 +34,7 @@ import {
   pipenzoImplementResultQueryV1Schema,
   pipenzoReviewRequestV1Schema,
   pipenzoIssueClaimRequestV1Schema,
+  pipenzoIssueCommentRequestV1Schema,
   pipenzoIssueCreateRequestV1Schema,
   pipenzoCaptureCapabilityRequestV1Schema,
   pipenzoIdeaDraftRequestV1Schema,
@@ -1214,6 +1215,13 @@ handle('daemon:pipenzo-claim-issue', async (_event, input: unknown) => {
 handle('daemon:pipenzo-create-issue', async (_event, input: unknown) => {
   if (!client) throw new Error('daemon is not ready yet');
   return client.v2.pipenzo.createIssue(pipenzoIssueCreateRequestV1Schema.parse(input));
+});
+// Issue #228. Same boundary as `daemon:pipenzo-create-issue` directly above and for a sharper
+// reason: this posts prose that becomes public under the operator's GitHub identity, so it lives
+// in main and is invoked by a renderer click, never by anything a model can reach.
+handle('daemon:pipenzo-comment-issue', async (_event, input: unknown) => {
+  if (!client) throw new Error('daemon is not ready yet');
+  return client.v2.pipenzo.commentOnIssue(pipenzoIssueCommentRequestV1Schema.parse(input));
 });
 handle('daemon:pipenzo-draft-issue', async (_event, input: unknown) => {
   if (!client) throw new Error('daemon is not ready yet');

@@ -498,6 +498,55 @@ describe('POST /v2/pipenzo/issues/comment', () => {
     expect(github.calls).toHaveLength(0);
   });
 
+  /**
+   * The regression #228's first cut shipped: the control-character refine rejected `\r`, so a body
+   * stitched out of captured command or git output on Windows — this product's primary platform,
+   * and exactly how #100 and #144 compose theirs — failed with a flat 400 naming no field.
+   */
+  it('accepts a CRLF body and posts it byte for byte, without rewriting the line endings', async () => {
+    const github = new FakeGitHubClient().seedIssue(issue());
+    const { app } = buildApp({ github });
+    const crlf = 'Estimate: 620 changed lines.\r\n\r\n## Proposed split\r\n- one\r\n- two\r\n';
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v2/pipenzo/issues/comment',
+      headers: auth,
+      payload: { issueNumber: 184, body: crlf },
+    });
+    expect(response.statusCode).toBe(201);
+    // Not normalised on the way through: what is published is what the caller wrote.
+    expect(github.issueComments({ owner: 'jortega0033', repo: 'pipenzo' }, 184)).toMatchObject([
+      { body: crlf },
+    ]);
+  });
+
+  /**
+   * GitHub counts characters, so the bound has to as well. Measured in UTF-16 units an emoji-heavy
+   * body would be refused at roughly half GitHub's real allowance — the opposite of the legibility
+   * this early refusal exists for.
+   */
+  it('measures the body in code points, not UTF-16 units', async () => {
+    const github = new FakeGitHubClient().seedIssue(issue());
+    const { app } = buildApp({ github });
+    // 65,536 code points, 131,072 UTF-16 units: at the limit, and accepted.
+    const atLimit = '🙂'.repeat(65_536);
+    const accepted = await app.inject({
+      method: 'POST',
+      url: '/v2/pipenzo/issues/comment',
+      headers: auth,
+      payload: { issueNumber: 184, body: atLimit },
+    });
+    expect(accepted.statusCode).toBe(201);
+    const refused = await app.inject({
+      method: 'POST',
+      url: '/v2/pipenzo/issues/comment',
+      headers: auth,
+      payload: { issueNumber: 184, body: `${atLimit}🙂` },
+    });
+    expect(refused.statusCode).toBe(400);
+    expect(refused.json().code).toBe('invalid_request');
+  });
+
   it('maps a GitHub rate limit onto 429', async () => {
     const github = new FakeGitHubClient().seedIssue(issue());
     github.failNext(

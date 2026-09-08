@@ -1,7 +1,7 @@
 import {
   GitHubClientError,
-  MAX_ISSUE_COMMENT_CHARS,
   PIPENZO_LABEL_NAMESPACE,
+  assertCommentBody,
   isPipenzoLabel,
   type GitHubCheckRun,
   type GitHubClient,
@@ -244,12 +244,12 @@ export class FakeGitHubClient implements GitHubClient {
   }
 
   /**
-   * Posts a comment, with the same validation and the same failure codes as the real client.
+   * Posts a comment, running the real client's own body assertion — not a copy of it.
    *
-   * The validation has to live here too, not only in the octokit implementation. #100's refusal
-   * panel and #144's blown-estimate record both compose a body out of numbers, and both are tested
-   * against this object — a fake that accepted an empty or oversized body would let those tests
-   * pass while the shipped client refused the identical call.
+   * `assertCommentBody` is imported from `github-client.ts` rather than reimplemented here. #100's
+   * refusal panel and #144's blown-estimate record both compose a body out of numbers, and both
+   * are tested against this object; a fake that re-derived the rule would let a later edit to the
+   * real client leave those tests green against a client that refused the identical call.
    *
    * A missing issue is `not_found`, because that is what GitHub answers. Nothing here dedupes: the
    * real endpoint has no idempotency key, so a fake that collapsed two identical posts into one
@@ -262,18 +262,7 @@ export class FakeGitHubClient implements GitHubClient {
   ): Promise<GitHubIssueComment> {
     const key = FakeGitHubClient.key(ref, issueNumber);
     this.#enter('createIssueComment', key);
-    if (typeof body !== 'string' || body.trim().length === 0) {
-      throw new GitHubClientError(
-        'invalid_request',
-        `createIssueComment ${key}: a comment body cannot be empty`,
-      );
-    }
-    if (body.length > MAX_ISSUE_COMMENT_CHARS) {
-      throw new GitHubClientError(
-        'invalid_request',
-        `createIssueComment ${key}: a comment body must be at most ${MAX_ISSUE_COMMENT_CHARS} characters`,
-      );
-    }
+    assertCommentBody(body, `createIssueComment ${key}`);
     if (!this.#issues.has(key)) {
       throw new GitHubClientError('not_found', `createIssueComment ${key}: no such issue`);
     }

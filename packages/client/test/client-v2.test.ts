@@ -1113,8 +1113,16 @@ describe('AgentDockClient.v2 pipenzo phases', () => {
       client.v2.pipenzo.commentOnIssue({ issueNumber: 184, body: 'Estimate: 620 changed lines.' }),
     ).resolves.toMatchObject({ commentId: 5_579_054_675 });
     // Any call, not the first: the client probes `/health` before its first versioned request.
-    const urls = fetchImpl.mock.calls.map((call) => String(call[0]));
-    expect(urls.some((url) => url.endsWith('/v2/pipenzo/issues/comment'))).toBe(true);
+    const call = fetchImpl.mock.calls.find(([url]) =>
+      String(url).endsWith('/v2/pipenzo/issues/comment'),
+    );
+    expect(call).toBeDefined();
+    // This is the one route whose entire payload *is* the body, so asserting the URL was hit is
+    // not enough: the test would pass with the body dropped on the floor.
+    expect(JSON.parse(String((call?.[1] as RequestInit).body))).toEqual({
+      issueNumber: 184,
+      body: 'Estimate: 620 changed lines.',
+    });
   });
 
   it('rejects an unvalidated phase request before ever calling fetch', async () => {

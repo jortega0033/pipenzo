@@ -643,6 +643,41 @@ describe('createIssueComment', () => {
     expect(calls).toHaveLength(0);
   });
 
+  /**
+   * The claim `assertCommentBody`'s docstring makes, asserted rather than asserted-about: the fake
+   * calls the real client's assertion, so the two cannot drift. #100 and #144 are tested against
+   * the fake, and a fake that re-derived the rule would let a change here leave those tests green
+   * against a client that refused the identical call.
+   */
+  it('refuses exactly the same bodies through the real client and through the fake', async () => {
+    const { octokit } = stubOctokit({});
+    const real = OctokitGitHubClient.withOctokit(octokit);
+    const fake = new FakeGitHubClient().seedIssue({
+      owner: REF.owner,
+      repo: REF.repo,
+      number: 161,
+      title: 'seeded',
+      body: '',
+      state: 'open',
+      labels: [],
+      assignees: [],
+      htmlUrl: 'https://github.com/jortega0033/pipenzo/issues/161',
+      updatedAt: new Date(0).toISOString(),
+      etag: undefined,
+    });
+    const refused = ['', '   \n\t ', 'a\u0000b', 'a\u0007b', 'x'.repeat(MAX_ISSUE_COMMENT_CHARS + 1)];
+    for (const body of refused) {
+      const fromReal = await catchAsync(() => real.createIssueComment(REF, 161, body));
+      const fromFake = await catchAsync(() => fake.createIssueComment(REF, 161, body));
+      expect((fromReal as GitHubClientError).code, body.slice(0, 16)).toBe('invalid_request');
+      expect((fromFake as GitHubClientError).code, body.slice(0, 16)).toBe('invalid_request');
+    }
+    // And the same body both accept: CRLF is prose, not a control character, on this one field.
+    await expect(fake.createIssueComment(REF, 161, 'line one\r\nline two')).resolves.toMatchObject({
+      body: 'line one\r\nline two',
+    });
+  });
+
   it('keeps leading and trailing whitespace inside a real body', async () => {
     const { octokit, calls } = stubOctokit({
       request: async () => ({ headers: {}, data: COMMENT_DATA }),

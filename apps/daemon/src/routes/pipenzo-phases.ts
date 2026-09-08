@@ -215,9 +215,11 @@ export function registerPipenzoPhaseRoutes(
       if (error instanceof PipenzoPhaseError) return fail(reply, error);
       return fail(reply, new PipenzoPhaseError('github_failed', 'issue comment failed'));
     }
-    // Outside the try, for the same reason as the create route above and with a sharper edge: the
-    // comment is already public by now, and GitHub has no idempotency key for one — an operator's
-    // natural retry after a response-shape error would post it a second time.
+    // Outside the try, for the same reason as the create route above: by this line the comment is
+    // already public, so a `parse` that threw in here would be reported as `github_failed`/502 —
+    // telling the operator GitHub refused a write GitHub actually accepted. A retry is a duplicate
+    // comment either way, since GitHub has no idempotency key for one; what the placement buys is
+    // that the daemon's own response-shape bug is not mislabelled as GitHub's failure.
     reply.code(201).send(pipenzoIssueCommentResultV1Schema.parse(result));
   });
 }

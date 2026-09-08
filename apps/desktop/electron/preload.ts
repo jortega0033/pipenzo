@@ -58,6 +58,8 @@ import {
   pipenzoReviewResultV1Schema,
   pipenzoIssueClaimRequestV1Schema,
   pipenzoIssueClaimResultV1Schema,
+  pipenzoIssueCommentRequestV1Schema,
+  pipenzoIssueCommentResultV1Schema,
   pipenzoIssueCreateRequestV1Schema,
   pipenzoIssueCreateResultV1Schema,
   pipenzoCaptureCapabilityRequestV1Schema,
@@ -128,6 +130,8 @@ import {
   type PipenzoReviewResultV1,
   type PipenzoIssueClaimRequestV1,
   type PipenzoIssueClaimResultV1,
+  type PipenzoIssueCommentRequestV1,
+  type PipenzoIssueCommentResultV1,
   type PipenzoIssueCreateRequestV1,
   type PipenzoIssueCreateResultV1,
   type PipenzoCaptureCapabilityRequestV1,
@@ -227,6 +231,7 @@ export interface AgentDockBridge {
   reviewPipenzo(input: PipenzoReviewRequestV1): Promise<PipenzoReviewResultV1>;
   claimPipenzoIssue(input: PipenzoIssueClaimRequestV1): Promise<PipenzoIssueClaimResultV1>;
   createPipenzoIssue(input: PipenzoIssueCreateRequestV1): Promise<PipenzoIssueCreateResultV1>;
+  commentOnPipenzoIssue(input: PipenzoIssueCommentRequestV1): Promise<PipenzoIssueCommentResultV1>;
   pipenzoCaptureCapabilities(input: PipenzoCaptureCapabilityRequestV1): Promise<PipenzoCaptureCapabilityV1>;
   draftPipenzoIssue(input: PipenzoIdeaDraftRequestV1): Promise<PipenzoIdeaDraftResultV1>;
   /** The phase machine's ticket surface (issue #188): the label is authoritative for the lane. */
@@ -856,6 +861,10 @@ const api: AgentDockBridge = {
   async createPipenzoIssue(input) {
     const parsed = pipenzoIssueCreateRequestV1Schema.parse(input);
     return pipenzoIssueCreateResultV1Schema.parse(await ipcRenderer.invoke('daemon:pipenzo-create-issue', parsed));
+  },
+  async commentOnPipenzoIssue(input) {
+    const parsed = pipenzoIssueCommentRequestV1Schema.parse(input);
+    return pipenzoIssueCommentResultV1Schema.parse(await ipcRenderer.invoke('daemon:pipenzo-comment-issue', parsed));
   },
   async draftPipenzoIssue(input) {
     const parsed = pipenzoIdeaDraftRequestV1Schema.parse(input);
