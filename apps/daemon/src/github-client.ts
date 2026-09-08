@@ -138,9 +138,23 @@ export class GitHubClientError extends Error {
  * The daemon's own resolved credential(s), registered so `redactSecrets` can scrub them by exact
  * value regardless of shape (issue #211). Module-private and additive-only: nothing ever removes a
  * value once registered, and there is no read accessor — the set exists to be matched against, not
- * inspected, so registering a value cannot itself become a second place that value is exposed.
+ * inspected. Registering a value is still a second place it sits in heap memory alongside
+ * `DaemonGitHubCredential`'s own private field; what this design buys is that neither this set nor
+ * `redactSecrets` can be used to read it back out anywhere in this codebase.
  */
 const knownSecrets = new Set<string>();
+
+/**
+ * A floor on length rather than trusting every caller to have already validated shape: an empty or
+ * near-empty string registered by mistake would make the exact-match rule in `redactSecrets` below
+ * scrub that substring out of *every* message this module ever produces, which is a worse failure
+ * than the known limit this function exists to close. Set to the same 20-character floor
+ * `github-credential.ts`'s `isTokenShaped` already enforces on every real GitHub credential this
+ * daemon resolves — not an arbitrary smaller number, so a future caller cannot register something
+ * shorter than any credential this process actually holds while still believing it passed a real
+ * shape check.
+ */
+const MIN_KNOWN_SECRET_LENGTH = 20;
 
 /**
  * Registers `value` as a secret `redactSecrets` should also scrub by exact substring match, for
@@ -151,14 +165,7 @@ const knownSecrets = new Set<string>();
  *
  * Registering does not itself log, persist, or return `value` — this function's only effect is
  * adding it to the in-memory set `redactSecrets` reads, for the life of this process.
- *
- * A floor on length rather than trusting every caller to have already validated shape: an empty or
- * near-empty string registered by mistake would make the exact-match rule below scrub that
- * substring out of *every* message this module ever produces, which is a worse failure than the
- * known limit this function exists to close.
  */
-const MIN_KNOWN_SECRET_LENGTH = 8;
-
 export function registerKnownSecret(value: string): void {
   const trimmed = value.trim();
   if (trimmed.length >= MIN_KNOWN_SECRET_LENGTH) knownSecrets.add(trimmed);
@@ -178,9 +185,11 @@ export function registerKnownSecret(value: string): void {
  * `https://x-access-token:ghp_…@github.com/o/r.git` contains a literal `x-access-token:` and a
  * header rule matching first would swallow the host and repository path along with the credential
  * — leaving an operator a `push_failed` with no diagnostic in it at all. Redaction should remove
- * the secret, not the sentence. The exact-value pass runs **last**, after every pattern rule: it is
- * a strict superset of nothing the earlier rules already redacted, so its only job is the leftover
- * a shape rule was never going to catch.
+ * the secret, not the sentence. The exact-value pass runs **last**, after every pattern rule, so its
+ * job is ordinarily the leftover a shape rule was never going to catch. (A pattern rule that only
+ * partially rewrote a registered secret would leave a fragment the exact pass can no longer match —
+ * unreachable for anything `isTokenShaped` accepts today, since the `gh*_`/`github_pat_`/JWT rules
+ * each consume their whole match, but worth knowing this pass is not a backstop for that case.)
  *
  * **Formerly a known limit, closed by issue #211:** a pre-2021 40-hex classic PAT cannot be
  * *pattern*-matched — this module interpolates commit SHAs into messages, and a 40-hex rule would
@@ -212,11 +221,12 @@ export function redactSecrets(value: string): string {
       '$1: [redacted]',
     )
     .replace(/\bbearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, 'Bearer [redacted]');
-  // String-based, not a regex built from `secret`: a token's characters are printable ASCII and
-  // could still include a regex metacharacter, and building a pattern from untrusted-shaped
-  // content is exactly the kind of thing this function exists to be careful about.
+  // `replaceAll` with a *string* argument, not a regex built from `secret`: a token's characters
+  // are printable ASCII and could still include a regex metacharacter, and the string overload
+  // does a literal substring match with no pattern interpretation at all -- the replacement
+  // `'[redacted]'` carries no `$` either, so there is no substitution-pattern hazard on that side.
   for (const secret of knownSecrets) {
-    if (secret) scrubbed = scrubbed.split(secret).join('[redacted]');
+    if (secret) scrubbed = scrubbed.replaceAll(secret, '[redacted]');
   }
   return scrubbed;
 }

@@ -247,8 +247,7 @@ describe('registerKnownSecret', () => {
     expect(redactSecrets('this run was short on time')).toBe('this run was short on time');
   });
 
-  it('is additive: registering twice is the same as registering once', () => {
-    registerKnownSecret(classicPat);
+  it('scrubs every occurrence in a message, not just the first', () => {
     registerKnownSecret(classicPat);
     expect(redactSecrets(`a ${classicPat} b ${classicPat} c`)).toBe('a [redacted] b [redacted] c');
   });
