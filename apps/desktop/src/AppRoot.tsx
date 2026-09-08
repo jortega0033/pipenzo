@@ -93,6 +93,8 @@ function PipenzoStartup({
       {route.environmentCredential && <EnvironmentCredentialBanner />}
       <ConnectionHealthBanner
         health={health}
+        loginName={connection?.state === 'connected' ? connection.login : undefined}
+        connectedRepoCount={typeof connectedRepos === 'number' ? connectedRepos : undefined}
         onRetryNow={() => void getBridge().pollGitHubHealthNow().catch(() => {})}
         // Forgets the now-useless stored credential rather than opening a second sign-in surface;
         // `useGitHubConnection` re-reads on the daemon's next `ready` and `routePipenzoStartup`

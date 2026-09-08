@@ -247,4 +247,91 @@ describe('ConnectionHealthBanner', () => {
       expect(screen.queryByRole('button', { name: 'Retry now' })).not.toBeInTheDocument();
     });
   });
+
+  describe('recovery (#73)', () => {
+    const retrying: PipenzoGitHubHealthV1 = {
+      state: 'retrying',
+      attempt: 2,
+      maxAttempts: 5,
+      nextAttemptAt: NOW + 18_000,
+      consecutiveFailures: 2,
+      firstFailureAt: NOW - 40_000,
+    };
+    const healthy: PipenzoGitHubHealthV1 = { state: 'healthy', lastCleanPollAt: NOW };
+    const unreachable: PipenzoGitHubHealthV1 = {
+      state: 'unreachable',
+      consecutiveFailures: 5,
+      firstFailureAt: NOW - 60_000,
+      maxAttempts: 5,
+    };
+    const rejected: PipenzoGitHubHealthV1 = { state: 'credential_rejected', rejectedAt: NOW };
+
+    it('renders nothing on a plain healthy value with no prior failure -- this is knowledge, not a recovery', () => {
+      const { container } = render(<ConnectionHealthBanner health={healthy} />);
+      expect(container).toBeEmptyDOMElement();
+    });
+
+    it.each([
+      ['retrying', retrying],
+      ['unreachable', unreachable],
+      ['credential_rejected', rejected],
+    ] as const)('shows the recovery banner after healthy follows %s', (_label, failing) => {
+      const { rerender } = render(<ConnectionHealthBanner health={failing} />);
+      rerender(<ConnectionHealthBanner health={healthy} />);
+      expect(screen.getByText(/Signed in again/)).toBeInTheDocument();
+      const banner = document.querySelector('.banner')!;
+      expect(banner.className).toBe('banner warn');
+    });
+
+    it('renders the login and repo count when supplied, and omits the sentence pieces it does not have', () => {
+      const { rerender } = render(
+        <ConnectionHealthBanner health={retrying} loginName="jortega0033" connectedRepoCount={3} />,
+      );
+      rerender(
+        <ConnectionHealthBanner health={healthy} loginName="jortega0033" connectedRepoCount={3} />,
+      );
+      expect(screen.getByText('jortega0033')).toBeInTheDocument();
+      expect(screen.getByText(/3 repos reconnected/)).toBeInTheDocument();
+    });
+
+    it('says "1 repo", not "1 repos"', () => {
+      const { rerender } = render(
+        <ConnectionHealthBanner health={retrying} connectedRepoCount={1} />,
+      );
+      rerender(<ConnectionHealthBanner health={healthy} connectedRepoCount={1} />);
+      expect(screen.getByText(/1 repo reconnected/)).toBeInTheDocument();
+    });
+
+    it('persists across later clean polls (repeated `healthy` pushes) until dismissed', () => {
+      const { rerender } = render(<ConnectionHealthBanner health={retrying} />);
+      rerender(<ConnectionHealthBanner health={healthy} />);
+      expect(screen.getByText(/Signed in again/)).toBeInTheDocument();
+
+      rerender(<ConnectionHealthBanner health={{ ...healthy, lastCleanPollAt: NOW + 60_000 }} />);
+      expect(screen.getByText(/Signed in again/)).toBeInTheDocument();
+    });
+
+    it('is dismissible, and stays gone', () => {
+      const { rerender } = render(<ConnectionHealthBanner health={retrying} />);
+      rerender(<ConnectionHealthBanner health={healthy} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+      expect(screen.queryByText(/Signed in again/)).not.toBeInTheDocument();
+
+      rerender(<ConnectionHealthBanner health={{ ...healthy, lastCleanPollAt: NOW + 60_000 }} />);
+      expect(screen.queryByText(/Signed in again/)).not.toBeInTheDocument();
+    });
+
+    it('is cancelled by a fresh failure rather than staying up as stale news', () => {
+      const { rerender } = render(<ConnectionHealthBanner health={retrying} />);
+      rerender(<ConnectionHealthBanner health={healthy} />);
+      expect(screen.getByText(/Signed in again/)).toBeInTheDocument();
+
+      rerender(<ConnectionHealthBanner health={unreachable} />);
+      expect(screen.queryByText(/Signed in again/)).not.toBeInTheDocument();
+      expect(screen.getByText('GitHub is unreachable.')).toBeInTheDocument();
+
+      rerender(<ConnectionHealthBanner health={healthy} />);
+      expect(screen.getByText(/Signed in again/)).toBeInTheDocument();
+    });
+  });
 });
