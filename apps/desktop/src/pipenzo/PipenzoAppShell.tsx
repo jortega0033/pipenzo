@@ -106,8 +106,8 @@ export function PipenzoAppShell({
                 </Button>
               }
             >
-              Couldn&apos;t read the ticket list from the local daemon. The board below may be
-              missing tickets until this succeeds.
+              Couldn&apos;t read the ticket list from the local daemon. The board below is empty
+              until this succeeds.
             </Banner>
           )}
           <BoardScreen
