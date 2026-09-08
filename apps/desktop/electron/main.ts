@@ -53,7 +53,6 @@ import {
   type WorkspaceTrustUpdateRequestV2,
 } from '@agent-dock/shared';
 import { AgentDockClient, DaemonError } from '@agent-dock/client';
-import { resolveDaemonEntry } from './resolve-daemon-entry.js';
 import { GitHubTokenVault, GitHubTokenVaultError } from './github-token-vault.js';
 import {
   DeviceFlowError,
@@ -63,10 +62,8 @@ import {
 import { DeviceFlowSession, toWireFailure } from './device-flow-session.js';
 import { GITHUB_OAUTH_CLIENT_ID } from './github-oauth-app.js';
 import {
-  buildDaemonCredentialMessage,
-  buildDaemonEnvironment,
+  buildDaemonSpawnPlan,
   reconcileDaemonTokenSource,
-  resolveDaemonGitHubToken,
   type DaemonGitHubTokenSource,
 } from './daemon-environment.js';
 import { devTokenFilePath, readDevTokenFile } from './dev-token-file.js';
@@ -206,12 +203,6 @@ function sendStatus(status: DaemonStatus): void {
 }
 
 function spawnDaemon(): void {
-  const { cwd, args } = resolveDaemonEntry({
-    mainDir: __dirname,
-    isDevServer: !!process.env.VITE_DEV_SERVER_URL,
-    isPackaged: app.isPackaged,
-    resourcesPath: process.resourcesPath,
-  });
   const spawnedAt = Date.now();
 
   // The one place in this app that turns a stored credential back into plaintext, and the one
@@ -225,14 +216,27 @@ function spawnDaemon(): void {
   // `vite.config.ts`'s own comment on this constant documents for `resolveDaemonGitHubToken`'s
   // internal gate) -- not just "the result is unused", but "the file is never even opened" in a
   // shipped Pipenzo.
-  const credential = resolveDaemonGitHubToken({
+  //
+  // Everything about *what* to spawn -- the entry point, the child's environment, the credential
+  // message -- is `buildDaemonSpawnPlan`'s decision, not this function's (issue #213): a pure
+  // function of explicit inputs, testable without Electron or a real child process. This function's
+  // only job past this point is turning that plan into the one real `spawn` call and the real
+  // writes and listeners a live child needs.
+  const plan = buildDaemonSpawnPlan({
+    entry: {
+      mainDir: __dirname,
+      isDevServer: !!process.env.VITE_DEV_SERVER_URL,
+      resourcesPath: process.resourcesPath,
+    },
+    appId: APP_ID,
+    parentEnv: process.env,
     vaultToken: tokenVault.readToken(),
     developmentToken: IS_DEVELOPMENT_BUILD ? readDevTokenFile(app.getPath('userData')) : undefined,
     isPackaged: app.isPackaged,
     isDevelopmentBuild: IS_DEVELOPMENT_BUILD,
     developmentFallbackSuppressed,
   });
-  // Not `credential.source` here (issue #209): that is main's pre-handoff *intent*, unconfirmed
+  // Not `plan.credentialSource` here (issue #209): that is main's pre-handoff *intent*, unconfirmed
   // until the daemon's own `/health` report lands in `waitForDaemonReady`'s success branch, which
   // is the only place `daemonTokenSource` is set to anything more specific than `'none'`. A daemon
   // that never becomes ready -- a spawn failure, a timeout -- must not leave a stale, optimistic
@@ -240,18 +244,18 @@ function spawnDaemon(): void {
   // until proven otherwise, the same fail-honest default `reconcileDaemonTokenSource` applies to
   // every other unconfirmed case.
   daemonTokenSource = 'none';
-  if (credential.source === 'environment') {
+  if (plan.credentialSource === 'environment') {
     console.warn(
       `[pipenzo] no GitHub token in the vault; this development build is using the token at ${devTokenFilePath(app.getPath('userData'))}. A packaged build would refuse.`,
     );
   }
 
-  const child = spawn(process.execPath, args, {
-    cwd,
+  const child = spawn(process.execPath, plan.args, {
+    cwd: plan.cwd,
     // The credential is *not* in here. The daemon is the parent of every provider subprocess, and a
     // child can read its parent's initial environment block, so it goes down the pipe below
     // instead — see `daemon-environment.ts` and the daemon's `github-credential.ts`.
-    env: buildDaemonEnvironment(process.env, { appId: APP_ID, credentialOnStdin: true }),
+    env: plan.env,
     stdio: ['pipe', 'pipe', 'pipe'],
     windowsHide: true,
   });
@@ -273,7 +277,7 @@ function spawnDaemon(): void {
   child.stdin?.on('error', () => {
     // The daemon's own exit handler below is what reports a child that failed to start.
   });
-  child.stdin?.end(buildDaemonCredentialMessage(credential.token), 'utf8');
+  child.stdin?.end(plan.credentialMessage, 'utf8');
 
   daemonChild.stdout?.on('data', (chunk: Buffer) => {
     // The daemon's own logger already redacts secrets; forward for local debugging only.
@@ -377,7 +381,7 @@ function spawnDaemon(): void {
     });
   });
 
-  waitForDaemonReady(child, spawnedAt, credential.source).catch((err: Error) => {
+  waitForDaemonReady(child, spawnedAt, plan.credentialSource).catch((err: Error) => {
     if (daemonChild !== child) return; // a replacement is already reporting for itself
     sendStatus({ state: 'unavailable', error: `daemon failed to start: ${err.message}` });
   });

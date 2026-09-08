@@ -1,4 +1,6 @@
+import { inspect } from 'node:util';
 import type { DaemonCredentialSourceV1 } from '@agent-dock/shared';
+import { resolveDaemonEntry, type ResolveDaemonEntryInput } from './resolve-daemon-entry.js';
 
 /**
  * The environment Electron main hands the daemon sidecar (issue #165).
@@ -74,6 +76,20 @@ export const DAEMON_GITHUB_TOKEN_ENV_KEY = 'PIPENZO_GITHUB_TOKEN';
  * environment that is the security property.
  */
 export const CREDENTIAL_ON_STDIN_ENV_KEY = 'PIPENZO_CREDENTIAL_ON_STDIN';
+
+/**
+ * A broad heuristic for "does this environment variable name look like it could be carrying a
+ * GitHub credential", used by the token-boundary tests to assert an *exact* list of matches
+ * (`toEqual([...])`) rather than "at least one exists" -- which would stay green if the token
+ * variable were put straight back in beside a name this list happens to miss. Built from
+ * `GITHUB_CREDENTIAL_ENV_KEYS` so the two cannot silently diverge, plus the generic words
+ * (`credential`, `secret`) a credential-shaped name might use without being literally on that list
+ * -- `CREDENTIAL_ON_STDIN_ENV_KEY` itself is exactly such a name, and is expected to match.
+ */
+export const CREDENTIAL_SHAPED_ENV_KEY_PATTERN = new RegExp(
+  `${GITHUB_CREDENTIAL_ENV_KEYS.join('|')}|credential|secret`,
+  'i',
+);
 
 export type DaemonGitHubTokenSource = 'vault' | 'environment' | 'none';
 
@@ -258,4 +274,132 @@ export function buildDaemonEnvironment(
   target.AGENT_DOCK_APP_ID = options.appId;
   if (options.credentialOnStdin) target[CREDENTIAL_ON_STDIN_ENV_KEY] = '1';
   return target;
+}
+
+/**
+ * The redacted shape `DaemonSpawnPlan.toJSON()` (and its `util.inspect` counterpart) produce: every
+ * field a diagnostic path might legitimately want to see, with `credentialMessage` replaced by a
+ * fixed marker string instead of omitted -- so a debug log naming the field explicitly still reads
+ * as "there was a message here, on purpose redacted" rather than looking like a bug that dropped it.
+ */
+interface RedactedDaemonSpawnPlan {
+  readonly cwd: string;
+  readonly args: readonly string[];
+  readonly env: Readonly<Record<string, string | undefined>>;
+  readonly credentialMessage: '[redacted]';
+  readonly credentialSource: DaemonGitHubTokenSource;
+}
+
+/** Everything `spawnDaemon` in `main.ts` needs to actually call `child_process.spawn`, computed
+ * without touching `electron`, `child_process`, or any module-level state. */
+export interface DaemonSpawnPlan {
+  /** Passed to `spawn` as `options.cwd`. */
+  readonly cwd: string;
+  /** Passed to `spawn` as its own `args` parameter. */
+  readonly args: readonly string[];
+  /** Passed to `spawn` as `options.env` -- the daemon child's actual environment, already stripped
+   * and marked (see `buildDaemonEnvironment`). This is a denylist, the same as the module header
+   * describes: it strips every name a GitHub credential is conventionally carried in, which is not
+   * quite the same claim as "never contains the credential itself" -- the same value under an
+   * unlisted name would survive. */
+  readonly env: Readonly<Record<string, string | undefined>>;
+  /** Written to the child's stdin verbatim, then the stream is closed. The one place the resolved
+   * credential's plaintext value appears in this whole plan.
+   *
+   * Every other field here is safe to log, and a future debug or error path over this object should
+   * stay that way without anyone having to remember to exclude this one by hand -- see `toJSON`. */
+  readonly credentialMessage: string;
+  /** `resolveDaemonGitHubToken`'s own verdict -- main's pre-handoff *intent*, unconfirmed until the
+   * daemon's own `/health` report lands (issue #209); not carried anywhere in `env` or the message
+   * above, since nothing here needs the label, only the daemon's later confirmation does. */
+  readonly credentialSource: DaemonGitHubTokenSource;
+  /**
+   * Redacts `credentialMessage` before this plan can reach `JSON.stringify` or a template literal.
+   * `credentialMessage` sits beside `cwd`/`args`/`env` in a plain diagnostics-shaped object, and
+   * nothing about that shape marks it as different -- a future `console.log(plan)` or
+   * `JSON.stringify(plan)` in some unrelated debug or error path would otherwise print the token in
+   * full. `JSON.stringify` calls a value's own `toJSON()` before serializing it, so overriding it
+   * here closes that off structurally rather than relying on every future call site remembering to
+   * pick fields by hand.
+   */
+  toJSON(): RedactedDaemonSpawnPlan;
+  /** The same redaction for `util.inspect` (and therefore `console.log`, which calls it on any
+   * non-string argument) -- `toJSON` alone only protects `JSON.stringify`. */
+  [inspect.custom](): RedactedDaemonSpawnPlan;
+}
+
+export interface BuildDaemonSpawnPlanInput {
+  /**
+   * Everything `resolveDaemonEntry` needs except `isPackaged`. That field is deliberately not
+   * repeated here: this input already carries its own top-level `isPackaged`, and having the value
+   * twice would let a caller feed them inconsistently. `main.ts` happens to source both from
+   * `app.isPackaged` today, but the type used to permit them to diverge; `buildDaemonSpawnPlan`
+   * below derives `entry.isPackaged` from the single top-level field instead, closing that off at
+   * the type level rather than trusting every future caller to keep them in sync by hand.
+   */
+  readonly entry: Omit<ResolveDaemonEntryInput, 'isPackaged'>;
+  readonly appId: string;
+  /** The parent process's own environment -- `buildDaemonEnvironment` strips from a copy of this,
+   * never mutates it. Explicit rather than read from `process.env` here so a test can hand in a
+   * fixture instead of this process's real one. */
+  readonly parentEnv: Readonly<Record<string, string | undefined>>;
+  readonly vaultToken: string | undefined;
+  readonly developmentToken: string | undefined;
+  /** Gates both `resolveDaemonGitHubToken`'s development fallback and, via `entry` above, which
+   * daemon entry point `resolveDaemonEntry` resolves to -- the one `isPackaged` this whole plan is
+   * built from. */
+  readonly isPackaged: boolean;
+  readonly isDevelopmentBuild: boolean;
+  readonly developmentFallbackSuppressed: boolean;
+}
+
+/**
+ * The whole decision `spawnDaemon` makes, before it ever calls `child_process.spawn` (issue #213).
+ *
+ * Pulled out specifically so the properties the token-boundary tests care about -- what environment
+ * the child would actually be given, what would actually be written to its stdin -- are assertions
+ * against a real returned object instead of a regex over `main.ts`'s source text. A source-regex
+ * assertion tracks spellings, not properties: `github-token-boundary.test.ts`'s own history is that
+ * `env: { ...buildDaemonEnvironment(...), PIPENZO_GITHUB_TOKEN: token }` would still satisfy both
+ * `not.toMatch(/env:\s*\{\s*\.\.\.process\.env/)` and `toMatch(/env:\s*buildDaemonEnvironment\(/)`,
+ * the exact regression those assertions exist to catch. Testing the *value* `env` resolves to
+ * instead makes that regression fail for what it actually does, not for how it happens to be typed.
+ *
+ * `main.ts`'s own `spawnDaemon` is now a thin wrapper: build this plan from real values (`app.*`,
+ * `tokenVault.readToken()`, `process.env`), then actually spawn the child and write its stdin from
+ * the plan's own fields. Nothing here touches `electron` or spawns a process -- `resolveDaemonEntry`
+ * does call `existsSync`, on the unpackaged-build path only, to check whether `apps/daemon`'s own
+ * `dist/index.js` has been built yet, which is real (if trivial) I/O -- so this needs no Electron
+ * runtime and no real child process to test, only a real filesystem.
+ */
+export function buildDaemonSpawnPlan(input: BuildDaemonSpawnPlanInput): DaemonSpawnPlan {
+  const { cwd, args } = resolveDaemonEntry({ ...input.entry, isPackaged: input.isPackaged });
+  const credential = resolveDaemonGitHubToken({
+    vaultToken: input.vaultToken,
+    developmentToken: input.developmentToken,
+    isPackaged: input.isPackaged,
+    isDevelopmentBuild: input.isDevelopmentBuild,
+    developmentFallbackSuppressed: input.developmentFallbackSuppressed,
+  });
+  const env = Object.freeze(
+    buildDaemonEnvironment(input.parentEnv, { appId: input.appId, credentialOnStdin: true }),
+  );
+  const credentialMessage = buildDaemonCredentialMessage(credential.token);
+  const credentialSource = credential.source;
+  const toJSON = (): RedactedDaemonSpawnPlan => ({
+    cwd,
+    args,
+    env,
+    credentialMessage: '[redacted]',
+    credentialSource,
+  });
+  return Object.freeze({
+    cwd,
+    args,
+    env,
+    credentialMessage,
+    credentialSource,
+    toJSON,
+    [inspect.custom]: toJSON,
+  });
 }

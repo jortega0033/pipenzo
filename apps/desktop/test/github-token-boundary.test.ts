@@ -1,15 +1,19 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { inspect } from 'node:util';
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
   CREDENTIAL_ON_STDIN_ENV_KEY,
+  CREDENTIAL_SHAPED_ENV_KEY_PATTERN,
   DAEMON_GITHUB_TOKEN_ENV_KEY,
   GITHUB_CREDENTIAL_ENV_KEYS,
   buildDaemonCredentialMessage,
   buildDaemonEnvironment,
+  buildDaemonSpawnPlan,
   reconcileDaemonTokenSource,
   resolveDaemonGitHubToken,
+  type BuildDaemonSpawnPlanInput,
 } from '../electron/daemon-environment.js';
 
 /**
@@ -120,8 +124,36 @@ async function warm(root: string): Promise<void> {
   await Promise.all(files.map((file) => readSource(file)));
 }
 
+/**
+ * A complete, realistic `buildDaemonSpawnPlan` input (issue #213) -- a packaged app, a real vault
+ * token, nothing from the development fallback -- with any field overridable per test. Exists so
+ * each test names only the field it's actually varying, the same reason `installBridge`-style
+ * fixtures exist elsewhere in this codebase's own test suites.
+ */
+function spawnPlanInput(overrides: Partial<BuildDaemonSpawnPlanInput> = {}): BuildDaemonSpawnPlanInput {
+  return {
+    entry: { mainDir: '/app/electron', isDevServer: false, resourcesPath: '/app/resources' },
+    appId: 'pipenzo',
+    parentEnv: { PATH: '/usr/bin' },
+    vaultToken: undefined,
+    developmentToken: undefined,
+    isPackaged: true,
+    isDevelopmentBuild: false,
+    developmentFallbackSuppressed: false,
+    ...overrides,
+  };
+}
+
+/**
+ * A value that is shaped like a real GitHub token without being one, for tests that need to assert
+ * a specific value never survives somewhere it shouldn't. Module-scoped (rather than local to one
+ * describe block, as it originally was) so every describe below can use the same convention instead
+ * of a one-off string literal.
+ */
+const fakeToken = (suffix: string): string => `${'gh'}${'p'}_${suffix}`;
+
 beforeAll(async () => {
-  await Promise.all([warm(electronSrc()), warm(rendererSrc())]);
+  await Promise.all([warm(electronSrc()), warm(rendererSrc()), warm(daemonSrc())]);
 }, 60_000);
 
 describe('the plaintext is produced once, and delivered over a pipe', () => {
@@ -153,7 +185,7 @@ describe('the plaintext is produced once, and delivered over a pipe', () => {
     // The marker says a message is coming. The message is not here. Asserted as an exact list
     // rather than "at least one such key exists", which would stay green if the token variable were
     // put straight back alongside it.
-    expect(Object.keys(env).filter((key) => /token|credential|secret/i.test(key))).toEqual([
+    expect(Object.keys(env).filter((key) => CREDENTIAL_SHAPED_ENV_KEY_PATTERN.test(key))).toEqual([
       CREDENTIAL_ON_STDIN_ENV_KEY,
     ]);
     expect(env[CREDENTIAL_ON_STDIN_ENV_KEY]).toBe('1');
@@ -164,9 +196,34 @@ describe('the plaintext is produced once, and delivered over a pipe', () => {
     const main = await readElectron('main.ts');
     // A piped stdin, not `ignore`: there is nowhere else for the message to go.
     expect(main).toMatch(/stdio:\s*\['pipe',\s*'pipe',\s*'pipe'\]/);
-    expect(main).toMatch(/stdin\?\.end\(buildDaemonCredentialMessage\(credential\.token\)/);
+    // Behavioural, not a source-regex: `main.ts` writes `plan.credentialMessage` verbatim, and this
+    // asserts what that message actually contains for a real resolved token, not merely that the
+    // call is spelled a particular way (issue #213).
+    const plan = buildDaemonSpawnPlan(spawnPlanInput({ vaultToken: 'aRealisticVaultToken00000001' }));
+    expect(JSON.parse(plan.credentialMessage)).toEqual({ githubToken: 'aRealisticVaultToken00000001' });
+    expect(main).toMatch(/stdin\?\.end\(plan\.credentialMessage/);
     // A child that died before the write turns an ordinary EPIPE into an unhandled stream error.
     expect(main).toMatch(/stdin\?\.on\('error'/);
+  });
+
+  /**
+   * `credentialMessage` sits in the same plain, diagnostics-shaped object as `cwd`/`args`/`env` --
+   * nothing about the shape marks it as different from those. Without a redacting `toJSON()` (and a
+   * matching `util.inspect` hook), a future `console.log(plan)` or `JSON.stringify(plan)` on any
+   * unrelated debug or error path would print the token in full. This is the regression three
+   * separate reviewers of issue #213 flagged independently.
+   */
+  it('never lets the plan itself be logged or serialized with the token still in it', () => {
+    const token = 'aRealisticVaultToken00000001';
+    const plan = buildDaemonSpawnPlan(spawnPlanInput({ vaultToken: token }));
+    expect(JSON.stringify(plan)).not.toContain(token);
+    expect(JSON.stringify({ plan })).not.toContain(token);
+    // `util.inspect` (and therefore `console.log`, which calls it on any non-string argument) is a
+    // separate code path from `JSON.stringify` -- `toJSON` alone does not cover it.
+    expect(inspect(plan)).not.toContain(token);
+    // Redacted, not merely absent: a log naming the field should read as "deliberately withheld,"
+    // not as a bug that silently dropped it.
+    expect(JSON.stringify(plan)).toContain('[redacted]');
   });
 
   it('builds a credential message that carries the token and nothing else', () => {
@@ -192,8 +249,40 @@ describe('the plaintext is produced once, and delivered over a pipe', () => {
 
     const main = await readElectron('main.ts');
     expect(main.match(/\bspawn\s*\(/g)).toHaveLength(1);
-    expect(main).toMatch(/env:\s*buildDaemonEnvironment\(/);
+    // `main.ts` no longer builds the child's environment inline -- it spawns with `plan.env`
+    // verbatim, where `plan` is `buildDaemonSpawnPlan`'s own return value. What that environment
+    // actually contains is asserted behaviourally below, not by scanning how this call is typed.
+    expect(main).toMatch(/env:\s*plan\.env\b/);
     expect(main).not.toMatch(/env:\s*\{\s*\.\.\.process\.env/);
+  });
+
+  /**
+   * The exact regression this file's own history names (issue #213): a call site written as
+   * `env: { ...buildDaemonEnvironment(...), PIPENZO_GITHUB_TOKEN: token }` would satisfy both
+   * `toMatch(/env:\s*buildDaemonEnvironment\(/)` and `not.toMatch(/env:\s*\{\s*\.\.\.process\.env/)`
+   * above -- a source-regex checks how the call is spelled, not what it produces. Asserting against
+   * `buildDaemonSpawnPlan`'s own returned `env` object closes that gap structurally as well as in
+   * the test: `main.ts` now spawns with `plan.env` directly, so there is no call site left where an
+   * override like that could even be added without also changing this function.
+   */
+  it('puts no credential-shaped variable in the spawn plan’s environment, only the marker', () => {
+    const smuggledToken = fakeToken('shouldNeverSurvive0001');
+    const plan = buildDaemonSpawnPlan(
+      spawnPlanInput({
+        parentEnv: { PATH: '/usr/bin', PIPENZO_GITHUB_TOKEN: smuggledToken },
+        vaultToken: 'aRealisticVaultToken00000001',
+      }),
+    );
+    expect(Object.keys(plan.env).filter((key) => CREDENTIAL_SHAPED_ENV_KEY_PATTERN.test(key))).toEqual([
+      CREDENTIAL_ON_STDIN_ENV_KEY,
+    ]);
+    expect(plan.env[DAEMON_GITHUB_TOKEN_ENV_KEY]).toBeUndefined();
+    expect(plan.env[CREDENTIAL_ON_STDIN_ENV_KEY]).toBe('1');
+    // The check above is name-only -- it would pass a value smuggled through under an unlisted key
+    // (e.g. `PIPENZO_GH_PAT`) just as easily as the code path it is meant to catch. Assert the
+    // *value* is gone from the whole environment object too, the stronger check the sibling test in
+    // the next describe block already applies to `buildDaemonEnvironment` directly.
+    expect(JSON.stringify(plan.env)).not.toContain(smuggledToken);
   });
 
   it('never imports the vault into the renderer', async () => {
@@ -209,11 +298,47 @@ describe('the plaintext is produced once, and delivered over a pipe', () => {
     expect(offenders).toEqual([]);
   });
 
-  /** The daemon half of the pipe: it must read a message, and must not write one back to env. */
+  /**
+   * The daemon half of the pipe: it must read a message, and must not write one back to env.
+   *
+   * Scans the *whole* daemon source tree, not just `github-credential.ts` (issue #213's own named
+   * gap): the property this test exists to protect is "the injected credential never re-enters any
+   * process's environment", and a stray assignment written anywhere in `apps/daemon/src` --
+   * `index.ts`, say -- would undo the whole point just as completely as one in
+   * `github-credential.ts` would, and a test that only reads one file cannot see it.
+   *
+   * Keyed on `GITHUB_CREDENTIAL_ENV_KEYS` specifically, not on "any `process.env` assignment": the
+   * daemon legitimately manages other environment variables for its own purposes (the live-smoke
+   * harness's own transport-selection variable, `live-smoke/cli.ts`, is exactly that and must not
+   * trip this).
+   */
   it('is matched by a daemon that reads the message instead of the environment', async () => {
-    const credential = stripComments(
-      await readFile(join(daemonSrc(), 'github-credential.ts'), 'utf8'),
+    const files = await sourceFiles(daemonSrc());
+    expect(files.length).toBeGreaterThan(5);
+    const credentialKeyPattern = GITHUB_CREDENTIAL_ENV_KEYS.join('|');
+    // `=(?!=)` so an ordinary comparison (`process.env.X === '1'`) is not mistaken for an
+    // assignment -- the injected credential being written back into the process environment is
+    // what this guards against, not merely reading it. Case-insensitive to match the same trap
+    // `buildDaemonEnvironment`'s own case-insensitive stripping exists to avoid on the other side.
+    const assignsCredentialKey = new RegExp(
+      `process\\.env(?:\\[['"](?:${credentialKeyPattern})['"]\\]|\\.(?:${credentialKeyPattern}))\\s*=(?!=)`,
+      'i',
     );
+    const offenders: string[] = [];
+    for (const file of files) {
+      const code = await stripped(file);
+      if (assignsCredentialKey.test(code)) offenders.push(relative(daemonSrc(), file));
+    }
+    expect(offenders).toEqual([]);
+
+    // Restored from this test's pre-#213 form, alongside the tree-wide scan above rather than
+    // instead of it: the tree-wide scan is keyed to `GITHUB_CREDENTIAL_ENV_KEYS` specifically, so a
+    // write under a sixth, unlisted credential-shaped name would pass it silently. These two
+    // assertions are unkeyed and scoped to this one file -- the daemon's actual credential module --
+    // and catch that case the way the original, narrower test always did. `stripped()`, not
+    // `readSource()`, so a comment merely mentioning the marker string cannot spuriously satisfy the
+    // `toContain` check below.
+    const credential = await stripped(join(daemonSrc(), 'github-credential.ts'));
     expect(credential).toContain(`'${CREDENTIAL_ON_STDIN_ENV_KEY}'`);
     // The injected credential is never written back into the process environment, which would undo
     // the entire point by putting it somewhere a child can read. `=(?!=)` so an ordinary
@@ -224,7 +349,6 @@ describe('the plaintext is produced once, and delivered over a pipe', () => {
 });
 
 describe('no GitHub credential survives into the daemon environment', () => {
-  const fakeToken = (suffix: string): string => `${'gh'}${'p'}_${suffix}`;
   const INHERITED = {
     PIPENZO_GITHUB_TOKEN: fakeToken('inheritedPipenzoSecret01'),
     GITHUB_TOKEN: fakeToken('inheritedActionsSecret02'),
@@ -499,12 +623,16 @@ describe('confirming what the daemon actually resolved, not just what main sent 
    * The wiring a pure-function unit test cannot see: `spawnDaemon` passes this child's own intended
    * source into `waitForDaemonReady`, and `daemonTokenSource` is set from the reconciled answer —
    * `health.githubCredentialSource`, defaulted to `'none'` for a daemon built before this field
-   * existed -- not from `resolveDaemonGitHubToken`'s return value directly. A behavioural seam for
-   * `waitForDaemonReady` itself is issue #213's, tracked there rather than duplicated here.
+   * existed -- not from `resolveDaemonGitHubToken`'s return value directly. Left as a source-regex
+   * tripwire deliberately (issue #213 built the behavioural seam for the *spawn plan* itself --
+   * `buildDaemonSpawnPlan`, tested above -- but `reconcileDaemonTokenSource` is already a pure,
+   * independently-tested function; what's left here is a few lines of glue calling it with the
+   * right arguments, exactly the "thin wiring layer" #213 says a regex is still an acceptable
+   * tripwire for rather than the proof).
    */
   it('is wired into waitForDaemonReady, confirming against the health response rather than trusting intent', async () => {
     const main = await readElectron('main.ts');
-    expect(main).toMatch(/waitForDaemonReady\(child, spawnedAt, credential\.source\)/);
+    expect(main).toMatch(/waitForDaemonReady\(child, spawnedAt, plan\.credentialSource\)/);
     expect(main).toMatch(
       /daemonTokenSource = reconcileDaemonTokenSource\(\s*intendedSource,\s*health\.githubCredentialSource \?\? 'none',?\s*\)/,
     );
@@ -519,8 +647,8 @@ describe('confirming what the daemon actually resolved, not just what main sent 
    */
   it('never assigns the unconfirmed intent to daemonTokenSource, at spawn or on exit', async () => {
     const main = await readElectron('main.ts');
-    expect(main).not.toMatch(/daemonTokenSource = credential\.source/);
-    expect(main).toMatch(/daemonTokenSource = 'none';\s*\n\s*if \(credential\.source === 'environment'\)/);
+    expect(main).not.toMatch(/daemonTokenSource = plan\.credentialSource/);
+    expect(main).toMatch(/daemonTokenSource = 'none';\s*\n\s*if \(plan\.credentialSource === 'environment'\)/);
     // The `isCurrent` branch of the exit handler, alongside the client/daemonChild teardown it
     // already does.
     expect(main).toMatch(
@@ -532,13 +660,18 @@ describe('confirming what the daemon actually resolved, not just what main sent 
 describe('nothing on the renderer bridge can obtain the token', () => {
   it('exposes no channel that returns or accepts a credential', async () => {
     const preload = await readElectron('preload.ts');
-    const channels = [...preload.matchAll(/ipcRenderer\.invoke\(\s*'([^']+)'/g)].map((m) => m[1]);
+    // Both directions, not just renderer-to-main: issue #213's reviewer flagged that an
+    // `ipcRenderer.invoke(`-only scan is invisible to a main-to-renderer push channel
+    // (`ipcRenderer.on(`) that could just as easily carry a token the wrong way.
+    const channels = [
+      ...preload.matchAll(/ipcRenderer\.(?:invoke|on)\(\s*'([^']+)'/g),
+    ].map((m) => m[1]);
     expect(channels.length).toBeGreaterThan(20);
     const credentialChannels = channels.filter((channel) =>
       /github|credential/i.test(channel ?? ''),
     );
     // An exact list, so a new credential-adjacent channel cannot appear without someone editing
-    // this line and saying why. The five that exist, and what each is allowed to carry:
+    // this line and saying why. What exists, and what each is allowed to carry:
     //
     // - `github-connection`  — the vault's *state*. No token field exists in its schema at any
     //   depth, which the contract test below enforces separately.
@@ -546,16 +679,21 @@ describe('nothing on the renderer bridge can obtain the token', () => {
     // - `github-device-start` — a `user_code`, which is the pairing string a human is meant to read
     //   out. Never the `device_code`, which for the length of the flow is as good as the token.
     // - `github-device-cancel` / `-open-verification` — no payload in either direction.
+    // - `github-device-outcome` (push) — `pipenzoDeviceOutcomeV1Schema`, a discriminated union of
+    //   sign-in *states* (`succeeded` / `failed` / ...), never the device code or a token.
+    // - `daemon:pipenzo-github-health` (push) — `pipenzoGitHubHealthV1Schema`, the same
+    //   vault-state shape as `github-connection`, pushed instead of polled.
     // - `daemon:pipenzo-github-health-poll` (issue #257) — no payload in either direction either:
     //   it forces the reconciler's next poll, and answers once the daemon has accepted the request,
-    //   never with anything the reconciler read from GitHub (that travels over
-    //   `daemon:pipenzo-github-health`, a push channel this regex does not match).
+    //   never with anything the reconciler read from GitHub.
     expect(credentialChannels.sort()).toEqual([
+      'daemon:pipenzo-github-health',
       'daemon:pipenzo-github-health-poll',
       'pipenzo:disconnect-github',
       'pipenzo:github-connection',
       'pipenzo:github-device-cancel',
       'pipenzo:github-device-open-verification',
+      'pipenzo:github-device-outcome',
       'pipenzo:github-device-start',
     ]);
   });
@@ -623,12 +761,25 @@ describe('nothing on the renderer bridge can obtain the token', () => {
    * would then be weakened rather than investigated — which is how this class of test dies.
    */
   it('has no token-shaped field on either credential channel', async () => {
+    // Issue #213's reviewer flagged the previous form of this test as "effectively vacuous": it
+    // inspected an arbitrary ~800-character window around the channel string, wide enough to
+    // silently pass either because it swallowed unrelated neighbouring methods (a false negative
+    // if one of *them* said "token") or because it cut off mid-handler (a false negative the other
+    // way). This version instead extracts the exact method body -- from its declaration to the
+    // `},` that closes it at the API object's own indent level -- so what is asserted against is
+    // provably the whole handler and nothing else.
     const preload = await readElectron('preload.ts');
-    for (const channel of ['pipenzo:github-connection', 'pipenzo:disconnect-github']) {
-      const index = preload.indexOf(channel);
-      expect(index).toBeGreaterThan(-1);
-      const region = preload.slice(Math.max(0, index - 400), index + 400);
-      expect(region).not.toMatch(/\btoken\b/i);
+    const methodBody = (methodName: string): string => {
+      const declaration = new RegExp(`\\b${methodName}\\s*\\([^)]*\\)\\s*\\{`);
+      const match = declaration.exec(preload);
+      expect(match, `expected to find method ${methodName} in preload.ts`).not.toBeNull();
+      const start = match!.index;
+      const end = preload.indexOf('\n  },', start);
+      expect(end).toBeGreaterThan(start);
+      return preload.slice(start, end);
+    };
+    for (const methodName of ['pipenzoGitHubConnection', 'disconnectGitHub']) {
+      expect(methodBody(methodName)).not.toMatch(/\btoken\b/i);
     }
   });
 
