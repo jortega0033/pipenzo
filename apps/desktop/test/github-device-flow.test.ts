@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
-  DeviceFlowError,
   GITHUB_ACCESS_TOKEN_URL,
   GITHUB_DEVICE_CODE_URL,
   GITHUB_OAUTH_SCOPE,
@@ -21,14 +20,18 @@ const CLIENT_ID = 'Iv1.testclientid';
  */
 function scriptedFetch(
   responses: { status?: number; body: unknown }[],
-): { fetch: typeof globalThis.fetch; calls: { url: string; body: string; headers: Headers }[] } {
-  const calls: { url: string; body: string; headers: Headers }[] = [];
+): {
+  fetch: typeof globalThis.fetch;
+  calls: { url: string; body: string; headers: Headers; signal?: AbortSignal | null }[];
+} {
+  const calls: { url: string; body: string; headers: Headers; signal?: AbortSignal | null }[] = [];
   let index = 0;
   const fetchImpl = vi.fn(async (input: unknown, init?: RequestInit) => {
     calls.push({
       url: String(input),
       body: typeof init?.body === 'string' ? init.body : '',
       headers: new Headers(init?.headers),
+      signal: init?.signal,
     });
     const next = responses[index];
     index += 1;
@@ -123,16 +126,50 @@ describe('GitHubDeviceFlow.requestCode', () => {
    * code. A response pointing anywhere else is a phishing page delivered by the app itself, so
    * https alone is not enough — the host is pinned.
    */
-  it('refuses a verification URL that is not on github.com', async () => {
+  it('refuses a verification URL that is not plainly on github.com', async () => {
     for (const verification_uri of [
+      // A suffix that reads as github.com at a glance, which is the whole trick.
       'https://github.com.evil.example/login/device',
       'https://evil.example/login/device',
       'http://github.com/login/device',
+      // Userinfo: `hostname` really is github.com, so a host-only check passes it. The browser
+      // would show `u:p@github.com`, and the launch gate would then silently refuse it -- leaving
+      // the user clicking a button that does nothing, with no error anywhere.
+      'https://user:password@github.com/login/device',
+      // A port turns a pinned host into an arbitrary listener on it.
+      'https://github.com:8443/login/device',
+      // Homograph: a Cyrillic 'о', which the URL parser punycodes to something that is not
+      // github.com -- asserted so a future "normalize the host first" refactor cannot break it.
+      'https://githуb.com/login/device',
       'not a url',
     ]) {
       const { subject } = flow([{ body: { ...DEVICE_CODE_OK, verification_uri } }]);
-      await expect(subject.requestCode()).rejects.toBeInstanceOf(DeviceFlowError);
+      // The reason matters, not just the throw: a rejection for some unrelated cause would
+      // otherwise satisfy this test while the pin was gone.
+      await expect(subject.requestCode()).rejects.toMatchObject({ reason: 'unreachable' });
     }
+  });
+
+  /**
+   * `interval` is a number chosen by the response. Clamping only the ceiling guards the direction
+   * that wastes time and leaves open the one that gets the user's IP address banned: a sub-second
+   * value turns the poll into roughly a thousand requests a second for the grant's whole lifetime.
+   */
+  it('floors the poll interval, not just caps it', async () => {
+    for (const interval of [0.001, 0.5, 1]) {
+      const { subject } = flow([{ body: { ...DEVICE_CODE_OK, interval } }]);
+      expect((await subject.requestCode()).intervalSeconds).toBe(5);
+    }
+  });
+
+  /**
+   * The wire schema declares `expiresAt` an integer. A fractional `expires_in` would otherwise
+   * produce a grant main polls happily and the preload refuses to parse -- and since the grant is
+   * live by then, every retry returns the same unparseable one until it expires.
+   */
+  it('produces an integer expiry, whatever GitHub sends', async () => {
+    const { subject } = flow([{ body: { ...DEVICE_CODE_OK, expires_in: 900.5 } }]);
+    expect(Number.isInteger((await subject.requestCode()).expiresAt)).toBe(true);
   });
 
   it('refuses an incomplete response rather than inventing the missing half', async () => {
@@ -204,7 +241,7 @@ describe('GitHubDeviceFlow.poll', () => {
    * is deliberately not honoured: a response that could name its own poll interval could pin this
    * loop for as long as it liked.
    */
-  it('backs off on slow_down, and is capped', async () => {
+  it('backs off on slow_down by the documented five seconds', async () => {
     const slept: number[] = [];
     const scripted = scriptedFetch([
       { body: { error: 'slow_down' } },
@@ -255,6 +292,8 @@ describe('GitHubDeviceFlow.poll', () => {
       ['access_denied', 'denied'],
       ['incorrect_client_credentials', 'not_configured'],
       ['unsupported_grant_type', 'not_configured'],
+      ['incorrect_device_code', 'not_configured'],
+      ['device_flow_disabled', 'not_configured'],
       ['something_new_and_unknown', 'unreachable'],
     ] as const) {
       const { subject } = flow([{ body: { error } }]);
@@ -284,7 +323,7 @@ describe('GitHubDeviceFlow.poll', () => {
     expect(scripted.calls).toHaveLength(0);
   });
 
-  it('stops on cancellation without exchanging anything', async () => {
+  it('stops on cancellation before it starts', async () => {
     const controller = new AbortController();
     controller.abort();
     const { subject, calls } = flow([{ body: { access_token: 'gho_realtoken' } }]);
@@ -293,6 +332,69 @@ describe('GitHubDeviceFlow.poll', () => {
       reason: 'cancelled',
     });
     expect(calls).toHaveLength(0);
+  });
+
+  /**
+   * The case that actually happens: the user clicks Cancel while the loop is asleep between polls.
+   * The pre-sleep check above cannot catch it, so this covers the *second* abort check -- delete
+   * that one and the earlier test still passes.
+   */
+  it('stops on a cancellation that lands during the sleep', async () => {
+    const controller = new AbortController();
+    const scripted = scriptedFetch([{ body: { access_token: 'gho_realtoken' } }]);
+    const subject = new GitHubDeviceFlow({
+      clientId: CLIENT_ID,
+      fetch: scripted.fetch,
+      now: () => 1_000_000,
+      sleep: async () => {
+        controller.abort();
+      },
+    });
+
+    await expect(subject.poll(grant(), { signal: controller.signal })).rejects.toMatchObject({
+      reason: 'cancelled',
+    });
+    // Nothing exchanged. A device flow is a public client with no secret, so a token issued here
+    // would be one the app could never revoke.
+    expect(scripted.calls).toHaveLength(0);
+  });
+
+  /** The abort has to reach the request itself, or a cancel mid-exchange still mints a token. */
+  it('hands the cancellation to the token exchange', async () => {
+    const controller = new AbortController();
+    const { subject, calls } = flow([
+      { body: { access_token: 'gho_realtoken' } },
+      { body: { login: 'octocat' } },
+    ]);
+
+    await subject.poll(grant(), { signal: controller.signal });
+    expect(calls[0]?.signal).toBeInstanceOf(AbortSignal);
+    expect(calls[1]?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  /**
+   * The realistic expiry: several pending polls, then the clock runs out. The earlier test only
+   * covers a grant that was already dead before the first poll.
+   */
+  it('expires mid-flow, after real polls', async () => {
+    let clock = 1_000_000;
+    const scripted = scriptedFetch([
+      { body: { error: 'authorization_pending' } },
+      { body: { error: 'authorization_pending' } },
+    ]);
+    const subject = new GitHubDeviceFlow({
+      clientId: CLIENT_ID,
+      fetch: scripted.fetch,
+      now: () => clock,
+      sleep: async (ms) => {
+        clock += ms;
+      },
+    });
+
+    await expect(subject.poll(grant({ expiresAt: 1_012_000 }))).rejects.toMatchObject({
+      reason: 'expired',
+    });
+    expect(scripted.calls).toHaveLength(2);
   });
 
   /**
@@ -314,5 +416,33 @@ describe('GitHubDeviceFlow.poll', () => {
   it('refuses a success that carries no token', async () => {
     const { subject } = flow([{ body: { token_type: 'bearer' } }]);
     await expect(subject.poll(grant())).rejects.toMatchObject({ reason: 'unreachable' });
+  });
+});
+
+/**
+ * The real `sleep`, which every test above replaces and which therefore had no coverage at all --
+ * including the abort paths that are the whole reason it takes a signal.
+ */
+describe('the default sleep', () => {
+  const realSleepFlow = (signal: AbortSignal) =>
+    new GitHubDeviceFlow({
+      clientId: CLIENT_ID,
+      fetch: scriptedFetch([{ body: { error: 'authorization_pending' } }]).fetch,
+      now: () => 1_000_000,
+    }).poll(grant({ intervalSeconds: 3600 }), { signal });
+
+  it('returns immediately for a signal that is already aborted', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    // An hour-long interval: this can only resolve quickly by honouring the signal.
+    await expect(realSleepFlow(controller.signal)).rejects.toMatchObject({ reason: 'cancelled' });
+  });
+
+  it('wakes on an abort that arrives while it is waiting', async () => {
+    const controller = new AbortController();
+    const polling = realSleepFlow(controller.signal);
+    // Nothing has resolved yet -- the interval is an hour.
+    controller.abort();
+    await expect(polling).rejects.toMatchObject({ reason: 'cancelled' });
   });
 });

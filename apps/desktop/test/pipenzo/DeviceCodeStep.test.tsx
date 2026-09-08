@@ -1,8 +1,8 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PipenzoDeviceCodeV1, PipenzoDeviceOutcomeV1 } from '@agent-dock/shared';
 import { clearBridgeOverride, setBridgeOverride } from '../../src/bridge.js';
-import { DeviceCodeStep, formatCountdown } from '../../src/pipenzo/DeviceCodeStep.js';
+import { DeviceCodeStep, formatCountdown, verifyLabel } from '../../src/pipenzo/DeviceCodeStep.js';
 
 const CODE: PipenzoDeviceCodeV1 = {
   userCode: 'WDJB-MJHT',
@@ -56,6 +56,10 @@ async function startFlow() {
 describe('formatCountdown', () => {
   it('renders mm:ss and never goes negative', () => {
     expect(formatCountdown(878_000)).toBe('14:38');
+    // The round-up claim specifically: this is 14:59 under `floor`, and the whole point of ceiling
+    // is that a fifteen-minute code reads 15:00 the instant it appears.
+    expect(formatCountdown(899_500)).toBe('15:00');
+    expect(formatCountdown(1)).toBe('0:01');
     expect(formatCountdown(61_000)).toBe('1:01');
     expect(formatCountdown(0)).toBe('0:00');
     // An expired code that is still on screen for a frame must not render "-0:01".
@@ -114,6 +118,16 @@ describe('DeviceCodeStep', () => {
     expect(document.querySelector('.code-meta')?.textContent).toContain('expires in 13:58');
   });
 
+  /**
+   * The label is a promise about where the click leads. Assembled independently of the destination
+   * it is a promise that can quietly stop being true, so it is read off the URI main validated.
+   */
+  it('labels the verify button from the destination it was given', () => {
+    expect(verifyLabel('https://github.com/login/device')).toBe('github.com/login/device');
+    expect(verifyLabel('https://github.com/login/device/')).toBe('github.com/login/device');
+    expect(verifyLabel('not a url')).toBe('not a url');
+  });
+
   it('opens the verification page without naming it', async () => {
     const { bridge } = installBridge();
     render(<DeviceCodeStep />);
@@ -166,15 +180,6 @@ describe('DeviceCodeStep', () => {
     expect(screen.getByText(/retrying will not change it/)).toBeInTheDocument();
   });
 
-  /** A rejected `start` is overwhelmingly a build with no client id, and is reported as one. */
-  it('reports a refused start rather than hanging on a spinner', async () => {
-    installBridge({ start: () => Promise.reject(new Error('no client id')) });
-    render(<DeviceCodeStep />);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Connect GitHub' }));
-    expect(await screen.findByText('This build cannot sign in yet')).toBeInTheDocument();
-  });
-
   it('reports success and says what is happening next', async () => {
     const { emit } = installBridge();
     render(<DeviceCodeStep />);
@@ -203,14 +208,104 @@ describe('DeviceCodeStep', () => {
     expect(bridge.startGitHubDeviceFlow).not.toHaveBeenCalled();
   });
 
-  it('cancels the flow when the step goes away', async () => {
+  /**
+   * Deliberately the opposite of what it first did. Cancelling on unmount looked like tidy-up and
+   * was two bugs: it sent a cancel main could not act on when the component unmounted during the
+   * `requestCode` round trip (no grant existed yet, so the flow was orphaned), and it burned a live
+   * device code every time the user flipped to Connect's second step and back -- defeating main's
+   * own reuse of an unexpired grant and re-minting a code they may have been part-way through
+   * typing. Ending the flow is the Cancel button's job, which is an instruction rather than a side
+   * effect of navigating.
+   */
+  it('does not cancel the flow merely because the step unmounted', async () => {
     const { bridge } = installBridge();
     const { unmount } = render(<DeviceCodeStep />);
     await startFlow();
 
     unmount();
-    // Otherwise main keeps polling GitHub for a code nobody can see any more.
-    await waitFor(() => expect(bridge.cancelGitHubDeviceFlow).toHaveBeenCalled());
+    await Promise.resolve();
+    expect(bridge.cancelGitHubDeviceFlow).not.toHaveBeenCalled();
+  });
+
+  it('cancels when the user actually asks', async () => {
+    const { bridge } = installBridge();
+    render(<DeviceCodeStep />);
+    await startFlow();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(bridge.cancelGitHubDeviceFlow).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * Main's `expired` outcome is real but late: it arrives only after the next poll's sleep, up to a
+   * minute away once `slow_down` has raised the interval, and it is lost entirely if the window is
+   * recreated between main sending it and this component resubscribing. Without a local transition
+   * the user watches a dead code sit at 0:00 with nothing to do.
+   */
+  it('gives up on its own when the countdown runs out', async () => {
+    installBridge();
+    render(<DeviceCodeStep />);
+    await startFlow();
+
+    await act(async () => {
+      vi.advanceTimersByTime(901_000);
+    });
+    expect(await screen.findByText('That code expired')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeEnabled();
+  });
+
+  /**
+   * `DeviceFlowError.reason` does not survive IPC -- Electron flattens the error and drops the
+   * field -- so the renderer cannot tell a build with no client id from a laptop on a plane.
+   * Guessing `not_configured` showed the one message whose purpose is to stop the user retrying, to
+   * the user for whom retrying is exactly right. Main knows, and pushes the precise reason.
+   */
+  it('does not guess a build fault from a rejected start', async () => {
+    const { emit } = installBridge({ start: () => Promise.reject(new Error('offline')) });
+    render(<DeviceCodeStep />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Connect GitHub' }));
+    expect(await screen.findByText('Could not reach GitHub')).toBeInTheDocument();
+
+    // ...and main's push corrects it when the cause really is the build.
+    emit({ state: 'failed', reason: 'not_configured' });
+    expect(await screen.findByText('This build cannot sign in yet')).toBeInTheDocument();
+  });
+
+  /**
+   * A device flow is a public client with no secret, so Pipenzo cannot revoke a token on the user's
+   * behalf. Any outcome where GitHub may already have issued one has to say so, or the user is left
+   * with a live `repo` grant they do not know about.
+   */
+  it('tells the user to revoke when GitHub may hold a live authorization', async () => {
+    const { emit } = installBridge();
+    render(<DeviceCodeStep />);
+    await startFlow();
+
+    emit({ state: 'failed', reason: 'storage_unavailable' });
+    expect(await screen.findByText(/revoke Pipenzo under Settings/)).toBeInTheDocument();
+
+    emit({ state: 'failed', reason: 'cancelled' });
+    expect(await screen.findByText(/revoke Pipenzo under Settings/)).toBeInTheDocument();
+  });
+
+  it('reports an unreachable GitHub as its own thing', async () => {
+    const { emit } = installBridge();
+    render(<DeviceCodeStep />);
+    await startFlow();
+
+    emit({ state: 'failed', reason: 'unreachable' });
+    expect(await screen.findByText('Could not reach GitHub')).toBeInTheDocument();
+  });
+
+  it('still refuses, and still explains, for a storage reason it does not recognise', () => {
+    installBridge();
+    render(<DeviceCodeStep unavailableReason="something_added_later" />);
+
+    expect(screen.getByRole('button', { name: 'Connect GitHub' })).toBeDisabled();
+    // A reason this build has no copy for must not render an empty notice: failing closed on the
+    // refusal and open on the explanation is the worst of both.
+    expect(screen.getByText(/could not be saved|would complete on GitHub and then fail to save/)).toBeInTheDocument();
   });
 
   it('offers the demo when it is given one, and never asks the bridge for a code to do it', () => {

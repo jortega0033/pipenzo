@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { PipenzoDeviceCodeV1, PipenzoDeviceFailureReasonV1 } from '@agent-dock/shared';
 import { getBridge } from '../bridge.js';
 import { Button } from '../components/primitives/Button.js';
@@ -42,7 +42,7 @@ const FAILURE_COPY: Record<PipenzoDeviceFailureReasonV1, { title: string; body: 
   },
   cancelled: {
     title: 'Sign-in cancelled',
-    body: 'Nothing was stored. Start again whenever you are ready.',
+    body: 'Nothing was stored here. If you had already authorized on github.com, revoke Pipenzo under Settings › Applications › Authorized OAuth Apps — this app has no client secret, so it cannot revoke a token for you.',
   },
   not_configured: {
     title: 'This build cannot sign in yet',
@@ -54,7 +54,7 @@ const FAILURE_COPY: Record<PipenzoDeviceFailureReasonV1, { title: string; body: 
   },
   storage_unavailable: {
     title: 'This machine has nowhere to keep the token',
-    body: 'GitHub authorized the sign-in, but there is no usable OS credential store here, so Pipenzo discarded the token rather than keep it unprotected. On Linux this usually means no keyring is running.',
+    body: 'GitHub authorized the sign-in, but there is no usable OS credential store here, so Pipenzo discarded the token rather than keep it unprotected — on Linux this usually means no keyring is running. The authorization still exists on GitHub: revoke Pipenzo under Settings › Applications › Authorized OAuth Apps, since a device flow has no client secret and cannot revoke its own token.',
   },
 };
 
@@ -67,6 +67,20 @@ const UNAVAILABLE_COPY: Record<string, string> = {
   unreadable:
     'A stored credential exists but cannot be read on this machine — a keyring that went away, or a record written by a different build. Disconnecting and connecting again replaces it.',
 };
+
+/**
+ * `github.com/login/device` from `https://github.com/login/device` -- the canvas's own label, but
+ * read off the destination rather than retyped beside it. Falls back to the whole string if it will
+ * not parse, which cannot happen for a grant main produced but is not worth throwing over.
+ */
+export function verifyLabel(verificationUri: string): string {
+  try {
+    const url = new URL(verificationUri);
+    return `${url.host}${url.pathname.replace(/\/$/, '')}`;
+  } catch {
+    return verificationUri;
+  }
+}
 
 type Phase =
   | { kind: 'idle' }
@@ -118,9 +132,32 @@ export function DeviceCodeStep({
     return unsubscribe;
   }, []);
 
-  const waiting = phase.kind === 'waiting';
-  // One timer, only while a code is on screen. The countdown is the only reason this component
-  // re-renders on a clock at all, so it stops the moment there is nothing counting down.
+  /**
+   * Expiry is *derived*, not a state transition scheduled by the timer.
+   *
+   * The timer's only job is to move `now`; whether the code is dead is then a question about two
+   * numbers, answered fresh on every render. Setting a `failed` phase from inside the interval
+   * instead would make the correctness of this screen depend on a callback firing at the right
+   * tick, which is both harder to reason about and harder to test than a comparison.
+   *
+   * It has to be settled here at all — rather than left to main's own `expired` outcome — because
+   * that outcome is real but late: it arrives only after the next poll's sleep completes, up to a
+   * minute away once `slow_down` has raised the interval, and it is lost outright if the window is
+   * recreated between main sending it and this component resubscribing. Without this the user
+   * watches a dead code sit at `0:00` with nothing to do.
+   */
+  const expired = phase.kind === 'waiting' && now >= phase.code.expiresAt;
+  // Memoized because `copy` closes over it: a fresh object every render would give that callback a
+  // new identity every second, for a value that only actually changes when the code does.
+  const shown: Phase = useMemo(
+    () => (expired ? { kind: 'failed', reason: 'expired' } : phase),
+    [expired, phase],
+  );
+
+  const waiting = shown.kind === 'waiting';
+  // One timer, only while a live code is on screen. The countdown is the only reason this component
+  // re-renders on a clock at all, so it stops the moment there is nothing counting down -- which
+  // includes the moment the code expires, since `waiting` is read off the derived phase.
   useEffect(() => {
     if (!waiting) return;
     setNow(Date.now());
@@ -128,14 +165,15 @@ export function DeviceCodeStep({
     return () => clearInterval(timer);
   }, [waiting]);
 
-  // Cancel on unmount, so navigating away from this step does not leave main polling GitHub for a
-  // code nobody can see any more.
-  useEffect(
-    () => () => {
-      void getBridge().cancelGitHubDeviceFlow();
-    },
-    [],
-  );
+  // Deliberately *no* cancel on unmount.
+  //
+  // It looked like tidy-up and was two bugs. Unmounting during the `requestCode` round trip sent a
+  // cancel main could not act on -- there was no grant yet -- leaving a flow that then polled for
+  // its full lifetime with no subscriber. And flipping to Connect's second step and back unmounts
+  // this component, so the cancel burned a live device code every time, defeating main's own
+  // reuse of an unexpired grant and re-minting a code the user may have been part-way through
+  // typing. Main's flow is bounded and self-terminating; ending it is the Cancel button's job,
+  // which is an instruction rather than a side effect of navigation.
 
   const start = useCallback(() => {
     setCopied(false);
@@ -144,27 +182,30 @@ export function DeviceCodeStep({
       .startGitHubDeviceFlow()
       .then((code) => setPhase({ kind: 'waiting', code }))
       .catch(() => {
-        // `requestCode` throws for a build with no client id before it makes any request, which is
-        // by far the likeliest failure here and the one worth naming precisely. Anything else is
-        // reported as unreachable rather than guessed at.
-        setPhase({ kind: 'failed', reason: 'not_configured' });
+        // `unreachable`, never `not_configured`. `DeviceFlowError.reason` does not survive IPC --
+        // Electron flattens the error and drops the field -- so nothing here can tell a build with
+        // no client id from a laptop on a plane. Guessing `not_configured` meant showing the one
+        // message whose entire purpose is to stop the user retrying, to the user for whom retrying
+        // is exactly right. Main knows the real reason and pushes it on the outcome channel, which
+        // overwrites this the moment it lands; until then `unreachable` is true of every case.
+        setPhase({ kind: 'failed', reason: 'unreachable' });
       });
   }, []);
 
   const copy = useCallback(() => {
-    if (phase.kind !== 'waiting') return;
+    if (shown.kind !== 'waiting') return;
     void navigator.clipboard
-      ?.writeText(phase.code.userCode)
+      ?.writeText(shown.code.userCode)
       .then(() => setCopied(true))
       .catch(() => setCopied(false));
-  }, [phase]);
+  }, [shown]);
 
   return (
     <ConnectPane
       title="Connect GitHub"
       subtitle="Pipenzo reads your issues, writes its own labels and opens pull requests as you. It needs a GitHub token to do any of that, and it keeps that token encrypted by this machine's own credential store — never in plaintext, and never in the environment of any agent it runs."
       actions={
-        phase.kind === 'waiting' ? (
+        shown.kind === 'waiting' ? (
           <>
             <Button
               variant="primary"
@@ -172,7 +213,11 @@ export function DeviceCodeStep({
               icon="external"
               onClick={() => void getBridge().openGitHubDeviceVerification()}
             >
-              Verify at github.com/login/device
+              {/* Derived from the URI main validated and pinned, not a hardcoded string that
+                  happens to match it. The label is a promise about where the click leads, and a
+                  promise assembled independently of the destination is one that can quietly stop
+                  being true. `verificationUri` exists on the wire for exactly this. */}
+              Verify at {verifyLabel(shown.code.verificationUri)}
             </Button>
             <Button size="lg" icon="code" onClick={copy}>
               {copied ? 'Copied' : 'Copy code'}
@@ -187,14 +232,14 @@ export function DeviceCodeStep({
               variant="primary"
               size="lg"
               icon="external"
-              pending={phase.kind === 'starting'}
+              pending={shown.kind === 'starting'}
               // A sign-in this machine cannot finish is not offered. See `unavailableReason`.
-              disabled={canStore === false || phase.kind === 'connected'}
+              disabled={canStore === false || shown.kind === 'connected'}
               onClick={start}
             >
-              {phase.kind === 'starting'
+              {shown.kind === 'starting'
                 ? 'Asking GitHub…'
-                : phase.kind === 'failed'
+                : shown.kind === 'failed'
                   ? 'Try again'
                   : 'Connect GitHub'}
             </Button>
@@ -207,36 +252,36 @@ export function DeviceCodeStep({
         )
       }
     >
-      {phase.kind === 'waiting' && (
+      {shown.kind === 'waiting' && (
         <div className="code-box">
           <span className="label">Your device code</span>
           {/* The one thing on this screen a human has to carry to another surface, so it is the
               largest type in the design -- and `aria-label` spells it out, because a screen reader
               reading "WDJB-MJHT" as a word is exactly the case where the letters matter. */}
-          <span className="code" aria-label={phase.code.userCode.split('').join(' ')}>
-            {phase.code.userCode}
+          <span className="code" aria-label={shown.code.userCode.split('').join(' ')}>
+            {shown.code.userCode}
           </span>
           <span className="code-meta">
             <Icon name="clock" size="sm" />
-            expires in {formatCountdown(phase.code.expiresAt - now)} · single use
+            expires in {formatCountdown(shown.code.expiresAt - now)} · single use
           </span>
         </div>
       )}
 
-      {phase.kind === 'waiting' && (
+      {shown.kind === 'waiting' && (
         <LoadLine>Waiting for you to authorize on GitHub…</LoadLine>
       )}
 
       {/* The gate routes onward by itself once the restarted daemon reports ready, so this is a
           progress report rather than a step: without it the screen would sit on a dead code box
           for the second or two the restart takes, which reads as the click not having landed. */}
-      {phase.kind === 'connected' && (
+      {shown.kind === 'connected' && (
         <LoadLine>Connected. Restarting the local runtime with your credential…</LoadLine>
       )}
 
-      {phase.kind === 'failed' && (
-        <Notice tone="danger" icon="warning" title={FAILURE_COPY[phase.reason].title}>
-          {FAILURE_COPY[phase.reason].body}
+      {shown.kind === 'failed' && (
+        <Notice tone="danger" icon="warning" title={FAILURE_COPY[shown.reason].title}>
+          {FAILURE_COPY[shown.reason].body}
         </Notice>
       )}
 

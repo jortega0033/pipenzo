@@ -55,7 +55,16 @@ export const GITHUB_OAUTH_SCOPE = 'repo';
  */
 export const GITHUB_VERIFICATION_HOST = 'github.com';
 
-/** GitHub's minimum, used when its response omits or malforms `interval`. */
+/**
+ * GitHub's documented minimum, used when its response omits or malforms `interval` — and also as a
+ * hard **floor** on whatever it does send.
+ *
+ * The floor is the half that is easy to leave out. `interval` is a number chosen by the response,
+ * and nothing in JSON stops it being `0.001`: a tampered response could otherwise pin this client
+ * at roughly a thousand requests a second against GitHub's token endpoint for the grant's whole
+ * lifetime, which ends in an abuse-detection ban on the user's own IP address. Clamping only the
+ * ceiling guards the direction that merely wastes time, and leaves open the one that does damage.
+ */
 const DEFAULT_POLL_INTERVAL_SECONDS = 5;
 /** What GitHub adds to the interval on `slow_down`, per its own documentation. */
 const SLOW_DOWN_INCREMENT_SECONDS = 5;
@@ -63,6 +72,12 @@ const SLOW_DOWN_INCREMENT_SECONDS = 5;
 const MAX_POLL_INTERVAL_SECONDS = 60;
 /** GitHub's codes last 15 minutes; this is the ceiling regardless of what `expires_in` claims. */
 const MAX_GRANT_LIFETIME_MS = 20 * 60 * 1000;
+/**
+ * A hung connection must not stall the flow past the grant's own expiry — the expiry check only
+ * runs *between* polls, so a request that never settles is a poll loop that never advances and a
+ * UI that sits on "waiting" until the app is restarted.
+ */
+const REQUEST_TIMEOUT_MS = 30_000;
 
 /**
  * Why a device-flow attempt ended without a credential. A closed union rather than a message,
@@ -209,7 +224,27 @@ export class GitHubDeviceFlow {
     return this.#clientId.length > 0;
   }
 
-  async #postForm(url: string, body: Record<string, string>): Promise<GitHubOAuthBody> {
+  /**
+   * The caller's cancellation, combined with a request timeout.
+   *
+   * The timeout is not belt-and-braces: the grant's expiry is only checked *between* polls, so a
+   * request that never settles is a poll loop that never advances and a UI that sits on "waiting"
+   * until the app restarts. `AbortSignal.any` keeps the caller's own cancellation working; where it
+   * is unavailable the timeout alone is still better than nothing.
+   */
+  #timeoutSignal(signal?: AbortSignal): AbortSignal {
+    const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+    if (!signal) return timeout;
+    return typeof AbortSignal.any === 'function'
+      ? AbortSignal.any([signal, timeout])
+      : signal;
+  }
+
+  async #postForm(
+    url: string,
+    body: Record<string, string>,
+    signal?: AbortSignal,
+  ): Promise<GitHubOAuthBody> {
     let response: Response;
     try {
       response = await this.#fetch(url, {
@@ -221,6 +256,13 @@ export class GitHubDeviceFlow {
           'Content-Type': 'application/x-www-form-urlencoded',
         },
         body: new URLSearchParams(body).toString(),
+        // The signal matters more on the token exchange than it looks. Without it, a cancel landing
+        // mid-exchange still lets the request complete server-side: GitHub issues a real,
+        // `repo`-scoped token that this app then drops on the floor. A device flow is a public
+        // client with no secret, so there is no revoke call it could make to clean that up -- the
+        // credential just exists on the user's account until they revoke it by hand. Not starting
+        // the work is the only way to not finish it.
+        signal: this.#timeoutSignal(signal),
       });
     } catch (error) {
       throw new DeviceFlowError(
@@ -284,10 +326,21 @@ export class GitHubDeviceFlow {
     // Pinned, not merely https. This URL is opened in the user's own browser, and the page it
     // leads to asks them to type a code — so a tampered response pointing anywhere else is a
     // ready-made phishing page delivered by the app itself.
-    if (parsedUri.protocol !== 'https:' || parsedUri.hostname !== GITHUB_VERIFICATION_HOST) {
+    if (
+      parsedUri.protocol !== 'https:' ||
+      parsedUri.hostname !== GITHUB_VERIFICATION_HOST ||
+      // Userinfo and a non-default port are rejected *here* rather than left to the launch gate.
+      // `openAllowedExternalUrl` does refuse a URL carrying userinfo, but it refuses it by logging
+      // and returning -- so the user would click "Verify at github.com/login/device" and watch
+      // nothing happen, with no error anywhere they can see. Failing at grant time turns a silent
+      // dead button into a stated outcome.
+      parsedUri.username ||
+      parsedUri.password ||
+      parsedUri.port
+    ) {
       throw new DeviceFlowError(
         'unreachable',
-        'GitHub returned a verification URL that is not on github.com',
+        'GitHub returned a verification URL that is not plainly on github.com',
       );
     }
 
@@ -298,9 +351,22 @@ export class GitHubDeviceFlow {
       verificationUri: parsedUri.toString(),
       // Clamped both ways: a response claiming a very long life would leave a dead poll running,
       // and a missing one would otherwise expire the grant instantly.
-      expiresAt:
-        this.#now() + Math.min(expiresIn ? expiresIn * 1000 : MAX_GRANT_LIFETIME_MS, MAX_GRANT_LIFETIME_MS),
-      intervalSeconds: Math.min(interval ?? DEFAULT_POLL_INTERVAL_SECONDS, MAX_POLL_INTERVAL_SECONDS),
+      //
+      // Floored, because the wire schema declares `expiresAt` an integer. A fractional
+      // `expires_in` would otherwise produce a grant that main polls happily and the preload
+      // refuses to parse -- and since the grant is live by then, every retry returns the same
+      // unparseable one, leaving the screen stuck until it expires up to twenty minutes later.
+      expiresAt: Math.floor(
+        this.#now() +
+          Math.min(expiresIn ? expiresIn * 1000 : MAX_GRANT_LIFETIME_MS, MAX_GRANT_LIFETIME_MS),
+      ),
+      // Clamped on *both* sides -- see DEFAULT_POLL_INTERVAL_SECONDS for why the floor is the half
+      // that matters. `Math.max` first, so a hostile sub-second value is raised before the ceiling
+      // is applied rather than passing straight through it.
+      intervalSeconds: Math.min(
+        Math.max(interval ?? DEFAULT_POLL_INTERVAL_SECONDS, DEFAULT_POLL_INTERVAL_SECONDS),
+        MAX_POLL_INTERVAL_SECONDS,
+      ),
       deviceCode,
     };
   }
@@ -327,11 +393,15 @@ export class GitHubDeviceFlow {
         throw new DeviceFlowError('expired', 'the device code expired before it was authorized');
       }
 
-      const body = await this.#postForm(GITHUB_ACCESS_TOKEN_URL, {
-        client_id: this.#clientId,
-        device_code: grant.deviceCode,
-        grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
-      });
+      const body = await this.#postForm(
+        GITHUB_ACCESS_TOKEN_URL,
+        {
+          client_id: this.#clientId,
+          device_code: grant.deviceCode,
+          grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+        },
+        signal,
+      );
 
       const error = asString(body.error);
       if (!error) {

@@ -46,7 +46,6 @@ import {
   type AgentSessionV2,
   type PipenzoDeviceCodeV1,
   type PipenzoDeviceFailureReasonV1,
-  type PipenzoDeviceOutcomeV1,
   type PipenzoGitHubConnectionV1,
   type ProviderId,
   type WorkspaceTrustUpdateRequestV2,
@@ -56,10 +55,10 @@ import { resolveDaemonEntry } from './resolve-daemon-entry.js';
 import { GitHubTokenVault, GitHubTokenVaultError } from './github-token-vault.js';
 import {
   DeviceFlowError,
+  GITHUB_VERIFICATION_HOST,
   GitHubDeviceFlow,
-  type DeviceCodeGrant,
-  type DeviceFlowFailureReason,
 } from './github-device-flow.js';
+import { DeviceFlowSession, toWireFailure } from './device-flow-session.js';
 import { GITHUB_OAUTH_CLIENT_ID } from './github-oauth-app.js';
 import {
   buildDaemonCredentialMessage,
@@ -157,10 +156,10 @@ function discoveryFilePath(): string {
  * one caller — `spawnDaemon` below — which
  * `apps/desktop/test/github-token-boundary.test.ts` asserts at the source level.
  *
- * Nothing writes to it yet. The device-code flow that will (`vault.store(...)`) runs in main too,
- * for the reason `pipenzo-credential-v1.ts` sets out: main asks GitHub for the code, main polls,
- * main receives the token, so the credential never crosses into the renderer in either direction.
- * That flow is issue #114.
+ * The one writer is the device-code flow (issue #114), which runs in main too, for the reason
+ * `pipenzo-credential-v1.ts` sets out: main asks GitHub for the code, main polls, main receives the
+ * token, so the credential never crosses into the renderer in either direction. See
+ * `device-flow-session.ts` for the rules about when it is allowed to store.
  */
 const tokenVault = new GitHubTokenVault({
   directory: app.getPath('userData'),
@@ -996,119 +995,60 @@ handle('pipenzo:disconnect-github', (): PipenzoGitHubConnectionV1 => {
  * verification page, cancel. It never sees the device code, never sees the token, and cannot even
  * name the URL to open — `openVerification` uses the URL this process validated itself, which is
  * the same rule the provider-OAuth handler further down already follows.
+ *
+ * The lifecycle lives in `device-flow-session.ts` rather than in variables here, because the rule
+ * that decides whether a `repo`-scoped token is kept has to be something a test can drive. See that
+ * module for the concurrency argument.
  */
 const deviceFlow = new GitHubDeviceFlow({ clientId: GITHUB_OAUTH_CLIENT_ID });
-/** The one in-flight authorization. Holds the device code, so it never leaves this module. */
-let deviceGrant: DeviceCodeGrant | undefined;
-let deviceAbort: AbortController | undefined;
 
-function endDeviceFlow(): void {
-  deviceAbort?.abort();
-  deviceAbort = undefined;
-  deviceGrant = undefined;
-}
-
-function reportDeviceOutcome(outcome: PipenzoDeviceOutcomeV1): void {
-  sendToRenderer(mainWindow, 'pipenzo:github-device-outcome', outcome);
-}
-
-/**
- * Maps a flow failure onto the wire enum. Every branch is named rather than defaulted, so a new
- * `DeviceFlowFailureReason` is a type error here instead of silently becoming `unreachable`.
- */
-function toWireFailure(reason: DeviceFlowFailureReason): PipenzoDeviceFailureReasonV1 {
-  switch (reason) {
-    case 'expired':
-      return 'expired';
-    case 'denied':
-      return 'denied';
-    case 'cancelled':
-      return 'cancelled';
-    case 'not_configured':
-      return 'not_configured';
-    case 'unreachable':
-      return 'unreachable';
-  }
-}
-
-/**
- * Polls to completion and lands the result. Deliberately not awaited by the `start` handler: the
- * human is in their browser for most of this, and holding an IPC call open across it would tie
- * the flow's lifetime to a renderer that may reload.
- */
-async function runDeviceFlow(grant: DeviceCodeGrant, signal: AbortSignal): Promise<void> {
-  try {
-    const credential = await deviceFlow.poll(grant, { signal });
-    // A superseded or cancelled flow must not store: between the last poll and here, the user may
-    // have hit Cancel, and a credential arriving after that is one they did not consent to keep.
-    if (signal.aborted || deviceGrant !== grant) return;
-    try {
-      tokenVault.store(credential);
-    } catch (error) {
-      // The credential exists and cannot be kept — the `plaintext_backend`/no-keyring machines the
-      // vault refuses outright. Reported as its own reason, because "GitHub rejected you" would be
-      // false and would send the user to retry a flow that will succeed and fail here every time.
-      endDeviceFlow();
-      reportDeviceOutcome({
-        state: 'failed',
-        reason: error instanceof GitHubTokenVaultError ? 'storage_unavailable' : 'unreachable',
-      });
-      return;
-    }
-    endDeviceFlow();
-    // The daemon is handed its credential once, at spawn, so a new one is a new process.
-    restartDaemonForCredentialChange();
-    reportDeviceOutcome({ state: 'connected' });
-  } catch (error) {
-    if (deviceGrant !== grant) return; // a newer flow owns the UI now
-    endDeviceFlow();
-    reportDeviceOutcome({
-      state: 'failed',
-      reason: error instanceof DeviceFlowError ? toWireFailure(error.reason) : 'unreachable',
-    });
-  }
-}
+const deviceSession = new DeviceFlowSession({
+  requestCode: () => deviceFlow.requestCode(),
+  poll: (grant, options) => deviceFlow.poll(grant, options),
+  canStore: () => tokenVault.encryptionAvailability().available,
+  store: (credential) => tokenVault.store(credential),
+  isStorageFailure: (error) =>
+    error instanceof GitHubTokenVaultError && error.code === 'encryption_unavailable',
+  report: (outcome) => sendToRenderer(mainWindow, 'pipenzo:github-device-outcome', outcome),
+  // The daemon is handed its credential once, at spawn, so a new one is a new process.
+  onStored: () => restartDaemonForCredentialChange(),
+});
 
 handle('pipenzo:github-device-start', async (): Promise<PipenzoDeviceCodeV1> => {
-  // A live, unexpired grant is returned as-is rather than replaced. Two reasons, and the second is
-  // the load-bearing one: the user is looking at a code they may already have typed, and a channel
-  // that mints a fresh device code on every call is a renderer-reachable way to hammer GitHub's
-  // endpoint into rate-limiting this client. Getting a new code requires an explicit cancel.
-  if (deviceGrant && Date.now() < deviceGrant.expiresAt) {
-    return {
-      userCode: deviceGrant.userCode,
-      verificationUri: deviceGrant.verificationUri,
-      expiresAt: deviceGrant.expiresAt,
-    };
+  try {
+    return await deviceSession.start();
+  } catch (error) {
+    // Reported on the outcome channel as well as rejecting the call. `DeviceFlowError.reason` does
+    // not survive IPC — Electron flattens the error and drops the field — so a renderer left to
+    // interpret the rejection alone can only guess, and the guess it used to make was
+    // `not_configured`: the one piece of copy whose whole purpose is to tell the user to stop
+    // retrying, shown to someone whose network was merely down. Main knows the real reason, so
+    // main says it.
+    const reason: PipenzoDeviceFailureReasonV1 =
+      error instanceof DeviceFlowError ? toWireFailure(error.reason) : 'unreachable';
+    sendToRenderer(mainWindow, 'pipenzo:github-device-outcome', { state: 'failed', reason });
+    throw error;
   }
-  endDeviceFlow();
-  const grant = await deviceFlow.requestCode();
-  const abort = new AbortController();
-  deviceGrant = grant;
-  deviceAbort = abort;
-  void runDeviceFlow(grant, abort.signal);
-  return {
-    userCode: grant.userCode,
-    verificationUri: grant.verificationUri,
-    expiresAt: grant.expiresAt,
-  };
 });
 
 /**
  * Opens GitHub's device page in the user's own browser — no embedded browser, which is the whole
  * point of this grant type. Takes no argument: the renderer cannot supply a URL, so there is no
- * path by which a compromised renderer turns this into a general "open anything" primitive. The
- * URL was pinned to github.com when the grant was created, and is validated again on the way out.
+ * path by which a compromised renderer turns this into a general "open anything" primitive.
+ *
+ * Re-pinned here rather than trusted to the grant-time check. `openAllowedExternalUrl` validates
+ * the scheme, host presence and userinfo, but it does not know this URL is only ever allowed to be
+ * github.com — so the host check is repeated at the moment of launch, where the consequence lives.
  */
 handle('pipenzo:github-device-open-verification', (): void => {
-  if (!deviceGrant) return;
-  openAllowedExternalUrl(deviceGrant.verificationUri, (url) => shell.openExternal(url));
+  const uri = deviceSession.verificationUri;
+  if (!uri) return;
+  if (new URL(uri).hostname !== GITHUB_VERIFICATION_HOST) return;
+  openAllowedExternalUrl(uri, (url) => shell.openExternal(url));
 });
 
 handle('pipenzo:github-device-cancel', (): void => {
-  if (!deviceGrant) return;
-  endDeviceFlow();
-  reportDeviceOutcome({ state: 'failed', reason: 'cancelled' });
+  deviceSession.cancel();
 });
 
 handle('daemon:list-providers', async () => {
@@ -1454,6 +1394,10 @@ if (gotSingleInstanceLock) {
 
   app.on('before-quit', (event) => {
     isQuitting = true;
+    // A poll landing after this point would store a credential and then hit
+    // `restartDaemonForCredentialChange`'s own `isQuitting` guard, leaving the token saved but not
+    // delivered until the next launch, while the UI's last frame said it was restarting.
+    deviceSession.abandon();
     if (pendingInteractiveCreates.isClosing || !daemonChild) return;
     pendingInteractiveCreates.beginShutdown();
     event.preventDefault();

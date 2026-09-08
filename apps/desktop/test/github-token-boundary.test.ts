@@ -425,8 +425,13 @@ describe('nothing on the renderer bridge can obtain the token', () => {
     expect(preload).toMatch(/invoke\('pipenzo:github-device-open-verification'\)/);
 
     const main = stripComments(await readElectron('main.ts'));
-    // Main reads the URL off its own grant, never off the event payload.
-    expect(main).toMatch(/openAllowedExternalUrl\(deviceGrant\.verificationUri/);
+    // Main reads the URL off its own session, never off the event payload.
+    expect(main).toMatch(/const uri = deviceSession\.verificationUri;/);
+    expect(main).toMatch(/openAllowedExternalUrl\(uri,/);
+    // And re-pins the host at the moment of launch. `openAllowedExternalUrl` checks the scheme and
+    // refuses userinfo, but it does not know this particular URL is only ever allowed to be
+    // github.com -- so the pin is repeated where the consequence is.
+    expect(main).toMatch(/hostname !== GITHUB_VERIFICATION_HOST\) return;/);
     // And the flow refuses any verification URL that is not on the pinned host in the first place.
     const flow = stripComments(await readElectron('github-device-flow.ts'));
     expect(flow).toMatch(/hostname !== GITHUB_VERIFICATION_HOST/);

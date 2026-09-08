@@ -74,15 +74,20 @@ import { join } from 'node:path';
  * rather than a long-lived `repo` PAT. That is a decision for the device-flow ticket (#114), and it
  * is recorded here so it is a choice rather than an oversight.
  *
- * ## Nothing calls `store()` yet, and that has a consequence worth naming
+ * ## What calls `store()`, and what still stands between it and a usable packaged build
  *
- * The device-code flow that will (#114) is not built. Until it is, a **packaged** build has no way
- * to obtain a credential at all — `resolveDaemonGitHubToken` can only answer
- * `{ token: undefined, source: 'none' }` there, and every GitHub call fails `token_missing`. That
- * is the intended end state of this ticket rather than a regression to fix here (a packaged build
- * silently inheriting the launching shell's PAT is exactly what it set out to stop), but it does
- * mean **#114 has to land before a packaged build is useful**, and packaging is its own epic (#8).
- * Development builds are unaffected: they still read `PIPENZO_GITHUB_TOKEN`.
+ * The device-code flow (#114) is the one caller: `device-flow-session.ts` stores here after main
+ * has polled GitHub to completion and read back the account the token belongs to.
+ *
+ * That flow cannot run until Pipenzo's OAuth app is registered and its client id filled in
+ * (`github-oauth-app.ts`, tracked as #220) — which is an action on a real GitHub account, not
+ * something the code can do for itself. Until then a **packaged** build still has no way to obtain
+ * a credential at all: `resolveDaemonGitHubToken` answers `{ token: undefined, source: 'none' }`
+ * there and every GitHub call fails `token_missing`. That is the intended end state of #165 rather
+ * than a regression — a packaged build silently inheriting the launching shell's PAT is exactly
+ * what it set out to stop — but it does mean **#220 has to land before a packaged build is
+ * useful**, and packaging is its own epic (#8). Development builds are unaffected: they still read
+ * `PIPENZO_GITHUB_TOKEN`.
  */
 
 /** The file name under the vault directory. Versioned so a future format change is a new name. */

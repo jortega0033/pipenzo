@@ -3888,7 +3888,12 @@
     align-items: center;
   }
 
-  .code {
+  /* Scoped to `.code-box`, not the bare `.code` the canvas uses. This stylesheet is global and has
+     no per-screen scope, and `.code` is already taken: `DiffFileList.tsx` renders every diff line
+     into a `td.code`, whose own rule declares only padding/white-space/colour. A bare `.code` here
+     would therefore win on font-size, weight and tracking against a `font-size` the diff table only
+     *inherits* -- rendering the whole diff viewer at 44px bold. */
+  .code-box .code {
     font-family: var(--font-mono);
     font-size: 44px;
     font-weight: 700;
