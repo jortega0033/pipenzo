@@ -255,8 +255,23 @@ export class ReviewGatesRunner {
       // Returns. Neither LLM pass is constructed, let alone run — and the report schema refuses
       // to serialize one alongside a failed gate, so this cannot be undone downstream either.
       const onlySpecTests = blocking.every((gate) => gate.id === 'spec_tests');
+      // The same carve-out as `awaiting_test_adjudication` above, for the same reason: a lone
+      // `diff_scope` failure is a distinct, actionable event (issue #144) -- README's "blowing the
+      // estimate by more than 50% moves the ticket to `pipenzo:awaiting-stack-approval`" -- and
+      // reporting it as generic `deterministic_failed` alongside a broken build or a gitleaks hit
+      // would leave nothing downstream able to tell them apart. `diff_scope` only ever fails when
+      // `scope.exceededEstimate` is true (see `#runGate`), so no separate check of `scope` is
+      // needed here; the gate's own status is the whole condition. If both `diff_scope` and
+      // `spec_tests` are blocking together, neither carve-out applies and this falls through to
+      // the generic outcome, correctly: that is a real multi-cause failure, not one this ticket's
+      // single-cause distinction should paper over.
+      const onlyDiffScope = blocking.every((gate) => gate.id === 'diff_scope');
       return this.#report(request, {
-        outcome: onlySpecTests ? 'awaiting_test_adjudication' : 'deterministic_failed',
+        outcome: onlySpecTests
+          ? 'awaiting_test_adjudication'
+          : onlyDiffScope
+            ? 'estimate_blown'
+            : 'deterministic_failed',
         deterministic,
         diffScope: scope,
       });
