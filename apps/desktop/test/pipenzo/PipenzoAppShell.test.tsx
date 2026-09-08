@@ -130,4 +130,45 @@ describe('PipenzoAppShell', () => {
     expect(screen.queryByRole('heading', { name: 'AgentDock' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Try a demo' })).not.toBeInTheDocument();
   });
+
+  /**
+   * Issue #276: a failed `pipenzoListTickets` read used to render the same empty-lane board a
+   * genuinely clean backlog would -- indistinguishable, and silent about the failure.
+   */
+  it('shows a distinct error banner rather than a silent empty board when the ticket list fails to load, and Retry re-reads it', async () => {
+    const pipenzoListTickets = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValue({
+        tickets: [makeTicket({ ticketId: 'a', issueNumber: 42, lane: 'queued', title: 'Recovered' })],
+      });
+    setBridgeOverride({
+      pipenzoListTickets,
+      onPipenzoPhaseEvent: () => () => {},
+      onDaemonStatus: () => () => {},
+      pipenzoConnectedRepos: vi.fn().mockResolvedValue({ repositories: ['octocat/hello-world'] }),
+      pipenzoListRepos: vi.fn().mockResolvedValue({ repositories: [], truncated: false }),
+      pipenzoConnectRepos: vi.fn(),
+      pipenzoGitHubConnection: vi
+        .fn()
+        .mockResolvedValue({ state: 'connected', login: 'octocat', source: 'vault' }),
+      listProvidersV2: vi.fn().mockResolvedValue([]),
+      disconnectGitHub: vi.fn(),
+    } as never);
+    render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+
+    expect(
+      await screen.findByText(/Couldn.t read the ticket list from the local daemon/),
+    ).toBeInTheDocument();
+    // The board itself still renders underneath -- empty, not replaced -- same as `'loading'`.
+    expect(screen.getByText('Queued')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+
+    await waitFor(() => expect(pipenzoListTickets).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText('Recovered')).toBeInTheDocument();
+    expect(
+      screen.queryByText(/Couldn.t read the ticket list from the local daemon/),
+    ).not.toBeInTheDocument();
+  });
 });

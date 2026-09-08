@@ -10,6 +10,8 @@ import {
   Sidebar,
   SidebarBrand,
 } from '../components/primitives/AppShell.js';
+import { Banner } from '../components/primitives/Banner.js';
+import { Button } from '../components/primitives/Button.js';
 import { Card } from '../components/primitives/Card.js';
 import { SyncStatusPill, type SyncStatus } from '../components/primitives/SyncStatusPill.js';
 import { BoardScreen } from './BoardScreen.js';
@@ -38,11 +40,12 @@ import { usePipenzoTickets } from './use-pipenzo-tickets.js';
  * `usePipenzoTickets` (issue #255) is called here, not threaded down from `AppRoot.tsx` -- the
  * board's data is this shell's own concern once it exists, the same way `BoardScreen.tsx`'s own doc
  * comment already anticipated ("whoever mounts `BoardScreen` for real wires... the real data").
- * `'loading'` and `'error'` both render the board with an empty ticket list rather than a distinct
- * screen: `usePipenzoTickets`'s own doc comment says a `'loading'` answer is not worth a screen of
- * its own here, and `BoardScreen` already renders a truthful empty state either way. A dedicated
- * error treatment (a banner distinguishing "genuinely no tickets" from "could not ask") is real,
- * user-visible work this ticket did not scope -- filed separately rather than improvised here.
+ * `'loading'` renders the board with an empty ticket list, same as before: `usePipenzoTickets`'s
+ * own doc comment says a `'loading'` answer is not worth a screen of its own here, and `BoardScreen`
+ * already renders a truthful empty state for it. `'error'` is different (issue #276): rather than
+ * rendering that same silent empty board -- indistinguishable from a genuinely clean backlog -- a
+ * `Banner` above it says the read failed and offers `usePipenzoTickets`'s own `refresh()` as a
+ * retry. The board still renders underneath, empty, since there is nothing better to show it.
  *
  * ## What a ticket card looks like here
  *
@@ -58,7 +61,7 @@ export function PipenzoAppShell({
   onRefreshSync: () => void;
 }) {
   const [view, setView] = useState<'board' | 'settings'>('board');
-  const { ticketList } = usePipenzoTickets();
+  const { ticketList, refresh } = usePipenzoTickets();
 
   const renderTicket = useCallback(
     (ticket: PipenzoTicketViewV1) => (
@@ -92,10 +95,26 @@ export function PipenzoAppShell({
         </MainHeadRight>
       </MainHead>
       {view === 'board' ? (
-        <BoardScreen
-          tickets={ticketList.status === 'ready' ? ticketList.tickets : []}
-          renderTicket={renderTicket}
-        />
+        <>
+          {ticketList.status === 'error' && (
+            <Banner
+              icon="warning"
+              tone="danger"
+              action={
+                <Button size="sm" variant="ghost" onClick={refresh}>
+                  Retry
+                </Button>
+              }
+            >
+              Couldn&apos;t read the ticket list from the local daemon. The board below may be
+              missing tickets until this succeeds.
+            </Banner>
+          )}
+          <BoardScreen
+            tickets={ticketList.status === 'ready' ? ticketList.tickets : []}
+            renderTicket={renderTicket}
+          />
+        </>
       ) : (
         <SettingsPage />
       )}
