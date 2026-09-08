@@ -41,8 +41,9 @@ import { repoMonogram, settingsSaveCtaLabel } from './repo-picker.js';
  * anywhere. There is no version token on the wire to catch that afterwards, so the fix is to make
  * the overlap unreachable:
  *
- * - a removal in flight disables every remove button **and** "Add a repo…", so the picker cannot
- *   be opened against a list the daemon is midway through rewriting;
+ * - a removal in flight closes every remove button **and** "Add a repo…", so the picker cannot be
+ *   opened against a list the daemon is midway through rewriting. Both check the `writing` ref
+ *   rather than trusting their own `disabled` attribute, which one batch of clicks outruns;
  * - a save in flight refuses to close the dialog, so the picker cannot be abandoned with a `PUT`
  *   still on the wire. The scrim covers this panel while it is open, which is what makes those two
  *   guards a complete pair rather than two halves of a race.
@@ -61,9 +62,11 @@ export function ConnectedReposPanel() {
    *
    * `removing` is state, so two clicks dispatched inside one React batch both see the value from
    * before either of them — the disabled attribute they were supposed to hit has not been
-   * committed yet. That is not reachable with a mouse, and it is one line to make it not reachable
-   * at all; the alternative is two `PUT`s built from the same pre-removal list, of which the second
-   * puts the first one's repository back.
+   * committed yet. Every control that writes the list, or opens something that will, checks this
+   * first: a second remove would send a `PUT` built from the same pre-removal list, of which the
+   * second puts the first one's repository back, and "Add a repo…" would mount a picker that reads
+   * the list mid-rewrite. Neither is reachable with a mouse, and it is one line each to make them
+   * not reachable at all.
    */
   const writing = useRef(false);
 
@@ -93,14 +96,18 @@ export function ConnectedReposPanel() {
   }, [reloadKey]);
 
   /**
-   * Closing clears the saving flag as well as the dialog, and opening clears it too.
+   * Closing clears the saving flag as well as the dialog.
    *
-   * A successful save unmounts the picker in the same commit that sets its `saving` back to
-   * `false`, so the picker's effect for that edge does not run and its last word here stays
-   * `true`. Nothing reads the flag while the dialog is shut, and remounting the picker reports the
-   * truth again — but both of those are properties of code somewhere else. The flag describes a
-   * picker session, so it is ended where the session is, and its meaning does not depend on a
-   * child that is on its way out or not yet mounted.
+   * That clear is currently unobservable, and the comment here used to claim otherwise. `picking`
+   * is only ever set back to `true` by "Add a repo…", which resets `pickerSaving` in the same
+   * batch, and `pickerSaving` is read in exactly one place — the `Dialog`'s `onClose`, which runs
+   * only while `picking` is `true`. So the reset that keeps a stuck flag from refusing a later
+   * close is that one, not this one, and no test can tell this line from its absence.
+   *
+   * It stays as a bound on the next call site: the flag describes a picker session, ending it
+   * where the session ends means a second way to open the dialog cannot inherit `true` from a save
+   * that already finished and leave the dialog refusing to close. Kept as the invariant, not as
+   * load-bearing code.
    */
   const closePicker = useCallback(() => {
     setPicking(false);
@@ -200,12 +207,16 @@ export function ConnectedReposPanel() {
             {/* Closed while a removal is in flight. The picker reads the connected list on mount,
                 so opening it against a list the daemon has not finished rewriting would put the
                 repository that is being removed back on screen, ticked — and its save would then
-                make that true. */}
+                make that true. `disabled` states that; `writing` is what enforces it, for the same
+                reason `remove` reads the ref (see its comment) — a remove-click and this click
+                dispatched in one batch both see the DOM from before either of them, so the
+                attribute they were supposed to hit has not been committed yet. */}
             <button
               type="button"
               className="ws-menu-item foot"
               disabled={removing !== undefined}
               onClick={() => {
+                if (writing.current) return;
                 setRemoveError(undefined);
                 setPickerSaving(false);
                 setPicking(true);

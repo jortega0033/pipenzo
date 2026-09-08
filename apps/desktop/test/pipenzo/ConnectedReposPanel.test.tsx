@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PipenzoRepoV1 } from '@agent-dock/shared';
 import { clearBridgeOverride, setBridgeOverride } from '../../src/bridge.js';
@@ -194,6 +194,56 @@ describe('ConnectedReposPanel', () => {
     await waitFor(() =>
       expect(screen.queryByText('jortega0033/agentdock')).not.toBeInTheDocument(),
     );
+  });
+
+  /**
+   * The other half of that guard, on the control that does not write the list itself. A removal
+   * and an "Add a repo…" dispatched inside one React batch both see the DOM from before either of
+   * them, so the `disabled` attribute is not committed yet and the picker's click handler runs.
+   * The picker reads the connected list on mount, so it would show the repository being removed as
+   * still ticked, and saving from there would put it back.
+   *
+   * The nested `act` is what makes this one batch: React holds the queue until the outermost scope
+   * exits, so the second `fireEvent` lands before the first has rendered. Two bare `fireEvent`
+   * calls do not reproduce it -- each one flushes -- which is why the same-batch case needs saying
+   * out loud rather than being assumed from the pair of clicks.
+   */
+  it('will not open the picker in the same batch as a removal', async () => {
+    let release: ((value: { repositories: string[] }) => void) | undefined;
+    const connect = vi.fn(
+      () =>
+        new Promise<{ repositories: string[] }>((resolve) => {
+          release = resolve;
+        }),
+    );
+    const bridge = installBridge({
+      connected: CONNECTED,
+      listing: [repo('jortega0033/agentdock'), repo('octocat/hello-world')],
+      connect,
+    });
+    render(<ConnectedReposPanel />);
+    await loaded();
+
+    const removeButton = screen.getByRole('button', {
+      name: 'Remove jortega0033/agentdock from this workspace',
+    });
+    const addButton = screen.getByRole('button', { name: /add a repo/i });
+    act(() => {
+      fireEvent.click(removeButton);
+      fireEvent.click(addButton);
+    });
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(addButton).toBeDisabled();
+    // The removal itself is untouched, and nothing re-read the list behind it.
+    expect(connect).toHaveBeenCalledTimes(1);
+    expect(bridge.pipenzoConnectedRepos).toHaveBeenCalledTimes(1);
+
+    release?.({ repositories: ['octocat/hello-world'] });
+    await waitFor(() =>
+      expect(screen.queryByText('jortega0033/agentdock')).not.toBeInTheDocument(),
+    );
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('opens the first-run picker from "Add a repo…", relabelled for saving', async () => {
