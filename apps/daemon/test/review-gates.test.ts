@@ -603,8 +603,9 @@ describe('ReviewGatesRunner — separation of the LLM passes', () => {
     const [reviewerPrompt] = h.sessionPrompts;
     expect(reviewerPrompt).toBeDefined();
     expect(reviewerPrompt).not.toContain(IMPLEMENTER_TRANSCRIPT);
-    // Enforced by the signature, not by the wording: two parameters, neither a transcript.
-    expect(buildReviewerPrompt.length).toBe(2);
+    // Enforced by the signature, not by the wording: three parameters (issue #284 added
+    // `conventions`, repo-authored prose, as the third) and none of them is a transcript.
+    expect(buildReviewerPrompt.length).toBe(3);
   });
 
   it('gives the verifier the reviewer’s findings, and not the other way round', async () => {
@@ -644,6 +645,33 @@ describe('ReviewGatesRunner — separation of the LLM passes', () => {
       expect(prompt).toContain('Model-tier routing');
       expect(prompt).toContain('jortega0033/pipenzo#181');
     }
+  });
+
+  /**
+   * Issue #284: repo-wide conventions reach both LLM passes, end to end through the runner (not
+   * just the prompt builders in isolation) -- and are absent from the prompt entirely when the
+   * request carries none, the same "no clause for a fact nobody supplied" rule the rest of this
+   * module already follows (e.g. `unavailableReason` in `startup-route.ts`).
+   */
+  it('folds repo-wide conventions into both prompts when the request carries them, and omits the section otherwise', async () => {
+    const withConventions = harness({ specTests: true });
+    await withConventions.runner.run(request({ conventions: 'Prefer named exports.' }));
+    const [reviewerPrompt, verifierPrompt] = withConventions.sessionPrompts;
+    expect(reviewerPrompt).toContain('Prefer named exports.');
+    expect(verifierPrompt).toContain('Prefer named exports.');
+
+    const without = harness({ specTests: true });
+    await without.runner.run(request());
+    const [reviewerPromptNoConventions] = without.sessionPrompts;
+    expect(reviewerPromptNoConventions).not.toContain('stated conventions');
+  });
+
+  it('gives the prompt builders the same conventions section, so the two prompts cannot drift', () => {
+    const conventions = 'Prefer named exports.';
+    expect(buildReviewerPrompt(spec(), 'diff', conventions)).toContain(conventions);
+    expect(buildVerifierPrompt(spec(), 'diff', [], conventions)).toContain(conventions);
+    expect(buildReviewerPrompt(spec(), 'diff')).not.toContain('stated conventions');
+    expect(buildVerifierPrompt(spec(), 'diff', [])).not.toContain('stated conventions');
   });
 });
 

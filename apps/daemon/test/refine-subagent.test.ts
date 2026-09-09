@@ -280,6 +280,24 @@ describe('buildRefineSessionRequest', () => {
     expect(createSessionV2RequestSchema.safeParse(request).success).toBe(true);
   });
 
+  /**
+   * Issue #284: repo-wide conventions, read by the caller from `pipenzo-repo-config.ts` and
+   * folded into the prompt so the spec (and the acceptance criteria it writes) can account for
+   * them without every issue having to restate them.
+   */
+  it('folds repo-wide conventions into the prompt when the caller supplies them', () => {
+    const withConventions = buildRefineSessionRequest({
+      issue: ISSUE,
+      cwd: process.cwd(),
+      provider: 'claude',
+      conventions: 'Tests live in test/, not __tests__/.',
+    });
+    expect(withConventions.prompt).toContain('Tests live in test/, not __tests__/.');
+
+    const without = buildRefineSessionRequest({ issue: ISSUE, cwd: process.cwd(), provider: 'claude' });
+    expect(without.prompt).not.toContain('conventions');
+  });
+
   it('refuses an issue or a working directory it cannot use', () => {
     const cases = [
       { issue: { ...ISSUE, repo: '  ' }, cwd: process.cwd(), provider: 'claude' as const },

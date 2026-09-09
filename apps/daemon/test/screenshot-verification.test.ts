@@ -191,6 +191,65 @@ describe('readPipenzoRepoConfig', () => {
     const root = await repository({ verify: 'yes please' });
     await expect(readPipenzoRepoConfig(root)).rejects.toBeInstanceOf(PipenzoRepoConfigError);
   });
+
+  /**
+   * Issue #284: repo-wide Refine/Review conventions, the same trust class and file as `verify` --
+   * a human committed both, so both are read from the same key rather than a new surface.
+   */
+  describe('conventions', () => {
+    it('reads a stated conventions string', async () => {
+      const root = await repository({ conventions: 'Tests live in test/, not __tests__/.' });
+      expect(await readPipenzoRepoConfig(root)).toEqual({
+        conventions: 'Tests live in test/, not __tests__/.',
+      });
+    });
+
+    /**
+     * `verify` and `conventions` are independent keys, not one gating the other -- a repository
+     * that states conventions without configuring screenshot verification (the common case,
+     * expected to be more common than the reverse) must not silently lose them.
+     */
+    it('is read independently of whether verify is configured at all', async () => {
+      const conventionsOnly = await repository({ conventions: 'Prefer named exports.' });
+      expect(await readPipenzoRepoConfig(conventionsOnly)).toEqual({
+        conventions: 'Prefer named exports.',
+      });
+
+      const both = await repository({
+        verify: { serve: { command: 'pnpm', args: ['dev'] } },
+        conventions: 'Prefer named exports.',
+      });
+      expect(await readPipenzoRepoConfig(both)).toEqual({
+        serve: { command: 'pnpm', args: ['dev'] },
+        conventions: 'Prefer named exports.',
+      });
+    });
+
+    it('treats an absent or blank conventions string as not configured, not as empty prose', async () => {
+      expect(await readPipenzoRepoConfig(await repository({}))).toEqual({});
+      expect(await readPipenzoRepoConfig(await repository({ conventions: '   ' }))).toEqual({});
+    });
+
+    it('trims surrounding whitespace', async () => {
+      const root = await repository({ conventions: '  Prefer named exports.  \n' });
+      expect(await readPipenzoRepoConfig(root)).toEqual({ conventions: 'Prefer named exports.' });
+    });
+
+    it('rejects a non-string value rather than silently ignoring it', async () => {
+      const root = await repository({ conventions: ['not', 'a', 'string'] });
+      await expect(readPipenzoRepoConfig(root)).rejects.toBeInstanceOf(PipenzoRepoConfigError);
+    });
+
+    /** Generous for real prose, but bounded against folding an unbounded file into every future
+     * Refine/Review prompt this repository ever runs. */
+    it('accepts up to 8,000 characters and rejects one character more', async () => {
+      const atLimit = await repository({ conventions: 'x'.repeat(8_000) });
+      expect(await readPipenzoRepoConfig(atLimit)).toEqual({ conventions: 'x'.repeat(8_000) });
+
+      const overLimit = await repository({ conventions: 'x'.repeat(8_001) });
+      await expect(readPipenzoRepoConfig(overLimit)).rejects.toBeInstanceOf(PipenzoRepoConfigError);
+    });
+  });
 });
 
 describe('ScreenshotExecutionSlot', () => {

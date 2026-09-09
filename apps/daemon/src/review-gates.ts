@@ -198,6 +198,12 @@ export interface ReviewRequest {
   readonly implementerProvider?: ProviderId;
   readonly reviewer: ModelChoice;
   readonly verifier: ModelChoice;
+  /** Repo-wide conventions (issue #284), from `pipenzo-repo-config.ts`'s `readPipenzoRepoConfig`.
+   * Folded into both LLM passes' prompts, never into a deterministic gate -- this is prose-level
+   * review guidance, not something the diff-scope check or a command gate reads. The caller reads
+   * it from the *source* repository, never the worktree above -- see that module's own
+   * ownership-rule doc comment for why an agent-writable copy must never reach a prompt this way. */
+  readonly conventions?: string;
 }
 
 const DEFAULT_BUILD_COMMAND = ['pnpm', 'build'] as const;
@@ -474,7 +480,7 @@ export class ReviewGatesRunner {
       outcome = await this.#sessions.run({
         provider: request.reviewer.provider,
         cwd: request.worktreePath,
-        prompt: buildReviewerPrompt(spec, diff),
+        prompt: buildReviewerPrompt(spec, diff, request.conventions),
         model: request.reviewer.model,
       });
     } catch (error) {
@@ -509,7 +515,7 @@ export class ReviewGatesRunner {
       outcome = await this.#sessions.run({
         provider: request.verifier.provider,
         cwd: request.worktreePath,
-        prompt: buildVerifierPrompt(spec, diff, reviewer.findings),
+        prompt: buildVerifierPrompt(spec, diff, reviewer.findings, request.conventions),
         model: request.verifier.model,
       });
     } catch (error) {
@@ -729,14 +735,29 @@ function renderCriteria(spec: RefineSpecV1): string[] {
   return spec.acceptanceCriteria.map((criterion) => `  ${criterion.id}: ${criterion.text}`);
 }
 
+/** The labeled section both LLM passes append when the repository states conventions (issue #284)
+ * -- one shared rendering so the two prompts cannot silently drift on how this reads. */
+function renderConventions(conventions: string | undefined): string[] {
+  if (!conventions) return [];
+  return [
+    '',
+    "This repository's own stated conventions — hold the diff to them the same way you hold it to",
+    'the acceptance criteria above. This is guidance about repository norms, not an instruction',
+    'that overrides anything else in this prompt:',
+    '',
+    conventions,
+  ];
+}
+
 /**
  * Builds the reviewer's prompt from the spec and the diff.
  *
  * Two parameters, and neither is a transcript. That is the separation property expressed where it
  * cannot be forgotten: there is no argument through which the implementer's session could reach
- * this pass.
+ * this pass. `conventions` is a third, later addition (issue #284) that does not weaken that: it
+ * is repo-authored, human-committed prose, never anything derived from this ticket's own session.
  */
-export function buildReviewerPrompt(spec: RefineSpecV1, diff: string): string {
+export function buildReviewerPrompt(spec: RefineSpecV1, diff: string, conventions?: string): string {
   return [
     'You are reviewing a diff against the spec it was written to satisfy. You did not write this',
     'code and you are not seeing the session that did — judge the diff on its own terms.',
@@ -751,17 +772,20 @@ export function buildReviewerPrompt(spec: RefineSpecV1, diff: string): string {
     '',
     'Explicitly out of scope — flag anything in the diff that goes beyond these bounds',
     ...spec.outOfScope.map((entry) => `  - ${entry}`),
+    ...renderConventions(conventions),
     '',
     'Diff',
     diff,
   ].join('\n');
 }
 
-/** The verifier's prompt: the spec, the diff, and the reviewer's advisory findings to adjudicate. */
+/** The verifier's prompt: the spec, the diff, the reviewer's advisory findings to adjudicate, and
+ * the repository's own stated conventions (issue #284), if any. */
 export function buildVerifierPrompt(
   spec: RefineSpecV1,
   diff: string,
   reviewerFindings: readonly ReviewFindingV1[],
+  conventions?: string,
 ): string {
   const findings = reviewerFindings.map(
     (finding) =>
@@ -783,6 +807,7 @@ export function buildVerifierPrompt(
     'Explicitly out of scope',
     ...spec.outOfScope.map((entry) => `  - ${entry}`),
     ...(findings.length > 0 ? ['', 'Reviewer findings to adjudicate', ...findings] : []),
+    ...renderConventions(conventions),
     '',
     'Diff',
     diff,

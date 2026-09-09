@@ -182,6 +182,7 @@ export class PipenzoPhaseService {
     } catch (error) {
       throw toPhaseError(error);
     }
+    const conventions = await this.#readConventions(request.repositoryPath);
     let result: { sessionId: string; spec: PipenzoRefineResultV1['spec']; toolsUsed: readonly string[] };
     try {
       result = await this.#refine.refine({
@@ -194,6 +195,7 @@ export class PipenzoPhaseService {
         cwd: request.repositoryPath,
         provider: request.provider,
         ...(request.model ? { model: request.model } : {}),
+        ...(conventions ? { conventions } : {}),
       });
     } catch (error) {
       throw toPhaseError(error);
@@ -226,6 +228,27 @@ export class PipenzoPhaseService {
    * `#reportBlownEstimate` is (#266) -- `read()` first, skip both writes if the ticket is already
    * on `pipenzo:needs-pre-scoping`.
    */
+  /**
+   * Repo-wide conventions (issue #284), read from the trusted *source* repository -- never a
+   * worktree, per `pipenzo-repo-config.ts`'s ownership rule (an agent-writable copy feeding a
+   * future Review prompt would be a prompt-injection vector, the exact thing that rule closes off).
+   *
+   * Degrades to "no conventions" rather than failing the whole Refine/Review call: the same
+   * "stated reduced mode rather than an error" rule `captureCapabilities()` already applies to a
+   * malformed `pipenzo` block, applied here because a maintainer's typo in prose must not block
+   * every future ticket's Refine or Review from running at all.
+   */
+  async #readConventions(sourceRepositoryPath: string): Promise<string | undefined> {
+    try {
+      return (await readPipenzoRepoConfig(sourceRepositoryPath)).conventions;
+    } catch (error) {
+      this.#logger?.warn('could not read pipenzo.conventions; continuing without it', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return undefined;
+    }
+  }
+
   async #reportRefusal(ticketId: string, spec: PipenzoRefineResultV1['spec']): Promise<void> {
     if (!this.#machine) return;
     try {
@@ -308,6 +331,7 @@ export class PipenzoPhaseService {
     if (!location) {
       throw new PipenzoPhaseError('worktree_not_found', 'no such owned worktree');
     }
+    const conventions = await this.#readConventions(location.sourcePath);
     let report: PipenzoReviewResultV1;
     try {
       report = await this.#review.run({
@@ -321,6 +345,7 @@ export class PipenzoPhaseService {
           : {}),
         reviewer: request.reviewer,
         verifier: request.verifier,
+        ...(conventions ? { conventions } : {}),
       });
     } catch (error) {
       throw toPhaseError(error);

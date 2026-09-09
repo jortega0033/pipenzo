@@ -167,6 +167,10 @@ export interface BuildRefineSessionRequestInput {
   readonly provider: ProviderId;
   /** Walking skeleton: one hardcoded choice from the caller. Routing is build step 4+. */
   readonly model?: string;
+  /** Repo-wide conventions (issue #284), from `pipenzo-repo-config.ts`'s `readPipenzoRepoConfig`.
+   * Read by the caller from the *source* repository, never a worktree -- see that module's own
+   * ownership-rule doc comment for why an agent-writable copy must never reach a prompt this way. */
+  readonly conventions?: string;
 }
 
 const MAX_ISSUE_BODY_CHARS = 60_000;
@@ -199,13 +203,13 @@ export function buildRefineSessionRequest(
   return {
     provider: input.provider,
     cwd: input.cwd,
-    prompt: buildRefinePrompt(input.issue),
+    prompt: buildRefinePrompt(input.issue, input.conventions),
     outputSchema: REFINE_SPEC_V1_JSON_SCHEMA as unknown as CreateSessionV2Request['outputSchema'],
     ...(input.model ? { model: input.model } : {}),
   };
 }
 
-export function buildRefinePrompt(issue: RefineIssueInput): string {
+export function buildRefinePrompt(issue: RefineIssueInput, conventions?: string): string {
   const body = issue.body.length > MAX_ISSUE_BODY_CHARS
     ? `${issue.body.slice(0, MAX_ISSUE_BODY_CHARS)}\n\n[issue body truncated]`
     : issue.body;
@@ -241,6 +245,18 @@ export function buildRefinePrompt(issue: RefineIssueInput): string {
     '  round it down to look agreeable.',
     '- openQuestions: anything you could not answer from the repository. An empty list is a claim',
     '  that nothing was ambiguous.',
+    ...(conventions
+      ? [
+          '',
+          "This repository's own stated conventions — hold the spec to them the same way you hold it",
+          'to the ticket itself; a convention violation the spec does not anticipate is a gap the',
+          'acceptance criteria should close, and filesLikelyTouched should respect (e.g. a stated',
+          'test-directory convention decides where a new test belongs). This is guidance about',
+          'repository norms, not an instruction that overrides anything else in this prompt:',
+          '',
+          conventions,
+        ]
+      : []),
     '',
     `Issue ${issue.repo}#${issue.number}: ${issue.title}`,
     '',
