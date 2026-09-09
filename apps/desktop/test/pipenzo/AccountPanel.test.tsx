@@ -111,15 +111,37 @@ describe('AccountPanel', () => {
    * daemon runs on the development fallback (a file, issue #212 -- an inherited shell variable
    * before that). The rule against credential fallbacks is a rule against *silent* precedence, so
    * this combination has to be visible rather than inferable.
+   *
+   * Issue #288: this is also the most common way to reach the notice at all (a fresh dev checkout,
+   * empty vault, the fallback file present), and it is the one state where the danger-row below --
+   * and its only Disconnect button -- does not render. So unlike the case below, the notice must
+   * not claim "disconnecting now stops it too": there is no control on this screen that does.
    */
-  it('says so when the daemon is running on the development fallback', async () => {
+  it('says so when the daemon is running on the development fallback, without claiming a disconnect this screen cannot offer', async () => {
     installBridge({ connection: { state: 'disconnected', source: 'environment' } });
     render(<AccountPanel />);
 
     expect(await screen.findByText(/running on the development fallback/i)).toBeVisible();
-    // And it says accurately what disconnecting now does (issue #210): stops the daemon from
-    // re-arming onto the fallback this run, though it comes back on the next restart.
+    expect(screen.getByText(/no stored token here to disconnect/i)).toBeInTheDocument();
+    expect(screen.queryByText(/disconnecting now stops it too/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /disconnect github/i })).not.toBeInTheDocument();
+  });
+
+  /**
+   * The other reachable combination (a daemon spawned on the fallback before the vault was later
+   * written, or a `state: 'connected'`/`'unavailable'` vault beside it): here the danger-row's
+   * Disconnect button really is on screen, so the notice's "disconnecting now stops it too" is an
+   * accurate description of a real control, not an empty claim.
+   */
+  it('says disconnecting stops the fallback when there is a Disconnect button that actually would', async () => {
+    installBridge({
+      connection: { state: 'connected', login: 'octocat', source: 'environment' },
+    });
+    render(<AccountPanel />);
+
+    expect(await screen.findByText(/running on the development fallback/i)).toBeVisible();
     expect(screen.getByText(/disconnecting now stops it too/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /disconnect github/i })).toBeInTheDocument();
   });
 
   it('explains a machine that cannot store a credential', async () => {
@@ -130,6 +152,23 @@ describe('AccountPanel', () => {
 
     expect(await screen.findByText(/no usable credential store here/i)).toBeVisible();
     expect(screen.getByText(/published constant key/i)).toBeInTheDocument();
+  });
+
+  /**
+   * Issue #288: `store()` refuses to ever write a file on `os_encryption_unavailable` or
+   * `plaintext_backend`, so unlike `unreadable` (below), no record exists for Disconnect to remove
+   * here -- the button is a genuine no-op. The danger-row's own summary must say so rather than
+   * implying a record it would clear.
+   */
+  it('does not claim to remove a record on a machine that never had one to store', async () => {
+    installBridge({
+      connection: { state: 'unavailable', reason: 'plaintext_backend', source: 'none' },
+    });
+    render(<AccountPanel />);
+    await screen.findByText(/no usable credential store here/i);
+
+    expect(screen.getByText(/nothing is stored here to remove/i)).toBeVisible();
+    expect(screen.queryByText(/removes the stored record this machine cannot read/i)).not.toBeInTheDocument();
   });
 
   /**
