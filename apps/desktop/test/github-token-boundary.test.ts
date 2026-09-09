@@ -823,7 +823,7 @@ describe('nothing on the renderer bridge can obtain the token', () => {
     // variable. What is asserted here is only the wiring: that the handler gates on exactly these
     // two and nothing else -- both false is still a true no-op.
     expect(main).toMatch(
-      /if \(tokenVault\.clear\(\) \|\| daemonTokenSource === 'environment'\) \{[\s\S]{0,200}?restartDaemonForCredentialChange\(\);\s*\n\s*\}/,
+      /if \(tokenVault\.clear\(\) \|\| daemonTokenSource === 'environment'\) \{[\s\S]{0,200}?void restartDaemonForCredentialChange\(\);\s*\n\s*\}/,
     );
     // And specifically not on `status()`, which cannot distinguish "nothing stored" from "cannot
     // tell" and so answers the same on every machine where the loop was reachable. The quote class
@@ -863,6 +863,20 @@ describe('nothing on the renderer bridge can obtain the token', () => {
     expect(cancelAt).toBeGreaterThan(-1);
     expect(killAt).toBeGreaterThan(-1);
     expect(cancelAt).toBeLessThan(killAt);
+    // The property that actually matters is not just the ordering above but that `child.kill()`
+    // is unconditional after the cancellation attempt -- `cancelInFlightDaemonSessions` cannot
+    // reject in practice (`Promise.allSettled` plus a bounding `waitWithin`), but a future edit
+    // wrapping the kill in a guard the cancellation could skip would silently strand the old
+    // daemon holding a credential that was supposed to be replaced. Asserted as "no `return` in the
+    // stretch between the two calls" rather than a full control-flow proof, which a regex cannot do.
+    expect(body.slice(cancelAt, killAt)).not.toMatch(/\breturn\b/);
+    // The hard-kill watchdog is armed *before* attempting the cancellation, not after `child.kill()`
+    // -- its `DAEMON_CREDENTIAL_RESTART_TIMEOUT_MS` deadline is this function's one overall ceiling
+    // on "how long can this leave the UI on `connecting`," and the cancellation attempt has to run
+    // inside that budget rather than stack its own full timeout on top of it.
+    const hardStopAt = body.indexOf('const hardStop = setTimeout(');
+    expect(hardStopAt).toBeGreaterThan(-1);
+    expect(hardStopAt).toBeLessThan(cancelAt);
 
     // The same helper `killDaemon` uses, not a second implementation the two could quietly drift on
     // (different timeout, different session enumeration, a forgotten abort-on-completion cleanup).

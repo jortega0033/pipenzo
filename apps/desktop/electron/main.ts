@@ -1036,17 +1036,33 @@ function gitHubConnectionStatus(): PipenzoGitHubConnectionV1 {
  * writing endpoint inside the exact process the publish boundary rests on, reachable by anything
  * holding the local bearer token. A process restart has no such surface.
  *
- * **A credential change now goes through the same bounded cancellation `killDaemon` does, before
- * the kill (issue #224).** `child.kill()` is SIGTERM on POSIX but maps to `TerminateProcess` on
- * Windows — the platform this app packages for — so `cancelInFlightDaemonSessions` is the one real
- * opportunity either caller gets to let the daemon reap each provider tree gracefully first. This
- * used to skip straight to `child.kill()` on the reasoning that connecting and disconnecting were
- * pre-app actions taken before any ticket could be running; Settings' Account panel (#130) put
- * "Disconnect GitHub" on a screen reachable with work in flight, which made that premise false
- * without this function's own reasoning having changed to match. The mitigation this used to lean on
- * — confirming first in the UI, and the `credentialRestartPending` latch below stopping a second
- * click from turning one restart into a loop — still matters and still applies; it is no longer the
- * *only* thing standing between a disconnect and an uncancelled kill.
+ * **A credential change now attempts the same bounded cancellation `killDaemon` does, before the
+ * kill (issue #224), within the same overall deadline this function always had.** `child.kill()` is
+ * SIGTERM on POSIX but maps to `TerminateProcess` on Windows — the platform this app packages for —
+ * so `cancelInFlightDaemonSessions` is the one real opportunity either caller gets to let the daemon
+ * reap each provider tree gracefully first. This used to skip straight to `child.kill()` on the
+ * reasoning that connecting and disconnecting were pre-app actions taken before any ticket could be
+ * running; Settings' Account panel (#130) put "Disconnect GitHub" on a screen reachable with work in
+ * flight, which made that premise false without this function's own reasoning having changed to
+ * match. The mitigation this used to lean on — confirming first in the UI, and the
+ * `credentialRestartPending` latch below stopping a second click from turning one restart into a
+ * loop — still matters and still applies; it is no longer the *only* thing standing between a
+ * disconnect and an uncancelled kill.
+ *
+ * Not quite the same guarantee `killDaemon` has, worth stating plainly rather than implying: a
+ * session *created* during the cancellation window below is not in the snapshot
+ * `cancelInFlightDaemonSessions` takes and is not itself cancelled by it, unlike a real app shutdown
+ * (which first calls `pendingInteractiveCreates.beginShutdown()` and awaits creates already in
+ * flight before cancelling). Closing that gap here would mean reusing a shutdown latch that has no
+ * way back once set, permanently breaking interactive creates for the rest of the running session —
+ * real work, filed separately rather than folded into this fix.
+ *
+ * The hard-kill timer below is armed **before** attempting the cancellation, not after: this
+ * function's own timeout has always been the ceiling on "how long can a credential change leave the
+ * UI on `connecting`," and cancellation is a best-effort grace period that ceiling should bound, not
+ * a second wait stacked on top of it. `credentialRestartPending` and `respawnAfterExit` stay armed
+ * for the whole window either way, so a daemon that happens to crash on its own during it is
+ * correctly folded into this restart rather than reported as an unexpected exit.
  */
 async function restartDaemonForCredentialChange(): Promise<void> {
   // A restart during shutdown is how an orphaned, credential-holding daemon outlives the app.
@@ -1063,16 +1079,18 @@ async function restartDaemonForCredentialChange(): Promise<void> {
   credentialRestartPending = true;
   respawnAfterExit = child;
   sendStatus({ state: 'connecting' });
-  await cancelInFlightDaemonSessions('credential change');
-  child.kill();
-  // On POSIX the daemon handles SIGTERM with a graceful shutdown of its own, so exiting can
-  // legitimately take seconds. If it takes far longer than that it is wedged, and waiting forever
-  // would leave the UI stuck on `connecting` with the *old* credential still serving requests.
+  // Armed now, before the cancellation attempt below -- not after `child.kill()`, the way a plain
+  // SIGTERM-then-wait would. `DAEMON_CREDENTIAL_RESTART_TIMEOUT_MS` is this function's one overall
+  // deadline; letting the graceful cancellation step run for its own full timeout on top of this one
+  // would let a single credential change pin the UI on `connecting` for their combined length
+  // instead of the bound this was always meant to promise.
   const hardStop = setTimeout(() => {
     if (respawnAfterExit === child) child.kill('SIGKILL');
   }, DAEMON_CREDENTIAL_RESTART_TIMEOUT_MS);
   hardStop.unref?.();
   child.once('exit', () => clearTimeout(hardStop));
+  await cancelInFlightDaemonSessions('credential change');
+  child.kill();
 }
 
 handle('pipenzo:github-connection', (): PipenzoGitHubConnectionV1 => gitHubConnectionStatus());
