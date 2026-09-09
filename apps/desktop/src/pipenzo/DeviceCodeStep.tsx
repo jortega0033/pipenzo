@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { PipenzoDeviceCodeV1, PipenzoDeviceFailureReasonV1 } from '@agent-dock/shared';
+import type {
+  PipenzoCredentialUnavailableReasonV1,
+  PipenzoDeviceCodeV1,
+  PipenzoDeviceFailureReasonV1,
+} from '@agent-dock/shared';
 import { getBridge } from '../bridge.js';
 import { Button } from '../components/primitives/Button.js';
 import { Icon } from '../components/primitives/Icon.js';
@@ -58,8 +62,21 @@ const FAILURE_COPY: Record<PipenzoDeviceFailureReasonV1, { title: string; body: 
   },
 };
 
-/** Why a machine cannot hold a credential at all, said in the user's terms rather than the enum's. */
-const UNAVAILABLE_COPY: Record<string, string> = {
+/**
+ * Why a machine cannot hold a credential at all, said in the user's terms rather than the enum's.
+ *
+ * `Record<PipenzoCredentialUnavailableReasonV1, string>` rather than `Record<string, string>`
+ * (issue #215's own review): keyed against the real enum and *not* `Partial`, so a future reason
+ * added to `pipenzoCredentialUnavailableReasonV1Schema` without a matching entry here fails to
+ * compile at this declaration, the same guarantee `account.ts`'s exhaustive `unavailableReasonLabel`
+ * switch already has, instead of silently falling back to the generic message below at render time.
+ * The lookup at the render site below still casts and falls back regardless: `unavailableReason`
+ * itself stays typed as a bare `string` on purpose (a real daemon could in principle report a reason
+ * a currently-compiled renderer's enum does not know about), so the fallback is defense against a
+ * value arriving that this table's own type cannot see, not a substitute for this table being
+ * complete against the type it does see.
+ */
+const UNAVAILABLE_COPY: Record<PipenzoCredentialUnavailableReasonV1, string> = {
   os_encryption_unavailable:
     'This machine reports no OS credential store, so there is nowhere to keep a GitHub token safely. On Linux that usually means no keyring (gnome-keyring or kwallet) is running.',
   plaintext_backend:
@@ -291,7 +308,10 @@ export function DeviceCodeStep({
           store, starting the flow would issue a real `repo` token and then throw it away. */}
       {!canStore && (
         <Notice tone="danger" icon="warning" title="This machine cannot store a token">
-          {UNAVAILABLE_COPY[unavailableReason] ??
+          {/* `unavailableReason` itself stays a bare `string` (see the prop doc above), so the
+              lookup is cast rather than narrowed by the table's own type -- the fallback below is
+              exactly what covers a real value this compiled enum does not recognise. */}
+          {UNAVAILABLE_COPY[unavailableReason as PipenzoCredentialUnavailableReasonV1] ??
             'This machine has no usable credential store, so a sign-in would complete on GitHub and then fail to save. Signing in is disabled rather than offered.'}
         </Notice>
       )}

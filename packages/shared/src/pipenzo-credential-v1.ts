@@ -68,13 +68,13 @@ export const pipenzoCredentialUnavailableReasonV1Schema = z.enum([
   'plaintext_backend',
   /**
    * Linux only (issue #215): the backend accessor exists but threw rather than naming a backend --
-   * most often `safeStorage`'s own introspection racing app startup, since it is documented as
-   * throwing before Electron's `ready` event. "Cannot tell yet, ask again shortly," not "this
-   * machine has no real credential store" -- kept distinct from `plaintext_backend` because a
-   * renderer eventually wants to say something different for each: one resolves on its own, the
-   * other is terminal until the user sets up a keyring. Not yet rendered anywhere (no code in
-   * `apps/desktop/src` branches on this field at all today) -- the credential UI that would is
-   * #113/#114's work, same as the rest of this field's siblings.
+   * a failure of that one introspection call, not the same thing as `os_encryption_unavailable`'s
+   * own pre-`ready` race (`isEncryptionAvailable()` is checked first and already reports that one
+   * before this accessor is ever reached). "Cannot tell yet, ask again shortly," not "this machine
+   * has no real credential store" -- kept distinct from `plaintext_backend` because a renderer wants
+   * to say something different for each: one may resolve on its own, the other is terminal until the
+   * user sets up a keyring. `account.ts`'s `unavailableReasonLabel` and `DeviceCodeStep.tsx`'s
+   * `UNAVAILABLE_COPY` both already give it that different copy.
    */
   'backend_unknown',
   /** A record exists but cannot be read or decrypted here — a keyring that went away, say. */

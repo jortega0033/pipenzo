@@ -248,9 +248,11 @@ describe('GitHubTokenVault', () => {
     /**
      * Issue #215: a *throwing* accessor is a different fact from one that answers a name this
      * allowlist does not recognise, and conflating the two used to report `plaintext_backend` for
-     * both. `safeStorage`'s own introspection is documented as throwing before Electron's `ready`
-     * event, so a status query racing app startup on Linux should say "cannot tell yet", not "this
-     * machine's backend is plaintext" -- both still refuse to store, but the reason reported differs.
+     * both. A throw here just means this one introspection call failed -- "cannot tell yet", not
+     * "this machine's backend is plaintext" -- both still refuse to store, but the reason reported
+     * differs. (Not the same failure as the "throws before `ready`" case covered below either:
+     * `isEncryptionAvailable()` is checked first and already reports `os_encryption_unavailable`
+     * before this accessor is ever reached.)
      */
     it('reports backend_unknown rather than plaintext_backend when the accessor throws', () => {
       const vault = vaultWith(
@@ -264,9 +266,11 @@ describe('GitHubTokenVault', () => {
       expect(vault.status()).toEqual({ state: 'unavailable', reason: 'backend_unknown' });
       const error = catchError(() => vault.store({ token: TOKEN, login: 'jortega0033' }));
       expect(error).toBeInstanceOf(GitHubTokenVaultError);
-      expect((error as GitHubTokenVaultError).message).not.toBe(
-        'this machine has no OS credential store available, so the token was not stored',
-      );
+      expect((error as GitHubTokenVaultError).code).toBe('encryption_unavailable');
+      // The actual invariant #215 cares about: this message reads as "try again," not as the
+      // `plaintext_backend` wording -- a `.not.toBe` against a *different* reason's message would
+      // stay green even if this one regressed to matching `plaintext_backend`'s.
+      expect((error as GitHubTokenVaultError).message).toContain('try again in a moment');
       // Never stored, same as every other unavailable reason.
       expect(() => readFileSync(join(directory, GITHUB_TOKEN_VAULT_FILE))).toThrow();
     });

@@ -53,13 +53,12 @@ import { GITHUB_LOGIN_PATTERN, GITHUB_TOKEN_SHAPE_PATTERN } from '@agent-dock/sh
  *
  * A third state, honestly distinguished rather than folded into the second (issue #215): the
  * accessor can *exist* and still fail to answer, by throwing rather than by naming an unrecognised
- * backend. `safeStorage`'s own introspection is documented as throwing before Electron's `ready`
- * event, so a status query racing app startup on Linux is not "this machine has no real credential
- * store" — it is "cannot tell yet, ask again shortly." Both still refuse to store (`backend_unknown`
- * is not treated as safe merely for being distinct from `plaintext_backend`), but they are different
- * facts and eventually want different UI: one resolves on its own, the other does not.
+ * backend. That is not "this machine has no real credential store" — it is "cannot tell yet, ask
+ * again shortly," since nothing about a throwing accessor says the backend itself is bad, only that
+ * this one call to ask about it failed. Both still refuse to store (`backend_unknown` is not treated
+ * as safe merely for being distinct from `plaintext_backend`), but they are different facts and
+ * eventually want different UI: one may well resolve on its own, the other does not.
  *
-
  * ## What is deliberately *not* encrypted
  *
  * The login and the timestamp. They are not secrets, and keeping them in cleartext lets
@@ -155,11 +154,13 @@ export type GitHubTokenVaultUnavailableReason =
   /** Linux, `basic_text` backend: a published key, which is not encryption. */
   | 'plaintext_backend'
   /**
-   * Linux only (issue #215): the backend accessor exists but threw rather than naming a backend --
-   * most often `safeStorage`'s own introspection racing app startup, since it is documented as
-   * throwing before Electron's `ready` event. "Cannot tell yet, ask again shortly," not "this
-   * machine has no real credential store" -- distinct from `plaintext_backend` because the two
-   * eventually want different UI, even though both currently refuse to store.
+   * Linux only (issue #215): the backend accessor exists but threw rather than naming a backend.
+   * "Cannot tell yet, ask again shortly," not "this machine has no real credential store" -- distinct
+   * from `plaintext_backend` because the two eventually want different UI, even though both
+   * currently refuse to store. Not the same failure as `os_encryption_unavailable`'s own pre-`ready`
+   * race: `isEncryptionAvailable()` is checked first and already reports that one before this
+   * accessor is ever reached, so a throw here means the accessor itself failed, for whatever reason
+   * a caller cannot further diagnose from this side of it.
    */
   | 'backend_unknown'
   /** A stored record exists but cannot be read or decrypted (wrong user, corrupt file). */
@@ -327,9 +328,11 @@ export class GitHubTokenVault {
       // machine for lacking a function that was never required to exist.
       //
       // A *throwing* accessor is neither of those and is not folded into `plaintext_backend` either
-      // (issue #215): it means the accessor exists and could not answer *yet* -- `safeStorage`'s own
-      // introspection is documented as throwing before Electron's `ready` event -- which is "cannot
-      // tell", not "this machine's backend is plaintext". Both still refuse to store, but they are
+      // (issue #215): it means the accessor exists and could not answer, which is "cannot tell" --
+      // not "this machine's backend is plaintext". Not the same failure as `isEncryptionAvailable()`
+      // throwing before Electron's `ready` event either: that one is caught above, before this
+      // function ever reaches this accessor, so a throw here is the accessor's own, separate
+      // failure. Both `plaintext_backend` and `backend_unknown` still refuse to store, but they are
       // different facts a future UI (#113/#114) will want to say differently.
       const accessor = this.#safeStorage.getSelectedStorageBackend;
       if (typeof accessor === 'function') {
