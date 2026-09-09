@@ -159,4 +159,100 @@ describe('interactive session lifecycle', () => {
     expect(registered).toEqual([]);
     expect(cleanedUp).toEqual([SESSION_ID]);
   });
+
+  /**
+   * Issue #296: the same failure shape `beginShutdown` closes for a real app shutdown, but for a
+   * daemon restart -- which `beginShutdown` cannot be reused for, since it is a one-way latch and a
+   * restart is meant to come back from. `beginPause` aborts an in-flight create and rejects a new
+   * one the same way, and unlike `beginShutdown` it never claims to be "shutting down".
+   */
+  it('aborts admitted creates and rejects new ones during a pause, distinctly from shutdown', async () => {
+    const creates = new PendingInteractiveCreates();
+    let resolveCreate: ((value: string) => void) | undefined;
+    let createSignal: AbortSignal | undefined;
+    const registered: string[] = [];
+    const cleanedUp: string[] = [];
+    const create = creates.run(
+      (signal) =>
+        new Promise<string>((resolve) => {
+          createSignal = signal;
+          resolveCreate = resolve;
+        }),
+      (sessionId) => registered.push(sessionId),
+      (sessionId) => {
+        cleanedUp.push(sessionId);
+      },
+    );
+
+    await Promise.resolve();
+    expect(creates.isPaused).toBe(false);
+    creates.beginPause('daemon is restarting for a credential change');
+    expect(creates.isPaused).toBe(true);
+    expect(creates.isClosing).toBe(false);
+    expect(createSignal?.aborted).toBe(true);
+
+    const waiting = creates.waitForPending(1_000);
+    await expect(
+      creates.run(
+        async () => 'late',
+        () => {},
+      ),
+    ).rejects.toThrow(/restarting/);
+    resolveCreate?.(SESSION_ID);
+
+    await expect(waiting).resolves.toBe(true);
+    await expect(create).rejects.toThrow(/restarting/);
+    expect(registered).toEqual([]);
+    expect(cleanedUp).toEqual([SESSION_ID]);
+  });
+
+  /**
+   * The half `beginShutdown` cannot offer at all: creation must work normally again once the
+   * restart it was paused for finishes, not stay rejected for the rest of the running session.
+   */
+  it('lets creates through again once a pause ends', async () => {
+    const creates = new PendingInteractiveCreates();
+    creates.beginPause('daemon is restarting for a credential change');
+    await expect(
+      creates.run(
+        async () => 'during-pause',
+        () => {},
+      ),
+    ).rejects.toThrow(/restarting/);
+
+    creates.endPause();
+    expect(creates.isPaused).toBe(false);
+
+    const registered: string[] = [];
+    await expect(
+      creates.run(
+        async () => 'after-pause',
+        (sessionId) => registered.push(sessionId),
+      ),
+    ).resolves.toBe('after-pause');
+    expect(registered).toEqual(['after-pause']);
+  });
+
+  /**
+   * `closing` and `paused` are independent booleans in `run`'s guard (`this.closing ||
+   * this.paused`), deliberately not one merged flag -- a real shutdown racing a restart's own
+   * `endPause` (in `restartDaemonForCredentialChange`'s `finally`) must not reopen the gate just
+   * because the restart's own pause happened to end. `isClosing` is permanent regardless of what
+   * `paused` does around it.
+   */
+  it('keeps rejecting once closed even if an unrelated pause ends', async () => {
+    const creates = new PendingInteractiveCreates();
+    creates.beginPause('daemon is restarting for a credential change');
+    creates.beginShutdown();
+    creates.endPause();
+
+    expect(creates.isPaused).toBe(false);
+    expect(creates.isClosing).toBe(true);
+    await expect(
+      creates.run(
+        async () => 'too-late',
+        () => {},
+      ),
+    ).rejects.toThrow(/shutting down/);
+  });
 });

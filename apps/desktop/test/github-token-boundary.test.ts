@@ -893,6 +893,47 @@ describe('nothing on the renderer bridge can obtain the token', () => {
   });
 
   /**
+   * Issue #296: a session *created* during the cancellation window above used to land outside the
+   * snapshot `cancelInFlightDaemonSessions` takes -- no per-session cancel call, then killed
+   * uncancelled along with the child, the same failure shape #224 fixed in a narrower window.
+   * `killDaemon` closes this with `pendingInteractiveCreates.beginShutdown()`, a one-way latch that
+   * cannot be reused here without permanently disabling interactive session creation after the
+   * first credential change -- `beginPause`/`endPause` is the resettable twin built for exactly
+   * this restart. Pinned here: `beginPause` runs before the same `waitForPending` call `killDaemon`
+   * makes (draining/aborting anything already in flight before the cancellation snapshot), and
+   * `endPause` always runs after, even if something above it throws.
+   */
+  it('pauses and later resumes interactive-session creates around the cancellation window', async () => {
+    const main = stripComments(await readElectron('main.ts'));
+    const start = main.indexOf('function restartDaemonForCredentialChange');
+    expect(start).toBeGreaterThan(-1);
+    const body = main.slice(start, main.indexOf('\n}', start));
+
+    const pauseAt = body.indexOf('pendingInteractiveCreates.beginPause(');
+    const waitAt = body.search(/await pendingInteractiveCreates\.waitForPending\(/);
+    const cancelAt = body.search(/await cancelInFlightDaemonSessions\(/);
+    const endPauseAt = body.indexOf('pendingInteractiveCreates.endPause();');
+    expect(pauseAt).toBeGreaterThan(-1);
+    expect(waitAt).toBeGreaterThan(-1);
+    expect(cancelAt).toBeGreaterThan(-1);
+    expect(endPauseAt).toBeGreaterThan(-1);
+    expect(pauseAt).toBeLessThan(waitAt);
+    expect(waitAt).toBeLessThan(cancelAt);
+    expect(cancelAt).toBeLessThan(endPauseAt);
+
+    // `endPause` sits in a `finally`, not merely after the cancellation calls, so an unexpected
+    // throw from either await cannot leave the pause set forever.
+    expect(body).toMatch(/\}\s*finally\s*\{\s*\n[\s\S]{0,300}?pendingInteractiveCreates\.endPause\(\);/);
+
+    // And the same `waitForPending` timeout `killDaemon` uses, not a shorter one that would abandon
+    // a create still in flight sooner than a real shutdown would.
+    const killDaemonStart = main.indexOf('async function killDaemon');
+    const killDaemonBody = main.slice(killDaemonStart, main.indexOf('\n}', killDaemonStart));
+    expect(killDaemonBody).toMatch(/waitForPending\(INTERACTIVE_CREATE_SHUTDOWN_TIMEOUT_MS\)/);
+    expect(body).toMatch(/waitForPending\(INTERACTIVE_CREATE_SHUTDOWN_TIMEOUT_MS\)/);
+  });
+
+  /**
    * The `error`/`exit` ordering in `spawnDaemon` is the riskiest part of the credential-restart
    * work and has now produced two separate ordering bugs, both of which left a latch that refuses
    * every future credential change — or a live daemon nothing will ever kill. Neither bug is
