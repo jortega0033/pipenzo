@@ -487,6 +487,115 @@ describe('ReviewGatesRunner — honesty of the evidence', () => {
   });
 });
 
+describe('ReviewGatesRunner — the lint gate (issue #283)', () => {
+  it('defaults to `pnpm lint`, the same shape build/typecheck default to', async () => {
+    const h = harness({ specTests: true });
+    await h.runner.run(request());
+    expect(h.commandRuns).toContainEqual(['pnpm', 'lint']);
+  });
+
+  it('honours a custom lintCommand, the same way the other three do', async () => {
+    const runs: string[][] = [];
+    const runner = new ReviewGatesRunner({
+      commands: {
+        available: async () => true,
+        run: async (command, args) => {
+          runs.push([command, ...args]);
+          return { stdout: '', stderr: '', code: 0 };
+        },
+      },
+      sessions: { run: async () => ({ sessionId: 's', findings: [], verdict: 'approved' }) },
+      runGit: async (args) => ({
+        stdout: args.includes('--numstat') ? NUMSTAT : 'diff',
+        stderr: '',
+        code: 0,
+      }),
+      lintCommand: ['eslint', '.'],
+    });
+    await runner.run(request());
+    expect(runs).toContainEqual(['eslint', '.']);
+  });
+
+  /**
+   * Unlike build/typecheck -- commands this runner's own repo always defines -- not every
+   * repository defines a lint script at all. pnpm's own `ERR_PNPM_NO_SCRIPT` marker distinguishes
+   * that from a real lint regression, so an absent script is recorded the same honest way an
+   * uninstalled gitleaks/semgrep binary is: skipped, with the reason, never as a failure the repo
+   * did nothing to earn.
+   */
+  it('records a repo with no lint script as skipped, not failed', async () => {
+    const h = harness({
+      specTests: true,
+      commandResults: {
+        pnpm: {
+          stdout: '',
+          stderr: ' ERR_PNPM_NO_SCRIPT  Missing script: lint\n\nCommand "lint" not found.',
+          code: 1,
+        },
+      },
+    });
+    const report = await h.runner.run(request());
+    const gate = report.deterministic.find((entry) => entry.id === 'lint');
+    expect(gate?.status).toBe('skipped');
+    expect(gate?.summary).toContain('no lint script');
+    // Build and typecheck share the same executable and the same failing result in this harness,
+    // so this pins that the ERR_PNPM_NO_SCRIPT carve-out is scoped to `lint` alone -- a real build
+    // failure must still fail, not be forgiven by the same marker check.
+    expect(report.deterministic.find((entry) => entry.id === 'build')?.status).toBe('failed');
+    expect(report.deterministic.find((entry) => entry.id === 'typecheck')?.status).toBe('failed');
+  });
+
+  /**
+   * Caught by review: checking merely whether `ERR_PNPM_NO_SCRIPT` appears *anywhere* in the
+   * combined output would let a real regression hide behind it -- a caller-configured recursive
+   * `lintCommand` (`pnpm -r lint`) could plausibly mix one workspace member's missing script with
+   * another member's real violation in one run. Requiring the marker to *lead* the output (verified
+   * empirically: a genuinely missing, non-recursive script prints nothing else) means a real
+   * failure that happens to arrive alongside that marker is still reported as the failure it is --
+   * the exact silent-downgrade issue #196 was about, which this whole gate exists to catch.
+   */
+  it('does not let a real failure hide behind a missing-script marker elsewhere in the output', async () => {
+    const h = harness({
+      specTests: true,
+      commandResults: {
+        pnpm: {
+          stdout: 'packages/other: 1:1 error no-unused-vars\n',
+          stderr: 'packages/missing: ERR_PNPM_NO_SCRIPT  Missing script: lint',
+          code: 1,
+        },
+      },
+    });
+    const report = await h.runner.run(request());
+    const gate = report.deterministic.find((entry) => entry.id === 'lint');
+    expect(gate?.status).toBe('failed');
+    expect(gate?.detail).toContain('no-unused-vars');
+  });
+
+  it('fails on a real lint regression, distinctly from a missing script', async () => {
+    const runner = new ReviewGatesRunner({
+      commands: {
+        available: async () => true,
+        run: async (command) =>
+          command === 'eslint'
+            ? { stdout: 'src/x.ts\n  1:1  error  no-unused-vars', stderr: '', code: 1 }
+            : { stdout: '', stderr: '', code: 0 },
+      },
+      sessions: { run: async () => ({ sessionId: 's', findings: [], verdict: 'approved' }) },
+      runGit: async (args) => ({
+        stdout: args.includes('--numstat') ? NUMSTAT : 'diff',
+        stderr: '',
+        code: 0,
+      }),
+      lintCommand: ['eslint', '.'],
+    });
+    const report = await runner.run(request());
+    const gate = report.deterministic.find((entry) => entry.id === 'lint');
+    expect(gate?.status).toBe('failed');
+    expect(gate?.detail).toContain('no-unused-vars');
+    expect(report.outcome).toBe('deterministic_failed');
+  });
+});
+
 describe('ReviewGatesRunner — separation of the LLM passes', () => {
   it('never gives the reviewer the implementer’s transcript', async () => {
     const h = harness({ specTests: true });

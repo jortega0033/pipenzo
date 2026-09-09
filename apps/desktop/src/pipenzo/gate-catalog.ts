@@ -3,11 +3,12 @@ import { DETERMINISTIC_GATE_IDS, type DeterministicGateId } from '@agent-dock/sh
 /**
  * The deterministic gate catalogue the Models & gates screen renders (issue #123).
  *
- * Models.dc.html shows **five** rows; `DETERMINISTIC_GATE_IDS` has **six** ids. That is not a
- * discrepancy to reconcile by picking one — the artboard says which it is, in the panel's own help
- * text: *"the same five, grouped for reading rather than for configuring"*. `build` and
- * `typecheck` are one row because a human reads them as one thing, and they stay two ids because
- * the runner reports them separately and a build failure is not a type error.
+ * Models.dc.html shows **five** rows; `DETERMINISTIC_GATE_IDS` has **seven** ids (issue #283 added
+ * `lint` as the third). That is not a discrepancy to reconcile by picking one — the artboard says
+ * which it is, in the panel's own help text: *"the same five, grouped for reading rather than for
+ * configuring"*. `build`, `typecheck` and `lint` are one row because a human reads them as one
+ * thing, and they stay three ids because the runner reports them separately and a build failure is
+ * not a type error, and neither is a lint regression.
  *
  * So the rows are **derived from the shared constant**, not typed out beside it. A hardcoded list
  * would drift the moment a seventh gate landed, and it would drift silently — a panel claiming to
@@ -35,10 +36,10 @@ export interface GateCatalogueRow {
  */
 export const GATE_CATALOGUE: readonly GateCatalogueRow[] = Object.freeze([
   {
-    key: 'build+typecheck',
-    ids: ['build', 'typecheck'],
-    name: 'Build and typecheck',
-    description: 'pnpm build, inside the ticket worktree',
+    key: 'build+typecheck+lint',
+    ids: ['build', 'typecheck', 'lint'],
+    name: 'Build, typecheck and lint',
+    description: 'pnpm build, pnpm typecheck and pnpm lint, inside the ticket worktree',
   },
   {
     key: 'spec_tests',

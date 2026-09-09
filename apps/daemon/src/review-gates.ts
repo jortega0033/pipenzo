@@ -168,6 +168,11 @@ export interface ReviewGatesOptions {
   buildCommand?: readonly string[];
   typecheckCommand?: readonly string[];
   testCommand?: readonly string[];
+  /** The repository's own lint command (issue #283), same shape as the other three. Unlike
+   * build/typecheck -- which every repo this runner reviews is expected to define -- not every
+   * repository defines a lint script, so a missing one is reported `skipped`, not `failed`; see
+   * `#runGate`'s lint branch. */
+  lintCommand?: readonly string[];
 }
 
 export interface ReviewRequest {
@@ -198,6 +203,20 @@ export interface ReviewRequest {
 const DEFAULT_BUILD_COMMAND = ['pnpm', 'build'] as const;
 const DEFAULT_TYPECHECK_COMMAND = ['pnpm', 'typecheck'] as const;
 const DEFAULT_TEST_COMMAND = ['pnpm', 'test'] as const;
+const DEFAULT_LINT_COMMAND = ['pnpm', 'lint'] as const;
+/** pnpm's own error marker for "this script is not defined", stable across its 8/9/10 releases --
+ * used to tell a repository that simply has no lint script apart from a real lint failure (issue
+ * #283). Scoped to the `lint` gate only: build/typecheck are commands this runner's own repo
+ * always defines, so a missing script there stays a real, reportable failure.
+ *
+ * Checked as a *prefix* of the combined output, not merely present anywhere in it -- verified
+ * empirically that pnpm prints nothing else when a plain, non-recursive script is genuinely
+ * missing (this marker line is the entire output). A caller-configured recursive `lintCommand`
+ * (e.g. `pnpm -r lint`) could plausibly mix one workspace member's missing script with another's
+ * real violation in the same run; requiring the marker to lead the output means that combination
+ * is reported as the real failure it partly is, rather than silently downgraded to `skipped` --
+ * exactly the failure shape issue #196 was about, which this whole gate exists to catch. */
+const PNPM_MISSING_SCRIPT_MARKER = 'ERR_PNPM_NO_SCRIPT';
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
 const MAX_DETAIL = 20_000;
 const MAX_DIFF_CHARS = 400_000;
@@ -218,6 +237,7 @@ export class ReviewGatesRunner {
   readonly #build: readonly string[];
   readonly #typecheck: readonly string[];
   readonly #test: readonly string[];
+  readonly #lint: readonly string[];
 
   constructor(options: ReviewGatesOptions) {
     this.#commands = options.commands;
@@ -227,6 +247,7 @@ export class ReviewGatesRunner {
     this.#build = options.buildCommand ?? DEFAULT_BUILD_COMMAND;
     this.#typecheck = options.typecheckCommand ?? DEFAULT_TYPECHECK_COMMAND;
     this.#test = options.testCommand ?? DEFAULT_TEST_COMMAND;
+    this.#lint = options.lintCommand ?? DEFAULT_LINT_COMMAND;
   }
 
   /**
@@ -404,11 +425,13 @@ export class ReviewGatesRunner {
         ? this.#build
         : id === 'typecheck'
           ? this.#typecheck
-          : id === 'spec_tests'
-            ? this.#test
-            : id === 'gitleaks'
-              ? ['gitleaks', 'detect', '--source', '.', '--no-git', '--redact']
-              : ['semgrep', '--error', '--quiet', '--config', 'auto', '.'];
+          : id === 'lint'
+            ? this.#lint
+            : id === 'spec_tests'
+              ? this.#test
+              : id === 'gitleaks'
+                ? ['gitleaks', 'detect', '--source', '.', '--no-git', '--redact']
+                : ['semgrep', '--error', '--quiet', '--config', 'auto', '.'];
 
     const executable = command[0];
     if (!executable) return finish('errored', `${id} has no command configured`);
@@ -419,9 +442,19 @@ export class ReviewGatesRunner {
     }
 
     const result = await this.#commands.run(executable, command.slice(1), request.worktreePath);
-    return result.code === 0
-      ? finish('passed', `${executable} ${command.slice(1).join(' ')} succeeded`)
-      : finish('failed', `${executable} exited ${result.code}`, gateDetail(result));
+    if (result.code === 0) {
+      return finish('passed', `${executable} ${command.slice(1).join(' ')} succeeded`);
+    }
+    if (
+      id === 'lint' &&
+      `${result.stdout}\n${result.stderr}`.trim().startsWith(PNPM_MISSING_SCRIPT_MARKER)
+    ) {
+      // Not every repository defines a lint script (issue #283), unlike build/typecheck, which
+      // this runner's own repo always does -- recorded as absent, the same honest way an
+      // uninstalled gitleaks/semgrep binary is, never as a failure the repo did nothing to earn.
+      return finish('skipped', 'no lint script is defined in this repository; this check did not run');
+    }
+    return finish('failed', `${executable} exited ${result.code}`, gateDetail(result));
   }
 
   /**

@@ -33,6 +33,7 @@ export function modelTierRank(tier: ModelTier): number {
 export const DETERMINISTIC_GATE_IDS = [
   'build',
   'typecheck',
+  'lint',
   'spec_tests',
   'gitleaks',
   'semgrep',

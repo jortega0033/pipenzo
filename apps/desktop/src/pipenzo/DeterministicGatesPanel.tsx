@@ -19,8 +19,10 @@ import { GATE_CATALOGUE, GATE_HONESTY_RULES } from './gate-catalog.js';
  *   no configuration that turns one off" is then a property of the component's signature rather
  *   than of its current implementation.
  * - **It does not hardcode the gate list.** Rows come from `GATE_CATALOGUE`, which is derived from
- *   `DETERMINISTIC_GATE_IDS`, so a seventh gate cannot land without this panel either showing it
- *   or failing `catalogueCoverage()`.
+ *   `DETERMINISTIC_GATE_IDS`, so a new gate cannot land without this panel either showing it or
+ *   failing `catalogueCoverage()` — issue #283's `lint` gate is exactly that: it joined the
+ *   existing "Build and typecheck" row rather than adding a sixth, since `pnpm lint` is read the
+ *   same way build/typecheck already were, not as a separate machine-verified concern.
  */
 export function DeterministicGatesPanel() {
   return (
@@ -56,9 +58,9 @@ export function DeterministicGatesPanel() {
         <span className="f-help">
           In the diff view these render as the <b>Machine-verified</b> block, where gitleaks and
           Semgrep report on one line — the same five, grouped for reading rather than for
-          configuring. Nothing else joins that block: a repo’s own lint runs in its CI and can move
-          a ticket to <span className="mono">pipenzo:ci-failed</span>, but it is not one of
-          pipenzo’s gates and never appears in the gate count.
+          configuring. Build, typecheck and lint report as one row for the same reason: a human
+          reads them as one machine-verified pass, even though the runner checks each separately
+          and any one of the three can block a ticket on its own.
         </span>
       </div>
 
