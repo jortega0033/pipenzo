@@ -347,6 +347,25 @@ function spawnDaemon(): void {
       // the next child; what it must not do is leave a *dead* daemon's last-confirmed (or never-
       // confirmed) source on display after an ordinary, non-respawning crash.
       daemonTokenSource = 'none';
+      // Issue #304: released here too, not only in `restartDaemonForCredentialChange`'s own
+      // `finally` -- that `finally` cannot run until this same function's graceful
+      // `waitForPending`/`cancelInFlightDaemonSessions` chain against `child` finishes, up to
+      // ~41s+20s, but `DAEMON_CREDENTIAL_RESTART_TIMEOUT_MS`'s watchdog (15s, see that function)
+      // can `SIGKILL` this exact `child` -- and land here -- long before that chain gives up on a
+      // daemon that is already dead. Left as the finally's job alone, a SIGKILL-forced restart
+      // could reject every interactive-session create with "daemon is restarting" for tens of
+      // seconds after a brand new daemon was already ready to serve them.
+      //
+      // Safe to release *here specifically*, immediately after `client` above is cleared rather
+      // than any earlier: `createTrackedInteractiveSession` refuses every create with `!client`
+      // before it ever reaches `pendingInteractiveCreates.run`, so from this line until the next
+      // daemon's own `client` is assigned, nothing can be admitted at all, paused or not -- the
+      // #296 race (a create admitted mid-cancellation, missed by `cancelInFlightDaemonSessions`'s
+      // snapshot, killed uncancelled alongside `child`) stays closed. Ending the pause any earlier
+      // -- inside the watchdog's own `setTimeout` callback, before `child`'s `exit` event and this
+      // clearing have actually run -- would reopen exactly that race against the dying `child`
+      // instead of closing it.
+      if (wasAwaitingRespawn) pendingInteractiveCreates.endPause();
     }
     // Teardown is for *this* child's state. It runs whether or not the daemon ever became ready —
     // every collection below is empty in that case, so clearing costs nothing, and skipping it on
@@ -1066,15 +1085,26 @@ function gitHubConnectionStatus(): PipenzoGitHubConnectionV1 {
  * `beginShutdown` cannot be reused for this: it is a one-way latch, correct for a real app
  * shutdown but not for a restart the daemon is meant to come back from. `PendingInteractiveCreates`'
  * `beginPause`/`endPause` (issue #296) is the resettable twin built for exactly this, aborting
- * every in-flight create and rejecting new ones only for the span between here and this function's
- * own `child.kill()`, not for the rest of the running session.
+ * every in-flight create and rejecting new ones for the span between here and either this
+ * function's own `child.kill()`, or -- if the hard-kill timer below wins the race with a `SIGKILL`
+ * first -- the earlier release in `spawnDaemon`'s `exit` handler (issue #304, see that release's own
+ * comment for why ending it there is still safe). Never for the rest of the running session either
+ * way.
  *
  * The hard-kill timer below is armed **before** attempting the cancellation, not after: this
  * function's own timeout has always been the ceiling on "how long can a credential change leave the
  * UI on `connecting`," and cancellation is a best-effort grace period that ceiling should bound, not
  * a second wait stacked on top of it. `credentialRestartPending` and `respawnAfterExit` stay armed
  * for the whole window either way, so a daemon that happens to crash on its own during it is
- * correctly folded into this restart rather than reported as an unexpected exit.
+ * correctly folded into this restart rather than reported as an unexpected exit. **The pause is not
+ * bounded by this same ceiling on its own, though** -- left to only this function's own `finally`,
+ * a `SIGKILL` here could leave interactive-session creation rejected for as long as the graceful
+ * `waitForPending`/`cancelInFlightDaemonSessions` chain below takes to give up on a `child` that is
+ * already dead (up to roughly `INTERACTIVE_CREATE_SHUTDOWN_TIMEOUT_MS` +
+ * `DAEMON_CANCELLATION_TIMEOUT_MS`), well after a replacement daemon could already be ready. Issue
+ * #304's release in `spawnDaemon`'s `exit` handler is what actually bounds that; this function's own
+ * `finally` below is the backstop for every path that never reaches that handler at all (an
+ * unexpected throw before `child.kill()`, for one).
  */
 async function restartDaemonForCredentialChange(): Promise<void> {
   // A restart during shutdown is how an orphaned, credential-holding daemon outlives the app.
@@ -1113,7 +1143,10 @@ async function restartDaemonForCredentialChange(): Promise<void> {
     // Always released, even on an unexpected throw above -- a pause that outlives this function
     // would silently disable interactive session creation until the *next* credential change
     // happens to call `beginPause` again, which is exactly the permanent-latch bug this resettable
-    // form exists to avoid.
+    // form exists to avoid. `endPause` is idempotent, so this is a no-op, not a double-release, on
+    // the path where the hard-kill timer's `SIGKILL` already ended the pause earlier, from
+    // `spawnDaemon`'s `exit` handler (issue #304) -- this call is the backstop for every other path,
+    // not the only one that matters.
     pendingInteractiveCreates.endPause();
   }
 }
