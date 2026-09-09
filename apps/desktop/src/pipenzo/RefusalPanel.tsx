@@ -1,4 +1,8 @@
-import { PIPENZO_DIFF_SIZE_THRESHOLDS, type RefineEstimateV1 } from '@agent-dock/shared';
+import {
+  PIPENZO_DIFF_SIZE_THRESHOLDS,
+  type RefineEstimateV1,
+  type RefineProposedSplitPartV1,
+} from '@agent-dock/shared';
 import { ApprovalCard, ApprovalP, RefCell, RefGrid } from '../components/primitives/ApprovalCard.js';
 import { Button } from '../components/primitives/Button.js';
 import { Chip } from '../components/primitives/Chip.js';
@@ -26,9 +30,12 @@ const { onePrMaxLines, onePrMaxFiles, stackMaxLines, stackMaxFiles } = PIPENZO_D
  * - **No OS-notification foot line.** Nothing in this codebase sends an OS notification for a
  *   refusal yet; the canvas's own foot slot is left unrendered rather than filled with a time that
  *   does not exist.
- * - **No proposed split unless one was actually generated.** Nothing in this codebase produces a
- *   decomposition today (#271 is the follow-up that would) -- `proposedSplit` is optional, and the
- *   `Split` block renders only when the caller has real rows to show.
+ * - **No proposed split unless one was actually generated.** `RefineSpecV1.proposedSplit`
+ *   (`@agent-dock/shared`, issue #271) exists as a schema field now, but nothing in
+ *   `refine-subagent.ts`'s prompt asks a provider to populate it yet -- that is real product
+ *   judgment about prompt content and session design #271 deliberately left undecided, not schema
+ *   work. So `proposedSplit` stays optional here too, and the `Split` block renders only when the
+ *   caller actually has rows to show, exactly as before this field existed anywhere.
  * - **"Open on GitHub" is a real link, not a stubbed callback.** `apps/desktop/electron/main.ts`'s
  *   `setWindowOpenHandler` already routes any `https:` target through the same validated
  *   `openAllowedExternalUrl` gate every other "open externally" path in this app uses -- so a plain
@@ -51,12 +58,11 @@ export function RefusalPanel({
   repo: string;
   issueNumber: number;
   estimate: RefineEstimateV1;
-  /** Absent until #271 exists to produce one. */
-  proposedSplit?: readonly {
-    summary: string;
-    changedLines: number;
-    filesTouched: number;
-  }[];
+  /**
+   * The shared schema's own shape (`RefineProposedSplitPartV1`), not a hand-rolled copy of it, so
+   * the two cannot drift. Absent for every real spec today -- see the doc comment above.
+   */
+  proposedSplit?: readonly RefineProposedSplitPartV1[];
   onRetryRefine?: () => void;
 }) {
   const trip = trippedBy(estimate);

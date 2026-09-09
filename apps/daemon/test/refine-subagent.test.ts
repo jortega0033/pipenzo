@@ -305,6 +305,36 @@ describe('the spec contract', () => {
     expect(syncRefineError(() => parseRefineSpec(extra)).code).toBe('spec_invalid');
   });
 
+  /**
+   * Issue #271: `proposedSplit` is optional on both sides and absent from `validSpec()`'s own
+   * fixture, so the test above already proves the two schemas agree when it's missing. This proves
+   * they agree when it's present too, and that both reject an empty array (a "split" into zero parts
+   * is not a split) and a malformed part the same way.
+   */
+  it('agrees on the optional proposedSplit field too', () => {
+    const withSplit = validSpec({
+      proposedSplit: [
+        { summary: 'Extract the shared validation helper', changedLines: 80, filesTouched: 2 },
+        { summary: 'Wire the new endpoint through it', changedLines: 140, filesTouched: 5 },
+      ],
+    });
+    expect(validateStructuredOutput(REFINE_SPEC_V1_JSON_SCHEMA, withSplit)).toMatchObject({
+      valid: true,
+    });
+    expect(() => parseRefineSpec(withSplit)).not.toThrow();
+
+    const emptySplit = validSpec({ proposedSplit: [] });
+    expect(validateStructuredOutput(REFINE_SPEC_V1_JSON_SCHEMA, emptySplit).valid).toBe(false);
+    expect(syncRefineError(() => parseRefineSpec(emptySplit)).code).toBe('spec_invalid');
+
+    const malformedPart = validSpec({
+      // @ts-expect-error -- deliberately missing `filesTouched` to exercise the nested-object check
+      proposedSplit: [{ summary: 'Missing a required field', changedLines: 10 }],
+    });
+    expect(validateStructuredOutput(REFINE_SPEC_V1_JSON_SCHEMA, malformedPart).valid).toBe(false);
+    expect(syncRefineError(() => parseRefineSpec(malformedPart)).code).toBe('spec_invalid');
+  });
+
   it('enforces the EARS template for each declared kind', () => {
     const bad = validSpec({
       acceptanceCriteria: [
