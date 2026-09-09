@@ -51,6 +51,14 @@ import { GITHUB_LOGIN_PATTERN, GITHUB_TOKEN_SHAPE_PATTERN } from '@agent-dock/sh
  * See `encryptionAvailability()` for why that fallback is still the better answer than refusing
  * the whole platform.
  *
+ * A third state, honestly distinguished rather than folded into the second (issue #215): the
+ * accessor can *exist* and still fail to answer, by throwing rather than by naming an unrecognised
+ * backend. That is not "this machine has no real credential store" — it is "cannot tell yet, ask
+ * again shortly," since nothing about a throwing accessor says the backend itself is bad, only that
+ * this one call to ask about it failed. Both still refuse to store (`backend_unknown` is not treated
+ * as safe merely for being distinct from `plaintext_backend`), but they are different facts and
+ * eventually want different UI: one may well resolve on its own, the other does not.
+ *
  * ## What is deliberately *not* encrypted
  *
  * The login and the timestamp. They are not secrets, and keeping them in cleartext lets
@@ -131,10 +139,11 @@ export interface SafeStorageLike {
    *
    * Typed as possibly answering `undefined` even though Electron's own declaration does not. This
    * is a hand-written shim over another process's API, not a contract this module can enforce, and
-   * the code that reads it has to handle an unhelpful answer anyway (it is treated as
-   * `plaintext_backend`, the same as an unrecognised name). Declaring the narrower `string` here
-   * would only prevent a test from constructing the case the implementation deliberately defends
-   * against.
+   * the code that reads it has to handle an unhelpful answer anyway -- an `undefined` answer is
+   * treated as `plaintext_backend`, the same as an unrecognised name, while a *throwing* accessor is
+   * `backend_unknown` instead (issue #215): the two are different facts, even though neither leaves
+   * the vault able to say what backend it has. Declaring the narrower `string` here would only
+   * prevent a test from constructing the case the implementation deliberately defends against.
    */
   getSelectedStorageBackend?(): string | undefined;
 }
@@ -144,6 +153,16 @@ export type GitHubTokenVaultUnavailableReason =
   | 'os_encryption_unavailable'
   /** Linux, `basic_text` backend: a published key, which is not encryption. */
   | 'plaintext_backend'
+  /**
+   * Linux only (issue #215): the backend accessor exists but threw rather than naming a backend.
+   * "Cannot tell yet, ask again shortly," not "this machine has no real credential store" -- distinct
+   * from `plaintext_backend` because the two eventually want different UI, even though both
+   * currently refuse to store. Not the same failure as `os_encryption_unavailable`'s own pre-`ready`
+   * race: `isEncryptionAvailable()` is checked first and already reports that one before this
+   * accessor is ever reached, so a throw here means the accessor itself failed, for whatever reason
+   * a caller cannot further diagnose from this side of it.
+   */
+  | 'backend_unknown'
   /** A stored record exists but cannot be read or decrypted (wrong user, corrupt file). */
   | 'unreadable';
 
@@ -298,27 +317,32 @@ export class GitHubTokenVault {
       // because an introspection call does not exist would make the vault unusable on the platform,
       // which is a worse answer than trusting the `isEncryptionAvailable()` the platform does give.
       //
-      // A backend the accessor reports but cannot name *is* a failure. `basic_text` is a published
-      // constant key; `unknown` means Electron could not identify the backend at all, which is the
-      // same epistemic state as the missing accessor except that here the accessor exists and is
-      // telling us it does not know. A credential store that cannot say what it is, is not one to
-      // claim protection from.
+      // A backend the accessor reports but cannot name *is* a failure -- `basic_text` is a published
+      // constant key, and an unrecognised name means the accessor answered something this allowlist
+      // does not vouch for. Both are `plaintext_backend`: a credential store that cannot say what it
+      // is, is not one to claim protection from.
       //
       // Which is why presence is tested on the *function*, not on its return value. Reading the
-      // answer through `?.()` collapses "there is no accessor" and "the accessor answered
-      // `undefined`" — and a throwing accessor — into one `undefined`, and then the allowlist check
-      // below skips all three. That takes the two cases this comment calls failures and gives them
-      // the exemption written for the third. `REAL_LINUX_BACKENDS` is an allowlist precisely so an
-      // unrecognised answer fails closed; an unrecognised answer includes no answer at all.
+      // answer through `?.()` would collapse "there is no accessor" into the same `undefined` as
+      // "the accessor answered `undefined`", and the allowlist check below would then refuse a
+      // machine for lacking a function that was never required to exist.
+      //
+      // A *throwing* accessor is neither of those and is not folded into `plaintext_backend` either
+      // (issue #215): it means the accessor exists and could not answer, which is "cannot tell" --
+      // not "this machine's backend is plaintext". Not the same failure as `isEncryptionAvailable()`
+      // throwing before Electron's `ready` event either: that one is caught above, before this
+      // function ever reaches this accessor, so a throw here is the accessor's own, separate
+      // failure. Both `plaintext_backend` and `backend_unknown` still refuse to store, but they are
+      // different facts a future UI (#113/#114) will want to say differently.
       const accessor = this.#safeStorage.getSelectedStorageBackend;
       if (typeof accessor === 'function') {
-        let backend: string | undefined;
+        let backend: string;
         try {
-          backend = accessor.call(this.#safeStorage);
+          backend = accessor.call(this.#safeStorage) ?? '';
         } catch {
-          backend = undefined;
+          return { available: false, reason: 'backend_unknown' };
         }
-        if (!REAL_LINUX_BACKENDS.has(backend ?? '')) {
+        if (!REAL_LINUX_BACKENDS.has(backend)) {
           return { available: false, reason: 'plaintext_backend' };
         }
       }
@@ -336,12 +360,17 @@ export class GitHubTokenVault {
   store(input: { token: string; login: string }): GitHubTokenVaultStatus {
     const availability = this.encryptionAvailability();
     if (!availability.available) {
-      throw new GitHubTokenVaultError(
-        'encryption_unavailable',
+      // Refusing to store is correct for all three reasons -- there is no safe place to put the
+      // token yet in any of them -- but "cannot tell yet, try again" (issue #215) is a genuinely
+      // different instruction from "set up a keyring", so the message says which one this is rather
+      // than defaulting `backend_unknown` into the same wording as `os_encryption_unavailable`.
+      const message =
         availability.reason === 'plaintext_backend'
           ? 'this machine has no real OS credential store (Electron selected its plaintext backend), so the token was not stored'
-          : 'this machine has no OS credential store available, so the token was not stored',
-      );
+          : availability.reason === 'backend_unknown'
+            ? 'could not yet confirm this machine has a real OS credential store; the token was not stored -- try again in a moment'
+            : 'this machine has no OS credential store available, so the token was not stored';
+      throw new GitHubTokenVaultError('encryption_unavailable', message);
     }
     assertToken(input.token);
     assertLogin(input.login);

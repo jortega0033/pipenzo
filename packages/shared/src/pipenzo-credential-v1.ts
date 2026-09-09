@@ -66,6 +66,17 @@ export const pipenzoCredentialUnavailableReasonV1Schema = z.enum([
    * than encryption. Refused rather than used, so a token is never stored under a false claim.
    */
   'plaintext_backend',
+  /**
+   * Linux only (issue #215): the backend accessor exists but threw rather than naming a backend --
+   * a failure of that one introspection call, not the same thing as `os_encryption_unavailable`'s
+   * own pre-`ready` race (`isEncryptionAvailable()` is checked first and already reports that one
+   * before this accessor is ever reached). "Cannot tell yet, ask again shortly," not "this machine
+   * has no real credential store" -- kept distinct from `plaintext_backend` because a renderer wants
+   * to say something different for each: one may resolve on its own, the other is terminal until the
+   * user sets up a keyring. `account.ts`'s `unavailableReasonLabel` and `DeviceCodeStep.tsx`'s
+   * `UNAVAILABLE_COPY` both already give it that different copy.
+   */
+  'backend_unknown',
   /** A record exists but cannot be read or decrypted here — a keyring that went away, say. */
   'unreadable',
 ]);
