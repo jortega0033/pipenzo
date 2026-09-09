@@ -54,7 +54,9 @@ function run(
 export class ExecFileGateCommands implements GateCommandRunner {
   readonly #cwd: string;
   readonly #timeoutMs: number;
-  /** One probe per binary per daemon lifetime: six gates should not spawn six `--version` runs. */
+  /** One probe per binary per daemon lifetime: the deterministic gates should not spawn one
+   * `--version` run each -- several (build, typecheck and, since issue #283, lint) already share
+   * the same `pnpm` executable and this cache is what keeps that to one probe. */
   readonly #probes = new Map<string, Promise<boolean>>();
 
   constructor(options: { probeCwd: string; timeoutMs?: number }) {

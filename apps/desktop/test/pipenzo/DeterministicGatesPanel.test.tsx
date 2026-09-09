@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { DETERMINISTIC_GATE_IDS } from '@agent-dock/shared';
 import { DeterministicGatesPanel } from '../../src/pipenzo/DeterministicGatesPanel.js';
@@ -13,15 +13,15 @@ import { GATE_CATALOGUE, catalogueCoverage } from '../../src/pipenzo/gate-catalo
 
 describe('gate catalogue', () => {
   /**
-   * Models.dc.html shows five rows; `DETERMINISTIC_GATE_IDS` has six ids. That is deliberate and
-   * the artboard says so ("the same five, grouped for reading rather than for configuring") --
-   * `build` and `typecheck` read as one thing and stay two ids because the runner reports them
-   * separately.
+   * Models.dc.html shows five rows; `DETERMINISTIC_GATE_IDS` has seven ids (issue #283 added
+   * `lint` as a third id folded into the first row). That is deliberate and the artboard says so
+   * ("the same five, grouped for reading rather than for configuring") -- `build`, `typecheck` and
+   * `lint` read as one thing and stay three ids because the runner reports them separately.
    */
-  it('groups the six gate ids into the five rows the canvas shows', () => {
+  it('groups the seven gate ids into the five rows the canvas shows', () => {
     expect(GATE_CATALOGUE).toHaveLength(5);
-    expect(DETERMINISTIC_GATE_IDS).toHaveLength(6);
-    expect(GATE_CATALOGUE[0]?.ids).toEqual(['build', 'typecheck']);
+    expect(DETERMINISTIC_GATE_IDS).toHaveLength(7);
+    expect(GATE_CATALOGUE[0]?.ids).toEqual(['build', 'typecheck', 'lint']);
   });
 
   /**
@@ -38,7 +38,7 @@ describe('DeterministicGatesPanel', () => {
     const { container } = render(<DeterministicGatesPanel />);
     const names = [...container.querySelectorAll('.gate-name')];
     expect(names.map((el) => el.textContent)).toEqual([
-      'Build and typecheck',
+      'Build, typecheck and lint',
       'Spec-generated tests',
       'gitleaks',
       'Semgrep',
@@ -92,11 +92,16 @@ describe('DeterministicGatesPanel', () => {
     );
   });
 
-  /** The gate count is a claim about what does and does not gate a ticket. */
-  it('says a repo’s own lint is not one of pipenzo’s gates', () => {
+  /**
+   * Issue #283: lint joined the deterministic set, folded into the build/typecheck row rather than
+   * a new one -- the help text must say why they're grouped, not (as it used to) claim lint is not
+   * one of pipenzo's gates at all.
+   */
+  it('explains why build, typecheck and lint share one row', () => {
     const { container } = render(<DeterministicGatesPanel />);
     const help = container.querySelector('.f-help');
-    expect(within(help as HTMLElement).getByText('pipenzo:ci-failed')).toBeInTheDocument();
-    expect(help?.textContent).toContain('never appears in the gate count');
+    expect(help?.textContent).toContain('Build, typecheck and lint report as one row');
+    expect(help?.textContent).not.toContain('never appears in the gate count');
+    expect(help?.textContent).not.toContain('not one of');
   });
 });
