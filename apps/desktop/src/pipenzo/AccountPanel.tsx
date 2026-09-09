@@ -184,6 +184,25 @@ export function AccountPanel() {
               </Notice>
             )}
 
+            {/* Issue #291: distinct from the ordinary development-fallback notice below on
+                purpose. Both cases start from the daemon finding a credential in its own process
+                environment, but here main never sent one -- `buildDaemonEnvironment`'s strip of
+                that variable should have removed it and did not, so this is a real, unintended
+                exposure, not the expected dev-build file. Naming it the same as the file (as this
+                code did before #291) would hide exactly the credential-boundary failure this
+                reporting chain exists to catch. */}
+            {connection.source === 'environment_leak' && (
+              <Notice tone="danger" icon="warning" title="Unexpected credential in this daemon">
+                This daemon is running on a GitHub token found in its own process environment that
+                Pipenzo never intended to send it — the safeguard that strips these before spawning
+                should have caught this and did not. Treat this token as exposed: revoke it at{' '}
+                <a href={GITHUB_AUTHORIZED_APPS_URL} target="_blank" rel="noreferrer">
+                  github.com/settings/applications
+                </a>
+                , then restart Pipenzo.
+              </Notice>
+            )}
+
             {isRunningOnInheritedToken(connection) && (
               <Notice
                 tone="warn"

@@ -1,5 +1,9 @@
 import { inspect } from 'node:util';
-import { GITHUB_TOKEN_SHAPE_PATTERN, type DaemonCredentialSourceV1 } from '@agent-dock/shared';
+import {
+  GITHUB_TOKEN_SHAPE_PATTERN,
+  type DaemonCredentialSourceV1,
+  type PipenzoCredentialSourceV1,
+} from '@agent-dock/shared';
 import { resolveDaemonEntry, type ResolveDaemonEntryInput } from './resolve-daemon-entry.js';
 
 /**
@@ -212,23 +216,32 @@ export function resolveDaemonGitHubToken(input: {
  *
  * - `reported === 'injected'` means a real credential arrived over stdin, and in the shipped app
  *   that credential can only be the one main just attempted to send -- so `intended` is confirmed
- *   and returned unchanged.
- * - `reported === 'environment'` means the daemon fell back to reading its own `process.env`,
- *   which `buildDaemonEnvironment` always strips before spawning an Electron-managed daemon. Seeing
- *   it here means that strip did not hold, so it is reported honestly as `environment` rather than
- *   trusting `intended`.
+ *   and returned unchanged. This is also the path an *expected* `intended === 'environment'` takes:
+ *   issue #212 moved the development fallback from an inherited variable to a file, and main sends
+ *   its contents over stdin exactly like a vault token -- `github-credential.ts`'s own doc comment
+ *   is explicit that this "never enters any process's environment at all" any more. So a healthy
+ *   file-based fallback is confirmed as `'injected'`, not `'environment'`.
+ * - `reported === 'environment'` means the daemon fell back to reading its own `process.env`
+ *   instead -- i.e. nothing arrived over stdin, and it found something anyway. For an
+ *   Electron-spawned daemon this is *never* the expected file-based case (that one always arrives
+ *   over stdin, confirmed above): `buildDaemonEnvironment` unconditionally strips every
+ *   GitHub-credential-shaped variable before spawning, regardless of what `intended` was, so
+ *   finding one in the daemon's own environment means that strip did not hold -- a real, unintended
+ *   leak (issue #291). Reported as `'environment_leak'` rather than `'environment'`, since the
+ *   latter is #212's UI copy for "running on the development-fallback file", which would describe
+ *   this exact credential-boundary failure as the routine, harmless case it is not.
  * - `reported === 'none'` means the daemon has no usable credential at all, regardless of what main
  *   attempted -- the exact silent-failure case this function exists to stop reporting as `vault`.
  */
 export function reconcileDaemonTokenSource(
   intended: DaemonGitHubTokenSource,
   reported: DaemonCredentialSourceV1,
-): DaemonGitHubTokenSource {
+): PipenzoCredentialSourceV1 {
   switch (reported) {
     case 'injected':
       return intended;
     case 'environment':
-      return 'environment';
+      return 'environment_leak';
     case 'none':
       return 'none';
   }

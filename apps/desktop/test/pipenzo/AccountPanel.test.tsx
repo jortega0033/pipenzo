@@ -144,6 +144,21 @@ describe('AccountPanel', () => {
     expect(screen.getByRole('button', { name: /disconnect github/i })).toBeInTheDocument();
   });
 
+  /**
+   * Issue #291: a daemon whose environment strip failed and let a real, unintended credential
+   * through must not read the same as the ordinary development-fallback file -- that would hide a
+   * genuine credential-boundary failure behind routine dev-build copy.
+   */
+  it('gives an unintended environment leak its own alarming notice, distinct from the development fallback', async () => {
+    installBridge({ connection: { state: 'disconnected', source: 'environment_leak' } });
+    render(<AccountPanel />);
+
+    expect(await screen.findByText(/unexpected credential in this daemon/i)).toBeVisible();
+    expect(screen.getByText(/treat this token as exposed/i)).toBeInTheDocument();
+    expect(screen.queryByText(/running on the development fallback/i)).not.toBeInTheDocument();
+    expect(detailValue('Token location')).toBe('an unexpected environment variable');
+  });
+
   it('explains a machine that cannot store a credential', async () => {
     installBridge({
       connection: { state: 'unavailable', reason: 'plaintext_backend', source: 'none' },
