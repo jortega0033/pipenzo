@@ -190,10 +190,26 @@ export function AccountPanel() {
                 icon="warning"
                 title="This daemon is running on the development fallback"
               >
-                Pipenzo is acting with a token read from a local file, not with the account shown
-                above. That fallback exists only in a development build whose vault is empty.
-                Disconnecting now stops it too, for the rest of this run — it comes back only if
-                you restart Pipenzo with the file still in place.
+                {/* Issue #288: the danger-row below (and its Disconnect button) is hidden for
+                    `disconnected` -- there is no stored record to clear, so nothing here would do
+                    anything. This is the most common way to reach this notice at all (a fresh
+                    dev checkout, vault empty, PIPENZO_GITHUB_TOKEN-derived file present), so it
+                    must not claim a disconnect action the screen has no control for. */}
+                {connection.state === 'disconnected' ? (
+                  <>
+                    Pipenzo is acting with a token read from a local file — the vault itself is
+                    empty, so there is no stored token here to disconnect. That fallback exists
+                    only in a development build, and stops only if you restart Pipenzo with the
+                    file removed.
+                  </>
+                ) : (
+                  <>
+                    Pipenzo is acting with a token read from a local file, not with the account
+                    shown above. That fallback exists only in a development build whose vault is
+                    empty. Disconnecting now stops it too, for the rest of this run — it comes
+                    back only if you restart Pipenzo with the file still in place.
+                  </>
+                )}
               </Notice>
             )}
 
@@ -291,7 +307,13 @@ export function AccountPanel() {
             {inheritedToken
               ? 'Clears the token from the vault and stops the daemon from re-arming onto the development fallback for the rest of this run. Worktrees, branches and the ticket store stay on disk.'
               : connection.state === 'unavailable'
-                ? 'Removes the stored record this machine cannot read, so you can sign in again from scratch. Worktrees, branches and the ticket store stay on disk.'
+                ? // Issue #288: `store()` refuses to write on `os_encryption_unavailable` and
+                  // `plaintext_backend` -- no record was ever created for those, so "removes the
+                  // stored record" is only true for `unreadable`, where a record is guaranteed on
+                  // disk (see the comment above this danger-row).
+                  connection.reason === 'unreadable'
+                  ? 'Removes the stored record this machine cannot read, so you can sign in again from scratch. Worktrees, branches and the ticket store stay on disk.'
+                  : 'Nothing is stored here to remove — this machine has no usable credential store, so no record was ever written. Worktrees, branches and the ticket store stay on disk.'
                 : 'Clears the token from the vault, and the daemon restarts without one. Worktrees, branches and the ticket store stay on disk.'}
           </span>
           {/* No `writing.current` check here, deliberately. While a disconnect is in flight the
