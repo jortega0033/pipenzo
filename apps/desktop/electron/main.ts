@@ -811,6 +811,43 @@ function isRecordWithAllowedKeys(
   );
 }
 
+/**
+ * Cancels every in-flight daemon session over bounded HTTP calls, so the daemon gets a real chance
+ * to reap each provider tree before whatever the caller does to the child process next. Shared
+ * between `killDaemon` (a real app shutdown) and `restartDaemonForCredentialChange` (issue #224) --
+ * `child.kill()` is `TerminateProcess` on Windows, the platform this app packages for, so this
+ * bounded HTTP cancellation is the *only* graceful opportunity either caller gets. Extracted rather
+ * than reimplemented so the two callers cannot drift on timeout, session enumeration, or the
+ * abort-on-completion cleanup below.
+ *
+ * A no-op when there is no `client` yet (a credential change before the daemon ever became ready).
+ * `abortReason` is attached to the controller's final abort purely for diagnostics -- by the time it
+ * runs, the cancellation work has already settled or timed out either way.
+ */
+async function cancelInFlightDaemonSessions(abortReason: string): Promise<void> {
+  const activeClient = client;
+  if (!activeClient) return;
+  const cancellationController = new AbortController();
+  const cancellationTimer = setTimeout(
+    () => cancellationController.abort(new Error('daemon cancellation deadline exceeded')),
+    DAEMON_CANCELLATION_TIMEOUT_MS,
+  );
+  const cancellations = Promise.allSettled([
+    // Cancels every in-flight session over HTTP. On Windows,
+    // daemonChild.kill() below maps to TerminateProcess, so bounded HTTP cancellation is the
+    // reliable opportunity for the daemon to reap each provider tree before the hard stop.
+    activeClient.sessions.cancelAll({ signal: cancellationController.signal }),
+    ...[...activeInteractiveSessionIds].map((sessionId) =>
+      activeClient.v2.sessions.cancel(sessionId, {
+        signal: cancellationController.signal,
+      }),
+    ),
+  ]);
+  await waitWithin(cancellations, DAEMON_CANCELLATION_TIMEOUT_MS);
+  clearTimeout(cancellationTimer);
+  cancellationController.abort(new Error(abortReason));
+}
+
 async function killDaemon(): Promise<void> {
   pendingInteractiveCreates.beginShutdown();
   for (const controller of streamAborts.values()) controller.abort();
@@ -823,28 +860,7 @@ async function killDaemon(): Promise<void> {
   healthStreamAbort?.abort();
   healthStreamAbort = undefined;
   await pendingInteractiveCreates.waitForPending(INTERACTIVE_CREATE_SHUTDOWN_TIMEOUT_MS);
-  const activeClient = client;
-  if (activeClient) {
-    const cancellationController = new AbortController();
-    const cancellationTimer = setTimeout(
-      () => cancellationController.abort(new Error('daemon cancellation deadline exceeded')),
-      DAEMON_CANCELLATION_TIMEOUT_MS,
-    );
-    const cancellations = Promise.allSettled([
-      // Cancels every in-flight session over HTTP. On Windows,
-      // daemonChild.kill() below maps to TerminateProcess, so bounded HTTP cancellation is the
-      // reliable opportunity for the daemon to reap each provider tree before the hard stop.
-      activeClient.sessions.cancelAll({ signal: cancellationController.signal }),
-      ...[...activeInteractiveSessionIds].map((sessionId) =>
-        activeClient.v2.sessions.cancel(sessionId, {
-          signal: cancellationController.signal,
-        }),
-      ),
-    ]);
-    await waitWithin(cancellations, DAEMON_CANCELLATION_TIMEOUT_MS);
-    clearTimeout(cancellationTimer);
-    cancellationController.abort(new Error('desktop shutdown completed'));
-  }
+  await cancelInFlightDaemonSessions('desktop shutdown completed');
   activeSessionIds.clear();
   streamAborts.clear();
   activeInteractiveSessionIds.clear();
@@ -1020,22 +1036,19 @@ function gitHubConnectionStatus(): PipenzoGitHubConnectionV1 {
  * writing endpoint inside the exact process the publish boundary rests on, reachable by anything
  * holding the local bearer token. A process restart has no such surface.
  *
- * **A credential change hard-cancels running work, and does not go through `killDaemon`'s graceful
- * path.** `child.kill()` is SIGTERM on POSIX but maps to `TerminateProcess` on Windows — the
- * platform this app packages for — so the bounded HTTP `sessions.cancelAll` that `killDaemon`
- * exists to perform does not happen here. Provider trees are still reaped by the Job Object host,
- * but in-flight sessions die uncancelled. That was acceptable while connecting and disconnecting
- * were pre-app actions taken before any ticket could be running.
- *
- * **That premise no longer holds.** Settings' Account panel (#130) puts "Disconnect GitHub" on a
- * screen reachable with work in flight, which is exactly the case this comment used to rule out.
- * Issue #224 owns the real fix — routing a credential change through a bounded `sessions.cancelAll`
- * before the kill, or refusing the disconnect until the work finishes. Until then the mitigation is
- * in the UI rather than here: the panel confirms first and says in the dialog that anything running
- * stops without a clean cancel, and it latches the in-flight call so a second click cannot turn one
- * restart into a loop.
+ * **A credential change now goes through the same bounded cancellation `killDaemon` does, before
+ * the kill (issue #224).** `child.kill()` is SIGTERM on POSIX but maps to `TerminateProcess` on
+ * Windows — the platform this app packages for — so `cancelInFlightDaemonSessions` is the one real
+ * opportunity either caller gets to let the daemon reap each provider tree gracefully first. This
+ * used to skip straight to `child.kill()` on the reasoning that connecting and disconnecting were
+ * pre-app actions taken before any ticket could be running; Settings' Account panel (#130) put
+ * "Disconnect GitHub" on a screen reachable with work in flight, which made that premise false
+ * without this function's own reasoning having changed to match. The mitigation this used to lean on
+ * — confirming first in the UI, and the `credentialRestartPending` latch below stopping a second
+ * click from turning one restart into a loop — still matters and still applies; it is no longer the
+ * *only* thing standing between a disconnect and an uncancelled kill.
  */
-function restartDaemonForCredentialChange(): void {
+async function restartDaemonForCredentialChange(): Promise<void> {
   // A restart during shutdown is how an orphaned, credential-holding daemon outlives the app.
   if (isQuitting) return;
   // Already restarting: a second request would kill the daemon that has not started yet, and a
@@ -1050,6 +1063,7 @@ function restartDaemonForCredentialChange(): void {
   credentialRestartPending = true;
   respawnAfterExit = child;
   sendStatus({ state: 'connecting' });
+  await cancelInFlightDaemonSessions('credential change');
   child.kill();
   // On POSIX the daemon handles SIGTERM with a graceful shutdown of its own, so exiting can
   // legitimately take seconds. If it takes far longer than that it is wedged, and waiting forever
@@ -1098,7 +1112,7 @@ handle('pipenzo:disconnect-github', (): PipenzoGitHubConnectionV1 => {
   // `'none'` (the first restart's own confirmed report, issue #209), so the condition is false and
   // nothing restarts a second time.
   if (tokenVault.clear() || daemonTokenSource === 'environment') {
-    restartDaemonForCredentialChange();
+    void restartDaemonForCredentialChange();
   }
   // `source` in this reply still describes the daemon that is on its way out; the restart it just
   // triggered recomputes it. The renderer re-reads the connection when `daemon:status` next goes
@@ -1129,7 +1143,7 @@ const deviceSession = new DeviceFlowSession({
     error instanceof GitHubTokenVaultError && error.code === 'encryption_unavailable',
   report: (outcome) => sendToRenderer(mainWindow, 'pipenzo:github-device-outcome', outcome),
   // The daemon is handed its credential once, at spawn, so a new one is a new process.
-  onStored: () => restartDaemonForCredentialChange(),
+  onStored: () => void restartDaemonForCredentialChange(),
 });
 
 handle('pipenzo:github-device-start', async (): Promise<PipenzoDeviceCodeV1> => {
