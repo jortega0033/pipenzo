@@ -229,26 +229,46 @@ describe('GitHubTokenVault', () => {
     });
 
     /**
-     * The gap between the test above and the one below it: an accessor that is *present* but
-     * answers `undefined`, or throws. Both are the case the allowlist exists for — an accessor
-     * telling us it cannot name the backend — but reading it through `?.()` collapses them into the
-     * same `undefined` an *absent* accessor produces, and the absent case is deliberately exempt.
-     * Presence therefore has to be tested on the function, not inferred from its return value.
+     * The gap this test and the throwing one below it exist for: an accessor that is *present* but
+     * answers `undefined` rather than a name. Reading it through `?.()` would collapse this into the
+     * same `undefined` an *absent* accessor produces, and the absent case is deliberately exempt, so
+     * presence has to be tested on the function, not inferred from its return value.
      */
-    it('refuses a present backend accessor that cannot answer, unlike an absent one', () => {
-      const answers: Array<() => string | undefined> = [
-        () => undefined,
-        () => {
-          throw new Error('backend introspection failed');
-        },
-      ];
-      for (const getSelectedStorageBackend of answers) {
-        const vault = vaultWith(fakeSafeStorage({ getSelectedStorageBackend }), 'linux');
-        expect(vault.status()).toEqual({ state: 'unavailable', reason: 'plaintext_backend' });
-        expect(catchError(() => vault.store({ token: TOKEN, login: 'jortega0033' }))).toBeInstanceOf(
-          GitHubTokenVaultError,
-        );
-      }
+    it('refuses a present backend accessor that answers undefined, unlike an absent one', () => {
+      const vault = vaultWith(
+        fakeSafeStorage({ getSelectedStorageBackend: () => undefined }),
+        'linux',
+      );
+      expect(vault.status()).toEqual({ state: 'unavailable', reason: 'plaintext_backend' });
+      expect(catchError(() => vault.store({ token: TOKEN, login: 'jortega0033' }))).toBeInstanceOf(
+        GitHubTokenVaultError,
+      );
+    });
+
+    /**
+     * Issue #215: a *throwing* accessor is a different fact from one that answers a name this
+     * allowlist does not recognise, and conflating the two used to report `plaintext_backend` for
+     * both. `safeStorage`'s own introspection is documented as throwing before Electron's `ready`
+     * event, so a status query racing app startup on Linux should say "cannot tell yet", not "this
+     * machine's backend is plaintext" -- both still refuse to store, but the reason reported differs.
+     */
+    it('reports backend_unknown rather than plaintext_backend when the accessor throws', () => {
+      const vault = vaultWith(
+        fakeSafeStorage({
+          getSelectedStorageBackend: () => {
+            throw new Error('backend introspection failed');
+          },
+        }),
+        'linux',
+      );
+      expect(vault.status()).toEqual({ state: 'unavailable', reason: 'backend_unknown' });
+      const error = catchError(() => vault.store({ token: TOKEN, login: 'jortega0033' }));
+      expect(error).toBeInstanceOf(GitHubTokenVaultError);
+      expect((error as GitHubTokenVaultError).message).not.toBe(
+        'this machine has no OS credential store available, so the token was not stored',
+      );
+      // Never stored, same as every other unavailable reason.
+      expect(() => readFileSync(join(directory, GITHUB_TOKEN_VAULT_FILE))).toThrow();
     });
 
     /**

@@ -110,6 +110,17 @@ describe('account', () => {
       expect(unavailableReasonLabel('unreadable')).toContain('cannot be decrypted');
     });
 
+    /**
+     * Issue #215: "cannot tell yet" must read differently from "this machine has no real store" --
+     * conflating the two is the exact bug this reason exists to stop.
+     */
+    it('says this resolves on its own rather than naming a terminal problem', () => {
+      const label = unavailableReasonLabel('backend_unknown');
+      expect(label).toContain('Try again shortly');
+      expect(label).not.toContain('published constant key');
+      expect(label).not.toContain('no OS credential store');
+    });
+
     it('still says something for a reason it does not know', () => {
       expect(unavailableReasonLabel(undefined)).toContain('cannot hold a credential');
     });

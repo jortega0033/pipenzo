@@ -115,6 +115,8 @@ export function unavailableReasonLabel(
       return 'This machine reported no OS credential store, so there is nowhere to keep a token safely.';
     case 'plaintext_backend':
       return 'The only store available here encrypts with a published constant key, which is obfuscation rather than encryption. Pipenzo refuses it rather than keep a token under a false claim.';
+    case 'backend_unknown':
+      return 'Pipenzo could not yet confirm what credential store this machine has -- this usually resolves on its own a moment after startup. Try again shortly.';
     case 'unreadable':
       return 'A stored record exists but cannot be decrypted on this machine — usually a keyring that has been replaced or removed.';
     case undefined:

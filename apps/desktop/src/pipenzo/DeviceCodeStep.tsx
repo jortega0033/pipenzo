@@ -64,6 +64,8 @@ const UNAVAILABLE_COPY: Record<string, string> = {
     'This machine reports no OS credential store, so there is nowhere to keep a GitHub token safely. On Linux that usually means no keyring (gnome-keyring or kwallet) is running.',
   plaintext_backend:
     'The only credential store available here encrypts with a published constant key, which is not encryption. Pipenzo refuses to store a token under it rather than claim protection it would not have.',
+  backend_unknown:
+    'Pipenzo could not yet confirm what credential store this machine has -- this usually resolves on its own a moment after startup. Try again shortly.',
   unreadable:
     'A stored credential exists but cannot be read on this machine — a keyring that went away, or a record written by a different build. Disconnecting and connecting again replaces it.',
 };
