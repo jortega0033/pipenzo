@@ -83,10 +83,10 @@ on it).
    tier escalation starts a fresh session, seeded with the spec, the prior diff, and the failing
    gate output, because agentdock freezes the selected model into a fork's continuation scope and a
    fork genuinely cannot change model.
-4. **Review** — deterministic gates first (build/typecheck, spec-generated tests the implementer
-   never wrote itself, gitleaks, Semgrep, a diff-scope check against the Phase-1 estimate), then an
-   LLM review pass in a fresh session seeing only the spec and the diff, followed by a separate
-   adversarial verifier that's never a weaker model than the implementer.
+4. **Review** — deterministic gates first (build/typecheck, lint, spec-generated tests the
+   implementer never wrote itself, gitleaks, Semgrep, a diff-scope check against the Phase-1
+   estimate), then an LLM review pass in a fresh session seeing only the spec and the diff,
+   followed by a separate adversarial verifier that's never a weaker model than the implementer.
 
 Nothing is pushed or opened as a PR without an explicit human approval step — see
 [How this differs](#how-this-differs-from-devin-openhands-codex-style-agents) above and the

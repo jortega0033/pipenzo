@@ -896,6 +896,29 @@
     <p style="color:var(--ink-soft);max-width:760px;">The 55% vs. 82.6% figure from the original research is retired. Current best source: a task-stratified analysis of 7,156 agent PRs (MSR 2026 mining challenge) — Codex 77.9%, Cursor 74.5%, Claude Code 71.9%, Copilot 68.0%, Devin 61.6% merge rate. By task type: chore 84.0%, docs 82.1%, feature 66.1%, fix 66.0%, perf 55.4%. The paper does not analyze acceptance against PR size — the variance is driven by task type, not diff size, so Pipenzo's foundational small-PRs thesis remains a design bet, not a proven one. <b>This correction is now carried up into the Verdict box</b> rather than sitting only at the end of the document contradicting it.</p>
     <p style="color:var(--ink-soft);max-width:760px;"><b>And the recommendation this section closed on is now a plan item, not a note.</b> Task-type-aware routing, paired with the diff-size gate, is committed as a near-term post-MVP feature in §08, triggered on the diff-size gate landing at build step 4: Refine emits a task type alongside its size estimate, and both feed model-tier selection and gate strictness. Paired rather than substituted, because the two rest on different arguments — the size gate is justified by review burden (+441.5% review time, the Faros telemetry), which this dataset does not touch, while task type is what it shows moving acceptance. Neither claim is asked to do the other's work.</p>
     <p style="color:var(--ink-soft);max-width:760px;">One category-health claim is also corrected here: this memo said earlier that Vibe Kanban "shut down". Bloop wound down the commercial operation; the project is <b>community-maintained</b>. That is a materially different outcome and the more interesting one for this plan — it is evidence about the <em>commercial</em> thesis in this category specifically, not about whether anyone wants the software.</p>
+
+    <h3 style="margin-top:28px;">A second independent pass — the "4 layers of AI code review"</h3>
+    <p style="color:var(--ink-soft);max-width:760px;">Run separately from the CodeRabbit research that produced decisions #283 and #284 above, against a walkthrough of the industry's own "4 layers of AI code review" framing (<a href="https://www.youtube.com/watch?v=As2xy_cSx00" target="_blank" rel="noreferrer">youtube.com/watch?v=As2xy_cSx00</a>). The result this time is not a gap or a differentiator — it is a convergence, and the same honesty standard this addendum holds itself to for a discovered gap applies to admitting when a comparison finds nothing new: every one of the four layers already exists in Pipenzo's shipped plan, under names this report already used.</p>
+
+    <div class="cards">
+      <div class="card">
+        <div class="card-top"><h3>1 · Automate the obvious</h3><span class="chip chip-ok">shipped</span></div>
+        <p style="margin:0;color:var(--ink-soft);font-size:14px;">Lint, typecheck, format, tests and security scanning as deterministic hooks, gating before anything else runs. Pipenzo's own deterministic gate set — <span class="mono">review-gates.ts</span>, issue #181 — now includes lint alongside build, typecheck, gitleaks and Semgrep (#283).</p>
+      </div>
+      <div class="card">
+        <div class="card-top"><h3>2 · Local AI review</h3><span class="chip chip-ok">shipped</span></div>
+        <p style="margin:0;color:var(--ink-soft);font-size:14px;">An agent reviews the diff against project-specific criteria stated in a repo-owned file, not just generic taste. README's Review-phase LLM reviewer and adversarial verifier are this layer, and issue #284's repo-authored conventions file — a maintainer states norms once in <span class="mono">package.json</span>'s <span class="mono">pipenzo</span> key, folded into both passes' prompts — converges independently on the same <span class="mono">review.md</span>-shaped practice the video itself argues for.</p>
+      </div>
+      <div class="card">
+        <div class="card-top"><h3>3 · Automated safety net</h3><span class="chip chip-ok">spec ready</span></div>
+        <p style="margin:0;color:var(--ink-soft);font-size:14px;">A GitHub-side check that runs whether or not a human remembered to review locally — a backstop independent of the first two layers, not a repeat of them. The External PR Review epic (issue #208, #205–#207) is exactly this, already <span class="mono">spec: ready</span>, and arguably more disciplined than the video's version: human-gated post-back rather than a fully automatic comment.</p>
+      </div>
+      <div class="card">
+        <div class="card-top"><h3>4 · Human review, scaled by risk</h3><span class="chip chip-ok">shipped</span></div>
+        <p style="margin:0;color:var(--ink-soft);font-size:14px;">The layer that decides how much of a human's attention each change actually earns. Decision 05 above — LOW/MEDIUM/HIGH risk grading with a cumulative-risk counter that promotes the next action when unreviewed work piles up — is this layer, specified in this same document.</p>
+      </div>
+    </div>
+    <p style="color:var(--ink-soft);max-width:760px;">Nothing here is a new mechanism or a new commitment — it is an already-built architecture getting a name a reader outside this repository will already recognize.</p>
   </section>
 
   <footer>

@@ -15,7 +15,21 @@ export const DIFF_SIZE_THRESHOLDS = {
   stackedPrs: { maxLines: 400, maxFiles: 20, minPrs: 2, maxPrs: 4 },
 } as const;
 
-/** README.md, "How it works" -- the four phases plus the human decision that follows them. */
+/**
+ * README.md, "How it works" -- the four phases plus the human decision that follows them.
+ *
+ * Drift risk (issue #289): this file's own doc comment says these numbers are sourced from
+ * README "where practical", but there is no build-time or test-time check that actually enforces
+ * that for prose fields like `summary` below -- `docs:claim-check` (`scripts/docs-claim-check.mjs`)
+ * only scans `.md` files, and nothing imports or diffs this against README.md at all. The Review
+ * phase's gate list here (and the near-identical one in `ReviewBeforeTrust.tsx`'s `GATES`) is
+ * hand-duplicated from README's own "Review" bullet in three independent places; it already drifted
+ * once (none of the three mentioned `lint` until it was added here alongside #283 shipping the gate
+ * itself) and has no mechanism to catch the next drift automatically. Recorded here rather than
+ * fixed: a `docs:claim-check`-style check that fails when this list disagrees with README's is real
+ * follow-up scope, worth its own ticket once someone decides it's worth building rather than just
+ * re-checking `apps/web` by hand at release time.
+ */
 export const WORKFLOW_STEPS = [
   {
     role: 'recon',
@@ -33,7 +47,7 @@ export const WORKFLOW_STEPS = [
     role: 'inspector',
     phase: 'Review',
     summary:
-      'Deterministic gates run first: build, typecheck, spec-generated tests, gitleaks, Semgrep, a diff-scope check. Then an LLM review pass.',
+      'Deterministic gates run first: build, typecheck, lint, spec-generated tests, gitleaks, Semgrep, a diff-scope check. Then an LLM review pass.',
   },
   {
     role: 'auditor',

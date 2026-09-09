@@ -82,4 +82,19 @@ describe('App', () => {
     const skipLink = screen.getByRole('link', { name: 'Skip to content' });
     expect(skipLink).toHaveAttribute('href', '#main');
   });
+
+  /**
+   * Issue #289: the gate list is hand-duplicated in three places (README, `content.ts`'s
+   * `WORKFLOW_STEPS`, and `ReviewBeforeTrust.tsx`'s `GATES`) with no mechanism checking them
+   * against each other -- see the drift-risk comments on those two files. This at least pins the
+   * landing page's own two copies against each other and against the current gate set, so a future
+   * gate addition that updates one but not the other fails here rather than silently drifting
+   * further, the same way #283 (adding lint) already did once.
+   */
+  it('names lint in both of the landing page’s own copies of the deterministic gate list', () => {
+    render(<App />);
+    const reviewSummary = WORKFLOW_STEPS.find((step) => step.phase === 'Review')?.summary;
+    expect(reviewSummary).toContain('lint');
+    expect(screen.getByText(/Build\/typecheck, lint, spec-generated tests/)).toBeInTheDocument();
+  });
 });
