@@ -1058,13 +1058,16 @@ function gitHubConnectionStatus(): PipenzoGitHubConnectionV1 {
  * loop — still matters and still applies; it is no longer the *only* thing standing between a
  * disconnect and an uncancelled kill.
  *
- * Not quite the same guarantee `killDaemon` has, worth stating plainly rather than implying: a
- * session *created* during the cancellation window below is not in the snapshot
- * `cancelInFlightDaemonSessions` takes and is not itself cancelled by it, unlike a real app shutdown
- * (which first calls `pendingInteractiveCreates.beginShutdown()` and awaits creates already in
- * flight before cancelling). Closing that gap here would mean reusing a shutdown latch that has no
- * way back once set, permanently breaking interactive creates for the rest of the running session —
- * real work, filed separately rather than folded into this fix.
+ * **Also now pauses new interactive-session creates before cancelling (issue #296), the same way
+ * `killDaemon` does with `beginShutdown` -- except resettable.** A session *created* during the
+ * cancellation window below used to land outside the snapshot `cancelInFlightDaemonSessions` takes,
+ * so it got no per-session cancel call and was then killed uncancelled along with the child --
+ * the same failure shape the fix above closes, in a narrower window. `killDaemon`'s own
+ * `beginShutdown` cannot be reused for this: it is a one-way latch, correct for a real app
+ * shutdown but not for a restart the daemon is meant to come back from. `PendingInteractiveCreates`'
+ * `beginPause`/`endPause` (issue #296) is the resettable twin built for exactly this, aborting
+ * every in-flight create and rejecting new ones only for the span between here and this function's
+ * own `child.kill()`, not for the rest of the running session.
  *
  * The hard-kill timer below is armed **before** attempting the cancellation, not after: this
  * function's own timeout has always been the ceiling on "how long can a credential change leave the
@@ -1098,8 +1101,21 @@ async function restartDaemonForCredentialChange(): Promise<void> {
   }, DAEMON_CREDENTIAL_RESTART_TIMEOUT_MS);
   hardStop.unref?.();
   child.once('exit', () => clearTimeout(hardStop));
-  await cancelInFlightDaemonSessions('credential change');
-  child.kill();
+  pendingInteractiveCreates.beginPause('daemon is restarting for a credential change');
+  try {
+    // Same ordering `killDaemon` uses: drain (or abort) creates already in flight before taking
+    // the cancellation snapshot, so one cannot land in the gap between the two and get killed
+    // uncancelled alongside the child.
+    await pendingInteractiveCreates.waitForPending(INTERACTIVE_CREATE_SHUTDOWN_TIMEOUT_MS);
+    await cancelInFlightDaemonSessions('credential change');
+    child.kill();
+  } finally {
+    // Always released, even on an unexpected throw above -- a pause that outlives this function
+    // would silently disable interactive session creation until the *next* credential change
+    // happens to call `beginPause` again, which is exactly the permanent-latch bug this resettable
+    // form exists to avoid.
+    pendingInteractiveCreates.endPause();
+  }
 }
 
 handle('pipenzo:github-connection', (): PipenzoGitHubConnectionV1 => gitHubConnectionStatus());

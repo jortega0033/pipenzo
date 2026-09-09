@@ -73,10 +73,17 @@ export async function relayInteractiveSessionEvents(
 
 export class PendingInteractiveCreates {
   private closing = false;
+  /** Issue #296: a *resettable* twin of `closing`, for a daemon restart rather than a real app
+   * shutdown -- see `beginPause`'s doc comment for why this cannot just reuse `closing` itself. */
+  private paused = false;
   private readonly pending = new Map<Promise<unknown>, AbortController>();
 
   get isClosing(): boolean {
     return this.closing;
+  }
+
+  get isPaused(): boolean {
+    return this.paused;
   }
 
   run<T>(
@@ -85,14 +92,15 @@ export class PendingInteractiveCreates {
     onResolvedDuringShutdown?: (value: T) => Promise<void> | void,
   ): Promise<T> {
     if (this.closing) return Promise.reject(new Error('application is shutting down'));
+    if (this.paused) return Promise.reject(new Error('daemon is restarting'));
 
     const controller = new AbortController();
     const tracked = Promise.resolve()
       .then(() => start(controller.signal))
       .then(async (value) => {
-        if (this.closing || controller.signal.aborted) {
+        if (this.closing || this.paused || controller.signal.aborted) {
           await onResolvedDuringShutdown?.(value);
-          throw new Error('application is shutting down');
+          throw new Error(this.closing ? 'application is shutting down' : 'daemon is restarting');
         }
         onResolved(value);
         return value;
@@ -106,8 +114,37 @@ export class PendingInteractiveCreates {
 
   beginShutdown(): void {
     this.closing = true;
+    this.abortAllPending('application is shutting down');
+  }
+
+  /**
+   * Pauses new interactive-session creates and aborts every one already in flight, for the
+   * duration of one daemon restart (issue #296) -- `main.ts`'s `restartDaemonForCredentialChange`
+   * calls this the same way `killDaemon` calls `beginShutdown`, so a create that lands during the
+   * restart's own cancellation window is aborted (or told to abort via
+   * `run`'s `onResolvedDuringShutdown`) rather than left running uncancelled against a daemon child
+   * that is about to be killed.
+   *
+   * Deliberately not `beginShutdown` reused for this: `closing` is permanent by design (the app
+   * really is going away, and nothing should ever start a session again), while a restart is a
+   * *pause* -- the daemon comes back, and interactive session creation has to work normally again
+   * once it does. Reusing the one-way latch here would leave creates permanently rejected after the
+   * very first credential change for the rest of the running session. `endPause` is the way back.
+   */
+  beginPause(reason: string): void {
+    this.paused = true;
+    this.abortAllPending(reason);
+  }
+
+  /** Ends a pause begun by `beginPause`. A no-op if nothing is paused (harmless if `killDaemon`'s
+   * permanent `beginShutdown` raced this and already covers `run`'s guard via `closing`). */
+  endPause(): void {
+    this.paused = false;
+  }
+
+  private abortAllPending(reason: string): void {
     for (const controller of this.pending.values()) {
-      controller.abort(new Error('application is shutting down'));
+      controller.abort(new Error(reason));
     }
   }
 
