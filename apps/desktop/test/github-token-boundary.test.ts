@@ -658,7 +658,7 @@ describe('confirming what the daemon actually resolved, not just what main sent 
     // The `isCurrent` branch of the exit handler, alongside the client/daemonChild teardown it
     // already does.
     expect(main).toMatch(
-      /daemonChild = undefined;[\s\S]{0,300}?daemonTokenSource = 'none';\s*\n\s*\}/,
+      /daemonChild = undefined;[\s\S]{0,300}?daemonTokenSource = 'none';[\s\S]{0,150}?\}/,
     );
   });
 });
@@ -933,6 +933,46 @@ describe('nothing on the renderer bridge can obtain the token', () => {
     const killDaemonBody = main.slice(killDaemonStart, main.indexOf('\n}', killDaemonStart));
     expect(killDaemonBody).toMatch(/waitForPending\(INTERACTIVE_CREATE_SHUTDOWN_TIMEOUT_MS\)/);
     expect(body).toMatch(/waitForPending\(INTERACTIVE_CREATE_SHUTDOWN_TIMEOUT_MS\)/);
+  });
+
+  /**
+   * Issue #304: `DAEMON_CREDENTIAL_RESTART_TIMEOUT_MS`'s watchdog can `SIGKILL` the child
+   * `restartDaemonForCredentialChange` is still gracefully cancelling, well before that function's
+   * own `waitForPending`/`cancelInFlightDaemonSessions` chain gives up on it -- and a SIGKILL's
+   * `exit` event fires (and, via `wasAwaitingRespawn`, respawns a replacement) independently of that
+   * still-running chain. Left to only the `finally` in `restartDaemonForCredentialChange`, the pause
+   * would outlive a replacement daemon that could already be ready, rejecting interactive-session
+   * creates with "daemon is restarting" for up to that chain's full ~41s+20s budget. Pinned here:
+   * `spawnDaemon`'s exit handler releases the pause itself, for exactly the child whose respawn it
+   * was awaiting, and only after `client` above it is cleared -- not any earlier, which is what
+   * keeps a create from slipping through to the dying child and reopening the #296 race this exit
+   * handler's `endPause` is paired with closing.
+   */
+  it('also releases the interactive-session pause from the exit handler, not only the restart function (issue #304)', async () => {
+    const main = stripComments(await readElectron('main.ts'));
+    const start = main.indexOf('function spawnDaemon');
+    expect(start).toBeGreaterThan(-1);
+    const body = main.slice(start, main.indexOf('\n}', start));
+
+    const clientClearedAt = body.indexOf('client = undefined;');
+    const daemonChildClearedAt = body.indexOf('daemonChild = undefined;');
+    const tokenSourceResetAt = body.indexOf("daemonTokenSource = 'none';", clientClearedAt);
+    const endPauseAt = body.indexOf('pendingInteractiveCreates.endPause();');
+    expect(clientClearedAt).toBeGreaterThan(-1);
+    expect(daemonChildClearedAt).toBeGreaterThan(-1);
+    expect(tokenSourceResetAt).toBeGreaterThan(-1);
+    expect(endPauseAt).toBeGreaterThan(-1);
+    // `client` must already be cleared before the pause lifts: `createTrackedInteractiveSession`
+    // refuses every create with `!client` ahead of `pendingInteractiveCreates.run`, so nothing can
+    // reach the dying child once both have happened, regardless of order between the two remaining
+    // teardown lines.
+    expect(clientClearedAt).toBeLessThan(endPauseAt);
+    expect(daemonChildClearedAt).toBeLessThan(endPauseAt);
+    expect(tokenSourceResetAt).toBeLessThan(endPauseAt);
+
+    // Gated on `wasAwaitingRespawn`, not unconditional -- an ordinary, non-restart daemon crash has
+    // no pause to release, and `endPause` on it should stay a documented no-op, not fire blind.
+    expect(body).toMatch(/if \(wasAwaitingRespawn\) pendingInteractiveCreates\.endPause\(\);/);
   });
 
   /**
