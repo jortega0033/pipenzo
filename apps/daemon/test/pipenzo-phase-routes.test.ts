@@ -1,7 +1,7 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { ProviderRegistry, noopLogger } from '@agent-dock/agent-runtime';
 import type { CreateSessionV2Request, RefineSpecV1 } from '@agent-dock/shared';
 import { buildServer } from '../src/server.js';
@@ -1193,5 +1193,119 @@ describe('POST /v2/pipenzo/issues/draft', () => {
     });
     expect(response.statusCode).toBe(422);
     expect(response.json()).toMatchObject({ code: 'spec_invalid' });
+  });
+});
+
+/**
+ * Issue #284: `refine()` and `review()` each read `pipenzo.conventions` from the trusted *source*
+ * repository (never a worktree) and fold it into their LLM prompt. Everything above this point
+ * uses `REPO_PATH`, a path that does not exist on disk -- `readPipenzoRepoConfig` treats a missing
+ * `package.json` as "not configured" (see `pipenzo-repo-config.ts`), so none of those tests
+ * exercise this wiring at all. A real temp directory is what proves the glue itself, on top of the
+ * prompt-builder and config-reader unit coverage in `refine-subagent.test.ts`,
+ * `review-gates.test.ts` and `screenshot-verification.test.ts`.
+ */
+describe('conventions wiring (issue #284)', () => {
+  let root: string;
+  const conventionsWorktreeId = '55555555-6666-4777-8888-999999999999';
+
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), 'pipenzo-conventions-'));
+    scratch.push(root);
+    await writeFile(
+      join(root, 'package.json'),
+      JSON.stringify({ pipenzo: { conventions: 'Tests live in test/, not __tests__/.' } }),
+      'utf8',
+    );
+  });
+
+  it('folds conventions from the source repository into the refine prompt', async () => {
+    const prompts: string[] = [];
+    const github = new FakeGitHubClient().seedIssue(issue());
+    const service = new PipenzoPhaseService({
+      refineSessions: {
+        run: async (request) => {
+          prompts.push(request.prompt);
+          return { sessionId: SESSION_ID, output: JSON.parse(REFINE_SPEC_JSON), toolsUsed: ['Read'] };
+        },
+      },
+      reviewSessions: { run: async () => ({ sessionId: SESSION_ID, findings: [], verdict: 'approved' }) },
+      implementSessions: {
+        run: () => {
+          throw new Error('not exercised by this test');
+        },
+      },
+      worktrees: {
+        preview: () => {
+          throw new Error('not exercised by this test');
+        },
+        create: () => {
+          throw new Error('not exercised by this test');
+        },
+        ownedLocation: () => undefined,
+      },
+      github: () => github,
+      commands: noCommands,
+      runGit,
+      env: REPO_ENV,
+    });
+
+    await service.refine({ issueNumber: 184, repositoryPath: root, provider: 'claude' });
+
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]).toContain('Tests live in test/, not __tests__/.');
+  });
+
+  it('folds conventions from the source repository into both review prompts, reading the source path rather than the worktree', async () => {
+    const prompts: string[] = [];
+    const service = new PipenzoPhaseService({
+      refineSessions: {
+        run: () => {
+          throw new Error('not exercised by this test');
+        },
+      },
+      reviewSessions: {
+        run: async (request) => {
+          prompts.push(request.prompt);
+          return { sessionId: SESSION_ID, findings: [], verdict: 'approved' as const };
+        },
+      },
+      implementSessions: {
+        run: () => {
+          throw new Error('not exercised by this test');
+        },
+      },
+      worktrees: {
+        preview: () => {
+          throw new Error('not exercised by this test');
+        },
+        create: () => {
+          throw new Error('not exercised by this test');
+        },
+        // The worktree's own path is a fake that would fail if `readPipenzoRepoConfig` were ever
+        // pointed at it instead of `root` -- pinning that the service reads `sourcePath`, per
+        // `pipenzo-repo-config.ts`'s ownership rule, not the ticket's own writable worktree.
+        ownedLocation: (id: string) =>
+          id === conventionsWorktreeId
+            ? { id, path: 'C:\\owned\\does-not-exist', sourcePath: root }
+            : undefined,
+      },
+      commands: noCommands,
+      runGit,
+      env: REPO_ENV,
+    });
+
+    await service.review({
+      worktreeId: conventionsWorktreeId,
+      spec: spec(),
+      baseCommit: BASE_SHA,
+      headCommit: HEAD_SHA,
+      implementerTier: 'mid',
+      reviewer: { provider: 'claude', model: 'claude-cheap', tier: 'cheap' },
+      verifier: { provider: 'codex', model: 'codex-frontier', tier: 'frontier' },
+    });
+
+    expect(prompts).toHaveLength(2);
+    for (const prompt of prompts) expect(prompt).toContain('Tests live in test/, not __tests__/.');
   });
 });
