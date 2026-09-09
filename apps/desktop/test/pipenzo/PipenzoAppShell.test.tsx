@@ -34,6 +34,7 @@ function installBridge(tickets: readonly PipenzoTicketViewV1[] = []) {
   setBridgeOverride({
     pipenzoListTickets: vi.fn().mockResolvedValue({ tickets }),
     onPipenzoPhaseEvent: () => () => {},
+    getDaemonStatus: vi.fn().mockResolvedValue({ state: 'ready' }),
     onDaemonStatus: () => () => {},
     pipenzoConnectedRepos: vi.fn().mockResolvedValue({ repositories: ['octocat/hello-world'] }),
     pipenzoListRepos: vi.fn().mockResolvedValue({ repositories: [], truncated: false }),
@@ -145,7 +146,8 @@ describe('PipenzoAppShell', () => {
     setBridgeOverride({
       pipenzoListTickets,
       onPipenzoPhaseEvent: () => () => {},
-      onDaemonStatus: () => () => {},
+      getDaemonStatus: vi.fn().mockResolvedValue({ state: 'ready' }),
+    onDaemonStatus: () => () => {},
       pipenzoConnectedRepos: vi.fn().mockResolvedValue({ repositories: ['octocat/hello-world'] }),
       pipenzoListRepos: vi.fn().mockResolvedValue({ repositories: [], truncated: false }),
       pipenzoConnectRepos: vi.fn(),

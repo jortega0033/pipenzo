@@ -308,6 +308,37 @@ describe('AppRoot pre-app gate (issue #113)', () => {
 
     expect(await screen.findByText(/published constant key/i)).toBeInTheDocument();
   });
+
+  /**
+   * Issue #286: an already-connected vault (`state: 'connected'`) whose daemon has not confirmed
+   * anything yet (`source: 'none'`, honest as of #209) must wait rather than flash "Connect GitHub"
+   * -- and once the daemon reports it never came up at all, it gets an honest failure message
+   * instead of silently defaulting to the sign-in screen.
+   */
+  it('waits rather than flashing ConnectScreen for an already-connected vault, then reports an honest daemon failure', async () => {
+    // Several hooks in the tree subscribe to `onDaemonStatus` independently (`useGitHubConnection`,
+    // `useConnectedRepos`), so a push must reach every listener, not just the last one registered.
+    const listeners: ((status: DaemonStatus) => void)[] = [];
+    const deliverStatus = (status: DaemonStatus) => listeners.forEach((listener) => listener(status));
+    const bridge = realBridge({ state: 'connected', login: 'octocat', source: 'none' });
+    bridge.getDaemonStatus = vi.fn().mockResolvedValue({ state: 'connecting' } satisfies DaemonStatus);
+    bridge.onDaemonStatus = vi.fn((callback) => {
+      listeners.push(callback);
+      return () => {};
+    });
+    (window as unknown as { agentDock: AgentDockBridge }).agentDock = bridge;
+    render(<AppRoot />);
+
+    await waitFor(() =>
+      expect(screen.getByRole('status', { name: 'Checking your GitHub connection' })).toBeInTheDocument(),
+    );
+    expect(screen.queryByRole('heading', { name: 'Connect GitHub' })).not.toBeInTheDocument();
+
+    deliverStatus({ state: 'unavailable', error: 'daemon failed to start: boom' });
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/daemon could not start/i);
+    expect(screen.queryByRole('heading', { name: 'Connect GitHub' })).not.toBeInTheDocument();
+  });
 });
 
 describe('AppRoot connection-health banner (issue #257 -> #70)', () => {

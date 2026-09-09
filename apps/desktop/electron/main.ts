@@ -119,6 +119,12 @@ let daemonChild: ChildProcess | undefined;
 let client: AgentDockClient | undefined;
 let mainWindow: BrowserWindow | undefined;
 let tray: Tray | undefined;
+// Mirrors the last status `sendStatus` broadcast, so `daemon:get-status` can answer honestly for a
+// renderer that starts (or restarts, e.g. a dev-tools reload) after the daemon already failed --
+// deriving the answer from `client` truthiness alone (issue #286) reports `connecting` forever for
+// a spawn that failed before that renderer ever subscribed to `daemon:status`, since nothing else
+// about the failure is visible to a later one-shot read.
+let lastDaemonStatus: DaemonStatus = { state: 'connecting' };
 // Closing the window hides it to the tray instead of quitting (see createWindow's 'close'
 // handler below); only a real quit (tray menu, OS shutdown, before-quit) should let it through.
 let isQuitting = false;
@@ -199,6 +205,7 @@ let credentialRestartPending = false;
 let developmentFallbackSuppressed = false;
 
 function sendStatus(status: DaemonStatus): void {
+  lastDaemonStatus = status;
   sendToRenderer(mainWindow, 'daemon:status', status);
 }
 
@@ -998,9 +1005,7 @@ function handle(channel: string, listener: IpcHandlerListener): void {
   });
 }
 
-handle('daemon:get-status', (): DaemonStatus =>
-  client ? { state: 'ready' } : { state: 'connecting' },
-);
+handle('daemon:get-status', (): DaemonStatus => lastDaemonStatus);
 
 /**
  * What the renderer may know about the GitHub credential (issue #165).

@@ -56,7 +56,11 @@ function PipenzoStartup({
   enterDemoMode: () => void;
   exitDemoMode: () => void;
 }) {
-  const connection = useGitHubConnection();
+  // `daemonState` lets the router tell "no credential" apart from "credential exists, daemon
+  // hasn't confirmed it yet" (issue #286) -- see `startup-route.ts` for why `connection.source`
+  // alone can't, and `use-github-connection.ts` for why it comes from the same hook as `connection`
+  // rather than a separately-subscribed one.
+  const { connection, daemonState } = useGitHubConnection();
   const { connectedRepos, refresh: refreshConnectedRepos } = useConnectedRepos();
   // Subscribed unconditionally (rules of hooks), rendered only past the pre-app gate below: there
   // is nothing connected to poll, and so nothing this could report differently, before that point.
@@ -65,7 +69,7 @@ function PipenzoStartup({
   // recorded a list. #115 is what makes it real -- and the hook keeps answering `'not-tracked'`
   // whenever the count is genuinely unknown, so a daemon that has not finished starting never gets
   // read as "no repositories chosen".
-  const route = routePipenzoStartup({ connection, connectedRepos });
+  const route = routePipenzoStartup({ connection, connectedRepos, daemonState });
 
   // Nothing at all until the credential state is known. A spinner here would be worse than blank:
   // this resolves in one IPC round trip, and a spinner that appears and vanishes inside a frame is
@@ -73,6 +77,18 @@ function PipenzoStartup({
   // announced for a screen reader, which is the one audience for whom it is not instantaneous.
   if (route.screen === 'loading') {
     return <div className="preapp" role="status" aria-label="Checking your GitHub connection" />;
+  }
+
+  // The daemon never came up at all, for an install that already has a stored credential (issue
+  // #286). `role="alert"` rather than `role="status"`: unlike `loading` above, this is not going to
+  // resolve on its own, so it is worth a screen reader interrupting for.
+  if (route.screen === 'daemon-unavailable') {
+    return (
+      <div className="preapp" role="alert">
+        The local AgentDock daemon could not start, so your connected GitHub account can&rsquo;t be
+        reached right now. Restart AgentDock to try again.
+      </div>
+    );
   }
 
   // `onEnterDemo` is passed only when not already in demo mode, for the same reason `App` hides

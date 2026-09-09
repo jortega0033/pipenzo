@@ -150,6 +150,52 @@ describe('routePipenzoStartup', () => {
     });
   });
 
+  describe('daemon-status gating (issue #286)', () => {
+    /** The exact ambiguous window: `source` is honestly `'none'` (#209) only because the daemon
+     * hasn't confirmed anything yet, but the vault already has a credential stored. */
+    const unconfirmed = connection({ state: 'connected', source: 'none' });
+
+    it('waits rather than flashing ConnectScreen while the daemon is still starting', () => {
+      expect(routePipenzoStartup({ connection: unconfirmed, daemonState: 'connecting' })).toEqual({
+        screen: 'loading',
+      });
+    });
+
+    it('waits the same way when the daemon status has not been read yet', () => {
+      expect(routePipenzoStartup({ connection: unconfirmed })).toEqual({ screen: 'loading' });
+    });
+
+    it('routes to an honest daemon-unavailable screen on total daemon failure', () => {
+      expect(
+        routePipenzoStartup({ connection: unconfirmed, daemonState: 'unavailable' }),
+      ).toEqual({ screen: 'daemon-unavailable' });
+    });
+
+    it('falls through to ordinary token-less routing once the daemon is ready with nothing', () => {
+      // #209: `ready` is when `source` gets reconciled, so a daemon that is genuinely `ready` and
+      // still `'none'` really has no credential -- this is not the ambiguous window any more.
+      expect(
+        routePipenzoStartup({ connection: unconfirmed, daemonState: 'ready' }),
+      ).toMatchObject({ screen: 'pre-app', step: 'device-code' });
+    });
+
+    it('does not gate an ordinary token-less install (empty vault) on daemon state at all', () => {
+      const empty = connection({ state: 'disconnected', source: 'none' });
+      expect(routePipenzoStartup({ connection: empty, daemonState: 'connecting' })).toMatchObject({
+        screen: 'pre-app',
+        step: 'device-code',
+      });
+      expect(routePipenzoStartup({ connection: empty, daemonState: 'unavailable' })).toMatchObject({
+        screen: 'pre-app',
+        step: 'device-code',
+      });
+    });
+
+    it('does not gate a confirmed credential on daemon state', () => {
+      expect(routePipenzoStartup({ connection: connection() })).toMatchObject({ screen: 'app' });
+    });
+  });
+
   /**
    * The default, and the one that is easy to get wrong later. Nothing in this app records a
    * connected-repos list yet (#115 is what will), and treating "no list" as "an empty list" would
