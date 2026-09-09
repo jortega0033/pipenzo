@@ -83,6 +83,11 @@ export function storedOnLabel(storedAt: string | undefined): string | undefined 
  * The wire value `source` carries is still `'environment'` (kept for compatibility with everything
  * else that reads it — see `resolveDaemonGitHubToken`'s own note on why the label outlived the
  * mechanism); only what this function displays for it changed.
+ *
+ * `'environment_leak'` (issue #291) is deliberately not folded into the same label as
+ * `'environment'`: the two are indistinguishable to the daemon but not to a person reading this
+ * row, since one is the intended development file and the other is a credential-stripping failure
+ * `AccountPanel.tsx`'s dedicated notice explains -- this row just needs to not call it the file.
  */
 export function tokenLocationLabel(source: PipenzoCredentialSourceV1): string {
   switch (source) {
@@ -90,6 +95,8 @@ export function tokenLocationLabel(source: PipenzoCredentialSourceV1): string {
       return 'Electron-main vault';
     case 'environment':
       return 'development token file';
+    case 'environment_leak':
+      return 'an unexpected environment variable';
     case 'none':
       return 'no token in this daemon';
   }

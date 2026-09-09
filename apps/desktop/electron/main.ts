@@ -46,6 +46,7 @@ import {
   type AgentCommandV2,
   type AgentEventV2Envelope,
   type AgentSessionV2,
+  type PipenzoCredentialSourceV1,
   type PipenzoDeviceCodeV1,
   type PipenzoDeviceFailureReasonV1,
   type PipenzoGitHubConnectionV1,
@@ -176,8 +177,11 @@ const tokenVault = new GitHubTokenVault({
   safeStorage,
 });
 
-/** Which credential the currently running daemon was started with. Reported, never inferred. */
-let daemonTokenSource: DaemonGitHubTokenSource = 'none';
+/** Which credential the currently running daemon was started with. Reported, never inferred.
+ * `PipenzoCredentialSourceV1`, not `DaemonGitHubTokenSource` -- this is the *reconciled* answer
+ * (issue #209), and since issue #291 that reconciliation can report a value (`'environment_leak'`)
+ * that main itself never intends to send, so it does not fit the narrower intent-only type. */
+let daemonTokenSource: PipenzoCredentialSourceV1 = 'none';
 
 /**
  * The child a deliberate restart is waiting on, so its `exit` handler starts the next daemon

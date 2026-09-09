@@ -598,14 +598,20 @@ describe('confirming what the daemon actually resolved, not just what main sent 
   });
 
   /**
-   * A daemon-reported `'environment'` means the daemon fell back to its own `process.env` --
-   * `buildDaemonEnvironment` always strips that variable before an Electron-managed daemon spawns,
-   * so seeing this from a daemon Electron itself started means the strip did not hold. Reported
-   * honestly rather than trusting whatever main intended to send.
+   * A daemon-reported `'environment'` means nothing arrived over stdin and the daemon fell back to
+   * its own `process.env` instead. For an Electron-spawned daemon that is *never* the expected
+   * development-fallback case, whatever `intended` was: issue #212 moved that fallback to a file
+   * main reads and sends over stdin exactly like a vault token (confirmed as `intended` via the
+   * `'injected'` report, covered above, not this one), and `buildDaemonEnvironment` strips every
+   * GitHub-credential-shaped variable before every spawn regardless of what main intended to send.
+   * So a daemon that still finds one in its own environment has a real, unintended leak (issue
+   * #291) -- reported as `'environment_leak'`, never as the file-based `'environment'`, whatever
+   * `intended` was. (Before #291, this reported `'environment'` unconditionally here, which would
+   * describe a genuine credential-boundary failure as the routine, harmless dev-build case.)
    */
-  it('reports environment when the daemon says it fell back to its own environment, regardless of intent', () => {
+  it('reports environment_leak when the daemon falls back to its own environment, regardless of intent', () => {
     for (const intended of ['vault', 'environment', 'none'] as const) {
-      expect(reconcileDaemonTokenSource(intended, 'environment')).toBe('environment');
+      expect(reconcileDaemonTokenSource(intended, 'environment')).toBe('environment_leak');
     }
   });
 

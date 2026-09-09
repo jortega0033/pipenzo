@@ -83,6 +83,15 @@ describe('account', () => {
       expect(tokenLocationLabel('environment')).toBe('development token file');
       expect(tokenLocationLabel('none')).toBe('no token in this daemon');
     });
+
+    /**
+     * Issue #291: `'environment_leak'` must not read as the ordinary development-fallback file --
+     * that would hide the exact credential-boundary failure this wire value exists to surface.
+     */
+    it('does not call an unintended environment leak a file', () => {
+      expect(tokenLocationLabel('environment_leak')).not.toBe(tokenLocationLabel('environment'));
+      expect(tokenLocationLabel('environment_leak')).not.toContain('file');
+    });
   });
 
   /**
@@ -99,6 +108,17 @@ describe('account', () => {
     it('is false for a vault-backed daemon', () => {
       expect(
         isRunningOnInheritedToken({ state: 'connected', login: 'octocat', source: 'vault' }),
+      ).toBe(false);
+    });
+
+    /**
+     * Issue #291: an unintended leak is not "the development fallback" -- folding it in here would
+     * point a user at the ordinary dev-fallback notice/copy for a real credential-boundary failure.
+     * `AccountPanel.tsx` gives `'environment_leak'` its own, more alarming notice instead.
+     */
+    it('is false for an unintended environment leak, which is not the development fallback', () => {
+      expect(
+        isRunningOnInheritedToken({ state: 'disconnected', source: 'environment_leak' }),
       ).toBe(false);
     });
   });

@@ -104,8 +104,26 @@ export type PipenzoCredentialUnavailableReasonV1 = z.infer<
  * `daemonCredentialSourceV1Schema`, the daemon's own report of what it actually resolved, over the
  * `/health` channel (`reconcileDaemonTokenSource` in `daemon-environment.ts`) before setting this
  * field — a daemon that reports `none` is never papered over with main's pre-handoff intent.
+ *
+ * `daemonCredentialSourceV1Schema`'s own `'environment'` (the daemon's *own* report, a narrower,
+ * differently-shaped value than this field -- see that schema's doc comment) means the daemon fell
+ * back to its own `process.env.PIPENZO_GITHUB_TOKEN` instead of anything arriving over stdin. For an
+ * Electron-spawned daemon that is never the expected development-fallback case: issue #212 moved
+ * that fallback to a file main reads and sends over stdin exactly like a vault token, so a healthy
+ * file-based fallback is confirmed the same way a vault token is (the daemon reports `injected`).
+ * A daemon that instead reports `'environment'` has found something in its own environment despite
+ * `buildDaemonEnvironment` stripping every GitHub-credential-shaped variable before every spawn --
+ * a real, unintended leak. `reconcileDaemonTokenSource` reports that here as `'environment_leak'`
+ * rather than `'environment'` (issue #291), since the latter is this field's own established
+ * meaning of "the development-fallback file" — using it for a leak would make a genuine
+ * credential-boundary failure read as the ordinary, expected dev-build case.
  */
-export const pipenzoCredentialSourceV1Schema = z.enum(['vault', 'environment', 'none']);
+export const pipenzoCredentialSourceV1Schema = z.enum([
+  'vault',
+  'environment',
+  'environment_leak',
+  'none',
+]);
 
 export type PipenzoCredentialSourceV1 = z.infer<typeof pipenzoCredentialSourceV1Schema>;
 
