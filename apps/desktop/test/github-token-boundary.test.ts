@@ -577,7 +577,7 @@ describe('which credential the daemon runs on is decided once, and named', () =>
     // so gating this on `clear()`'s result the way the restart itself is gated would leave a daemon
     // already running on the inherited variable unsuppressed until some unrelated future restart.
     expect(main).toMatch(
-      /handle\('pipenzo:disconnect-github'[\s\S]{0,600}?developmentFallbackSuppressed = true;[\s\S]{0,300}?if \(tokenVault\.clear\(\) \|\| daemonTokenSource === 'environment'\) \{\s*\n\s*void restartDaemonForCredentialChange\(\);/,
+      /handle\('pipenzo:disconnect-github'[\s\S]{0,600}?developmentFallbackSuppressed = true;[\s\S]{0,400}?if \(\s*\n\s*tokenVault\.clear\(\) \|\|\s*\n\s*daemonTokenSource === 'environment' \|\|\s*\n\s*daemonTokenSource === 'environment_leak'\s*\n\s*\) \{\s*\n\s*void restartDaemonForCredentialChange\(\);/,
     );
   });
 });
@@ -820,16 +820,18 @@ describe('nothing on the renderer bridge can obtain the token', () => {
     // `stripComments`, like its siblings above: line-comment prose quoting the *old* form of either
     // guard below would otherwise fail this test for saying what the guard used to be.
     const main = stripComments(await readElectron('main.ts'));
-    // Two conditions decide the restart (issue #210 added the second): `clear()`'s own report,
-    // covered behaviourally in `github-token-vault.test.ts` ("reports whether a disconnect
-    // actually removed anything"), including the machine-without-a-credential-store case that made
-    // the previous `status().state !== 'disconnected'` form of this guard permanently true; and
-    // `daemonTokenSource === 'environment'`, for the machine-without-a-credential-store case where
-    // `clear()` alone would never fire even though the currently-running daemon is on the inherited
-    // variable. What is asserted here is only the wiring: that the handler gates on exactly these
-    // two and nothing else -- both false is still a true no-op.
+    // Three conditions decide the restart (issue #210 added the second, issue #303 the third):
+    // `clear()`'s own report, covered behaviourally in `github-token-vault.test.ts` ("reports
+    // whether a disconnect actually removed anything"), including the machine-without-a-
+    // credential-store case that made the previous `status().state !== 'disconnected'` form of this
+    // guard permanently true; `daemonTokenSource === 'environment'`, for the machine-without-a-
+    // credential-store case where `clear()` alone would never fire even though the currently-
+    // running daemon is on the inherited variable; and `daemonTokenSource === 'environment_leak'`,
+    // for the #291 leak case, which likewise has nothing for `clear()` to find. What is asserted
+    // here is only the wiring: that the handler gates on exactly these three and nothing else --
+    // all three false is still a true no-op.
     expect(main).toMatch(
-      /if \(tokenVault\.clear\(\) \|\| daemonTokenSource === 'environment'\) \{[\s\S]{0,200}?void restartDaemonForCredentialChange\(\);\s*\n\s*\}/,
+      /if \(\s*\n\s*tokenVault\.clear\(\) \|\|\s*\n\s*daemonTokenSource === 'environment' \|\|\s*\n\s*daemonTokenSource === 'environment_leak'\s*\n\s*\) \{[\s\S]{0,200}?void restartDaemonForCredentialChange\(\);\s*\n\s*\}/,
     );
     // And specifically not on `status()`, which cannot distinguish "nothing stored" from "cannot
     // tell" and so answers the same on every machine where the loop was reachable. The quote class

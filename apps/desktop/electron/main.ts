@@ -1147,14 +1147,28 @@ handle('pipenzo:disconnect-github', (): PipenzoGitHubConnectionV1 => {
   developmentFallbackSuppressed = true;
   // Restarting when `clear()` found a real record to remove is the pre-existing guard (its own
   // comment above explains why an unconditional restart would loop). The `daemonTokenSource ===
-  // 'environment'` half is new: a machine with no working credential store at all (`state:
+  // 'environment'` half is older still: a machine with no working credential store at all (`state:
   // 'unavailable'`, `os_encryption_unavailable`/`plaintext_backend`) has no vault file `clear()`
   // could ever find, so without this a daemon already running on the development fallback would
   // keep running on it -- the flag above would be set but would do nothing until some unrelated
-  // future restart. This still cannot loop: the second click finds `daemonTokenSource` already
-  // `'none'` (the first restart's own confirmed report, issue #209), so the condition is false and
-  // nothing restarts a second time.
-  if (tokenVault.clear() || daemonTokenSource === 'environment') {
+  // future restart. `daemonTokenSource === 'environment_leak'` (issue #303) covers the sibling
+  // case #291 introduced: a daemon whose `buildDaemonEnvironment` strip failed to remove a real
+  // credential from its own process environment. Before this, Disconnect cleared the vault (a
+  // no-op here, since a leak has nothing to do with the vault) and left that daemon running exactly
+  // as it was, even though `AccountPanel.tsx`'s notice for this case tells the user to restart.
+  // Restarting is *parity with the ordinary fallback case*, not a guaranteed fix: it reruns
+  // `buildDaemonEnvironment` against the same parent environment, so if the strip itself has a real
+  // bug -- rather than something transient -- the new daemon can leak the same variable again. This
+  // guard cannot loop either way: the second click finds `daemonTokenSource` already `'none'` (the
+  // first restart's own confirmed report, issue #209, reset unconditionally at the top of every
+  // `spawnDaemon()` before the new child's health check can confirm anything), so the condition is
+  // false and nothing restarts a second time -- regardless of whether the new daemon comes back
+  // clean, still leaking, or anything in between.
+  if (
+    tokenVault.clear() ||
+    daemonTokenSource === 'environment' ||
+    daemonTokenSource === 'environment_leak'
+  ) {
     void restartDaemonForCredentialChange();
   }
   // `source` in this reply still describes the daemon that is on its way out; the restart it just
