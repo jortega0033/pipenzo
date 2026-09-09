@@ -25,4 +25,39 @@ describe('refusalCommentBody', () => {
     const body = refusalCommentBody({ changedLines: 900, filesTouched: 40, layered: false });
     expect(body).toContain('Nothing was written');
   });
+
+  describe('proposedSplit (issue #271)', () => {
+    const estimate: RefineEstimateV1 = { changedLines: 900, filesTouched: 40, layered: false };
+
+    it('says nothing about a split when none was given', () => {
+      const body = refusalCommentBody(estimate);
+      expect(body).not.toContain('Proposed split');
+    });
+
+    it('says nothing about a split when given an empty one', () => {
+      const body = refusalCommentBody(estimate, []);
+      expect(body).not.toContain('Proposed split');
+    });
+
+    it('renders a numbered list, in order, when a real split is given', () => {
+      const body = refusalCommentBody(estimate, [
+        { summary: 'Extract the shared validation helper', changedLines: 80, filesTouched: 2 },
+        { summary: 'Wire the new endpoint through it', changedLines: 140, filesTouched: 5 },
+      ]);
+      expect(body).toContain('Proposed split · 2 tickets, in this order');
+      const first = body.indexOf('1. Extract the shared validation helper');
+      const second = body.indexOf('2. Wire the new endpoint through it');
+      expect(first).toBeGreaterThan(-1);
+      expect(second).toBeGreaterThan(first);
+      expect(body).toContain('(≈80 lines, 2 files)');
+      expect(body).toContain('(≈140 lines, 5 files)');
+    });
+
+    it('still says nothing was written even with a split attached', () => {
+      const body = refusalCommentBody(estimate, [
+        { summary: 'One part', changedLines: 10, filesTouched: 1 },
+      ]);
+      expect(body).toContain('Nothing was written');
+    });
+  });
 });

@@ -20,6 +20,7 @@ import type {
   PipenzoReviewRequestV1,
   PipenzoReviewResultV1,
   RefineEstimateV1,
+  RefineProposedSplitPartV1,
 } from '@agent-dock/shared';
 import { PIPENZO_DIFF_SIZE_THRESHOLDS } from '@agent-dock/shared';
 import {
@@ -236,7 +237,7 @@ export class PipenzoPhaseService {
       await github.createIssueComment(
         ref,
         result.ticket.issueNumber,
-        refusalCommentBody(spec.estimate),
+        refusalCommentBody(spec.estimate, spec.proposedSplit),
       );
     } catch (error) {
       this.#logger?.warn('could not record a diff-size refusal against its ticket', {
@@ -634,26 +635,46 @@ export function blownEstimateCommentBody(report: PipenzoReviewResultV1): string 
  * The comment posted on a diff-size-gate refusal at Refine (issue #270). Names the estimate and
  * which of README's two conditions tripped -- over the ceiling a dependency-ordered stack could
  * still cover, or inside the stack band with no clean layering -- since those are two different
- * reasons a human re-scoping the ticket needs to tell apart. No proposed split yet: nothing
- * generates one (#271); the comment says only what is real.
+ * reasons a human re-scoping the ticket needs to tell apart.
  *
  * The ceiling itself comes from `PIPENZO_DIFF_SIZE_THRESHOLDS` (`@agent-dock/shared`), the same
  * constant `refine-gate.ts`'s `evaluateDiffSizeGate` and `RefusalPanel.tsx`'s `trippedBy` (issue
  * #100) read -- not a third copy of README's numbers.
+ *
+ * `proposedSplit` (issue #271) renders as a numbered list when present, the same "no field, no
+ * section" discipline `RefusalPanel.tsx`'s own `Split` block already applies to the UI half of this
+ * same refusal -- so the two surfaces stay in agreement about what is real rather than one saying
+ * more than the other. It is `undefined` for every spec today (nothing in `refine-subagent.ts`'s
+ * prompt asks a provider to produce one yet), so this branch is unreachable until that separate,
+ * still-undecided work lands; the comment says only what is real either way.
  */
-export function refusalCommentBody(estimate: RefineEstimateV1): string {
+export function refusalCommentBody(
+  estimate: RefineEstimateV1,
+  proposedSplit?: readonly RefineProposedSplitPartV1[],
+): string {
   const { stackMaxLines, stackMaxFiles } = PIPENZO_DIFF_SIZE_THRESHOLDS;
   const overCeiling = estimate.changedLines > stackMaxLines || estimate.filesTouched > stackMaxFiles;
   const reason = overCeiling
     ? `past the ${stackMaxLines}-line / ${stackMaxFiles}-file ceiling a dependency-ordered stack can still cover`
     : 'no clean layering into a 2–4 PR stack at this size';
-  return [
+  const lines = [
     `This ticket declined at Refine: **${reason}**.`,
     '',
     `Estimate: **${estimate.changedLines}** changed lines across **${estimate.filesTouched}** files.`,
+  ];
+  if (proposedSplit && proposedSplit.length > 0) {
+    lines.push('', `Proposed split · ${proposedSplit.length} ${proposedSplit.length === 1 ? 'ticket' : 'tickets'}, in this order:`);
+    proposedSplit.forEach((part, index) => {
+      lines.push(
+        `${index + 1}. ${part.summary} (≈${part.changedLines} lines, ${part.filesTouched} files)`,
+      );
+    });
+  }
+  lines.push(
     '',
     'Parked in `pipenzo:needs-pre-scoping`. Nothing was written and no runs will be spent until a person re-scopes it.',
-  ].join('\n');
+  );
+  return lines.join('\n');
 }
 
 /**

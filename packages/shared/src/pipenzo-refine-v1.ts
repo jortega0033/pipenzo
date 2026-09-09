@@ -115,6 +115,24 @@ const repoRelativePathSchema = z
   .refine((value) => !value.split('/').includes('..'), 'must not traverse upward')
   .refine((value) => !value.includes('\\'), 'must use POSIX separators');
 
+/**
+ * One part of a decomposition offered when Refine declines a ticket outright (issue #271). README's
+ * refusal bullet says the ticket is handed to a human "with the estimate and a proposed split," and
+ * `apps/desktop/src/pipenzo/RefusalPanel.tsx` already renders exactly this shape in its optional
+ * `proposedSplit` prop -- this schema is that shape's producer-side declaration, not a new one
+ * invented to match it.
+ */
+export const refineProposedSplitPartV1Schema = z
+  .object({
+    /** One line a human reads to see what this part of the split would cover. */
+    summary: z.string().min(1).max(500),
+    changedLines: z.number().int().nonnegative().max(1_000_000),
+    filesTouched: z.number().int().nonnegative().max(10_000),
+  })
+  .strict();
+
+export type RefineProposedSplitPartV1 = z.infer<typeof refineProposedSplitPartV1Schema>;
+
 export const refineSpecV1Schema = z
   .object({
     schemaVersion: z.literal(1),
@@ -141,6 +159,17 @@ export const refineSpecV1Schema = z
      * nothing was ambiguous.
      */
     openQuestions: z.array(z.string().min(1).max(1_000)).max(20),
+    /**
+     * A decomposition into independently-shippable, roughly-estimated parts, offered only when the
+     * ticket was too big for even a dependency-ordered stack (issue #271). Optional and absent by
+     * default: nothing in `refine-subagent.ts`'s prompt asks for one yet -- deciding whether that is
+     * the same Refine session's own output, a second pass, and what a cheap-tier read-only session
+     * can honestly claim about a multi-PR decomposition it never wrote any of, is real product
+     * judgment this schema addition does not make for it. Until that lands, every spec omits this
+     * field, `RefusalPanel.tsx`'s `Split` block stays unrendered, and `refusalCommentBody` posts the
+     * estimate alone -- exactly today's behavior, unchanged by this field existing.
+     */
+    proposedSplit: z.array(refineProposedSplitPartV1Schema).min(1).max(20).optional(),
   })
   .strict();
 
@@ -222,6 +251,23 @@ export const REFINE_SPEC_V1_JSON_SCHEMA = Object.freeze({
       type: 'array',
       maxItems: 20,
       items: { type: 'string', minLength: 1, maxLength: 1000 },
+    },
+    // Not in `required` above: optional on both sides, and absent from every spec today since
+    // nothing in `refine-subagent.ts`'s prompt asks a provider to populate it yet (issue #271).
+    proposedSplit: {
+      type: 'array',
+      minItems: 1,
+      maxItems: 20,
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['summary', 'changedLines', 'filesTouched'],
+        properties: {
+          summary: { type: 'string', minLength: 1, maxLength: 500 },
+          changedLines: { type: 'integer', minimum: 0, maximum: 1000000 },
+          filesTouched: { type: 'integer', minimum: 0, maximum: 10000 },
+        },
+      },
     },
   },
 } as const);
