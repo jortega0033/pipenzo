@@ -624,7 +624,7 @@
                 </div>
               </sc-for>
             </div>
-            <span class="f-help">In the diff view these render as the <b>Machine-verified</b> block, where gitleaks and Semgrep report on one line — the same five, grouped for reading rather than for configuring. Nothing else joins that block: a repo's own lint runs in its CI and can move a ticket to <span class="mono">pipenzo:ci-failed</span>, but it is not one of pipenzo's gates and never appears in the gate count.</span>
+            <span class="f-help">In the diff view these render as the <b>Machine-verified</b> block, where gitleaks and Semgrep report on one line — the same five, grouped for reading rather than for configuring. Build, typecheck and lint report as one row for the same reason: a human reads them as one machine-verified pass, even though the runner checks each separately and any one of the three can block a ticket on its own.</span>
           </div>
 
           <div class="col">
@@ -691,9 +691,9 @@ class Component extends DCLogic {
         why: 'Never a weaker model tier than the implementer it is checking. Cross-vendor review is used only as a tiebreak among equal tiers.' },
     ].map((r) => ({ ...r, open: !r.locked, hasLead: !!r.lead }));
 
-    // README "Review": build/typecheck, spec-generated tests, gitleaks, Semgrep, a diff-scope check.
+    // README "Review": build/typecheck, lint, spec-generated tests, gitleaks, Semgrep, a diff-scope check.
     const gates = [
-      { name: 'Build and typecheck', sub: 'pnpm build, inside the ticket worktree' },
+      { name: 'Build, typecheck and lint', sub: 'pnpm build, pnpm typecheck and pnpm lint, inside the ticket worktree' },
       { name: 'Spec-generated tests', sub: 'Written from the spec, never by the implementer that has to pass them' },
       { name: 'gitleaks', sub: 'Committed secrets' },
       { name: 'Semgrep', sub: 'The p/ci ruleset' },
