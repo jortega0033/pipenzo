@@ -70,7 +70,9 @@ import { useGitHubConnection } from './use-github-connection.js';
  * bug went: an unbounded restart loop that kills every running session on each pass.
  */
 export function AccountPanel() {
-  const connection = useGitHubConnection();
+  // Only `connection` is this component's concern; `daemonState` (issue #286) exists for
+  // `routePipenzoStartup`'s gate in `AppRoot.tsx`, which is the hook's only other caller.
+  const { connection } = useGitHubConnection();
   const [providers, setProviders] = useState<readonly ProviderStatusV2[] | undefined>(undefined);
   const [providersUnread, setProvidersUnread] = useState(false);
   const [providersReloadKey, setProvidersReloadKey] = useState(0);

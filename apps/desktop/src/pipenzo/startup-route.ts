@@ -1,4 +1,5 @@
 import type { PipenzoGitHubConnectionV1 } from '@agent-dock/shared';
+import type { DaemonState } from './use-github-connection.js';
 
 /**
  * Which screen a Pipenzo install opens on, and — when that is the pre-app — which of its two steps
@@ -78,7 +79,14 @@ export type PipenzoStartupRoute =
        * one that renders it.
        */
       readonly environmentCredential: boolean;
-    };
+    }
+  /**
+   * The daemon could not start at all (issue #286), for a vault that already holds a credential.
+   * Distinct from `pre-app`'s token-less `device-code` step on purpose: this install is not
+   * disconnected and signing in again would not help, so telling it to "Connect GitHub" would be
+   * false. `loading` isn't right either -- there is nothing left to wait for.
+   */
+  | { readonly screen: 'daemon-unavailable' };
 
 export interface PipenzoStartupInput {
   /** `undefined` until the first `pipenzoGitHubConnection()` call resolves. */
@@ -86,6 +94,17 @@ export interface PipenzoStartupInput {
   /** The step the user navigated to, if they navigated at all. */
   readonly requestedStep?: PreAppStep;
   readonly connectedRepos?: ConnectedRepoState;
+  /**
+   * The local daemon's own lifecycle (issue #286), independent of `connection.source`. `undefined`
+   * (not read yet) is treated the same as `'connecting'`: both mean "no answer yet, keep waiting."
+   *
+   * Exists to resolve one specific ambiguity: since #209, `connection.source` reads `'none'` until
+   * the daemon *confirms* a credential over its `/health` check, so a vault that has one stored
+   * (`connection.state === 'connected'`) looks identical to a genuinely empty one for as long as the
+   * daemon is still starting. Left unresolved, that ambiguity is what flashes `ConnectScreen` at an
+   * already-connected install on every launch, and never corrects it if the daemon fails outright.
+   */
+  readonly daemonState?: DaemonState;
 }
 
 /**
@@ -107,6 +126,22 @@ export function routePipenzoStartup(input: PipenzoStartupInput): PipenzoStartupR
   // the pre-app regardless of what it has chosen, so waiting on a repository count there would just
   // delay the screen it is going to see anyway.
   const hasCredential = connection.source !== 'none';
+
+  // The ambiguous window (issue #286): the vault already holds a credential, but the daemon has not
+  // confirmed using it yet, so `source` still reads `'none'` (#209 made that reporting honest rather
+  // than optimistic). Resolved by the daemon's own state rather than guessed from `connection` alone:
+  // - not ready yet (`'connecting'`, or not read yet) -- still worth waiting for, so `loading`, not
+  //   `ConnectScreen`. Ruling this out is what stops the startup flash.
+  // - `'unavailable'` -- nothing left to wait for, and this install was never actually disconnected,
+  //   so it gets its own honest screen rather than silently falling through to `ConnectScreen`.
+  // A daemon that reports `'ready'` without ever confirming a source really has nothing (#209's
+  // reconciliation only sets a real `source` once `ready` fires), so that case is intentionally not
+  // covered here and falls through to the ordinary token-less routing below.
+  if (!hasCredential && connection.state === 'connected') {
+    if (input.daemonState === 'unavailable') return { screen: 'daemon-unavailable' };
+    if (input.daemonState !== 'ready') return { screen: 'loading' };
+  }
+
   if (hasCredential && connectedRepos === 'unknown') return { screen: 'loading' };
   const reposSatisfied = typeof connectedRepos !== 'number' || connectedRepos > 0;
 

@@ -46,6 +46,7 @@ function installBridge(
     options.disconnect ?? vi.fn().mockResolvedValue({ state: 'disconnected', source: 'none' });
   const bridge = {
     pipenzoGitHubConnection: vi.fn().mockResolvedValue(options.connection ?? CONNECTED),
+    getDaemonStatus: vi.fn().mockResolvedValue({ state: 'ready' }),
     onDaemonStatus: () => () => {},
     listProvidersV2: options.providersReject
       ? vi.fn().mockRejectedValue(new Error('daemon is not ready yet'))

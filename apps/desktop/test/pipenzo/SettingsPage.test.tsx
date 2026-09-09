@@ -17,6 +17,7 @@ function installBridge() {
     pipenzoGitHubConnection: vi
       .fn()
       .mockResolvedValue({ state: 'connected', login: 'octocat', source: 'vault' }),
+    getDaemonStatus: vi.fn().mockResolvedValue({ state: 'ready' }),
     onDaemonStatus: () => () => {},
     listProvidersV2: vi.fn().mockResolvedValue([]),
     disconnectGitHub: vi.fn(),
