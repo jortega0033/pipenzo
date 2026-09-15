@@ -1148,7 +1148,7 @@ class Component extends DCLogic {
         { kind: 'implement', tool: 'implement', risk: 'MEDIUM', title: 'Ran the new regression test in isolation — it did not go as predicted', meta: 'sonnet · 22s', pc: pcMismatch },
         { kind: 'implement', tool: 'implement', risk: 'MEDIUM', title: 'Re-ran the suite after the fallback', meta: 'sonnet · 9s', pc: pcMatch },
         { kind: 'implement', tool: 'implement', title: 'Regression test added: a secret set on the host env must not reach the spawned server', meta: 'sonnet · 1m 40s', sub: testSub },
-        { kind: 'gates', tool: 'gates', title: 'Build and typecheck, spec-generated tests, gitleaks, semgrep, diff-scope — 5/5 passed', meta: 'deterministic · 13s' },
+        { kind: 'gates', tool: 'gates', title: 'Build, typecheck and lint, spec-generated tests, gitleaks, semgrep, diff-scope — 5/5 passed', meta: 'deterministic · 13s' },
         { kind: 'review', tool: 'review', title: 'Adversarial verifier sustained 0 critical findings after one round — 3 advisory reviewer notes stand, listed by severity in the diff view', meta: 'opus · codex · 2m 05s' },
         { kind: 'implement', tool: 'implement', title: 'Committed to issue-94 — 2 files, +52 −6. Local branch only, nothing pushed', meta: 'sonnet' },
       ],
@@ -1173,7 +1173,7 @@ class Component extends DCLogic {
     const events85 = [
       { kind: 'ack', tool: 'pipenzo', title: 'Picked up #85 — created worktree .worktrees/issue-85 from main and read the issue.', meta: '10:41 · 2s' },
       { kind: 'implement', tool: 'implement', title: 'Committed to issue-85 — 1 file, +18 −4. Local branch only', meta: 'sonnet · 3m 10s' },
-      { kind: 'gates', tool: 'gates', title: 'Build and typecheck, spec-generated tests, gitleaks, semgrep, diff-scope — 5/5 passed locally', meta: 'deterministic · 11s' },
+      { kind: 'gates', tool: 'gates', title: 'Build, typecheck and lint, spec-generated tests, gitleaks, semgrep, diff-scope — 5/5 passed locally', meta: 'deterministic · 11s' },
       { kind: 'publish', tool: 'publish', risk: 'HIGH', title: 'Pushed issue-85 and opened PR #115 — approved by you at 11:02', meta: '11:02', pc: pcPublish },
       { kind: 'ci', tool: 'ci · post-MVP', title: 'GitHub check failed on PR #115 → ci-failed. One classifiable fix attempt, forked from the original session', meta: '11:14 → 11:19', ci: true },
     ];
