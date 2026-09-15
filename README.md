@@ -14,10 +14,11 @@ apps that drive the Claude Code and Codex CLIs.
 
 **Status: early, actively being built.** The daemon-side pipeline logic — GitHub client, phase
 machine, ticket store, refine/implement orchestration, review gates, screenshot verification, and
-the publish service — is real, working, tested code. The desktop UI you'd actually see if you ran
-the app today is still mostly agentdock's own demo shell; Pipenzo's kanban/ticket UI exists as
-built, individually-tested components that aren't wired into the running app yet. See
-[What exists today](#what-exists-today) for the honest breakdown.
+the publish service — is real, working, tested code. The desktop app now mounts Pipenzo's own
+kanban board by default (issue #274) — agentdock's inherited demo shell only shows up if you
+explicitly opt into it. GitHub sign-in is real device-flow OAuth into a `safeStorage`-backed token
+vault (issue #165), not a bare env var you set by hand. See
+[What exists today](#what-exists-today) for the honest breakdown of what's still not wired in.
 
 ## Who this is for
 
@@ -136,32 +137,33 @@ just stops appearing on the next poll. Full label/lane/state reasoning is in the
 ## What exists today
 
 **Built and tested (daemon side).** `apps/daemon/src/github-client.ts` is a real `@octokit/core`
-client (issue/label CRUD, PR metadata, check runs), authenticated today with a PAT read from a
-single env var (`PIPENZO_GITHUB_TOKEN`, single-repo pin via `PIPENZO_GITHUB_REPO`) — that's a
-stated walking-skeleton simplification, not the finished auth story; OAuth device-flow and the
-Electron-main token vault come later. The phase machine reads and writes real `pipenzo:` labels,
-with labels authoritative for a ticket's lane. The ticket store persists to disk with atomic
-writes. The publish service is real — `execFile('git', …)` for the push, an Octokit call for the
-PR — behind its own route, with the token-boundary test described above. Refine, Implement
-orchestration, the deterministic review gates, screenshot verification (a schema-validated capture
-manifest the daemon executes, never agent-authored code), and spec-test adjudication are all
-implemented with their own test suites.
+client (issue/label CRUD, PR metadata, check runs); the daemon itself is handed a token via a
+single env var (`PIPENZO_GITHUB_TOKEN`, single-repo pin via `PIPENZO_GITHUB_REPO`), but a user
+never sets that by hand — Electron main signs in via real device-flow OAuth
+(`apps/desktop/electron/github-device-flow.ts`), stores the token in a `safeStorage`-backed vault
+(`github-token-vault.ts`, issue #165), and injects it into the daemon's own environment at spawn
+time. The phase machine reads and writes real `pipenzo:` labels, with labels authoritative for a
+ticket's lane. The ticket store persists to disk with atomic writes. The publish service is real —
+`execFile('git', …)` for the push, an Octokit call for the PR — behind its own route, with the
+token-boundary test described above. Refine, Implement orchestration, the deterministic review
+gates, screenshot verification (a schema-validated capture manifest the daemon executes, never
+agent-authored code), and spec-test adjudication are all implemented with their own test suites.
+
+**Built and tested (desktop side).** Pipenzo's kanban/ticket UI is mounted by default
+(`apps/desktop/src/AppRoot.tsx`, issue #274) — the components under `apps/desktop/src/pipenzo/`
+(implement dialog, diff review, publish actions, screenshot evidence, the deterministic-gates
+panel) render as the app's real board, not a design-only preview. agentdock's inherited demo UI
+(provider panel, MCP panel, worktree panel, activity timeline) still exists but only shows up
+behind an explicit `demoMode` opt-in.
 
 **Designed, not wired in yet.**
-- **The kanban/ticket desktop UI.** The components exist under `apps/desktop/src/pipenzo/`
-  (implement dialog, diff review, publish actions, screenshot evidence, the deterministic-gates
-  panel — each individually tested), but the app's actual render tree still shows agentdock's
-  inherited demo UI (provider panel, MCP panel, worktree panel, activity timeline). If you run
-  `pnpm dev:desktop` today, that's what you'll see, not Pipenzo's board. The clickable prototype
-  under [`design/`](#design) is the accurate preview of the finished product.
-- **GitHub OAuth device-flow and the token vault** — today it's a PAT via env var, as above.
 - **The risk classifier** (`risk-classifier.ts` doesn't exist yet) — so risk-graded approval, the
   cumulative-risk strip, and pre-commitment records aren't built either.
 - **Bounded concurrency/queue, `gh stack` publishing, CI-failure auto-fix, GitLab/Jira adapters,
   the humanizing prose pass.**
-- **Product branding.** The app is still packaged and named "AgentDock" throughout
-  (`package.json`'s `agent-dock`, `electron-builder.yml`'s `AgentDock` app id/product name) —
-  renaming to Pipenzo is pending.
+- **Product branding, the rest of the way.** The desktop app and installer are already packaged
+  and named Pipenzo (`electron-builder.yml`'s `dev.pipenzo.desktop` app id, `Pipenzo` product name,
+  issue #241) — only the root `package.json`'s own `"name": "agent-dock"` is still unrenamed.
 
 ## Model routing
 
@@ -224,10 +226,10 @@ pnpm dev:daemon    # daemon only, tsx watch, auto-restart on change
 pnpm dev:desktop   # full desktop app — spawns the daemon automatically
 ```
 
-Remember what you'll actually see: the desktop app is agentdock's own demo shell today, not
-Pipenzo's kanban board (see [What exists today](#what-exists-today)). To see what the finished
-product is meant to look like, open [`design/pipenzo-prototype.html`](design/pipenzo-prototype.html)
-directly in a browser — no server needed.
+This mounts Pipenzo's own kanban board by default (see [What exists today](#what-exists-today)).
+To see the finished product's target design — including screens not wired up yet — open
+[`design/pipenzo-prototype.html`](design/pipenzo-prototype.html) directly in a browser, no server
+needed.
 
 ## Design
 
@@ -252,7 +254,7 @@ users. Dark-mode only for now.
 | GitHub API client | `@octokit/core` + `paginate-rest` | Pure JS, tree-shaken into the daemon bundle — never the `gh` binary |
 | Stacked PRs | `gh stack` (optional, runtime-detected) | The one place `gh` is used, and only for stack maintenance GitHub now does natively |
 | Screenshot verification | the repo's own Playwright, driven by the daemon from an agent-proposed **capture manifest** | The agent proposes a schema-validated manifest, never executable code; the daemon makes every Playwright call |
-| GitHub auth | PAT via env var today; `@octokit/auth-oauth-device` planned | See [What exists today](#what-exists-today) |
+| GitHub auth | `@octokit/auth-oauth-device`, device-flow, into a `safeStorage` vault | See [What exists today](#what-exists-today) |
 | Git operations | `execFile('git', …)` | Argv array, `shell:false`, sanitized env — same trust model as agentdock's worktree manager |
 | Ticket/queue store | JSON file store | Matches agentdock's `FileSessionStore` pattern; no native-addon DB needed |
 
@@ -309,10 +311,9 @@ project tests provider adapters without a real, paid Claude/Codex CLI in CI.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow, and
 [DEVELOPMENT.md](DEVELOPMENT.md) for an "I want to change X, start here" map. Given the current
-state above, the highest-leverage contributions right now are wiring the existing
-`apps/desktop/src/pipenzo/*` components into the app's render tree, and GitHub OAuth device-flow —
-both are scoped, both are things this README can now point at honestly instead of pretending
-they're already done.
+state above, the highest-leverage contributions right now are the risk classifier and the
+bounded-concurrency queue (see [Build order](#build-order)) — both scoped, both things this README
+can point at honestly as the next real gap rather than something already done.
 
 ## Naming
 
