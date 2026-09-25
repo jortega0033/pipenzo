@@ -251,6 +251,18 @@ export const reviewReportV1Schema = z
         message: 'an incomplete review input must carry the review_input_incomplete outcome',
       });
     }
+    // The reverse direction (code review of #331): without this, a report could claim
+    // review_input_incomplete with no inputCompleteness evidence at all, or with complete: true --
+    // a direct self-contradiction. #report() always pairs them correctly today, but the schema is
+    // this module's own last line of defence for a report assembled by hand, same reasoning as the
+    // ordering invariant above.
+    if (report.outcome === 'review_input_incomplete' && report.inputCompleteness?.complete !== false) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['inputCompleteness'],
+        message: 'review_input_incomplete requires inputCompleteness evidence with complete: false',
+      });
+    }
   });
 
 export type DeterministicGateResultV1 = z.infer<typeof deterministicGateResultV1Schema>;

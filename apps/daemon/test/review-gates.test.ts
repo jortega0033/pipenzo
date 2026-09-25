@@ -748,6 +748,35 @@ describe('ReviewGatesRunner — review input completeness (issue #316)', () => {
     expect(h.sessionPrompts[0]).toContain(fullPatch);
     expect(h.sessionPrompts[1]).toContain(fullPatch);
   });
+
+  it('the schema refuses review_input_incomplete with no completeness evidence at all', () => {
+    const invalid = {
+      schemaVersion: 1,
+      outcome: 'review_input_incomplete',
+      baseCommit: BASE,
+      headCommit: HEAD,
+      implementerTier: 'mid',
+      deterministic: [{ id: 'build', status: 'passed', summary: 'ok', durationMs: 10 }],
+    };
+    const parsed = reviewReportV1Schema.safeParse(invalid);
+    expect(parsed.success).toBe(false);
+    expect(JSON.stringify(parsed.error?.issues)).toContain('requires inputCompleteness evidence');
+  });
+
+  it('the schema refuses review_input_incomplete paired with complete: true (self-contradiction)', () => {
+    const invalid = {
+      schemaVersion: 1,
+      outcome: 'review_input_incomplete',
+      baseCommit: BASE,
+      headCommit: HEAD,
+      implementerTier: 'mid',
+      deterministic: [{ id: 'build', status: 'passed', summary: 'ok', durationMs: 10 }],
+      inputCompleteness: { complete: true, limitChars: MAX_DIFF_CHARS },
+    };
+    const parsed = reviewReportV1Schema.safeParse(invalid);
+    expect(parsed.success).toBe(false);
+    expect(JSON.stringify(parsed.error?.issues)).toContain('requires inputCompleteness evidence');
+  });
 });
 
 describe('ReviewGatesRunner — the lint gate (issue #283)', () => {
