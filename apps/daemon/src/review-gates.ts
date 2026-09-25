@@ -373,36 +373,46 @@ export class ReviewGatesRunner {
     request: ReviewRequest,
   ): Promise<{ patch: string; numstat: string; completeness: ReviewInputCompletenessV1 }> {
     const range = `${request.baseCommit}..${request.headCommit}`;
-    const numstat = await this.#runGit(
-      ['diff', '--numstat', '--end-of-options', range],
-      request.worktreePath,
-    );
-    if (numstat.code !== 0) {
+    try {
+      const numstat = await this.#runGit(
+        ['diff', '--numstat', '--end-of-options', range],
+        request.worktreePath,
+      );
+      if (numstat.code !== 0) {
+        throw new ReviewGateError('diff_unavailable', 'could not read the diff for this range');
+      }
+      const patch = await this.#runGit(
+        ['diff', '--patch', '--no-color', '--end-of-options', range],
+        request.worktreePath,
+      );
+      if (patch.code !== 0) {
+        throw new ReviewGateError('diff_unavailable', 'could not read the diff for this range');
+      }
+      // The real size, measured before truncation ever touches it (issue #316) -- `truncate()`
+      // below discards exactly the tail this exists to detect losing.
+      const actualChars = patch.stdout.length;
+      const complete = actualChars <= MAX_DIFF_CHARS;
+      return {
+        patch: truncate(patch.stdout, MAX_DIFF_CHARS),
+        numstat: numstat.stdout,
+        completeness: complete
+          ? { complete: true, limitChars: MAX_DIFF_CHARS }
+          : {
+              complete: false,
+              reason: `the diff patch is ${actualChars} characters, over the ${MAX_DIFF_CHARS}-character review input limit`,
+              actualChars,
+              limitChars: MAX_DIFF_CHARS,
+            },
+      };
+    } catch (error) {
+      if (error instanceof ReviewGateError) throw error;
+      // git itself failed to run rather than exiting non-zero -- e.g. the raw diff output
+      // exceeded pipenzo-git.ts's own maxBuffer cap (issue #333), fully reachable well before
+      // MAX_DIFF_CHARS since that cap is git's own subprocess ceiling, unrelated to this module's
+      // review-input budget. Same typed failure as a non-zero exit: the caller (pipenzo-phase-
+      // service.ts's REVIEW_CODES) already maps diff_unavailable to a typed route error either way.
       throw new ReviewGateError('diff_unavailable', 'could not read the diff for this range');
     }
-    const patch = await this.#runGit(
-      ['diff', '--patch', '--no-color', '--end-of-options', range],
-      request.worktreePath,
-    );
-    if (patch.code !== 0) {
-      throw new ReviewGateError('diff_unavailable', 'could not read the diff for this range');
-    }
-    // The real size, measured before truncation ever touches it (issue #316) -- `truncate()`
-    // below discards exactly the tail this exists to detect losing.
-    const actualChars = patch.stdout.length;
-    const complete = actualChars <= MAX_DIFF_CHARS;
-    return {
-      patch: truncate(patch.stdout, MAX_DIFF_CHARS),
-      numstat: numstat.stdout,
-      completeness: complete
-        ? { complete: true, limitChars: MAX_DIFF_CHARS }
-        : {
-            complete: false,
-            reason: `the diff patch is ${actualChars} characters, over the ${MAX_DIFF_CHARS}-character review input limit`,
-            actualChars,
-            limitChars: MAX_DIFF_CHARS,
-          },
-    };
   }
 
   /** The file's line count at the reviewed head commit, from the object store — never the worktree's

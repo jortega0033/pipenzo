@@ -990,6 +990,19 @@ describe('ReviewGatesRunner — input validation', () => {
     expect((await rejection(() => runner.run(request()))).code).toBe('diff_unavailable');
   });
 
+  it('surfaces the same diff_unavailable error when git itself fails to run, not just a non-zero exit (issue #333)', async () => {
+    const runner = new ReviewGatesRunner({
+      commands: { available: async () => true, run: async () => ({ stdout: '', stderr: '', code: 0 }) },
+      sessions: { run: async () => ({ sessionId: 's', findings: [] }) },
+      runGit: async () => {
+        // The real runGit's own behaviour when the maxBuffer cap is exceeded: reject, don't
+        // resolve with a non-numeric code.
+        throw new GitCommandFailure('git diff could not run: maxBuffer length exceeded');
+      },
+    });
+    expect((await rejection(() => runner.run(request()))).code).toBe('diff_unavailable');
+  });
+
   it('terminates git option parsing before the caller-influenced revision range', () => {
     const source = readFileSync(
       join(fileURLToPath(new URL('.', import.meta.url)), '..', 'src', 'review-gates.ts'),
