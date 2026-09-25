@@ -6,6 +6,7 @@ import {
   type ProviderId,
   type RefineSpecV1,
 } from '@agent-dock/shared';
+import { runGitCommand, type PipenzoGitRunner } from './pipenzo-git.js';
 
 /**
  * The Refine phase (Pipenzo issue #179) — the first step of the loop, and the one whose defining
@@ -67,7 +68,16 @@ export type RefinePhaseErrorCode =
   | 'read_only_violation'
   | 'spec_invalid'
   | 'spec_missing'
-  | 'session_failed';
+  | 'session_failed'
+  /** `git rev-parse`/`git status` itself failed — surfaced distinctly from a genuinely dirty or
+   * changed checkout (issue #318's own acceptance criterion: "never clean/unchanged by default"). */
+  | 'baseline_unavailable'
+  /** The source checkout has staged, unstaged, or non-ignored untracked changes before Refine ever
+   * starts. Not implementable input for v1 -- see the module comment on `#readBaseline`. */
+  | 'dirty_checkout'
+  /** `HEAD` moved or the checkout became dirty while the (possibly long-running) Refine session was
+   * in flight. The spec it produced describes a repository state that no longer exists. */
+  | 'baseline_changed';
 
 /** Typed failure, matching the shape agentdock's own stores and managers throw. */
 export class RefinePhaseError extends Error {
@@ -332,15 +342,65 @@ export interface RefineResult {
 }
 
 /** Runs one Refine phase end to end: build the request, run it, verify, validate. */
+/** The two git-derived facts a Refine baseline is decided from (issue #318). */
+interface GitBaselineFacts {
+  readonly headCommit: string;
+  /** True iff the working tree has no staged, unstaged, or non-ignored untracked changes. */
+  readonly clean: boolean;
+}
+
 export class RefineSubagent {
   readonly #sessions: RefineSessionPort;
+  readonly #runGit: PipenzoGitRunner;
 
-  constructor(sessions: RefineSessionPort) {
+  constructor(sessions: RefineSessionPort, runGit: PipenzoGitRunner = runGitCommand) {
     this.#sessions = sessions;
+    this.#runGit = runGit;
+  }
+
+  /**
+   * Reads the source checkout's own git-baseline facts (issue #318): the exact `HEAD` commit, and
+   * whether the working tree is clean. `git status --porcelain` already excludes ignored files by
+   * default, which is exactly the "non-ignored untracked file" scope this ticket's v1 guarantee is
+   * bounded to -- ignored/private/generated files are not covered, and are not claimed to be.
+   * `--untracked-files=normal` is passed explicitly (code review of #336): whether untracked files
+   * show up at all in `--porcelain` output is otherwise controlled by the ambient
+   * `status.showUntrackedFiles` git config, which can be set to `no` in a user's `~/.gitconfig`
+   * independent of any flag this call passes -- this guarantee must not depend on that.
+   *
+   * A `rev-parse`/`status` failure is reported as `baseline_unavailable`, never silently treated as
+   * clean -- the same "unknown is not implicitly valid" discipline this repo already applies to a
+   * missing risk grade or an unverified finding location.
+   */
+  async #readBaseline(cwd: string): Promise<GitBaselineFacts> {
+    const head = await this.#runGit(['rev-parse', '--end-of-options', 'HEAD'], cwd);
+    if (head.code !== 0) {
+      throw new RefinePhaseError('baseline_unavailable', 'could not resolve the current commit');
+    }
+    const status = await this.#runGit(
+      ['status', '--porcelain', '--untracked-files=normal', '--end-of-options'],
+      cwd,
+    );
+    if (status.code !== 0) {
+      throw new RefinePhaseError('baseline_unavailable', 'could not read the working tree status');
+    }
+    return { headCommit: head.stdout.trim(), clean: status.stdout.trim() === '' };
   }
 
   async refine(input: BuildRefineSessionRequestInput): Promise<RefineResult> {
     const request = buildRefineSessionRequest(input);
+
+    // Before the paid/provider session ever dispatches (issue #318): a dirty source checkout is
+    // not implementable input for v1. Refuse here, not after burning a Refine call on it.
+    const before = await this.#readBaseline(input.cwd);
+    if (!before.clean) {
+      throw new RefinePhaseError(
+        'dirty_checkout',
+        'the source checkout has uncommitted changes; commit, stash, or remove them and rerun refine',
+        [`headCommit=${before.headCommit}`],
+      );
+    }
+
     let outcome: RefineSessionOutcome;
     try {
       outcome = await this.#sessions.run(request);
@@ -355,6 +415,22 @@ export class RefineSubagent {
     // produced a perfectly valid spec. A spec obtained by writing to the repository is not a
     // Refine output, it is evidence the boundary leaked.
     assertRefineToolsOnly(outcome.toolsUsed);
+
+    // After the session returns (issue #318): re-check the same two facts. A (possibly long-
+    // running) Refine session can outlive the repository state it started against, and a spec
+    // grounded in a commit that no longer exists is not an implementable handoff -- this does not
+    // yet bind that baseline into Implement's own request (the cross-phase wire-protocol change is
+    // the rest of #318, deliberately out of this slice), but Refine itself never hands back a spec
+    // it cannot vouch was read against a stable, unchanged checkout.
+    const after = await this.#readBaseline(input.cwd);
+    if (after.headCommit !== before.headCommit || !after.clean) {
+      throw new RefinePhaseError(
+        'baseline_changed',
+        'the repository changed while refine was running; rerun refine against the current clean state',
+        [`before=${before.headCommit}`, `after=${after.headCommit}`, `cleanAfter=${String(after.clean)}`],
+      );
+    }
+
     return {
       sessionId: outcome.sessionId,
       spec: parseRefineSpec(outcome.output),

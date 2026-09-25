@@ -478,6 +478,12 @@ export const PIPENZO_PHASE_ERROR_CODES = [
   'read_only_violation',
   'spec_invalid',
   'spec_missing',
+  /** Issue #318: git rev-parse/status itself failed. Never reported as clean/unchanged. */
+  'baseline_unavailable',
+  /** Issue #318: the source checkout has uncommitted changes before Refine ever starts. */
+  'dirty_checkout',
+  /** Issue #318: HEAD moved or the checkout became dirty while Refine was running. */
+  'baseline_changed',
   // implement
   'invalid_spec',
   'workspace_untrusted',
