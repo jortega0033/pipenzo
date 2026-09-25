@@ -363,6 +363,10 @@ export class RefineSubagent {
    * whether the working tree is clean. `git status --porcelain` already excludes ignored files by
    * default, which is exactly the "non-ignored untracked file" scope this ticket's v1 guarantee is
    * bounded to -- ignored/private/generated files are not covered, and are not claimed to be.
+   * `--untracked-files=normal` is passed explicitly (code review of #336): whether untracked files
+   * show up at all in `--porcelain` output is otherwise controlled by the ambient
+   * `status.showUntrackedFiles` git config, which can be set to `no` in a user's `~/.gitconfig`
+   * independent of any flag this call passes -- this guarantee must not depend on that.
    *
    * A `rev-parse`/`status` failure is reported as `baseline_unavailable`, never silently treated as
    * clean -- the same "unknown is not implicitly valid" discipline this repo already applies to a
@@ -373,7 +377,10 @@ export class RefineSubagent {
     if (head.code !== 0) {
       throw new RefinePhaseError('baseline_unavailable', 'could not resolve the current commit');
     }
-    const status = await this.#runGit(['status', '--porcelain', '--end-of-options'], cwd);
+    const status = await this.#runGit(
+      ['status', '--porcelain', '--untracked-files=normal', '--end-of-options'],
+      cwd,
+    );
     if (status.code !== 0) {
       throw new RefinePhaseError('baseline_unavailable', 'could not read the working tree status');
     }

@@ -571,4 +571,24 @@ describe('RefineSubagent', () => {
     });
     expect(result.spec.issue.number).toBe(179);
   });
+
+  it('passes --untracked-files=normal, not leaving the guarantee to ambient git config (issue #336 review)', async () => {
+    const { port: sessions } = port();
+    const gitCalls: string[][] = [];
+    const runGit: PipenzoGitRunner = async (args) => {
+      gitCalls.push([...args]);
+      if (args[0] === 'rev-parse') return { stdout: `${HEAD_A}\n`, stderr: '', code: 0 };
+      return { stdout: '', stderr: '', code: 0 };
+    };
+    await new RefineSubagent(sessions, runGit).refine({
+      issue: ISSUE,
+      cwd: process.cwd(),
+      provider: 'claude',
+    });
+    const statusCalls = gitCalls.filter((call) => call[0] === 'status');
+    expect(statusCalls).toHaveLength(2);
+    for (const call of statusCalls) {
+      expect(call).toContain('--untracked-files=normal');
+    }
+  });
 });
