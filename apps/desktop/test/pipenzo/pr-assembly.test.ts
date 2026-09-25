@@ -108,6 +108,22 @@ describe('buildConfidenceLine', () => {
     const bare: ReviewReportV1 = { ...REPORT, verifier: undefined, diffScope: undefined, reviewer: undefined };
     expect(buildConfidenceLine(bare)).toBe('');
   });
+
+  /** Issue #206: an external PR review's diffScope has no estimate/ratio to report confidence
+   * against -- the sentence is omitted, the same way it already is when diffScope is absent
+   * entirely, rather than crashing on the missing fields. */
+  it('omits the estimate sentence, without crashing, when diffScope carries no estimate', () => {
+    const noEstimate: ReviewReportV1 = {
+      ...REPORT,
+      diffScope: {
+        implementation: { changedLines: 8, filesTouched: 1 },
+        generatedTests: { changedLines: 44, filesTouched: 1 },
+      },
+    };
+    const line = buildConfidenceLine(noEstimate);
+    expect(line).toContain('The verifier approved this diff');
+    expect(line).not.toContain('Refine estimate');
+  });
 });
 
 describe('buildPullRequestBody', () => {

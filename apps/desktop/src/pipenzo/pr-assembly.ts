@@ -73,11 +73,15 @@ export function buildConfidenceLine(report: ReviewReportV1): string {
       `The verifier ${report.verifier.verdict} this diff with ${critical} critical finding${critical === 1 ? '' : 's'} sustained.`,
     );
   }
-  if (report.diffScope) {
+  // `ratio`/`exceededEstimate` are absent for an external PR review (issue #206) -- no Refine
+  // estimate exists to report confidence against, so this sentence is omitted the same way the
+  // verifier sentence above is omitted when there is no verifier pass.
+  const { diffScope } = report;
+  if (diffScope?.ratio !== undefined && diffScope.exceededEstimate !== undefined) {
     parts.push(
-      report.diffScope.exceededEstimate
-        ? `The diff exceeded its Refine estimate (${(report.diffScope.ratio * 100).toFixed(0)}% of predicted lines).`
-        : `The diff stayed within its Refine estimate (${(report.diffScope.ratio * 100).toFixed(0)}% of predicted lines).`,
+      diffScope.exceededEstimate
+        ? `The diff exceeded its Refine estimate (${(diffScope.ratio * 100).toFixed(0)}% of predicted lines).`
+        : `The diff stayed within its Refine estimate (${(diffScope.ratio * 100).toFixed(0)}% of predicted lines).`,
     );
   }
   return parts.join(' ');

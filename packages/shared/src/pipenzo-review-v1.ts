@@ -44,9 +44,13 @@ export type DeterministicGateId = (typeof DETERMINISTIC_GATE_IDS)[number];
 /**
  * A gate's outcome. `skipped` exists so an absent tool is recorded as an absent tool: a machine
  * check that did not run must never be reported as a machine check that passed, which is the
- * entire premise of the evidence block being trustworthy.
+ * entire premise of the evidence block being trustworthy. `not_applicable` (issue #206) is the
+ * same discipline applied to a different fact: `diff_scope` compares the diff against a
+ * `RefineSpecV1` estimate that simply does not exist for an external PR review (no Refine ever
+ * ran), which is neither a pass nor a fail -- reporting either would imply a comparison that was
+ * never made.
  */
-export const gateStatusSchema = z.enum(['passed', 'failed', 'skipped', 'errored']);
+export const gateStatusSchema = z.enum(['passed', 'failed', 'skipped', 'errored', 'not_applicable']);
 export type GateStatus = z.infer<typeof gateStatusSchema>;
 
 export const deterministicGateResultV1Schema = z
@@ -61,11 +65,11 @@ export const deterministicGateResultV1Schema = z
   })
   .strict()
   .superRefine((gate, ctx) => {
-    if (gate.status === 'skipped' && !gate.summary.trim()) {
+    if ((gate.status === 'skipped' || gate.status === 'not_applicable') && !gate.summary.trim()) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['summary'],
-        message: 'a skipped gate must say why it was skipped',
+        message: 'a skipped or not_applicable gate must say why',
       });
     }
   });
@@ -92,18 +96,37 @@ export const diffScopeV1Schema = z
         filesTouched: z.number().int().nonnegative(),
       })
       .strict(),
+    /**
+     * Absent for an external PR review (issue #206): no `RefineSpecV1` exists to estimate against,
+     * so there is nothing for `exceededEstimate`/`ratio` to be computed from either. All three are
+     * present together or absent together -- enforced below, not left as three independently
+     * optional fields a caller could mismatch.
+     */
     estimate: z
       .object({
         changedLines: z.number().int().nonnegative(),
         filesTouched: z.number().int().nonnegative(),
       })
-      .strict(),
+      .strict()
+      .optional(),
     /** True when implementation lines exceed the estimate by more than README's 50% tolerance. */
-    exceededEstimate: z.boolean(),
+    exceededEstimate: z.boolean().optional(),
     /** Implementation lines as a ratio of the estimate. 1 means exactly on prediction. */
-    ratio: z.number().nonnegative(),
+    ratio: z.number().nonnegative().optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((value, ctx) => {
+    const present = [value.estimate, value.exceededEstimate, value.ratio].filter(
+      (field) => field !== undefined,
+    ).length;
+    if (present !== 0 && present !== 3) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['estimate'],
+        message: 'estimate, exceededEstimate and ratio must all be present or all be absent',
+      });
+    }
+  });
 
 export const reviewFindingSeverityV1Schema = z.enum(['info', 'low', 'medium', 'high']);
 

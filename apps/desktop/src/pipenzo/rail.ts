@@ -26,7 +26,9 @@ import type { VRowTone } from '../components/primitives/VerificationBlock.js';
  * (the same property the schema's own comment states about `skipped`). */
 export function gateTone(status: GateStatus): VRowTone {
   if (status === 'passed') return 'ok';
-  if (status === 'skipped') return 'warn';
+  // `not_applicable` (issue #206) gets the same treatment as `skipped`: neither is a failure, and
+  // neither should read as a passed green check either.
+  if (status === 'skipped' || status === 'not_applicable') return 'warn';
   return 'danger'; // 'failed' | 'errored'
 }
 
@@ -145,11 +147,24 @@ function countText(part: { changedLines: number; filesTouched: number }): string
  * half of what was measured.
  */
 export function formatDiffScopeSummary(diffScope: DiffScopeV1): DiffScopeSummary {
+  const implementationText = `Implementation: ${countText(diffScope.implementation)}`;
+  const generatedTestsText = `Generated tests: ${countText(diffScope.generatedTests)}`;
+  if (diffScope.estimate === undefined) {
+    // No RefineSpecV1 estimate exists (issue #206's external PR review) -- report what was
+    // measured without implying a comparison against a number nobody predicted.
+    return {
+      statusText: 'No Refine estimate to compare against',
+      detailText:
+        `+${diffScope.implementation.changedLines} implementation` +
+        ` · +${diffScope.generatedTests.changedLines} generated tests, reported separately`,
+      implementationText,
+      generatedTestsText,
+      measuredAgainstText: 'This diff never went through Refine, so there is no estimate to measure it against.',
+    };
+  }
   const statusText = diffScope.exceededEstimate
     ? 'Diff scope exceeded the Refine estimate'
     : 'Diff scope within the Refine estimate';
-  const implementationText = `Implementation: ${countText(diffScope.implementation)}`;
-  const generatedTestsText = `Generated tests: ${countText(diffScope.generatedTests)}`;
   const measuredAgainstText =
     `Measured against the ${diffScope.estimate.changedLines}-line / ` +
     `${diffScope.estimate.filesTouched}-file estimate using the implementation half only; ` +

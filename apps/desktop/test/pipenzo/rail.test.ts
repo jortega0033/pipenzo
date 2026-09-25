@@ -17,6 +17,12 @@ describe('gateTone', () => {
     expect(gateTone('failed')).toBe('danger');
     expect(gateTone('errored')).toBe('danger');
   });
+
+  /** Issue #206: a diff_scope gate can report not_applicable for an external PR review with no
+   * Refine estimate to compare against -- neither a failure nor a passed green check. */
+  it('maps not_applicable to warn, the same as skipped, never the red danger tone', () => {
+    expect(gateTone('not_applicable')).toBe('warn');
+  });
 });
 
 describe('mapFindingSeverity', () => {
@@ -147,6 +153,24 @@ describe('formatDiffScopeSummary', () => {
   it('reports an exceeded estimate distinctly from within-budget', () => {
     const exceeded = { ...DIFF_SCOPE, exceededEstimate: true };
     expect(formatDiffScopeSummary(exceeded).statusText).toBe('Diff scope exceeded the Refine estimate');
+  });
+
+  /**
+   * Issue #206: an external PR review has no Refine estimate at all. `estimate`/`exceededEstimate`/
+   * `ratio` are absent together, and the summary has to say so rather than crashing on (or silently
+   * defaulting) fields that were never computed.
+   */
+  it('reports what was measured without an estimate, rather than crashing on the missing fields', () => {
+    const noEstimate: DiffScopeV1 = {
+      implementation: { changedLines: 8, filesTouched: 1 },
+      generatedTests: { changedLines: 44, filesTouched: 1 },
+    };
+    const summary = formatDiffScopeSummary(noEstimate);
+    expect(summary.statusText).toBe('No Refine estimate to compare against');
+    expect(summary.detailText).toBe('+8 implementation · +44 generated tests, reported separately');
+    expect(summary.implementationText).toBe('Implementation: 8 lines across 1 file');
+    expect(summary.generatedTestsText).toBe('Generated tests: 44 lines across 1 file');
+    expect(summary.measuredAgainstText).toContain('never went through Refine');
   });
 });
 
