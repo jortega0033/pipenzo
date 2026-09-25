@@ -145,7 +145,7 @@ export class PipenzoPhaseService {
   readonly #logger: Logger | undefined;
 
   constructor(options: PipenzoPhaseServiceOptions) {
-    this.#refine = new RefineSubagent(options.refineSessions);
+    this.#refine = new RefineSubagent(options.refineSessions, options.runGit);
     // The drafter runs on the refine session port on purpose: drafting an issue is the one moment
     // a model is asked to imagine work that does not exist, and a write would let it make its own
     // draft true. See `issue-drafter.ts`.
@@ -580,6 +580,9 @@ const REFINE_CODES: Record<RefinePhaseError['code'], PipenzoPhaseErrorCodeV1> = 
   spec_invalid: 'spec_invalid',
   spec_missing: 'spec_missing',
   session_failed: 'session_failed',
+  baseline_unavailable: 'baseline_unavailable',
+  dirty_checkout: 'dirty_checkout',
+  baseline_changed: 'baseline_changed',
 };
 
 const IMPLEMENT_CODES: Record<ImplementOrchestratorError['code'], PipenzoPhaseErrorCodeV1> = {

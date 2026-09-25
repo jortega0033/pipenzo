@@ -23,6 +23,7 @@ import {
   type RefineSessionPort,
 } from '../src/refine-subagent.js';
 import { validateStructuredOutput } from '../src/structured-output.js';
+import type { PipenzoGitRunner } from '../src/pipenzo-git.js';
 
 const runtimeSrc = join(
   fileURLToPath(new URL('.', import.meta.url)),
@@ -119,6 +120,31 @@ function syncRefineError(fn: () => unknown): RefinePhaseError {
     throw error;
   }
   throw new Error('expected a RefinePhaseError');
+}
+
+const HEAD_A = 'a'.repeat(40);
+const HEAD_B = 'b'.repeat(40);
+
+/** A fake git baseline (issue #318): `rev-parse HEAD` and `status --porcelain` calls are answered
+ * in order from the given queues, defaulting to "clean, unchanged" for as many calls as `refine()`
+ * makes (one before the session, one after). Queues shorter than the call count repeat their last
+ * entry, so a single-element override still covers both calls. */
+function gitBaseline(
+  options: { heads?: readonly string[]; statuses?: readonly string[]; code?: number } = {},
+): PipenzoGitRunner {
+  const heads = options.heads ?? [HEAD_A];
+  const statuses = options.statuses ?? [''];
+  let call = 0;
+  return async (args) => {
+    if (options.code !== undefined) return { stdout: '', stderr: '', code: options.code };
+    if (args[0] === 'rev-parse') {
+      const head = heads[Math.min(call, heads.length - 1)];
+      return { stdout: `${head}\n`, stderr: '', code: 0 };
+    }
+    const status = statuses[Math.min(call, statuses.length - 1)];
+    call += 1;
+    return { stdout: status ?? '', stderr: '', code: 0 };
+  };
 }
 
 describe('the refine allowlist is read-only, checked against agentdock rather than asserted', () => {
@@ -439,7 +465,7 @@ describe('the spec contract', () => {
 describe('RefineSubagent', () => {
   it('runs a session and returns a validated spec', async () => {
     const { port: sessions, requests } = port();
-    const result = await new RefineSubagent(sessions).refine({
+    const result = await new RefineSubagent(sessions, gitBaseline()).refine({
       issue: ISSUE,
       cwd: process.cwd(),
       provider: 'claude',
@@ -453,7 +479,7 @@ describe('RefineSubagent', () => {
   it('reports a read-only violation even when the spec itself is perfectly valid', async () => {
     const { port: sessions } = port({ toolsUsed: ['Read', 'Write'] });
     const error = await refineError(() =>
-      new RefineSubagent(sessions).refine({ issue: ISSUE, cwd: process.cwd(), provider: 'claude' }),
+      new RefineSubagent(sessions, gitBaseline()).refine({ issue: ISSUE, cwd: process.cwd(), provider: 'claude' }),
     );
     expect(error.code).toBe('read_only_violation');
     expect(error.details).toEqual(['Write']);
@@ -464,7 +490,7 @@ describe('RefineSubagent', () => {
     expect(
       (
         await refineError(() =>
-          new RefineSubagent(sessions).refine({ issue: ISSUE, cwd: process.cwd(), provider: 'claude' }),
+          new RefineSubagent(sessions, gitBaseline()).refine({ issue: ISSUE, cwd: process.cwd(), provider: 'claude' }),
         )
       ).code,
     ).toBe('spec_invalid');
@@ -477,9 +503,72 @@ describe('RefineSubagent', () => {
       },
     };
     const error = await refineError(() =>
-      new RefineSubagent(sessions).refine({ issue: ISSUE, cwd: process.cwd(), provider: 'claude' }),
+      new RefineSubagent(sessions, gitBaseline()).refine({ issue: ISSUE, cwd: process.cwd(), provider: 'claude' }),
     );
     expect(error.code).toBe('session_failed');
     expect(error.message).toContain('provider transport unavailable');
+  });
+
+  it('refuses a dirty checkout before the provider session ever dispatches (issue #318)', async () => {
+    const { port: sessions, requests } = port();
+    const error = await refineError(() =>
+      new RefineSubagent(sessions, gitBaseline({ statuses: ['M dirty.ts'] })).refine({
+        issue: ISSUE,
+        cwd: process.cwd(),
+        provider: 'claude',
+      }),
+    );
+    expect(error.code).toBe('dirty_checkout');
+    expect(error.details).toEqual([`headCommit=${HEAD_A}`]);
+    expect(requests).toHaveLength(0);
+  });
+
+  it('refuses a result whose HEAD moved while refine was running', async () => {
+    const { port: sessions } = port();
+    const error = await refineError(() =>
+      new RefineSubagent(sessions, gitBaseline({ heads: [HEAD_A, HEAD_B] })).refine({
+        issue: ISSUE,
+        cwd: process.cwd(),
+        provider: 'claude',
+      }),
+    );
+    expect(error.code).toBe('baseline_changed');
+    expect(error.details).toEqual([`before=${HEAD_A}`, `after=${HEAD_B}`, 'cleanAfter=true']);
+  });
+
+  it('refuses a result whose checkout became dirty while refine was running', async () => {
+    const { port: sessions } = port();
+    const error = await refineError(() =>
+      new RefineSubagent(sessions, gitBaseline({ statuses: ['', 'M new-dirt.ts'] })).refine({
+        issue: ISSUE,
+        cwd: process.cwd(),
+        provider: 'claude',
+      }),
+    );
+    expect(error.code).toBe('baseline_changed');
+    expect(error.details).toEqual([`before=${HEAD_A}`, `after=${HEAD_A}`, 'cleanAfter=false']);
+  });
+
+  it('surfaces baseline_unavailable when git itself fails, never treating it as clean', async () => {
+    const { port: sessions, requests } = port();
+    const error = await refineError(() =>
+      new RefineSubagent(sessions, gitBaseline({ code: 128 })).refine({
+        issue: ISSUE,
+        cwd: process.cwd(),
+        provider: 'claude',
+      }),
+    );
+    expect(error.code).toBe('baseline_unavailable');
+    expect(requests).toHaveLength(0);
+  });
+
+  it('accepts a clean, unchanged checkout and returns the spec as before', async () => {
+    const { port: sessions } = port();
+    const result = await new RefineSubagent(sessions, gitBaseline()).refine({
+      issue: ISSUE,
+      cwd: process.cwd(),
+      provider: 'claude',
+    });
+    expect(result.spec.issue.number).toBe(179);
   });
 });

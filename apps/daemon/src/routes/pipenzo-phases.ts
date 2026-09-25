@@ -49,6 +49,11 @@ const PHASE_ERROR_STATUS: Record<PipenzoPhaseErrorCodeV1, number> = {
   read_only_violation: 409,
   spec_invalid: 422,
   spec_missing: 422,
+  // Issue #318: each is the current repository state preventing the operation, the same shape as
+  // workspace_untrusted/branch_failed/claimed_elsewhere below, never a client input error.
+  baseline_unavailable: 409,
+  dirty_checkout: 409,
+  baseline_changed: 409,
   workspace_untrusted: 409,
   worktree_failed: 409,
   worktree_secret_risk: 409,
