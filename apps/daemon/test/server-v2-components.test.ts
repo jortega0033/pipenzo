@@ -18,6 +18,12 @@ const apps: Array<ReturnType<typeof buildServer>> = [];
 afterEach(async () => Promise.all(apps.splice(0).map((app) => app.close())));
 
 describe('protocol-v2 provider component routes', () => {
+  // Both tests here do real filesystem I/O (mkdtemp/mkdir/writeFile) plus a real Fastify app.inject
+  // dispatch -- fast in isolation, but the vitest default 5000ms timeout can be exceeded under the
+  // full suite's ~69-worker parallel load (issue #335), never in isolation. Raised, not removed:
+  // still fails loudly on a genuine hang, just no longer flakes on CPU contention alone.
+  const TIMEOUT_MS = 15_000;
+
   it('keeps untrusted project content inspectable but non-executable', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'agent-dock-components-route-'));
     const skill = join(cwd, '.claude', 'skills', 'danger');
@@ -67,7 +73,7 @@ describe('protocol-v2 provider component routes', () => {
       payload: { provider: 'claude', cwd, componentId: 'project/skill/danger' },
     });
     expect(invoke.statusCode).toBe(403);
-  });
+  }, TIMEOUT_MS);
 
   it('dispatches a real, supported manage operation end to end and rejects an unsupported one', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'agent-dock-components-manage-route-'));
@@ -119,5 +125,5 @@ describe('protocol-v2 provider component routes', () => {
 
     const settings = JSON.parse(await readFile(join(cwd, '.claude', 'settings.json'), 'utf8'));
     expect(settings.hooks.PreToolUse).toBeUndefined();
-  });
+  }, TIMEOUT_MS);
 });
