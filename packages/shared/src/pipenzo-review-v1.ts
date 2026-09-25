@@ -153,6 +153,13 @@ export const REVIEW_OUTCOMES = [
   'deterministic_failed',
   'awaiting_test_adjudication',
   /**
+   * The complete diff patch (or, before verifier dispatch, the complete prompt envelope) could not
+   * be supplied within the existing bounded input contract — issue #316. Distinct from
+   * `deterministic_failed`: every deterministic gate passed, this fires purely on input size, and
+   * neither LLM pass is ever dispatched for it. `inputCompleteness` below carries why.
+   */
+  'review_input_incomplete',
+  /**
    * The final diff blew its Refine-time estimate by more than `DIFF_SCOPE_TOLERANCE` (README's
    * 50% rule) — issue #144. A lone `diff_scope` gate failure, distinct from `deterministic_failed`
    * so a consequence can be attached to it specifically (transition to
@@ -165,6 +172,33 @@ export const REVIEW_OUTCOMES = [
   'verifier_rejected',
 ] as const;
 
+/**
+ * Daemon-derived evidence of whether the complete input reached both LLM passes (issue #316) —
+ * never model-reported, the same discipline `locationVerified` (#319) applies to a finding's
+ * location. `limitChars`/`actualChars` are UTF-16 code units (JavaScript string `.length`),
+ * matching the unit `review-gates.ts`'s own pre-existing `truncate()` already measures in, not
+ * bytes or model tokens.
+ */
+export const reviewInputCompletenessV1Schema = z
+  .object({
+    complete: z.boolean(),
+    /** Present only when `complete` is false — what didn't fit and why. */
+    reason: z.string().min(1).max(500).optional(),
+    /** The real size that didn't fit, when it's known (e.g. not for a git-read failure). */
+    actualChars: z.number().int().nonnegative().optional(),
+    limitChars: z.number().int().positive(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (!value.complete && !value.reason) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['reason'],
+        message: 'an incomplete input must say why',
+      });
+    }
+  });
+
 export const reviewReportV1Schema = z
   .object({
     schemaVersion: z.literal(1),
@@ -174,6 +208,11 @@ export const reviewReportV1Schema = z
     implementerTier: modelTierSchema,
     deterministic: z.array(deterministicGateResultV1Schema).max(32),
     diffScope: diffScopeV1Schema.optional(),
+    /** Present for `review_input_incomplete`, `approved`, and `verifier_rejected` — every outcome
+     * where whether the LLM passes saw the complete diff is a meaningful question. Absent for a
+     * deterministic-gate-failure outcome, where neither pass ran for an unrelated reason and
+     * completeness of the input they didn't see is moot. */
+    inputCompleteness: reviewInputCompletenessV1Schema.optional(),
     /** Absent when the deterministic gates stopped the run before any LLM pass could start. */
     reviewer: llmReviewPassV1Schema.optional(),
     verifier: verifierPassV1Schema.optional(),
@@ -195,10 +234,28 @@ export const reviewReportV1Schema = z
         message: 'an approved review requires an approving verifier verdict',
       });
     }
+    if (report.outcome === 'review_input_incomplete' && (report.reviewer || report.verifier)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['reviewer'],
+        message: 'an LLM pass cannot appear in a report whose review input was incomplete',
+      });
+    }
+    // The property #316 exists for: an incomplete input can never be reframed under any other
+    // outcome, `approved` included -- the outcome enum is the one thing every caller already
+    // switches on, so this is where "cannot move to review-approved" has to be structural.
+    if (report.inputCompleteness?.complete === false && report.outcome !== 'review_input_incomplete') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['outcome'],
+        message: 'an incomplete review input must carry the review_input_incomplete outcome',
+      });
+    }
   });
 
 export type DeterministicGateResultV1 = z.infer<typeof deterministicGateResultV1Schema>;
 export type DiffScopeV1 = z.infer<typeof diffScopeV1Schema>;
+export type ReviewInputCompletenessV1 = z.infer<typeof reviewInputCompletenessV1Schema>;
 export type ReviewFindingV1 = z.infer<typeof reviewFindingV1Schema>;
 export type LlmReviewPassV1 = z.infer<typeof llmReviewPassV1Schema>;
 export type VerifierPassV1 = z.infer<typeof verifierPassV1Schema>;
