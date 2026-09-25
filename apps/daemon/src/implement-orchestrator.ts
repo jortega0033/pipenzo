@@ -36,8 +36,10 @@ import type { OwnedWorktreeLocation } from './publish-service.js';
  *
  * - **No retry ladder.** One attempt. Same-tier fork vs. tier-escalation-as-fresh-session is
  *   README's step-6 territory and is deliberately not modelled here, not even as a stub.
- * - **No risk classifier and no pre-commitment records.** `apps/daemon/src/risk-classifier.ts` is
- *   named in README's build step 6 and does not exist yet; nothing here pretends to grade risk.
+ * - **No risk classifier and no pre-commitment records.** `apps/daemon/src/risk-classifier.ts`
+ *   (issue #157) exists and is tested, but nothing calls it yet — this module still does not grade
+ *   risk or record a pre-commitment. That wiring is downstream tickets (#97, #98, #131, #149,
+ *   #158, #160), not this one.
  * - **No symbol graph.** README is explicit that the symbol graph is a user-configured MCP server
  *   inherited from agentdock's runtime, not a Pipenzo module. With none configured, Implement
  *   falls back to `Grep`/`Glob` — which is what happens by default here, since this module
