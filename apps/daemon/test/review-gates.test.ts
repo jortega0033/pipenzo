@@ -14,6 +14,7 @@ import {
 import {
   DIFF_SCOPE_TOLERANCE,
   GENERATED_TEST_PREFIX,
+  MAX_DIFF_CHARS,
   ReviewGateError,
   ReviewGatesRunner,
   assertVerifierTierAllowed,
@@ -98,6 +99,9 @@ function harness(
      * behaviour when git itself can't run at all (e.g. the output-buffer cap), distinct from a
      * clean non-zero exit. */
     showRejects?: readonly string[];
+    /** `git diff --patch` fake stdout (issue #316). Defaults to a tiny fixed patch, well under
+     * MAX_DIFF_CHARS; tests exercising the input-completeness gate override it with a real length. */
+    patch?: string;
   } = {},
 ): Harness {
   const ran: string[] = [];
@@ -156,6 +160,7 @@ function harness(
         ? { stdout: '', stderr: 'fatal: path not in the working tree', code: 128 }
         : gitResult(content);
     }
+    if (args.includes('--patch')) return gitResult(options.patch ?? 'diff --git a/x b/x\n+added line\n');
     return gitResult('diff --git a/x b/x\n+added line\n');
   };
 
@@ -670,6 +675,107 @@ describe('ReviewGatesRunner — finding-location verification (issue #319)', () 
     });
     await runner.run(request());
     expect(showCalls).toHaveLength(0);
+  });
+});
+
+describe('ReviewGatesRunner — review input completeness (issue #316)', () => {
+  const bigPatch = (chars: number) => 'a'.repeat(chars);
+
+  it('fails closed on a patch just above the limit, without invoking either LLM pass', async () => {
+    const h = harness({ specTests: true, patch: bigPatch(MAX_DIFF_CHARS + 1) });
+    const report = await h.runner.run(request());
+
+    expect(report.outcome).toBe('review_input_incomplete');
+    expect(report.reviewer).toBeUndefined();
+    expect(report.verifier).toBeUndefined();
+    expect(h.ran).not.toContain('reviewer');
+    expect(h.ran).not.toContain('verifier');
+    expect(report.inputCompleteness).toEqual({
+      complete: false,
+      reason: `the diff patch is ${MAX_DIFF_CHARS + 1} characters, over the ${MAX_DIFF_CHARS}-character review input limit`,
+      actualChars: MAX_DIFF_CHARS + 1,
+      limitChars: MAX_DIFF_CHARS,
+    });
+  });
+
+  it('still runs every deterministic gate before failing closed on completeness', async () => {
+    const h = harness({ specTests: true, patch: bigPatch(MAX_DIFF_CHARS + 1) });
+    const report = await h.runner.run(request());
+
+    expect(report.deterministic.map((gate) => gate.id)).toEqual([...DETERMINISTIC_GATE_IDS]);
+    expect(report.deterministic.every((gate) => gate.status !== 'failed')).toBe(true);
+  });
+
+  it('accepts a patch exactly at the limit', async () => {
+    const h = harness({ specTests: true, patch: bigPatch(MAX_DIFF_CHARS) });
+    const report = await h.runner.run(request());
+
+    expect(report.outcome).toBe('approved');
+    expect(report.inputCompleteness).toEqual({ complete: true, limitChars: MAX_DIFF_CHARS });
+  });
+
+  it('a low-line-count, long-line patch is still caught — diff_scope passing does not bypass this gate', async () => {
+    // One file, one changed line by numstat's own count (diff_scope has nothing to object to), but
+    // the actual patch text is over budget -- exactly the gap #316 exists to close.
+    const h = harness({
+      specTests: true,
+      numstat: '1\t0\tsrc/one-huge-line.ts',
+      patch: bigPatch(MAX_DIFF_CHARS + 1),
+    });
+    const report = await h.runner.run(request());
+
+    expect(report.diffScope?.exceededEstimate).toBe(false);
+    expect(report.outcome).toBe('review_input_incomplete');
+  });
+
+  it('a deterministic gate failure still takes priority over an oversized patch', async () => {
+    const h = harness({
+      specTests: true,
+      patch: bigPatch(MAX_DIFF_CHARS + 1),
+      commandResults: { pnpm: { stdout: '', stderr: 'build failed', code: 1 } },
+    });
+    const report = await h.runner.run(request());
+
+    expect(report.outcome).toBe('deterministic_failed');
+    expect(report.inputCompleteness).toBeUndefined();
+  });
+
+  it('delivers the complete, untruncated patch to both prompts when under the limit', async () => {
+    const fullPatch = `diff --git a/x b/x\n${bigPatch(1000)}\n`;
+    const h = harness({ specTests: true, patch: fullPatch });
+    await h.runner.run(request());
+
+    expect(h.sessionPrompts[0]).toContain(fullPatch);
+    expect(h.sessionPrompts[1]).toContain(fullPatch);
+  });
+
+  it('the schema refuses review_input_incomplete with no completeness evidence at all', () => {
+    const invalid = {
+      schemaVersion: 1,
+      outcome: 'review_input_incomplete',
+      baseCommit: BASE,
+      headCommit: HEAD,
+      implementerTier: 'mid',
+      deterministic: [{ id: 'build', status: 'passed', summary: 'ok', durationMs: 10 }],
+    };
+    const parsed = reviewReportV1Schema.safeParse(invalid);
+    expect(parsed.success).toBe(false);
+    expect(JSON.stringify(parsed.error?.issues)).toContain('requires inputCompleteness evidence');
+  });
+
+  it('the schema refuses review_input_incomplete paired with complete: true (self-contradiction)', () => {
+    const invalid = {
+      schemaVersion: 1,
+      outcome: 'review_input_incomplete',
+      baseCommit: BASE,
+      headCommit: HEAD,
+      implementerTier: 'mid',
+      deterministic: [{ id: 'build', status: 'passed', summary: 'ok', durationMs: 10 }],
+      inputCompleteness: { complete: true, limitChars: MAX_DIFF_CHARS },
+    };
+    const parsed = reviewReportV1Schema.safeParse(invalid);
+    expect(parsed.success).toBe(false);
+    expect(JSON.stringify(parsed.error?.issues)).toContain('requires inputCompleteness evidence');
   });
 });
 

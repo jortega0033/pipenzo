@@ -12,6 +12,7 @@ import {
   type ProviderId,
   type RefineSpecV1,
   type ReviewFindingV1,
+  type ReviewInputCompletenessV1,
   type ReviewReportV1,
   type VerifierPassV1,
 } from '@agent-dock/shared';
@@ -225,7 +226,9 @@ const DEFAULT_LINT_COMMAND = ['pnpm', 'lint'] as const;
 const PNPM_MISSING_SCRIPT_MARKER = 'ERR_PNPM_NO_SCRIPT';
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
 const MAX_DETAIL = 20_000;
-const MAX_DIFF_CHARS = 400_000;
+/** The review-input-completeness limit (issue #316), in UTF-16 code units (JavaScript string
+ * `.length`) — not bytes, not model tokens. Exported so tests can construct exact boundary cases. */
+export const MAX_DIFF_CHARS = 400_000;
 
 function truncate(value: string, limit = MAX_DETAIL): string {
   return value.length <= limit ? value : `${value.slice(0, limit)}\n[truncated]`;
@@ -304,6 +307,18 @@ export class ReviewGatesRunner {
       });
     }
 
+    if (!diff.completeness.complete) {
+      // Fails closed before either LLM pass is constructed (issue #316) -- same discipline as the
+      // blocking-gate branch above, for the same reason: a pass dispatched on an input this run
+      // already knows was cut cannot establish the coverage its own verdict would imply.
+      return this.#report(request, {
+        outcome: 'review_input_incomplete',
+        deterministic,
+        diffScope: scope,
+        inputCompleteness: diff.completeness,
+      });
+    }
+
     const touched = parseTouchedFiles(diff.numstat);
     const lineCountCache = new Map<string, number | undefined>();
 
@@ -322,6 +337,7 @@ export class ReviewGatesRunner {
       outcome: verifiedVerifier.verdict === 'approved' ? 'approved' : 'verifier_rejected',
       deterministic,
       diffScope: scope,
+      inputCompleteness: diff.completeness,
       reviewer: verifiedReviewer,
       verifier: verifiedVerifier,
     });
@@ -353,7 +369,9 @@ export class ReviewGatesRunner {
     return this.#specTests.generate({ spec, worktreePath, outputPrefix: GENERATED_TEST_PREFIX });
   }
 
-  async #readDiff(request: ReviewRequest): Promise<{ patch: string; numstat: string }> {
+  async #readDiff(
+    request: ReviewRequest,
+  ): Promise<{ patch: string; numstat: string; completeness: ReviewInputCompletenessV1 }> {
     const range = `${request.baseCommit}..${request.headCommit}`;
     const numstat = await this.#runGit(
       ['diff', '--numstat', '--end-of-options', range],
@@ -369,7 +387,22 @@ export class ReviewGatesRunner {
     if (patch.code !== 0) {
       throw new ReviewGateError('diff_unavailable', 'could not read the diff for this range');
     }
-    return { patch: truncate(patch.stdout, MAX_DIFF_CHARS), numstat: numstat.stdout };
+    // The real size, measured before truncation ever touches it (issue #316) -- `truncate()`
+    // below discards exactly the tail this exists to detect losing.
+    const actualChars = patch.stdout.length;
+    const complete = actualChars <= MAX_DIFF_CHARS;
+    return {
+      patch: truncate(patch.stdout, MAX_DIFF_CHARS),
+      numstat: numstat.stdout,
+      completeness: complete
+        ? { complete: true, limitChars: MAX_DIFF_CHARS }
+        : {
+            complete: false,
+            reason: `the diff patch is ${actualChars} characters, over the ${MAX_DIFF_CHARS}-character review input limit`,
+            actualChars,
+            limitChars: MAX_DIFF_CHARS,
+          },
+    };
   }
 
   /** The file's line count at the reviewed head commit, from the object store — never the worktree's
@@ -638,6 +671,7 @@ export class ReviewGatesRunner {
       outcome: ReviewReportV1['outcome'];
       deterministic: DeterministicGateResultV1[];
       diffScope: DiffScopeV1;
+      inputCompleteness?: ReviewInputCompletenessV1;
       reviewer?: LlmReviewPassV1;
       verifier?: VerifierPassV1;
     },
@@ -652,6 +686,7 @@ export class ReviewGatesRunner {
       implementerTier: request.implementerTier,
       deterministic: parts.deterministic,
       diffScope: parts.diffScope,
+      ...(parts.inputCompleteness ? { inputCompleteness: parts.inputCompleteness } : {}),
       ...(parts.reviewer ? { reviewer: parts.reviewer } : {}),
       ...(parts.verifier ? { verifier: parts.verifier } : {}),
     });
