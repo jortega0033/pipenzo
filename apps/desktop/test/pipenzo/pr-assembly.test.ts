@@ -144,6 +144,20 @@ describe('buildPullRequestBody', () => {
     expect(body).toContain('⚠️ gitleaks not installed');
   });
 
+  /** Code review of #340: not_applicable gets the same icon as skipped, never the ❌ a naive
+   * "anything else" fallback would give it -- matching rail.ts's gateTone treatment. */
+  it('marks a not_applicable gate the same as skipped, not as a failure', () => {
+    const withNotApplicable: ReviewReportV1 = {
+      ...REPORT,
+      deterministic: [
+        { id: 'diff_scope', status: 'not_applicable', summary: 'no Refine estimate exists', durationMs: 0 },
+      ],
+    };
+    const body = buildPullRequestBody(SPEC, withNotApplicable);
+    expect(body).toContain('⚠️ no Refine estimate exists');
+    expect(body).not.toContain('❌ no Refine estimate exists');
+  });
+
   /**
    * Issue #145. A PR body reader has no rail to look at, so the split has to carry its own
    * explanation -- otherwise it is two numbers next to an estimate and the reader picks one.

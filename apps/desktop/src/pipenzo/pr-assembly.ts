@@ -136,7 +136,12 @@ export function buildPullRequestBody(
   sections.push(`## Summary\n\n${spec.summary.trim()}`);
 
   const gateLines = report.deterministic.map((gate) => {
-    const icon = gate.status === 'passed' ? '✅' : gate.status === 'skipped' ? '⚠️' : '❌';
+    // Currently unreachable here (this function requires a full RefineSpecV1, so it's only ever
+    // called on the ticket path, where diff_scope can never be not_applicable) -- fixed anyway
+    // (code review of #340) since #207's write-back-to-GitHub is the natural next caller for an
+    // external PR review, and gateTone in rail.ts already treats the two statuses alike.
+    const icon =
+      gate.status === 'passed' ? '✅' : gate.status === 'skipped' || gate.status === 'not_applicable' ? '⚠️' : '❌';
     return `- ${icon} ${gate.summary}`;
   });
   sections.push(`## Machine-verified\n\n${gateLines.length > 0 ? gateLines.join('\n') : '(no deterministic gates recorded)'}`);
