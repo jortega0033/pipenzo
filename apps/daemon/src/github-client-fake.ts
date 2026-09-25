@@ -11,6 +11,7 @@ import {
   type GitHubLabel,
   type GitHubRepository,
   type GitHubPullRequestDiff,
+  type GitHubPullRequestSummary,
   type RepoRef,
 } from './github-client.js';
 import {
@@ -48,6 +49,9 @@ export class FakeGitHubClient implements GitHubClient {
   /** What `listAccessibleRepositories` answers. Empty until a test seeds it. */
   #repositories: readonly GitHubRepository[] = [];
   #repositoriesTruncated = false;
+  /** What `listPullRequests` answers. Empty until a test seeds it. */
+  #pullRequests: readonly GitHubPullRequestSummary[] = [];
+  #pullRequestsTruncated = false;
   /**
    * Issue #229's quota readings. A real tracker rather than a stored literal, so a test seeds
    * headers in GitHub's own shape and the fake exercises the same parser the shipped client does --
@@ -98,6 +102,15 @@ export class FakeGitHubClient implements GitHubClient {
   seedRepositories(repositories: readonly GitHubRepository[], truncated = false): this {
     this.#repositories = repositories;
     this.#repositoriesTruncated = truncated;
+    return this;
+  }
+
+  /** Seeds `listPullRequests`' answer (issue #205). Takes already-normalized, already-filtered
+   * rows for the same reason `seedRepositories` does: the real client's own normalization (and its
+   * Pipenzo-branch exclusion) is tested against real payload shapes there, not re-implemented here. */
+  seedPullRequests(pullRequests: readonly GitHubPullRequestSummary[], truncated = false): this {
+    this.#pullRequests = pullRequests;
+    this.#pullRequestsTruncated = truncated;
     return this;
   }
 
@@ -252,6 +265,14 @@ export class FakeGitHubClient implements GitHubClient {
   }> {
     this.#enter('listAccessibleRepositories', String(this.#repositories.length));
     return { repositories: this.#repositories, truncated: this.#repositoriesTruncated };
+  }
+
+  async listPullRequests(): Promise<{
+    readonly pullRequests: readonly GitHubPullRequestSummary[];
+    readonly truncated: boolean;
+  }> {
+    this.#enter('listPullRequests', String(this.#pullRequests.length));
+    return { pullRequests: this.#pullRequests, truncated: this.#pullRequestsTruncated };
   }
 
   async getAuthenticatedLogin(): Promise<string> {

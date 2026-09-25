@@ -317,6 +317,19 @@ export interface GitHubRepository {
  */
 export const GITHUB_REPO_PAGE_CAP = 50;
 
+/** Same reasoning as `GITHUB_REPO_PAGE_CAP`, applied to one repository's open pull requests
+ * (issue #205) rather than an account's repositories. */
+export const GITHUB_PR_PAGE_CAP = 50;
+
+/**
+ * Matches a Pipenzo-owned ticket worktree's branch name (issue #205's exclusion filter). Mirrors
+ * `implement-orchestrator.ts`'s `ticketBranchName()` format (`issue-<n>`) exactly, but is not
+ * imported from there: `github-client.ts` is a lower-level GitHub REST wrapper, and having it
+ * depend on daemon orchestration would invert that layering. `github-client-pulls.test.ts` asserts
+ * this pattern against a real `ticketBranchName()` output so the two cannot silently drift apart.
+ */
+const PIPENZO_TICKET_BRANCH_PATTERN = /^issue-\d+$/;
+
 export interface GitHubPullRequestDiff {
   readonly number: number;
   readonly baseRef: string;
@@ -327,6 +340,23 @@ export interface GitHubPullRequestDiff {
   readonly changedFiles: number;
   readonly additions: number;
   readonly deletions: number;
+}
+
+/**
+ * One row of an "external PR review" listing (issue #205) -- a PR Pipenzo did not create.
+ * Deliberately does not carry `changedFiles`/`additions`/`deletions`: GitHub's list-pulls endpoint
+ * (`GET /repos/{owner}/{repo}/pulls`) does not return them, only the single-PR endpoint does
+ * (`getPullRequestDiff` above already covers that). A files-changed count in a future UI listing
+ * has to come from a per-PR call made on demand, not N+1'd into this list.
+ */
+export interface GitHubPullRequestSummary {
+  readonly number: number;
+  readonly title: string;
+  /** The PR author's login. Absent for a deleted/ghost account, per GitHub's own `user: null`. */
+  readonly author: string | undefined;
+  readonly headRef: string;
+  readonly baseRef: string;
+  readonly updatedAt: string;
 }
 
 export type GitHubCheckConclusion =
@@ -460,6 +490,23 @@ export interface GitHubClient {
   ): Promise<GitHubIssueComment>;
   getPullRequestDiff(ref: RepoRef, pullNumber: number): Promise<GitHubPullRequestDiff>;
   listPullRequestChecks(ref: RepoRef, pullNumber: number): Promise<readonly GitHubCheckRun[]>;
+  /**
+   * Open pull requests this credential did not create as a Pipenzo ticket (issue #205's first
+   * slice — "discover a non-Pipenzo PR" — filtered by head-branch naming only).
+   *
+   * **Not filtered by linked-issue `pipenzo:` label**, which the issue's own text also names as an
+   * exclusion signal — deliberately deferred. Determining a PR's "linked issue" from the REST API
+   * means parsing closing-keyword text ("Closes #N") out of the PR body, which has real
+   * false-negative failure modes (this repo's own convention posts "Closes #N" reliably, but that
+   * is a convention, not a GitHub-enforced field) and would need its own design pass rather than
+   * being folded into a first read-only listing slice. Every Pipenzo-created PR already carries the
+   * `issue-<n>` branch name unconditionally (`ticketBranchName()`), so the branch filter alone
+   * already excludes every PR this daemon itself opened.
+   */
+  listPullRequests(ref: RepoRef): Promise<{
+    readonly pullRequests: readonly GitHubPullRequestSummary[];
+    readonly truncated: boolean;
+  }>;
 }
 
 /** What `createIssue` accepts. No assignee: creating and claiming stay two auditable steps. */
@@ -1607,6 +1654,68 @@ export class OctokitGitHubClient implements GitHubClient {
       throw toGitHubClientError(error, operation);
     }
   }
+
+  async listPullRequests(ref: RepoRef): Promise<{
+    readonly pullRequests: readonly GitHubPullRequestSummary[];
+    readonly truncated: boolean;
+  }> {
+    const operation = `listPullRequests ${ref.owner}/${ref.repo}`;
+    const collected: GitHubPullRequestSummary[] = [];
+    let truncated = false;
+    try {
+      // `iterator`, not `paginate`, for the same reason as `listAccessibleRepositories`: the cap
+      // has to be enforced while walking, not noticed afterwards.
+      let pages = 0;
+      for await (const response of this.#octokit.paginate.iterator('GET /repos/{owner}/{repo}/pulls', {
+        owner: ref.owner,
+        repo: ref.repo,
+        state: 'open',
+        per_page: 100,
+        sort: 'updated',
+        direction: 'desc',
+      })) {
+        if (pages >= GITHUB_PR_PAGE_CAP) {
+          truncated = true;
+          break;
+        }
+        pages += 1;
+        if (!Array.isArray(response.data)) {
+          throw new GitHubClientError('invalid_response', `${operation}: pull requests was not an array`);
+        }
+        for (const entry of response.data) {
+          const summary = normalizePullRequestSummary(entry as Record<string, unknown>, operation);
+          if (summary) collected.push(summary);
+        }
+      }
+    } catch (error) {
+      if (error instanceof GitHubClientError) throw error;
+      throw toGitHubClientError(error, operation);
+    }
+    return { pullRequests: collected, truncated };
+  }
+}
+
+/**
+ * `undefined` for a PR whose head branch is Pipenzo's own ticket-worktree naming (issue #205) --
+ * filtered here, at the normalization boundary, rather than left for every caller to re-check.
+ */
+function normalizePullRequestSummary(
+  raw: Record<string, unknown>,
+  operation: string,
+): GitHubPullRequestSummary | undefined {
+  const head = raw.head as Record<string, unknown> | undefined;
+  const base = raw.base as Record<string, unknown> | undefined;
+  const headRef = requireString(head?.ref, 'head.ref', operation);
+  if (PIPENZO_TICKET_BRANCH_PATTERN.test(headRef)) return undefined;
+  const user = raw.user as Record<string, unknown> | null | undefined;
+  return {
+    number: requireNumber(raw.number, 'number', operation),
+    title: requireString(raw.title, 'title', operation),
+    author: typeof user?.login === 'string' ? user.login : undefined,
+    headRef,
+    baseRef: requireString(base?.ref, 'base.ref', operation),
+    updatedAt: requireString(raw.updated_at, 'updated_at', operation),
+  };
 }
 
 function assertPositiveInteger(value: number, field: string, operation: string): void {
