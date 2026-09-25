@@ -73,11 +73,15 @@ export function buildConfidenceLine(report: ReviewReportV1): string {
       `The verifier ${report.verifier.verdict} this diff with ${critical} critical finding${critical === 1 ? '' : 's'} sustained.`,
     );
   }
-  if (report.diffScope) {
+  // `ratio`/`exceededEstimate` are absent for an external PR review (issue #206) -- no Refine
+  // estimate exists to report confidence against, so this sentence is omitted the same way the
+  // verifier sentence above is omitted when there is no verifier pass.
+  const { diffScope } = report;
+  if (diffScope?.ratio !== undefined && diffScope.exceededEstimate !== undefined) {
     parts.push(
-      report.diffScope.exceededEstimate
-        ? `The diff exceeded its Refine estimate (${(report.diffScope.ratio * 100).toFixed(0)}% of predicted lines).`
-        : `The diff stayed within its Refine estimate (${(report.diffScope.ratio * 100).toFixed(0)}% of predicted lines).`,
+      diffScope.exceededEstimate
+        ? `The diff exceeded its Refine estimate (${(diffScope.ratio * 100).toFixed(0)}% of predicted lines).`
+        : `The diff stayed within its Refine estimate (${(diffScope.ratio * 100).toFixed(0)}% of predicted lines).`,
     );
   }
   return parts.join(' ');
@@ -132,7 +136,12 @@ export function buildPullRequestBody(
   sections.push(`## Summary\n\n${spec.summary.trim()}`);
 
   const gateLines = report.deterministic.map((gate) => {
-    const icon = gate.status === 'passed' ? '✅' : gate.status === 'skipped' ? '⚠️' : '❌';
+    // Currently unreachable here (this function requires a full RefineSpecV1, so it's only ever
+    // called on the ticket path, where diff_scope can never be not_applicable) -- fixed anyway
+    // (code review of #340) since #207's write-back-to-GitHub is the natural next caller for an
+    // external PR review, and gateTone in rail.ts already treats the two statuses alike.
+    const icon =
+      gate.status === 'passed' ? '✅' : gate.status === 'skipped' || gate.status === 'not_applicable' ? '⚠️' : '❌';
     return `- ${icon} ${gate.summary}`;
   });
   sections.push(`## Machine-verified\n\n${gateLines.length > 0 ? gateLines.join('\n') : '(no deterministic gates recorded)'}`);

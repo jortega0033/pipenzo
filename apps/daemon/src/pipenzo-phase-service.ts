@@ -335,7 +335,7 @@ export class PipenzoPhaseService {
     let report: PipenzoReviewResultV1;
     try {
       report = await this.#review.run({
-        spec: request.spec,
+        subject: { kind: 'ticket', spec: request.spec },
         worktreePath: location.path,
         baseCommit: request.baseCommit,
         headCommit: request.headCommit,
@@ -637,10 +637,12 @@ const GITHUB_CODES: Record<GitHubClientError['code'], PipenzoPhaseErrorCodeV1> =
  */
 export function blownEstimateCommentBody(report: PipenzoReviewResultV1): string {
   const scope = report.diffScope;
-  if (!scope) {
-    // Cannot happen for a real `estimate_blown` report -- `diffScope` is always attached
-    // alongside a deterministic-gate outcome -- but a comment must never assert numbers it does
-    // not have, so this is the honest fallback rather than a thrown error over a public write.
+  if (!scope || scope.estimate === undefined || scope.ratio === undefined) {
+    // Cannot happen for a real `estimate_blown` report -- `diffScope` (with an estimate) is always
+    // attached alongside that outcome, and `estimate_blown` cannot fire for issue #206's
+    // external-PR review path in the first place (there is no ticket to post a comment on) -- but
+    // a comment must never assert numbers it does not have, so this is the honest fallback rather
+    // than a thrown error over a public write.
     return (
       'This ticket’s implementation diff blew its Refine-time estimate by more than 50%. ' +
       'Parked in `pipenzo:awaiting-stack-approval` for a human to decide: accept the overrun, or split it into a stack.'
