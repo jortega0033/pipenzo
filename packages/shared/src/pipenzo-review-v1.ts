@@ -116,6 +116,13 @@ export const reviewFindingV1Schema = z
     message: z.string().min(1).max(4_000),
     /** The acceptance criterion this finding relates to, when the pass cited one. */
     criterionId: z.string().regex(/^AC-\d{1,3}$/).optional(),
+    /**
+     * Whether `path`/`line` were cross-checked against the diff the pass was actually shown
+     * (issue #319) — never model-reported. Optional so `llmPassPayloadSchema`
+     * (`pipenzo-phase-sessions.ts`) still accepts a pass's raw, pre-verification payload; the
+     * review-gates runner fills this in for every finding before it reaches a `ReviewReportV1`.
+     */
+    locationVerified: z.boolean().optional(),
   })
   .strict();
 
