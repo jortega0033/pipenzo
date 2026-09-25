@@ -567,6 +567,32 @@ describe('ReviewGatesRunner — finding-location verification (issue #319)', () 
     expect(report.reviewer?.findings[0]?.locationVerified).toBe(true);
   });
 
+  it('verifies a finding on a renamed file (full-path numstat form: old => new)', async () => {
+    const h = harness({
+      specTests: true,
+      numstat: `${NUMSTAT}\n1\t0\told-name.ts => dir/new-name.ts`,
+      reviewerOutcome: {
+        findings: [{ severity: 'low', path: 'dir/new-name.ts', line: 2, message: 'nit' }],
+      },
+      showResults: { 'dir/new-name.ts': 'one\ntwo\nthree\n' },
+    });
+    const report = await h.runner.run(request());
+    expect(report.reviewer?.findings[0]?.locationVerified).toBe(true);
+  });
+
+  it('verifies a finding on a renamed file (shared-prefix numstat shorthand: dir/{old => new})', async () => {
+    const h = harness({
+      specTests: true,
+      numstat: `${NUMSTAT}\n1\t0\tdir/{old-name.ts => new-name.ts}`,
+      reviewerOutcome: {
+        findings: [{ severity: 'low', path: 'dir/new-name.ts', line: 2, message: 'nit' }],
+      },
+      showResults: { 'dir/new-name.ts': 'one\ntwo\nthree\n' },
+    });
+    const report = await h.runner.run(request());
+    expect(report.reviewer?.findings[0]?.locationVerified).toBe(true);
+  });
+
   it('marks a line claim on a binary file as unverified', async () => {
     const h = harness({
       specTests: true,

@@ -772,12 +772,31 @@ interface TouchedFileInfo {
   readonly binary: boolean;
 }
 
+/**
+ * Extracts the new (current) path from a numstat entry, undoing git's default rename compaction —
+ * `old => new`, or the shared-prefix/suffix shorthand `prefix{old => new}suffix` — so a renamed
+ * file's real path lands in the touched-file map. `#readDiff` never passes `--no-renames`, so a
+ * renamed file's numstat line is one of these two forms, not a plain path, by default. A finding
+ * citing the file's real (new) path must still match here; unlike `computeDiffScope`'s own
+ * pre-existing, lower-stakes rename gap (a size metric, not a trust signal), a wrong touched-file
+ * match here directly produces a false `locationVerified: false` on a legitimate finding.
+ */
+function renamedNewPath(path: string): string {
+  const braced = path.match(/^(.*)\{.* => (.*)\}(.*)$/);
+  if (braced) {
+    const [, prefix, newPart, suffix] = braced;
+    return `${prefix}${newPart}${suffix}`;
+  }
+  const arrow = path.indexOf(' => ');
+  return arrow === -1 ? path : path.slice(arrow + 4);
+}
+
 /** The diff's own touched-file list (issue #319), reusing the same numstat parse as the diff-scope
  * gate rather than a second, driftable pass over it. */
 function parseTouchedFiles(numstat: string): Map<string, TouchedFileInfo> {
   const touched = new Map<string, TouchedFileInfo>();
   for (const { added, deleted, path } of parseNumstat(numstat)) {
-    touched.set(path, { binary: added === '-' || deleted === '-' });
+    touched.set(renamedNewPath(path), { binary: added === '-' || deleted === '-' });
   }
   return touched;
 }
@@ -797,8 +816,11 @@ interface NumstatLine {
 }
 
 /** Shared `git diff --numstat` line parsing — `computeDiffScope` and the finding-location check
- * (issue #319) both need the same (added, deleted, path) triplet, and a rename's own `old => new`
- * shorthand is left unhandled the same pre-existing way in both, rather than fixed in one only. */
+ * (issue #319) both need the same (added, deleted, path) triplet. `path` is numstat's raw field,
+ * which is a rename-compacted form (`old => new`) for a renamed file rather than a plain path;
+ * `computeDiffScope` leaves that pre-existing gap as-is (a size metric, lower stakes), while
+ * `parseTouchedFiles` below normalizes it via `renamedNewPath`, since a wrong match there produces
+ * a false `locationVerified: false` on a legitimate finding. */
 function parseNumstat(numstat: string): NumstatLine[] {
   const lines: NumstatLine[] = [];
   for (const line of numstat.split(/\r?\n/)) {
