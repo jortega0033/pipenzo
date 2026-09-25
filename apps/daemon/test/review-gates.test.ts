@@ -29,7 +29,7 @@ import {
   type ReviewSessionPort,
   type SpecTestGeneratorPort,
 } from '../src/review-gates.js';
-import type { GitCommandResult, PipenzoGitRunner } from '../src/pipenzo-git.js';
+import { GitCommandFailure, type GitCommandResult, type PipenzoGitRunner } from '../src/pipenzo-git.js';
 
 const BASE = 'a'.repeat(40);
 const HEAD = 'b'.repeat(40);
@@ -91,6 +91,13 @@ function harness(
     reviewerOutcome?: Partial<LlmPassOutcome>;
     verifierOutcome?: Partial<LlmPassOutcome>;
     sessionError?: unknown;
+    /** `git show <headCommit>:<path>` fakes, keyed by path (issue #319). A path with no entry here
+     * behaves like git show failing (deleted/unreadable at head) — `code: 128`, not a clean miss. */
+    showResults?: Record<string, string>;
+    /** Paths for which the fake `git show` rejects instead of resolving — the real `runGit`'s own
+     * behaviour when git itself can't run at all (e.g. the output-buffer cap), distinct from a
+     * clean non-zero exit. */
+    showRejects?: readonly string[];
   } = {},
 ): Harness {
   const ran: string[] = [];
@@ -136,10 +143,21 @@ function harness(
     : undefined;
 
   const gitResult = (stdout: string): GitCommandResult => ({ stdout, stderr: '', code: 0 });
-  const runGit: PipenzoGitRunner = async (args) =>
-    args.includes('--numstat')
-      ? gitResult(options.numstat ?? NUMSTAT)
-      : gitResult('diff --git a/x b/x\n+added line\n');
+  const runGit: PipenzoGitRunner = async (args) => {
+    if (args.includes('--numstat')) return gitResult(options.numstat ?? NUMSTAT);
+    if (args[0] === 'show') {
+      const revPath = args.at(-1) ?? '';
+      const path = revPath.includes(':') ? revPath.slice(revPath.indexOf(':') + 1) : revPath;
+      if ((options.showRejects ?? []).includes(path)) {
+        throw new GitCommandFailure(`git show could not run: output maxBuffer length exceeded`);
+      }
+      const content = options.showResults?.[path];
+      return content === undefined
+        ? { stdout: '', stderr: 'fatal: path not in the working tree', code: 128 }
+        : gitResult(content);
+    }
+    return gitResult('diff --git a/x b/x\n+added line\n');
+  };
 
   return {
     ran,
@@ -484,6 +502,174 @@ describe('ReviewGatesRunner — honesty of the evidence', () => {
   it('refuses a verifier that returned no verdict, rather than treating silence as approval', async () => {
     const h = harness({ specTests: true, verifierOutcome: { verdict: undefined } });
     expect((await rejection(() => h.runner.run(request()))).code).toBe('verifier_failed');
+  });
+});
+
+describe('ReviewGatesRunner — finding-location verification (issue #319)', () => {
+  it('verifies a finding whose path and line are real at the reviewed head commit', async () => {
+    const h = harness({
+      specTests: true,
+      reviewerOutcome: {
+        findings: [
+          { severity: 'medium', path: 'apps/daemon/src/review-gates.ts', line: 3, message: 'nit' },
+        ],
+      },
+      showResults: { 'apps/daemon/src/review-gates.ts': 'one\ntwo\nthree\n' },
+    });
+    const report = await h.runner.run(request());
+    expect(report.reviewer?.findings[0]?.locationVerified).toBe(true);
+  });
+
+  it('marks a line past the file’s real length as unverified, without dropping the finding', async () => {
+    const h = harness({
+      specTests: true,
+      reviewerOutcome: {
+        findings: [
+          { severity: 'medium', path: 'apps/daemon/src/review-gates.ts', line: 999, message: 'nit' },
+        ],
+      },
+      showResults: { 'apps/daemon/src/review-gates.ts': 'one\ntwo\nthree\n' },
+    });
+    const report = await h.runner.run(request());
+    expect(report.reviewer?.findings).toHaveLength(1);
+    expect(report.reviewer?.findings[0]?.locationVerified).toBe(false);
+    expect(report.reviewer?.findings[0]?.message).toBe('nit');
+  });
+
+  it('marks a path outside the diff as unverified', async () => {
+    const h = harness({
+      specTests: true,
+      reviewerOutcome: {
+        findings: [{ severity: 'low', path: 'src/not-in-this-diff.ts', line: 1, message: 'nit' }],
+      },
+    });
+    const report = await h.runner.run(request());
+    expect(report.reviewer?.findings[0]?.locationVerified).toBe(false);
+  });
+
+  it('verifies a path-only finding (no line claimed) once the path is in the diff', async () => {
+    const h = harness({
+      specTests: true,
+      reviewerOutcome: {
+        findings: [{ severity: 'info', path: 'apps/daemon/src/review-gates.ts', message: 'nit' }],
+      },
+    });
+    const report = await h.runner.run(request());
+    expect(report.reviewer?.findings[0]?.locationVerified).toBe(true);
+  });
+
+  it('verifies a finding with no path at all, vacuously', async () => {
+    const h = harness({
+      specTests: true,
+      reviewerOutcome: { findings: [{ severity: 'info', message: 'general note' }] },
+    });
+    const report = await h.runner.run(request());
+    expect(report.reviewer?.findings[0]?.locationVerified).toBe(true);
+  });
+
+  it('verifies a finding on a renamed file (full-path numstat form: old => new)', async () => {
+    const h = harness({
+      specTests: true,
+      numstat: `${NUMSTAT}\n1\t0\told-name.ts => dir/new-name.ts`,
+      reviewerOutcome: {
+        findings: [{ severity: 'low', path: 'dir/new-name.ts', line: 2, message: 'nit' }],
+      },
+      showResults: { 'dir/new-name.ts': 'one\ntwo\nthree\n' },
+    });
+    const report = await h.runner.run(request());
+    expect(report.reviewer?.findings[0]?.locationVerified).toBe(true);
+  });
+
+  it('verifies a finding on a renamed file (shared-prefix numstat shorthand: dir/{old => new})', async () => {
+    const h = harness({
+      specTests: true,
+      numstat: `${NUMSTAT}\n1\t0\tdir/{old-name.ts => new-name.ts}`,
+      reviewerOutcome: {
+        findings: [{ severity: 'low', path: 'dir/new-name.ts', line: 2, message: 'nit' }],
+      },
+      showResults: { 'dir/new-name.ts': 'one\ntwo\nthree\n' },
+    });
+    const report = await h.runner.run(request());
+    expect(report.reviewer?.findings[0]?.locationVerified).toBe(true);
+  });
+
+  it('marks a line claim on a binary file as unverified', async () => {
+    const h = harness({
+      specTests: true,
+      numstat: `${NUMSTAT}\n-\t-\tassets/logo.png`,
+      reviewerOutcome: {
+        findings: [{ severity: 'low', path: 'assets/logo.png', line: 1, message: 'nit' }],
+      },
+    });
+    const report = await h.runner.run(request());
+    expect(report.reviewer?.findings[0]?.locationVerified).toBe(false);
+  });
+
+  it('degrades to unverified, rather than failing the run, when git show itself cannot run (e.g. oversized file)', async () => {
+    const h = harness({
+      specTests: true,
+      reviewerOutcome: {
+        findings: [
+          { severity: 'low', path: 'apps/daemon/src/review-gates.ts', line: 1, message: 'nit' },
+        ],
+      },
+      showRejects: ['apps/daemon/src/review-gates.ts'],
+    });
+    const report = await h.runner.run(request());
+    expect(report.reviewer?.findings[0]?.locationVerified).toBe(false);
+  });
+
+  it('marks a finding unverified when git cannot read the file at head (e.g. deleted)', async () => {
+    const h = harness({
+      specTests: true,
+      reviewerOutcome: {
+        findings: [
+          { severity: 'low', path: 'apps/daemon/src/review-gates.ts', line: 1, message: 'nit' },
+        ],
+      },
+      // No showResults entry for this path — the fake git show fails, same as a real deletion.
+    });
+    const report = await h.runner.run(request());
+    expect(report.reviewer?.findings[0]?.locationVerified).toBe(false);
+  });
+
+  it('verifies the verifier pass’s own findings the same way, independent of the reviewer’s', async () => {
+    const h = harness({
+      specTests: true,
+      verifierOutcome: {
+        verdict: 'rejected',
+        findings: [
+          { severity: 'high', path: 'apps/daemon/src/review-gates.ts', line: 2, message: 'bug' },
+        ],
+      },
+      showResults: { 'apps/daemon/src/review-gates.ts': 'one\ntwo\nthree\n' },
+    });
+    const report = await h.runner.run(request());
+    expect(report.verifier?.findings[0]?.locationVerified).toBe(true);
+  });
+
+  it('never invokes git show for a finding that carries no path', async () => {
+    const showCalls: string[] = [];
+    const runner = new ReviewGatesRunner({
+      commands: {
+        available: async () => true,
+        run: async () => ({ stdout: '', stderr: '', code: 0 }),
+      },
+      sessions: {
+        run: async (req: CreateSessionV2Request) =>
+          req.prompt.includes('adversarial')
+            ? { sessionId: 'v', findings: [], verdict: 'approved' as const }
+            : { sessionId: 'r', findings: [{ severity: 'info' as const, message: 'no location claimed' }] },
+      },
+      runGit: async (args) => {
+        if (args[0] === 'show') showCalls.push(args.at(-1) ?? '');
+        return args.includes('--numstat')
+          ? { stdout: NUMSTAT, stderr: '', code: 0 }
+          : { stdout: 'diff --git a/x b/x\n+added line\n', stderr: '', code: 0 };
+      },
+    });
+    await runner.run(request());
+    expect(showCalls).toHaveLength(0);
   });
 });
 

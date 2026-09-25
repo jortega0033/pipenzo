@@ -304,15 +304,26 @@ export class ReviewGatesRunner {
       });
     }
 
+    const touched = parseTouchedFiles(diff.numstat);
+    const lineCountCache = new Map<string, number | undefined>();
+
     const reviewer = await this.#runReviewer(request, spec, diff.patch);
-    const verifier = await this.#runVerifier(request, spec, diff.patch, reviewer);
+    const verifiedReviewer: LlmReviewPassV1 = {
+      ...reviewer,
+      findings: await this.#verifyFindingLocations(reviewer.findings, touched, request, lineCountCache),
+    };
+    const verifier = await this.#runVerifier(request, spec, diff.patch, verifiedReviewer);
+    const verifiedVerifier: VerifierPassV1 = {
+      ...verifier,
+      findings: await this.#verifyFindingLocations(verifier.findings, touched, request, lineCountCache),
+    };
 
     return this.#report(request, {
-      outcome: verifier.verdict === 'approved' ? 'approved' : 'verifier_rejected',
+      outcome: verifiedVerifier.verdict === 'approved' ? 'approved' : 'verifier_rejected',
       deterministic,
       diffScope: scope,
-      reviewer,
-      verifier,
+      reviewer: verifiedReviewer,
+      verifier: verifiedVerifier,
     });
   }
 
@@ -359,6 +370,79 @@ export class ReviewGatesRunner {
       throw new ReviewGateError('diff_unavailable', 'could not read the diff for this range');
     }
     return { patch: truncate(patch.stdout, MAX_DIFF_CHARS), numstat: numstat.stdout };
+  }
+
+  /** The file's line count at the reviewed head commit, from the object store — never the worktree's
+   * live contents, which the diff read above does not depend on either. `undefined` when git cannot
+   * produce it (path deleted at head, or any other non-zero exit), which the caller treats as "not
+   * verifiable", never as "in range". Cached per run: the same path can recur across both LLM
+   * passes' findings. */
+  async #lineCountAtHead(
+    path: string,
+    request: ReviewRequest,
+    cache: Map<string, number | undefined>,
+  ): Promise<number | undefined> {
+    if (cache.has(path)) return cache.get(path);
+    // `runGit` rejects rather than resolving with a code when git itself couldn't run — e.g. a
+    // file at head exceeding pipenzo-git.ts's own output buffer cap, fully reachable from an
+    // externally-authored diff. That is exactly as "not verifiable" as a non-zero exit code, and
+    // must degrade the same way rather than failing the whole review run over one oversized file.
+    let count: number | undefined;
+    try {
+      const result = await this.#runGit(
+        ['show', '--end-of-options', `${request.headCommit}:${path}`],
+        request.worktreePath,
+      );
+      count = result.code === 0 ? countLines(result.stdout) : undefined;
+    } catch {
+      count = undefined;
+    }
+    cache.set(path, count);
+    return count;
+  }
+
+  /**
+   * Cross-checks each finding's `path`/`line` against the diff this run actually showed the LLM
+   * passes (issue #319). A bad location is never dropped — the finding's content still reaches the
+   * operator — but is marked `locationVerified: false` instead of a location #108's UI could
+   * otherwise render as a trustworthy link to the wrong place.
+   *
+   * A finding with no `path` claims no location and is vacuously verified. A `path` outside the
+   * diff's own touched-file list, a `line` on a binary file, or a `line` beyond that file's real
+   * length at the reviewed head commit are each unverified.
+   */
+  async #verifyFindingLocations(
+    findings: readonly ReviewFindingV1[],
+    touched: ReadonlyMap<string, TouchedFileInfo>,
+    request: ReviewRequest,
+    lineCountCache: Map<string, number | undefined>,
+  ): Promise<ReviewFindingV1[]> {
+    const verified: ReviewFindingV1[] = [];
+    for (const finding of findings) {
+      if (finding.path === undefined) {
+        verified.push({ ...finding, locationVerified: true });
+        continue;
+      }
+      const info = touched.get(finding.path);
+      if (!info) {
+        verified.push({ ...finding, locationVerified: false });
+        continue;
+      }
+      if (finding.line === undefined) {
+        verified.push({ ...finding, locationVerified: true });
+        continue;
+      }
+      if (info.binary) {
+        verified.push({ ...finding, locationVerified: false });
+        continue;
+      }
+      const lineCount = await this.#lineCountAtHead(finding.path, request, lineCountCache);
+      verified.push({
+        ...finding,
+        locationVerified: lineCount !== undefined && finding.line <= lineCount,
+      });
+    }
+    return verified;
   }
 
   async #runDeterministicGates(
@@ -683,6 +767,74 @@ export function isGeneratedTestPath(path: string): boolean {
   return path.replaceAll('\\', '/').startsWith(GENERATED_TEST_PREFIX);
 }
 
+interface TouchedFileInfo {
+  /** Numstat reports `-`/`-` for a binary file; it has no line numbers a finding could be about. */
+  readonly binary: boolean;
+}
+
+/**
+ * Extracts the new (current) path from a numstat entry, undoing git's default rename compaction —
+ * `old => new`, or the shared-prefix/suffix shorthand `prefix{old => new}suffix` — so a renamed
+ * file's real path lands in the touched-file map. `#readDiff` never passes `--no-renames`, so a
+ * renamed file's numstat line is one of these two forms, not a plain path, by default. A finding
+ * citing the file's real (new) path must still match here; unlike `computeDiffScope`'s own
+ * pre-existing, lower-stakes rename gap (a size metric, not a trust signal), a wrong touched-file
+ * match here directly produces a false `locationVerified: false` on a legitimate finding.
+ */
+function renamedNewPath(path: string): string {
+  const braced = path.match(/^(.*)\{.* => (.*)\}(.*)$/);
+  if (braced) {
+    const [, prefix, newPart, suffix] = braced;
+    return `${prefix}${newPart}${suffix}`;
+  }
+  const arrow = path.indexOf(' => ');
+  return arrow === -1 ? path : path.slice(arrow + 4);
+}
+
+/** The diff's own touched-file list (issue #319), reusing the same numstat parse as the diff-scope
+ * gate rather than a second, driftable pass over it. */
+function parseTouchedFiles(numstat: string): Map<string, TouchedFileInfo> {
+  const touched = new Map<string, TouchedFileInfo>();
+  for (const { added, deleted, path } of parseNumstat(numstat)) {
+    touched.set(renamedNewPath(path), { binary: added === '-' || deleted === '-' });
+  }
+  return touched;
+}
+
+/** Counts lines the way a line number in a finding means: a trailing newline is not itself a line. */
+function countLines(content: string): number {
+  if (content === '') return 0;
+  const lines = content.split(/\r\n|\r|\n/);
+  if (lines.at(-1) === '') lines.pop();
+  return lines.length;
+}
+
+interface NumstatLine {
+  readonly added: string;
+  readonly deleted: string;
+  readonly path: string;
+}
+
+/** Shared `git diff --numstat` line parsing — `computeDiffScope` and the finding-location check
+ * (issue #319) both need the same (added, deleted, path) triplet. `path` is numstat's raw field,
+ * which is a rename-compacted form (`old => new`) for a renamed file rather than a plain path;
+ * `computeDiffScope` leaves that pre-existing gap as-is (a size metric, lower stakes), while
+ * `parseTouchedFiles` below normalizes it via `renamedNewPath`, since a wrong match there produces
+ * a false `locationVerified: false` on a legitimate finding. */
+function parseNumstat(numstat: string): NumstatLine[] {
+  const lines: NumstatLine[] = [];
+  for (const line of numstat.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    const parts = line.split('\t');
+    if (parts.length < 3) continue;
+    const [added, deleted, rawPath] = parts;
+    const path = rawPath ?? '';
+    if (!path) continue;
+    lines.push({ added: added ?? '', deleted: deleted ?? '', path });
+  }
+  return lines;
+}
+
 /**
  * Splits `git diff --numstat` output into implementation and generated-test totals and compares
  * the implementation half against the Refine estimate (issue #145's logic, folded in here because
@@ -695,13 +847,7 @@ export function computeDiffScope(numstat: string, spec: RefineSpecV1): DiffScope
   const implementation = { changedLines: 0, filesTouched: 0 };
   const generatedTests = { changedLines: 0, filesTouched: 0 };
 
-  for (const line of numstat.split(/\r?\n/)) {
-    if (!line.trim()) continue;
-    const parts = line.split('\t');
-    if (parts.length < 3) continue;
-    const [added, deleted, rawPath] = parts;
-    const path = rawPath ?? '';
-    if (!path) continue;
+  for (const { added, deleted, path } of parseNumstat(numstat)) {
     const lines =
       added === '-' || deleted === '-' ? 0 : (Number(added) || 0) + (Number(deleted) || 0);
     const bucket = isGeneratedTestPath(path) ? generatedTests : implementation;
