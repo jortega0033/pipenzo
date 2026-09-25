@@ -383,11 +383,20 @@ export class ReviewGatesRunner {
     cache: Map<string, number | undefined>,
   ): Promise<number | undefined> {
     if (cache.has(path)) return cache.get(path);
-    const result = await this.#runGit(
-      ['show', '--end-of-options', `${request.headCommit}:${path}`],
-      request.worktreePath,
-    );
-    const count = result.code === 0 ? countLines(result.stdout) : undefined;
+    // `runGit` rejects rather than resolving with a code when git itself couldn't run — e.g. a
+    // file at head exceeding pipenzo-git.ts's own output buffer cap, fully reachable from an
+    // externally-authored diff. That is exactly as "not verifiable" as a non-zero exit code, and
+    // must degrade the same way rather than failing the whole review run over one oversized file.
+    let count: number | undefined;
+    try {
+      const result = await this.#runGit(
+        ['show', '--end-of-options', `${request.headCommit}:${path}`],
+        request.worktreePath,
+      );
+      count = result.code === 0 ? countLines(result.stdout) : undefined;
+    } catch {
+      count = undefined;
+    }
     cache.set(path, count);
     return count;
   }

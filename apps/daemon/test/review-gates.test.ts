@@ -29,7 +29,7 @@ import {
   type ReviewSessionPort,
   type SpecTestGeneratorPort,
 } from '../src/review-gates.js';
-import type { GitCommandResult, PipenzoGitRunner } from '../src/pipenzo-git.js';
+import { GitCommandFailure, type GitCommandResult, type PipenzoGitRunner } from '../src/pipenzo-git.js';
 
 const BASE = 'a'.repeat(40);
 const HEAD = 'b'.repeat(40);
@@ -94,6 +94,10 @@ function harness(
     /** `git show <headCommit>:<path>` fakes, keyed by path (issue #319). A path with no entry here
      * behaves like git show failing (deleted/unreadable at head) — `code: 128`, not a clean miss. */
     showResults?: Record<string, string>;
+    /** Paths for which the fake `git show` rejects instead of resolving — the real `runGit`'s own
+     * behaviour when git itself can't run at all (e.g. the output-buffer cap), distinct from a
+     * clean non-zero exit. */
+    showRejects?: readonly string[];
   } = {},
 ): Harness {
   const ran: string[] = [];
@@ -144,6 +148,9 @@ function harness(
     if (args[0] === 'show') {
       const revPath = args.at(-1) ?? '';
       const path = revPath.includes(':') ? revPath.slice(revPath.indexOf(':') + 1) : revPath;
+      if ((options.showRejects ?? []).includes(path)) {
+        throw new GitCommandFailure(`git show could not run: output maxBuffer length exceeded`);
+      }
       const content = options.showResults?.[path];
       return content === undefined
         ? { stdout: '', stderr: 'fatal: path not in the working tree', code: 128 }
@@ -567,6 +574,20 @@ describe('ReviewGatesRunner — finding-location verification (issue #319)', () 
       reviewerOutcome: {
         findings: [{ severity: 'low', path: 'assets/logo.png', line: 1, message: 'nit' }],
       },
+    });
+    const report = await h.runner.run(request());
+    expect(report.reviewer?.findings[0]?.locationVerified).toBe(false);
+  });
+
+  it('degrades to unverified, rather than failing the run, when git show itself cannot run (e.g. oversized file)', async () => {
+    const h = harness({
+      specTests: true,
+      reviewerOutcome: {
+        findings: [
+          { severity: 'low', path: 'apps/daemon/src/review-gates.ts', line: 1, message: 'nit' },
+        ],
+      },
+      showRejects: ['apps/daemon/src/review-gates.ts'],
     });
     const report = await h.runner.run(request());
     expect(report.reviewer?.findings[0]?.locationVerified).toBe(false);
