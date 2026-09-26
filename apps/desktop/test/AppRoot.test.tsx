@@ -476,3 +476,36 @@ describe('AppRoot connection-health banner (issue #257 -> #70)', () => {
     await waitFor(() => expect(bridge.pollGitHubHealthNow).toHaveBeenCalledTimes(2));
   });
 });
+
+describe('AppRoot manual-refresh failure toast (issue #77)', () => {
+  /**
+   * `pollGitHubHealthNow`'s own promise settling is the only feedback a manual refresh ever gets --
+   * the sync pill has no error state of its own. Before this, a rejection there vanished into a
+   * swallowed `.catch(() => {})`; this asserts the danger toast Foundations.dc.html's "the smaller
+   * failures" example describes fires instead, and that its one action retries the same call.
+   */
+  it('shows a non-auto-dismissing danger toast when a manual sync refresh fails, and retries on its action', async () => {
+    const bridge = realBridge();
+    bridge.pollGitHubHealthNow = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('network down'))
+      .mockResolvedValueOnce(undefined);
+    (window as unknown as { agentDock: AgentDockBridge }).agentDock = bridge;
+    render(<AppRoot />);
+    await screen.findByRole('button', { name: 'Board' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh now' }));
+
+    expect(await screen.findByText("Couldn't refresh — GitHub is unreachable.")).toBeInTheDocument();
+    expect(bridge.pollGitHubHealthNow).toHaveBeenCalledTimes(1);
+
+    // Long enough that a 6s auto-dismiss (the no-action default) would have fired if this toast
+    // carried one -- it must not, since it carries an action.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.getByText("Couldn't refresh — GitHub is unreachable.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(bridge.pollGitHubHealthNow).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText("Couldn't refresh — GitHub is unreachable.")).not.toBeInTheDocument();
+  });
+});

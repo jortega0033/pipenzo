@@ -3,6 +3,7 @@ import { App } from './App.js';
 import { createDemoBridge } from './demo-bridge.js';
 import { clearBridgeOverride, getBridge, setBridgeOverride } from './bridge.js';
 import { SyncStatusPill } from './components/primitives/SyncStatusPill.js';
+import { ToastStack, useToastStack } from './components/primitives/Toast.js';
 import { ConnectionHealthBanner } from './pipenzo/ConnectionHealthBanner.js';
 import { ConnectScreen } from './pipenzo/ConnectScreen.js';
 import { EnvironmentCredentialBanner } from './pipenzo/EnvironmentCredentialBanner.js';
@@ -65,6 +66,9 @@ function PipenzoStartup({
   // Subscribed unconditionally (rules of hooks), rendered only past the pre-app gate below: there
   // is nothing connected to poll, and so nothing this could report differently, before that point.
   const health = usePipenzoGitHubHealth();
+  // Same rule: called here rather than after the early returns below so a screen transition never
+  // changes this render's hook count.
+  const toast = useToastStack();
   // #113 shipped this router with `connectedRepos` defaulting to `'not-tracked'`, because nothing
   // recorded a list. #115 is what makes it real -- and the hook keeps answering `'not-tracked'`
   // whenever the count is genuinely unknown, so a daemon that has not finished starting never gets
@@ -108,7 +112,21 @@ function PipenzoStartup({
   }
 
   const sync = deriveSyncStatus(health);
-  const onRefreshSync = () => void getBridge().pollGitHubHealthNow().catch(() => {});
+  // A manual refresh that fails silently is worse than one that fails loudly (Foundations.dc.html's
+  // own toast example is exactly this shape): the pill itself has no room for an error state, so a
+  // failed poll surfaces here instead of vanishing into a swallowed rejection.
+  const onRefreshSync = function refreshSyncNow() {
+    void getBridge()
+      .pollGitHubHealthNow()
+      .catch(() => {
+        toast.push({
+          tone: 'danger',
+          icon: 'warning',
+          title: "Couldn't refresh — GitHub is unreachable.",
+          action: { label: 'Retry', onClick: refreshSyncNow },
+        });
+      });
+  };
 
   return (
     <>
@@ -152,6 +170,7 @@ function PipenzoStartup({
       ) : (
         <PipenzoAppShell sync={sync} onRefreshSync={onRefreshSync} />
       )}
+      <ToastStack toasts={toast.visible} onDismiss={toast.dismiss} />
     </>
   );
 }
