@@ -1,7 +1,10 @@
 import { mkdir, stat } from 'node:fs/promises';
+import type { Stats } from 'node:fs';
 import { join } from 'node:path';
-import type { RepoRef } from './github-client.js';
+import { redactSecrets, type RepoRef } from './github-client.js';
 import { runGitCommand, type PipenzoGitRunner } from './pipenzo-git.js';
+
+const MAX_ERROR_DETAIL = 2_000;
 
 /**
  * Resolves a connected GitHub repo to the local checkout Implement cuts a worktree from (issue
@@ -24,13 +27,34 @@ import { runGitCommand, type PipenzoGitRunner } from './pipenzo-git.js';
  * override shape, so a development machine can point Pipenzo's clones somewhere other than the
  * hidden per-user app-data directory without a second configuration mechanism to learn.
  *
- * ## Why cloning never touches the daemon's GitHub token
+ * ## Why cloning never touches the daemon's GitHub token -- and why it's split into two git calls
  *
  * `pipenzo-git.ts`'s whole reason to exist is that no daemon-spawned `git` child may see the PAT
- * that lives in this process. A clone is exactly the same class of operation as the push in
- * `publish-service.ts`, so it uses the same `credentialReachable: true` floor: reachability to the
- * user's own already-configured credential helper (SSH agent, `libsecret`, Git Credential Manager),
- * never Pipenzo's own token embedded in the URL.
+ * that lives in this process, and `credentialReachable: true` (reachability to the user's own
+ * already-configured credential helper -- SSH agent, `libsecret`, Git Credential Manager, never
+ * Pipenzo's own token embedded in the URL) is the one floor wide enough to let that helper answer.
+ * `publish-service.ts`'s push is the only other caller of that wider floor, and it is safe there
+ * specifically because a push runs no checkout and carries `--no-verify`, so no repository-supplied
+ * hook or smudge filter ever executes inside it (see that module's own comment). A plain
+ * `git clone` does not have that property -- it populates a working tree, which runs any
+ * `filter.*.smudge` command the *cloned* repository's own `.gitattributes` names, if something by
+ * that name happens to be registered in the user's global/system git config (Git LFS being the
+ * common case). Running that inside the credential-reachable floor would hand an unvetted, just-
+ * cloned repository's filter command the user's own SSH agent socket -- the exact exposure this
+ * module's environment split exists to prevent.
+ *
+ * So cloning here is two git calls, not one: `clone --no-checkout` (fetch only, no working tree,
+ * nothing to smudge) under `credentialReachable: true`, then `checkout` of the branch it just
+ * fetched under the *default*, narrow `buildGitEnvironment()` floor -- the same floor every other
+ * git command in this daemon uses. Only the network fetch ever sees the wider environment.
+ *
+ * ## Known gap: no lock between the existence check and the clone
+ *
+ * Nothing calls this function yet -- wiring it into a real request path is #342/#344's scope, not
+ * this one's -- so two callers racing for the same `ref` cannot happen today. Whichever of #342/#344
+ * adds the first real caller needs to either serialize on `ref` (the `withWorkspaceQueue` pattern in
+ * `worktree-manager.ts` is the precedent) or confirm its own call site already can't produce
+ * concurrent requests for one repo, before this stops being a theoretical gap.
  *
  * ## What happens when the directory already exists
  *
@@ -62,14 +86,45 @@ export class RepoCheckoutError extends Error {
   }
 }
 
-async function pathExists(path: string): Promise<boolean> {
+/** Same redact-then-truncate treatment `publish-service.ts`'s own `detail()` gives git output,
+ * kept consistent here rather than interpolating raw stderr/stdout into a thrown message. */
+function detail(result: { readonly stdout: string; readonly stderr: string }): string {
+  const text = `${result.stderr}\n${result.stdout}`.trim();
+  return redactSecrets(text).slice(0, MAX_ERROR_DETAIL);
+}
+
+async function existingCheckoutStat(path: string): Promise<Stats | undefined> {
   try {
-    await stat(path);
-    return true;
+    return await stat(path);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
     throw error;
   }
+}
+
+/**
+ * Whether `remoteUrl` (`git remote get-url origin`'s raw stdout) is exactly github.com's HTTPS or
+ * SSH remote for `ref`, not merely a URL that happens to contain `owner/repo` as a substring.
+ *
+ * A naive `.includes('owner/repo')` accepts `https://github.com/owner/repo-fork.git` for
+ * `owner/repo` (`"repo-fork"` starts with `"repo"`), and also accepts any host at all --
+ * `https://evil.example/owner/repo.git` contains the same substring. Both are exactly the
+ * wrong-checkout confusion this check exists to prevent. Anchoring the whole string against
+ * `github.com`'s two remote forms and `ref`'s own two segments, with an optional `.git` suffix and
+ * trailing slash, closes both gaps. This module only ever clones from `https://github.com/...`
+ * itself (see below), so pinning the host here costs nothing a real clone of this repo would need;
+ * a GitHub Enterprise remote at this exact deterministic path would be a pre-existing checkout this
+ * module never created, which is precisely the case `path_conflict` is for.
+ */
+function remoteMatches(remoteUrl: string, ref: RepoRef): boolean {
+  const escaped = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const owner = escaped(ref.owner);
+  const repo = escaped(ref.repo);
+  const pattern = new RegExp(
+    `^(?:https://github\\.com/|git@github\\.com:)${owner}/${repo}(?:\\.git)?/?$`,
+    'i',
+  );
+  return pattern.test(remoteUrl.trim());
 }
 
 /**
@@ -85,10 +140,19 @@ export async function resolveRepoCheckout(
   const ownerDir = join(root, ref.owner);
   const targetDir = join(ownerDir, ref.repo);
 
-  if (await pathExists(targetDir)) {
+  const existing = await existingCheckoutStat(targetDir);
+  if (existing) {
+    // A non-directory occupying the path (a stray file, a leftover lock) can never be a checkout --
+    // refused here, before spawning git with a `cwd` that would just fail to launch at all.
+    if (!existing.isDirectory()) {
+      throw new RepoCheckoutError(
+        'path_conflict',
+        `${targetDir} already exists and is not a directory -- refusing to treat it as a checkout ` +
+          `of ${ref.owner}/${ref.repo}.`,
+      );
+    }
     const remote = await runGit(['remote', 'get-url', 'origin'], targetDir);
-    const expected = `${ref.owner}/${ref.repo}`.toLowerCase();
-    if (remote.code !== 0 || !remote.stdout.toLowerCase().includes(expected)) {
+    if (remote.code !== 0 || !remoteMatches(remote.stdout, ref)) {
       throw new RepoCheckoutError(
         'path_conflict',
         `${targetDir} already exists but is not a checkout of ${ref.owner}/${ref.repo} -- refusing ` +
@@ -98,13 +162,39 @@ export async function resolveRepoCheckout(
     return targetDir;
   }
 
+  // Belt-and-braces: `git clone` already creates missing leading directories on its own, but this
+  // does not depend on that being true across every git version or a future non-clone strategy.
   await mkdir(ownerDir, { recursive: true });
   const url = `https://github.com/${ref.owner}/${ref.repo}.git`;
-  const result = await runGit(['clone', url, targetDir], ownerDir, { credentialReachable: true });
-  if (result.code !== 0) {
+
+  // Fetch only -- no working tree yet, so nothing here can trigger a smudge filter. This is the
+  // one call under the wider, credential-reachable floor.
+  const cloned = await runGit(['clone', '--no-checkout', url, targetDir], ownerDir, {
+    credentialReachable: true,
+  });
+  if (cloned.code !== 0) {
+    throw new RepoCheckoutError('clone_failed', `git clone ${url} failed: ${detail(cloned)}`);
+  }
+
+  // The branch `--no-checkout` left HEAD pointing at, read locally -- no network, no credential
+  // reachability needed for this one.
+  const branchRef = await runGit(['symbolic-ref', '--short', 'HEAD'], targetDir);
+  const branch = branchRef.stdout.trim();
+  if (branchRef.code !== 0 || !branch) {
     throw new RepoCheckoutError(
       'clone_failed',
-      `git clone ${url} failed: ${result.stderr || result.stdout || `exit ${result.code}`}`,
+      `git clone ${url} succeeded but its default branch could not be read: ${detail(branchRef)}`,
+    );
+  }
+
+  // Populates the working tree -- and so is the one call that can run the cloned repo's own
+  // filter.*.smudge commands, deliberately under the *default*, narrow environment rather than the
+  // one the clone above used.
+  const checkedOut = await runGit(['checkout', '--quiet', branch], targetDir);
+  if (checkedOut.code !== 0) {
+    throw new RepoCheckoutError(
+      'clone_failed',
+      `git clone ${url} succeeded but checking out ${branch} failed: ${detail(checkedOut)}`,
     );
   }
   return targetDir;
