@@ -127,6 +127,9 @@ describe('electron/preload.ts — real bridge (AD-07)', () => {
         'pipenzoListRepos',
         'pipenzoConnectedRepos',
         'pipenzoConnectRepos',
+        // Connected repo -> managed local checkout (issues #342/#344). An ordinary daemon route;
+        // the daemon refuses anything not connected, and the clone never sees the vault token.
+        'resolvePipenzoCheckout',
         'selectAndUploadAttachments',
         'validateStructuredOutput',
         'createSession',

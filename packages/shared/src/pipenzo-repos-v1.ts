@@ -133,3 +133,37 @@ export const pipenzoConnectReposRequestV1Schema = z
   .strict();
 
 export type PipenzoConnectReposRequestV1 = z.infer<typeof pipenzoConnectReposRequestV1Schema>;
+
+/**
+ * Resolve a connected repository to the local checkout Refine reads and Implement cuts its
+ * worktree from (issues #342/#344).
+ *
+ * This is the bridge between the two lists above and the phase routes: a connected repository is
+ * only an `owner/name` (see the module comment on why), while `pipenzoRefineRequestV1Schema` and
+ * `pipenzoImplementRequestV1Schema` both need a `repositoryPath`. The daemon answers with the
+ * directory it cloned the repository into -- cloning it first if this is the first time anything
+ * asked -- so the board's Implement action never needs a person to type a path.
+ *
+ * Only a repository on the connected list resolves. Anything else is refused rather than cloned,
+ * so this route cannot be used to make the daemon fetch an arbitrary repository onto the disk.
+ *
+ * The answer is the *source* checkout's path, never a worktree's: the renderer already names this
+ * directory on every refine and implement request, and worktrees stay addressed by id, exactly as
+ * `pipenzo-phase-v1.ts`'s module comment requires.
+ */
+export const pipenzoRepoCheckoutRequestV1Schema = z
+  .object({
+    repo: pipenzoRepoRefV1Schema,
+  })
+  .strict();
+
+export const pipenzoRepoCheckoutResultV1Schema = z
+  .object({
+    repo: pipenzoRepoRefV1Schema,
+    /** Absolute path of the managed checkout. Same bounds as every `repositoryPath` it feeds. */
+    repositoryPath: z.string().min(1).max(4_096),
+  })
+  .strict();
+
+export type PipenzoRepoCheckoutRequestV1 = z.infer<typeof pipenzoRepoCheckoutRequestV1Schema>;
+export type PipenzoRepoCheckoutResultV1 = z.infer<typeof pipenzoRepoCheckoutResultV1Schema>;

@@ -68,6 +68,8 @@ import type {
   PipenzoConnectReposRequestV1,
   PipenzoConnectedReposV1,
   PipenzoRepoListV1,
+  PipenzoRepoCheckoutRequestV1,
+  PipenzoRepoCheckoutResultV1,
   PipenzoDeviceCodeV1,
   PipenzoDeviceOutcomeV1,
   PipenzoGitHubConnectionV1,
@@ -293,6 +295,12 @@ export interface AgentDockBridge {
   pipenzoListRepos(): Promise<PipenzoRepoListV1>;
   pipenzoConnectedRepos(): Promise<PipenzoConnectedReposV1>;
   pipenzoConnectRepos(input: PipenzoConnectReposRequestV1): Promise<PipenzoConnectedReposV1>;
+  /**
+   * A connected repository's managed local checkout (issues #342/#344): the `repositoryPath` the
+   * board's Implement dialog passes to refine and implement. The daemon clones it on first need, so
+   * a first call can take as long as a clone; it refuses any repository that is not connected.
+   */
+  resolvePipenzoCheckout(input: PipenzoRepoCheckoutRequestV1): Promise<PipenzoRepoCheckoutResultV1>;
   selectAndUploadAttachments(sessionId?: string): Promise<AttachmentMetadataV2[]>;
   validateStructuredOutput(input: StructuredWorkflowRequestV2): Promise<StructuredWorkflowResultV2>;
   createSession(input: CreateSessionInput): Promise<AgentSession>;

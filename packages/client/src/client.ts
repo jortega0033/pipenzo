@@ -121,6 +121,8 @@ import {
   pipenzoConnectReposRequestV1Schema,
   pipenzoConnectedReposV1Schema,
   pipenzoRepoListV1Schema,
+  pipenzoRepoCheckoutRequestV1Schema,
+  pipenzoRepoCheckoutResultV1Schema,
   pipenzoTicketReadRequestV1Schema,
   pipenzoTicketTransitionRequestV1Schema,
   pipenzoTicketReconciliationV1Schema,
@@ -149,6 +151,8 @@ import {
   type PipenzoConnectReposRequestV1,
   type PipenzoConnectedReposV1,
   type PipenzoRepoListV1,
+  type PipenzoRepoCheckoutRequestV1,
+  type PipenzoRepoCheckoutResultV1,
   type PipenzoTicketReadRequestV1,
   type PipenzoTicketTransitionRequestV1,
   type PipenzoTicketReconciliationV1,
@@ -428,6 +432,15 @@ export class AgentDockClient {
       connectedRepos: (): Promise<PipenzoConnectedReposV1> => this.connectedPipenzoReposV1(),
       connectRepos: (input: PipenzoConnectReposRequestV1): Promise<PipenzoConnectedReposV1> =>
         this.connectPipenzoReposV1(input),
+      /**
+       * A connected repository's managed local checkout (issues #342/#344) -- the
+       * `repositoryPath` refine and implement need. Clones on first call, so it can take as long as
+       * a clone does; later calls are a local check. Refused for anything not on the connected
+       * list.
+       */
+      resolveCheckout: (
+        input: PipenzoRepoCheckoutRequestV1,
+      ): Promise<PipenzoRepoCheckoutResultV1> => this.resolvePipenzoCheckoutV1(input),
       /**
        * The phase machine's ticket surface (issue #188). `readTicket` reconciles a ticket against
        * its issue's labels and returns the result; `transitionTicket` writes a new `pipenzo:` label
@@ -1087,6 +1100,23 @@ export class AgentDockClient {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(parsed),
       },
+      { expectedStatus: 200 },
+    );
+  }
+
+  private async resolvePipenzoCheckoutV1(
+    input: PipenzoRepoCheckoutRequestV1,
+  ): Promise<PipenzoRepoCheckoutResultV1> {
+    const parsed = validateInput(
+      pipenzoRepoCheckoutRequestV1Schema,
+      input,
+      'pipenzo repo checkout request',
+    );
+    return this.requestV2(
+      '/v2/pipenzo/repos/checkout',
+      pipenzoRepoCheckoutResultV1Schema,
+      'pipenzo repo checkout',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) },
       { expectedStatus: 200 },
     );
   }

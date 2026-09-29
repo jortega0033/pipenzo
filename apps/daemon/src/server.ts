@@ -29,6 +29,10 @@ import type { PipenzoPhaseEventBus } from './pipenzo-phase-events.js';
 import type { PipenzoCrashRecovery } from './pipenzo-crash-recovery.js';
 import { registerPipenzoRecoveryRoutes } from './routes/pipenzo-recovery.js';
 import { registerPipenzoRepoRoutes } from './routes/pipenzo-repos.js';
+import {
+  registerPipenzoCheckoutRoutes,
+  type RepoCheckoutResolver,
+} from './routes/pipenzo-checkout.js';
 import type { ConnectedReposStore } from './connected-repos-store.js';
 import type { GitHubClient } from './github-client.js';
 import { registerPipenzoHealthRoutes, type PipenzoHealthSource } from './routes/pipenzo-health.js';
@@ -77,6 +81,12 @@ export interface BuildServerOptions {
    */
   connectedRepos?: ConnectedReposStore;
   pipenzoGitHubClient?: () => GitHubClient;
+  /**
+   * Connected repo -> managed local checkout (issues #342/#344). Registered only alongside
+   * `connectedRepos`, because the route refuses anything not on that list -- without the list it
+   * would have nothing to check a request against.
+   */
+  repoCheckouts?: RepoCheckoutResolver;
   /**
    * The GitHub connection-health stream (issue #257): the transport `PipenzoReconciler` (#231) left
    * for "the first banner to need it". Optional for the same reason every other Pipenzo surface is —
@@ -175,6 +185,8 @@ export function buildServer(opts: BuildServerOptions): FastifyInstance {
     if (opts.crashRecovery) registerPipenzoRecoveryRoutes(app, opts.crashRecovery);
     if (opts.connectedRepos && opts.pipenzoGitHubClient)
       registerPipenzoRepoRoutes(app, opts.connectedRepos, opts.pipenzoGitHubClient);
+    if (opts.connectedRepos && opts.repoCheckouts)
+      registerPipenzoCheckoutRoutes(app, opts.connectedRepos, opts.repoCheckouts);
     if (opts.pipenzoHealth) registerPipenzoHealthRoutes(app, opts.pipenzoHealth);
     if (opts.attachmentStore)
       registerV2MultimodalRoutes(app, opts.attachmentStore, opts.sessionManager);

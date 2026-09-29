@@ -39,6 +39,7 @@ import {
   pipenzoCaptureCapabilityRequestV1Schema,
   pipenzoIdeaDraftRequestV1Schema,
   pipenzoConnectReposRequestV1Schema,
+  pipenzoRepoCheckoutRequestV1Schema,
   pipenzoTicketReadRequestV1Schema,
   pipenzoTicketTransitionRequestV1Schema,
   structuredWorkflowRequestV2Schema,
@@ -1292,6 +1293,14 @@ handle('daemon:pipenzo-connected-repos', async () => {
 handle('daemon:pipenzo-connect-repos', async (_event, input: unknown) => {
   if (!client) throw new Error('daemon is not ready yet');
   return client.v2.pipenzo.connectRepos(pipenzoConnectReposRequestV1Schema.parse(input));
+});
+
+// A connected repo's managed local checkout (issues #342/#344), cloned by the daemon on first need.
+// Same reasoning as the picker channels above: an ordinary daemon route, no credential in main.
+// The daemon refuses any repository that is not on the connected list.
+handle('daemon:pipenzo-resolve-checkout', async (_event, input: unknown) => {
+  if (!client) throw new Error('daemon is not ready yet');
+  return client.v2.pipenzo.resolveCheckout(pipenzoRepoCheckoutRequestV1Schema.parse(input));
 });
 
 handle('daemon:list-providers', async () => {
