@@ -1,10 +1,17 @@
-import { mkdir, stat } from 'node:fs/promises';
+import { lstat, mkdir, readdir, realpath, rm, writeFile } from 'node:fs/promises';
 import type { Stats } from 'node:fs';
-import { join } from 'node:path';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { redactSecrets, type RepoRef } from './github-client.js';
 import { runGitCommand, type PipenzoGitRunner } from './pipenzo-git.js';
 
 const MAX_ERROR_DETAIL = 2_000;
+
+/**
+ * How long the network half of a first clone may run. `pipenzo-git.ts`'s two-minute default is
+ * sized for local plumbing and a push; a first clone of a real repository over a slow link can
+ * legitimately take longer, and a timed-out clone is just a failed first Implement.
+ */
+const CLONE_TIMEOUT_MS = 10 * 60_000;
 
 /**
  * Resolves a connected GitHub repo to the local checkout Implement cuts a worktree from (issue
@@ -48,13 +55,28 @@ const MAX_ERROR_DETAIL = 2_000;
  * fetched under the *default*, narrow `buildGitEnvironment()` floor -- the same floor every other
  * git command in this daemon uses. Only the network fetch ever sees the wider environment.
  *
- * ## Known gap: no lock between the existence check and the clone
+ * ## Concurrency: go through `RepoCheckouts`, not this function directly
  *
- * Nothing calls this function yet -- wiring it into a real request path is #342/#344's scope, not
- * this one's -- so two callers racing for the same `ref` cannot happen today. Whichever of #342/#344
- * adds the first real caller needs to either serialize on `ref` (the `withWorkspaceQueue` pattern in
- * `worktree-manager.ts` is the precedent) or confirm its own call site already can't produce
- * concurrent requests for one repo, before this stops being a theoretical gap.
+ * The daemon's one real caller -- `POST /v2/pipenzo/repos/checkout` (#342/#344) -- reaches this only
+ * through `RepoCheckouts.resolve()`, which joins concurrent requests for the same repository onto
+ * one in-flight resolution. This function does not rely on that for safety, though: before cloning
+ * it *claims* `<owner>/<repo>` with a non-recursive `mkdir`, which fails with `EEXIST` if anything
+ * got there first. A lost claim is `path_conflict`, and failure cleanup only ever removes a
+ * directory this call's own `mkdir` created -- never one another caller (or a person) put there.
+ *
+ * ## Paths: every segment validated, no links, no escape from the root
+ *
+ * Nothing destructive happens here until the path is proven to be exactly `<root>/<owner>/<repo>`:
+ *
+ * - `owner` and `repo` are refused (`invalid_repository`) if they are empty, all dots, contain a
+ *   separator, end in a dot or a space, end in `.git`, or are a Windows device name. Windows
+ *   silently strips a trailing dot or space from a path component, so `repo.` and `repo` would
+ *   otherwise be two refs naming one directory -- and the `.git` suffix is the same aliasing one
+ *   level up, since a remote URL treats `repo.git` and `repo` as the same repository.
+ * - The root, the owner directory and the target are `lstat`ed, and a symlink or junction at any of
+ *   them is refused: this module never creates one, and following one is how a clone or an `rm`
+ *   lands outside the root.
+ * - Before any removal, `realpath(target)` must still sit inside `realpath(root)`.
  *
  * ## What happens when the directory already exists
  *
@@ -64,7 +86,38 @@ const MAX_ERROR_DETAIL = 2_000;
  * anticipate). `git remote get-url origin` distinguishes them: a missing or mismatched remote
  * refuses with `path_conflict` rather than running Implement against the wrong checkout, or worse,
  * cloning into a directory that already holds something unrelated.
+ *
+ * A matching remote is necessary but not sufficient. The clone is two steps, and the daemon can die
+ * (killed, crashed, machine lost power) between `clone --no-checkout` finishing and `checkout`
+ * finishing. What that leaves behind -- a valid `.git` with the right `origin` and an empty working
+ * tree -- used to be trusted by the matching-remote check alone and handed to Implement as a
+ * checkout, silently. So a reuse also requires the checkout to have actually happened
+ * (`checkoutState()`): a `.git` *directory* (the only shape this module ever creates), an index file
+ * (`clone --no-checkout` never writes one; the first successful `checkout` always does, atomically,
+ * after the working tree is written), and a `HEAD` that resolves to a commit.
+ *
+ * - All three present: reused.
+ * - No index, **and** the `.git/pipenzo-managed` ownership marker this module writes immediately
+ *   after its own `clone --no-checkout`, **and** nothing in the directory except `.git`: the
+ *   interrupted-clone case above, positively identified as ours and holding nothing but what our
+ *   own fetch wrote. Only this state is ever removed and recloned.
+ * - Anything else -- no marker (somebody else's `--no-checkout` clone, or a clone this module never
+ *   made), a marker but other files beside `.git` (a checkout killed part-way, or somebody's files
+ *   dropped in since), a `.git` *file* (a linked worktree or submodule), an index but no resolvable
+ *   `HEAD` -- is refused with `path_conflict` and never deleted. Refusing costs a person one manual
+ *   `rm`; guessing wrong costs them their work.
+ *
+ * And a clone that fails *within* one call (non-zero exit, timeout, a failed `symbolic-ref` or
+ * `checkout`) removes its own partial directory before rethrowing -- the directory this call
+ * claimed with its own `mkdir`, so everything in it is that call's own half-finished work. The next
+ * call then starts from nothing rather than from a half-populated directory.
  */
+
+/** Written into `.git/` right after this module's own fetch: the only proof a directory is ours. */
+const MANAGED_MARKER = 'pipenzo-managed';
+
+/** Windows device names, which are not usable as a directory name with or without an extension. */
+const WINDOWS_RESERVED = /^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³])(\..*)?$/i;
 
 const REPOS_DIR_ENV_KEY = 'PIPENZO_REPOS_DIR';
 
@@ -74,7 +127,7 @@ export function reposRoot(stateDir: string, env: NodeJS.ProcessEnv = process.env
   return override && override.length > 0 ? override : join(stateDir, 'repos');
 }
 
-export type RepoCheckoutErrorCode = 'clone_failed' | 'path_conflict';
+export type RepoCheckoutErrorCode = 'clone_failed' | 'path_conflict' | 'invalid_repository';
 
 export class RepoCheckoutError extends Error {
   constructor(
@@ -93,13 +146,113 @@ function detail(result: { readonly stdout: string; readonly stderr: string }): s
   return redactSecrets(text).slice(0, MAX_ERROR_DETAIL);
 }
 
-async function existingCheckoutStat(path: string): Promise<Stats | undefined> {
+/** `lstat`, not `stat`: nothing on these paths is ever followed through a link. */
+async function lstatIfPresent(path: string): Promise<Stats | undefined> {
   try {
-    return await stat(path);
+    return await lstat(path);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT' || code === 'ENOTDIR') return undefined;
     throw error;
   }
+}
+
+/** See the module comment's "Paths" section for why each of these is refused. */
+function assertSafeSegment(what: 'owner' | 'repository', value: string): void {
+  const unsafe =
+    value.length === 0 ||
+    value !== value.trim() ||
+    /[\\/\0:]/.test(value) ||
+    /^\.+$/.test(value) ||
+    /[. ]$/.test(value) ||
+    /\.git$/i.test(value) ||
+    WINDOWS_RESERVED.test(value);
+  if (unsafe) {
+    throw new RepoCheckoutError(
+      'invalid_repository',
+      `refusing to use ${JSON.stringify(value)} as a ${what} directory name`,
+    );
+  }
+}
+
+/** Refuses a symlink/junction or a non-directory at `path`; `undefined` when nothing is there. */
+async function plainDirectoryIfPresent(path: string, what: string): Promise<Stats | undefined> {
+  const found = await lstatIfPresent(path);
+  if (!found) return undefined;
+  if (found.isSymbolicLink()) {
+    throw new RepoCheckoutError(
+      'path_conflict',
+      `${path} (${what}) is a symbolic link or junction -- refusing to follow it`,
+    );
+  }
+  if (!found.isDirectory()) {
+    throw new RepoCheckoutError(
+      'path_conflict',
+      `${path} (${what}) already exists and is not a directory`,
+    );
+  }
+  return found;
+}
+
+/** Creates `path` non-recursively if missing, then insists it is a plain directory. */
+async function ensurePlainDirectory(path: string, what: string): Promise<void> {
+  try {
+    await mkdir(path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+  }
+  if (!(await plainDirectoryIfPresent(path, what))) {
+    throw new RepoCheckoutError('path_conflict', `${path} (${what}) could not be created`);
+  }
+}
+
+/** `realpath(path)` must sit strictly inside `realpath(root)` -- checked right before any `rm`. */
+async function assertInsideRoot(root: string, path: string): Promise<void> {
+  const [realRoot, realPath] = await Promise.all([realpath(root), realpath(path)]);
+  const rel = relative(realRoot, realPath);
+  if (!rel || rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
+    throw new RepoCheckoutError(
+      'path_conflict',
+      `${path} resolves outside the managed clone root ${root} -- refusing to touch it`,
+    );
+  }
+}
+
+type CheckoutState =
+  | { readonly kind: 'populated' }
+  | { readonly kind: 'interrupted_clone' }
+  | { readonly kind: 'unusable'; readonly reason: string };
+
+/**
+ * Whether a directory whose `origin` already matches is a *finished* checkout -- see the module
+ * comment's "What happens when the directory already exists" for what each answer means and why
+ * only a positively-identified `interrupted_clone` is ever deleted.
+ */
+async function checkoutState(targetDir: string, runGit: PipenzoGitRunner): Promise<CheckoutState> {
+  const gitDir = await lstatIfPresent(join(targetDir, '.git'));
+  if (!gitDir?.isDirectory()) {
+    return { kind: 'unusable', reason: 'its .git is not a plain directory (a worktree or submodule?)' };
+  }
+  const index = await lstatIfPresent(join(targetDir, '.git', 'index'));
+  if (!index) {
+    const marker = await lstatIfPresent(join(targetDir, '.git', MANAGED_MARKER));
+    if (!marker?.isFile()) {
+      return { kind: 'unusable', reason: 'it has never been checked out and Pipenzo did not clone it' };
+    }
+    const entries = await readdir(targetDir);
+    if (entries.length !== 1 || entries[0] !== '.git') {
+      return {
+        kind: 'unusable',
+        reason: 'it is an interrupted Pipenzo clone that now has other files beside .git',
+      };
+    }
+    return { kind: 'interrupted_clone' };
+  }
+  if (!index.isFile()) return { kind: 'unusable', reason: 'its .git/index is not a regular file' };
+  const head = await runGit(['rev-parse', '--verify', '--end-of-options', 'HEAD^{commit}'], targetDir);
+  return head.code === 0 && head.stdout.trim().length > 0
+    ? { kind: 'populated' }
+    : { kind: 'unusable', reason: 'its HEAD does not resolve to a commit' };
 }
 
 /**
@@ -137,20 +290,27 @@ export async function resolveRepoCheckout(
   root: string,
   runGit: PipenzoGitRunner = runGitCommand,
 ): Promise<string> {
-  const ownerDir = join(root, ref.owner);
+  assertSafeSegment('owner', ref.owner);
+  assertSafeSegment('repository', ref.repo);
+  const rootDir = resolve(root);
+  const ownerDir = join(rootDir, ref.owner);
   const targetDir = join(ownerDir, ref.repo);
+  // Belt-and-braces over `assertSafeSegment`: the path really is exactly `<root>/<owner>/<repo>`.
+  if (relative(rootDir, targetDir) !== join(ref.owner, ref.repo)) {
+    throw new RepoCheckoutError(
+      'invalid_repository',
+      `${ref.owner}/${ref.repo} does not map to a directory directly under ${rootDir}`,
+    );
+  }
 
-  const existing = await existingCheckoutStat(targetDir);
+  await mkdir(rootDir, { recursive: true });
+  await plainDirectoryIfPresent(rootDir, 'clone root');
+  await ensurePlainDirectory(ownerDir, 'owner directory');
+
+  // A non-directory occupying the path (a stray file, a leftover lock) can never be a checkout, and
+  // a link is never followed -- both refused here, before spawning git in it at all.
+  const existing = await plainDirectoryIfPresent(targetDir, `checkout of ${ref.owner}/${ref.repo}`);
   if (existing) {
-    // A non-directory occupying the path (a stray file, a leftover lock) can never be a checkout --
-    // refused here, before spawning git with a `cwd` that would just fail to launch at all.
-    if (!existing.isDirectory()) {
-      throw new RepoCheckoutError(
-        'path_conflict',
-        `${targetDir} already exists and is not a directory -- refusing to treat it as a checkout ` +
-          `of ${ref.owner}/${ref.repo}.`,
-      );
-    }
     const remote = await runGit(['remote', 'get-url', 'origin'], targetDir);
     if (remote.code !== 0 || !remoteMatches(remote.stdout, ref)) {
       throw new RepoCheckoutError(
@@ -159,22 +319,84 @@ export async function resolveRepoCheckout(
           'to clone over it or use it as one.',
       );
     }
-    return targetDir;
+    const state = await checkoutState(targetDir, runGit);
+    if (state.kind === 'populated') return targetDir;
+    if (state.kind === 'unusable') {
+      throw new RepoCheckoutError(
+        'path_conflict',
+        `${targetDir} has ${ref.owner}/${ref.repo} as its origin but ${state.reason} -- refusing ` +
+          'to use or delete it. Remove it by hand and Pipenzo will clone a fresh copy.',
+      );
+    }
+    // `interrupted_clone`: our own marker, no index, nothing beside `.git` -- a previous clone of
+    // ours that died between its two steps, holding only what our own fetch wrote. Removed and
+    // recloned rather than handed to Implement as an empty checkout.
+    await assertInsideRoot(rootDir, targetDir);
+    try {
+      await rm(targetDir, { recursive: true, force: true });
+    } catch (error) {
+      throw new RepoCheckoutError(
+        'clone_failed',
+        `${targetDir} holds an interrupted clone of ${ref.owner}/${ref.repo} that could not be ` +
+          `removed for a fresh one: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
-  // Belt-and-braces: `git clone` already creates missing leading directories on its own, but this
-  // does not depend on that being true across every git version or a future non-clone strategy.
-  await mkdir(ownerDir, { recursive: true });
+  // Claim the path. Non-recursive on purpose: `EEXIST` means something else got here between the
+  // check above and now, and this call must neither clone into it nor, on failure, remove it.
+  try {
+    await mkdir(targetDir);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+      throw new RepoCheckoutError(
+        'path_conflict',
+        `${targetDir} appeared while preparing a clone of ${ref.owner}/${ref.repo} -- refusing to ` +
+          'clone into it.',
+      );
+    }
+    throw error;
+  }
+  try {
+    return await cloneInto(ref, ownerDir, targetDir, runGit);
+  } catch (error) {
+    // This call's own `mkdir` above created `targetDir`, so whatever is in it now is this call's
+    // own partial work. Removing it is what makes the *next* call start from nothing instead of
+    // from a directory with the right origin and no working tree. Best-effort: if it cannot be
+    // removed, the next call's own `checkoutState()` still refuses to hand it out as a checkout.
+    await assertInsideRoot(rootDir, targetDir)
+      .then(() => rm(targetDir, { recursive: true, force: true }))
+      .catch(() => undefined);
+    throw error;
+  }
+}
+
+async function cloneInto(
+  ref: RepoRef,
+  ownerDir: string,
+  targetDir: string,
+  runGit: PipenzoGitRunner,
+): Promise<string> {
   const url = `https://github.com/${ref.owner}/${ref.repo}.git`;
 
   // Fetch only -- no working tree yet, so nothing here can trigger a smudge filter. This is the
   // one call under the wider, credential-reachable floor.
   const cloned = await runGit(['clone', '--no-checkout', url, targetDir], ownerDir, {
     credentialReachable: true,
+    timeoutMs: CLONE_TIMEOUT_MS,
   });
   if (cloned.code !== 0) {
     throw new RepoCheckoutError('clone_failed', `git clone ${url} failed: ${detail(cloned)}`);
   }
+
+  // The ownership marker, before anything else can fail: from here on, an interrupted clone left
+  // on disk is one a later call can positively identify as ours (see `checkoutState()`). `wx` so a
+  // marker this call did not write is never silently adopted.
+  await writeFile(
+    join(targetDir, '.git', MANAGED_MARKER),
+    'Cloned by Pipenzo into its managed checkout directory.\n',
+    { flag: 'wx' },
+  );
 
   // The branch `--no-checkout` left HEAD pointing at, read locally -- no network, no credential
   // reachability needed for this one.
@@ -198,4 +420,41 @@ export async function resolveRepoCheckout(
     );
   }
   return targetDir;
+}
+
+/**
+ * The daemon's one entry point onto `resolveRepoCheckout`: one managed clone root, and at most one
+ * resolution in flight per repository.
+ *
+ * A second request for a repository whose resolution is still running joins that same promise
+ * rather than starting its own -- the same in-flight join `routes/pipenzo-repos.ts` uses for its
+ * listing. Queueing it behind the first (the `withWorkspaceQueue` shape) would also be safe, but
+ * would only redo the existence check the first call's answer already settles. This is also what
+ * makes a slow first clone survivable from the renderer's side: a caller whose HTTP request gave
+ * up and asks again lands on the clone that is still running instead of racing a second one into
+ * the same directory.
+ *
+ * Keyed case-insensitively because GitHub's `owner/name` is, and because on Windows and default
+ * macOS filesystems `Octo/Repo` and `octo/repo` are the same directory.
+ */
+export class RepoCheckouts {
+  readonly #inFlight = new Map<string, Promise<string>>();
+
+  constructor(
+    private readonly root: string,
+    private readonly runGit: PipenzoGitRunner = runGitCommand,
+  ) {}
+
+  resolve(ref: RepoRef): Promise<string> {
+    const key = `${ref.owner}/${ref.repo}`.toLowerCase();
+    const existing = this.#inFlight.get(key);
+    if (existing) return existing;
+    const pending = resolveRepoCheckout(ref, this.root, this.runGit).finally(() => {
+      // Released whether it resolved or threw, so a failed clone is retried by the next request
+      // rather than every later caller joining a dead promise.
+      if (this.#inFlight.get(key) === pending) this.#inFlight.delete(key);
+    });
+    this.#inFlight.set(key, pending);
+    return pending;
+  }
 }
