@@ -259,6 +259,16 @@ export const PIPENZO_PHASE_MACHINE_ERROR_CODES = [
    * what is a local filesystem problem — and would hide that the authoritative side already moved.
    */
   'store_failed',
+  /**
+   * The issue carries a `pipenzo:schema-vN` marker newer than this build understands (issue #74,
+   * split of #20's "Label-schema versioning and migration path"). See `newerSchemaMarker` below for
+   * why this has to be caught before `read()` does anything else: reconciling, transitioning, or
+   * re-asserting `PIPENZO_SCHEMA_V1_MARKER_LABEL` on this issue would all be a v1-schema Pipenzo
+   * writing v1 semantics over state a newer Pipenzo already migrated. README's rule is unconditional
+   * — "never fights over labels with a newer instance it can't understand" — so this code has no
+   * retry story of its own; it clears only when a build that understands the marker meets the issue.
+   */
+  'schema_read_only',
 ] as const;
 
 export type PipenzoPhaseMachineErrorCode = (typeof PIPENZO_PHASE_MACHINE_ERROR_CODES)[number];
@@ -331,6 +341,47 @@ function toMachineError(error: unknown): PipenzoPhaseMachineError {
     });
   }
   return new PipenzoPhaseMachineError('github_failed', 'phase machine operation failed');
+}
+
+/* --------------------------------------------------------- schema read-only guard */
+
+/**
+ * `pipenzo:schema-v1`'s own version number, read off the constant rather than restated as a second
+ * literal — the same drift concern `PIPENZO_SCHEMA_V1_MARKER_LABEL`'s own comment names for
+ * `PipenzoLaneBearingLabelV1`, just one level up: a future bump to the marker constant must not be
+ * able to leave this guard silently comparing against a stale number.
+ */
+const SCHEMA_MARKER_PATTERN = /^pipenzo:schema-v(\d+)$/;
+const SUPPORTED_SCHEMA_VERSION = Number(
+  SCHEMA_MARKER_PATTERN.exec(PIPENZO_SCHEMA_V1_MARKER_LABEL)?.[1] ?? NaN,
+);
+if (!Number.isInteger(SUPPORTED_SCHEMA_VERSION)) {
+  // Unreachable while the marker constant is `pipenzo:schema-v1`; guards a future rename of the
+  // constant to something the pattern above no longer parses, rather than silently disabling the
+  // read-only guard.
+  throw new Error('PIPENZO_SCHEMA_V1_MARKER_LABEL does not match the schema marker pattern');
+}
+
+/**
+ * Finds a `pipenzo:schema-vN` marker on the issue's *raw* labels where `N` is newer than this build
+ * understands, or `undefined` if there is none.
+ *
+ * Reads the raw GitHub label strings directly, never `pipenzoLabelsOf`'s filtered output — that
+ * helper's own comment already says an unknown `pipenzo:`-prefixed label is dropped rather than
+ * persisted, which is correct for an ordinary unrecognised label (see the "ignores an unknown
+ * pipenzo-prefixed label" test) but is exactly the signal this guard exists to notice instead of
+ * silently discard when the unrecognised label is specifically a newer schema marker.
+ *
+ * Matched by pattern rather than by an enum of known future markers, because the whole point is
+ * that this build was never told what a v2, v3, ... marker looks like — only that the shape of the
+ * name and an ordering on the version number are stable across schema bumps.
+ */
+function newerSchemaMarker(rawLabels: readonly string[]): string | undefined {
+  for (const name of rawLabels) {
+    const match = SCHEMA_MARKER_PATTERN.exec(name);
+    if (match && Number(match[1]) > SUPPORTED_SCHEMA_VERSION) return name;
+  }
+  return undefined;
 }
 
 /* ------------------------------------------------------------- reconciliation */
@@ -537,6 +588,20 @@ export class PipenzoPhaseMachine {
       issueTitle = issue.title;
     } catch (error) {
       throw toMachineError(error);
+    }
+
+    // The read-only guard, before anything below reads or writes a single byte on either side.
+    // `read()` is where every write path starts — `transition()` calls this first and judges
+    // legality and re-asserts the schema marker against what it returns — so refusing here also
+    // refuses every transition on this ticket, which is the "goes read-only on that repo" README
+    // asks for, not just a guard bolted onto `transition()` alone.
+    const foreignMarker = newerSchemaMarker(issueLabels);
+    if (foreignMarker !== undefined) {
+      throw new PipenzoPhaseMachineError(
+        'schema_read_only',
+        `${ref.owner}/${ref.repo}#${ticket.issueNumber} carries ${foreignMarker}, newer than this build's ${PIPENZO_SCHEMA_V1_MARKER_LABEL} — refusing to read or write it`,
+        [foreignMarker],
+      );
     }
 
     const titleChanged = issueTitle !== ticket.title;
