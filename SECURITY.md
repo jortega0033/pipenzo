@@ -377,7 +377,7 @@ against `main` and shipped in the next release, not backported.
 ## Reporting a vulnerability
 
 This repository does not have a dedicated security contact address. Report vulnerabilities through
-[this repository's private security advisory form](https://github.com/jortega0033/agentdock/security/advisories/new)
+[this repository's private security advisory form](https://github.com/jortega0033/pipenzo/security/advisories/new)
 rather than filing a public issue, pull request, or exploit writeup. Include reproduction steps,
 affected versions, impact, and any suggested mitigation. Avoid disclosing details publicly until a
 fix or coordinated disclosure is ready.

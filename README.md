@@ -157,8 +157,9 @@ panel) render as the app's real board, not a design-only preview. agentdock's in
 behind an explicit `demoMode` opt-in.
 
 **Designed, not wired in yet.**
-- **The risk classifier** (`risk-classifier.ts` doesn't exist yet) — so risk-graded approval, the
-  cumulative-risk strip, and pre-commitment records aren't built either.
+- **The risk classifier** — `apps/daemon/src/risk-classifier.ts` (issue #157) exists and is tested,
+  but nothing calls it yet, so risk-graded approval, the cumulative-risk strip, and pre-commitment
+  records aren't built either.
 - **Bounded concurrency/queue, `gh stack` publishing, CI-failure auto-fix, GitLab/Jira adapters,
   the humanizing prose pass.**
 - **Product branding, the rest of the way.** The desktop app and installer are already packaged
