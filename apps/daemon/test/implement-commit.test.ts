@@ -178,31 +178,51 @@ describe('the daemon commits what a completed Implement session wrote', { timeou
     expect((await readdir(markers)).sort()).toEqual([...HOOKS].sort());
   });
 
-  it('commits nothing, and reports nothing, when the session changed nothing', async () => {
+  // Issue #192: a session the daemon observed reach a terminal state with zero commits is exactly
+  // the #191 incident's shape (a session that "succeeded" and touched nothing), so `collect()` now
+  // throws `implement_empty_diff` instead of quietly returning an empty result -- for every terminal
+  // state, not just `completed`, since a `failed`/`cancelled` session that also committed nothing
+  // still deserves this same loud signal rather than a silently empty result. The worktree/git-level
+  // guarantees these two tests actually exist to prove (nothing gets committed, a failed session's
+  // half-finished edit is left on disk for a human) still hold either way -- only the "reports
+  // nothing" half of the old expectation changed.
+  it('throws implement_empty_diff, and commits nothing, when the session changed nothing', async () => {
     const { root, source } = await sourceRepository();
     const daemonGit = recordingDaemonGit();
-    const result = await new ImplementOrchestrator({
+    const orchestrator = new ImplementOrchestrator({
       worktrees: worktreeManager(root, source),
       sessions: agent({}),
       runGit: daemonGit.runGit,
-    }).implement({ spec: spec(), repositoryPath: source, provider: 'claude' });
-    expect(result.commits).toEqual([]);
-    expect(result.headCommit).toBe(result.baseCommit);
+    });
+    let error: unknown;
+    try {
+      await orchestrator.implement({ spec: spec(), repositoryPath: source, provider: 'claude' });
+    } catch (caught) {
+      error = caught;
+    }
+    expect((error as ImplementOrchestratorError).code).toBe('implement_empty_diff');
     expect(daemonGit.calls.some((argv) => argv.includes('commit'))).toBe(false);
   });
 
-  it('never commits a failed session’s half-finished edits', async () => {
+  it('throws implement_empty_diff for a failed session, and never commits its half-finished edits', async () => {
     const { root, source } = await sourceRepository();
     const daemonGit = recordingDaemonGit();
-    const result = await new ImplementOrchestrator({
+    const orchestrator = new ImplementOrchestrator({
       worktrees: worktreeManager(root, source),
       sessions: agent({ 'greeting.txt': 'half\n' }, 'failed'),
       runGit: daemonGit.runGit,
-    }).implement({ spec: spec(), repositoryPath: source, provider: 'claude' });
-    expect(result.commits).toEqual([]);
+    });
+    let error: unknown;
+    try {
+      await orchestrator.implement({ spec: spec(), repositoryPath: source, provider: 'claude' });
+    } catch (caught) {
+      error = caught;
+    }
+    expect((error as ImplementOrchestratorError).code).toBe('implement_empty_diff');
     expect(daemonGit.calls.some((argv) => argv.includes('add') || argv.includes('commit'))).toBe(false);
-    // The edit is still there for a human to look at.
-    expect(existsSync(join(result.worktreePath, 'greeting.txt'))).toBe(true);
+    // The edit is still there for a human to look at, even though collect() now throws.
+    // worktreeManager() above always places the one worktree it creates at this fixed path.
+    expect(existsSync(join(root, 'owned', 'issue-180', 'greeting.txt'))).toBe(true);
   });
 
   /**
