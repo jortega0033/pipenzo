@@ -162,14 +162,43 @@ export const pipenzoImplementResultQueryV1Schema = z
   })
   .strict();
 
+/**
+ * Whether the dispatched implement session has reached a terminal state, and which one (issue
+ * #192). `implement/result` is a poll, and an empty `commits` array means two different things
+ * depending on this field: `'running'` is an ordinary "check back later", every other member means
+ * the session already stopped and `commits` is everything it is ever going to hold. `'completed'`
+ * with an empty `commits` array (equivalently, `headCommit === baseCommit`) is exactly the failure
+ * #191 hid — see `routes/pipenzo-phases.ts` for how that combination is reported as
+ * `implement_empty_diff` rather than as an ordinary success.
+ *
+ * `'failed'` and `'cancelled'` mirror `ImplementSessionEnd` in
+ * `apps/daemon/src/implement-orchestrator.ts` (daemon-internal, not itself on the wire): the daemon
+ * never commits a session's work unless it ended `'completed'`, so either one also always carries an
+ * empty `commits` array, for the same underlying reason as `'completed'` with nothing to commit —
+ * one symptom, several causes, which is the whole point of detecting the symptom.
+ */
+export const IMPLEMENT_SESSION_STATES = ['running', 'completed', 'failed', 'cancelled'] as const;
+export const implementSessionStateV1Schema = z.enum(IMPLEMENT_SESSION_STATES);
+export type ImplementSessionStateV1 = (typeof IMPLEMENT_SESSION_STATES)[number];
+
 export const pipenzoImplementCommitsV1Schema = z
   .object({
     worktreeId: z.string().uuid(),
     branch: z.string().min(1).max(255),
     baseCommit: z.string().regex(/^[0-9a-f]{40}$/),
     headCommit: z.string().regex(/^[0-9a-f]{40}$/),
-    /** Oldest first. Empty means the session committed nothing. */
+    /** Oldest first. Empty means the session committed nothing (yet, if `sessionState` reads
+     * `'running'`). */
     commits: z.array(z.string().regex(/^[0-9a-f]{40}$/)).max(1_000),
+    /**
+     * Optional, and every existing caller and test omits it — the same rollout shape as
+     * `ticketId` elsewhere on this surface. Its only effect is consequential (issue #192): once the
+     * daemon starts populating it, `'completed'`/`'failed'`/`'cancelled'` with an empty `commits`
+     * array makes `/v2/pipenzo/implement/result` respond `implement_empty_diff` instead of this
+     * success shape, and `'running'` is what lets a caller tell "not committed yet" apart from "will
+     * never commit."
+     */
+    sessionState: implementSessionStateV1Schema.optional(),
   })
   .strict();
 
@@ -493,6 +522,14 @@ export const PIPENZO_PHASE_ERROR_CODES = [
   'branch_failed',
   /** The daemon's own post-session `git commit` of the implement worktree failed or was refused. */
   'commit_failed',
+  /**
+   * Issue #192: the implement session reached a terminal state with nothing on the ticket branch —
+   * `headCommit === baseCommit`. Reported instead of a success result so this never again looks like
+   * the completed, working run it is not (see #191, the incident that named this ticket). Never
+   * reported while the session is still running — see `ImplementSessionStateV1` in
+   * `pipenzo-phase-v1.ts` for how a caller tells the two apart.
+   */
+  'implement_empty_diff',
   // review
   'verifier_tier_too_low',
   'diff_unavailable',
