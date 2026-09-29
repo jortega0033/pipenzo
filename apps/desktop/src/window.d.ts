@@ -47,6 +47,8 @@ import type {
   PipenzoImplementResultV1,
   PipenzoImplementResultQueryV1,
   PipenzoImplementCommitsV1,
+  PipenzoImplementDiffRequestV1,
+  PipenzoImplementDiffResultV1,
   PipenzoReviewRequestV1,
   PipenzoReviewResultV1,
   PipenzoIssueClaimRequestV1,
@@ -164,6 +166,9 @@ export interface AgentDockBridge {
   implementPipenzo(input: PipenzoImplementRequestV1): Promise<PipenzoImplementResultV1>;
   /** Reads what the dispatched implement session committed, addressed by worktree id. */
   implementResultPipenzo(input: PipenzoImplementResultQueryV1): Promise<PipenzoImplementCommitsV1>;
+  /** Reads the unified diff for a commit range already known to exist in an owned worktree
+   * (issue #90's stack, step 2) -- what `DiffFileList.tsx` renders. */
+  implementDiffPipenzo(input: PipenzoImplementDiffRequestV1): Promise<PipenzoImplementDiffResultV1>;
   /**
    * Runs the Review gates in order: deterministic gates first, then the advisory reviewer, then
    * the adversarial verifier — and a deterministic failure returns before either LLM pass is

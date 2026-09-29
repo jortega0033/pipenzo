@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import type { CreateSessionV2Request, OwnedWorktreeV2, RefineSpecV1 } from '@agent-dock/shared';
+import {
+  MAX_IMPLEMENT_DIFF_CHARS,
+  type CreateSessionV2Request,
+  type OwnedWorktreeV2,
+  type RefineSpecV1,
+} from '@agent-dock/shared';
 import {
   ImplementOrchestrator,
   ImplementOrchestratorError,
@@ -521,6 +526,109 @@ describe('issue #192 -- implement_empty_diff', () => {
     });
     expect(result.commits).toEqual([]);
     expect(result.sessionState).toBeUndefined();
+  });
+});
+
+describe('ImplementOrchestrator.diff', () => {
+  const RANGE = `${BASE_SHA}..${HEAD_SHA}`;
+  const NUMSTAT = '8\t2\tsrc/a.ts\n0\t0\t-\t-\tsrc/binary.png\n';
+  const PATCH = 'diff --git a/src/a.ts b/src/a.ts\n@@ -1,2 +1,8 @@\n+added line\n';
+
+  function diffHarness(options: {
+    numstat?: GitCommandResult;
+    patch?: GitCommandResult;
+  } = {}): { orch: ImplementOrchestrator; invocations: string[][] } {
+    const invocations: string[][] = [];
+    const worktrees: ImplementWorktreeManager = {
+      preview: async () => ({ secretRisk: false, includeFiles: [] }),
+      create: async () => {
+        throw new Error('not used by these tests');
+      },
+      ownedLocation: () => undefined,
+    };
+    const sessions: ImplementSessionPort = {
+      run: async () => ({ sessionId: SESSION_ID }),
+    };
+    const runGit: PipenzoGitRunner = async (args) => {
+      invocations.push([...args]);
+      if (args.includes('--numstat')) return options.numstat ?? ok(NUMSTAT);
+      if (args.includes('--patch')) return options.patch ?? ok(PATCH);
+      return ok();
+    };
+    return {
+      orch: new ImplementOrchestrator({ worktrees, sessions, runGit }),
+      invocations,
+    };
+  }
+
+  it('reads numstat then the patch over the exact base..head range, hooks never involved', async () => {
+    const { orch, invocations } = diffHarness();
+    const result = await orch.diff({ worktreePath: WORKTREE_PATH, baseCommit: BASE_SHA, headCommit: HEAD_SHA });
+
+    expect(result).toEqual({
+      diffText: PATCH,
+      truncated: false,
+      additions: 8,
+      deletions: 2,
+      filesChanged: 2,
+    });
+    expect(invocations).toEqual([
+      ['diff', '--numstat', '--end-of-options', RANGE],
+      ['diff', '--patch', '--no-color', '--end-of-options', RANGE],
+    ]);
+    // Read-only diff commands never carry the commit step's `NO_REPO_CODE` hook-disabling prefix —
+    // there is no hook risk here to guard against, the same reasoning `#resolveHead`/`#commitsSince`
+    // already rest on.
+    expect(invocations.every((argv) => !argv.includes('-c'))).toBe(true);
+  });
+
+  it('counts a binary file (numstat "-\\t-") as a touched file with zero changed lines, not NaN', async () => {
+    const { orch } = diffHarness({ numstat: ok('-\t-\tsrc/image.png\n3\t1\tsrc/b.ts\n') });
+    const result = await orch.diff({ worktreePath: WORKTREE_PATH, baseCommit: BASE_SHA, headCommit: HEAD_SHA });
+    expect(result.additions).toBe(3);
+    expect(result.deletions).toBe(1);
+    expect(result.filesChanged).toBe(2);
+  });
+
+  it('does not truncate a patch under the char cap', async () => {
+    const smallPatch = 'x'.repeat(50);
+    const { orch } = diffHarness({ patch: ok(smallPatch) });
+    const result = await orch.diff({ worktreePath: WORKTREE_PATH, baseCommit: BASE_SHA, headCommit: HEAD_SHA });
+    expect(result.diffText).toBe(smallPatch);
+    expect(result.truncated).toBe(false);
+  });
+
+  it('truncates diffText at MAX_IMPLEMENT_DIFF_CHARS and reports truncated: true', async () => {
+    const oversizedPatch = 'x'.repeat(MAX_IMPLEMENT_DIFF_CHARS + 1);
+    const { orch } = diffHarness({ patch: ok(oversizedPatch) });
+    const result = await orch.diff({ worktreePath: WORKTREE_PATH, baseCommit: BASE_SHA, headCommit: HEAD_SHA });
+    expect(result.diffText).toHaveLength(MAX_IMPLEMENT_DIFF_CHARS);
+    expect(result.diffText).toBe(oversizedPatch.slice(0, MAX_IMPLEMENT_DIFF_CHARS));
+    expect(result.truncated).toBe(true);
+  });
+
+  it('rejects with diff_unavailable when numstat exits non-zero', async () => {
+    const { orch } = diffHarness({ numstat: failed('git diff failed') });
+    const error = await rejection(() =>
+      orch.diff({ worktreePath: WORKTREE_PATH, baseCommit: BASE_SHA, headCommit: HEAD_SHA }),
+    );
+    expect(error.code).toBe('diff_unavailable');
+  });
+
+  it('rejects with diff_unavailable when the patch read exits non-zero', async () => {
+    const { orch } = diffHarness({ patch: failed('git diff failed') });
+    const error = await rejection(() =>
+      orch.diff({ worktreePath: WORKTREE_PATH, baseCommit: BASE_SHA, headCommit: HEAD_SHA }),
+    );
+    expect(error.code).toBe('diff_unavailable');
+  });
+
+  it('rejects with invalid_request on a malformed commit sha', async () => {
+    const { orch } = diffHarness();
+    const error = await rejection(() =>
+      orch.diff({ worktreePath: WORKTREE_PATH, baseCommit: 'not-a-sha', headCommit: HEAD_SHA }),
+    );
+    expect(error.code).toBe('invalid_request');
   });
 });
 
