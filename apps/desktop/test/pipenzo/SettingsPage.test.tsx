@@ -14,6 +14,8 @@ function installBridge() {
     pipenzoConnectedRepos: vi.fn().mockResolvedValue({ repositories: ['octocat/hello-world'] }),
     pipenzoListRepos: vi.fn().mockResolvedValue({ repositories: [], truncated: false }),
     pipenzoConnectRepos: vi.fn(),
+    pipenzoLessons: vi.fn().mockResolvedValue({ lessons: [] }),
+    pipenzoDeleteLesson: vi.fn(),
     pipenzoGitHubConnection: vi
       .fn()
       .mockResolvedValue({ state: 'connected', login: 'octocat', source: 'vault' }),
@@ -65,5 +67,16 @@ describe('SettingsPage', () => {
 
     expect(await screen.findByText('Account')).toBeInTheDocument();
     expect(await screen.findByRole('button', { name: /disconnect github/i })).toBeInTheDocument();
+  });
+
+  it('hosts the lesson-memory panel, stacked below connected repos in the same column', async () => {
+    installBridge();
+    const { container } = render(<SettingsPage />);
+    await screen.findByText('octocat/hello-world');
+
+    expect(await screen.findByText('Lesson memory')).toBeInTheDocument();
+    const leftColumn = container.querySelectorAll('.cols > .col')[0];
+    const panels = leftColumn?.querySelectorAll('.form-panel');
+    expect(panels).toHaveLength(2);
   });
 });
