@@ -9,6 +9,7 @@ const BASE_REPORT: ReviewReportV1 = {
   baseCommit: 'a'.repeat(40),
   headCommit: 'b'.repeat(40),
   implementerTier: 'mid',
+  risk: 'low',
   deterministic: [
     { id: 'build', status: 'passed', summary: 'Build and typecheck passed', durationMs: 9000 },
     { id: 'gitleaks', status: 'skipped', summary: 'gitleaks not installed on this machine', durationMs: 0 },

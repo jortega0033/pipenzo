@@ -20,6 +20,12 @@ export interface ImplementDialogTicket {
   readonly repo: string;
   /** e.g. `"+38 −6 · 2 files"` — the Refine estimate label from Main.dc.html's board card. */
   readonly estimateLabel?: string;
+  /**
+   * The board's ticket id (issue #270). Optional, the same way `pipenzoRefineRequestV1Schema`'s own
+   * field is — a caller without one (a bare issue number, e.g. from a test) still refines exactly as
+   * before, it just gives the diff-size gate's refusal nothing to attach a transition to.
+   */
+  readonly ticketId?: string;
 }
 
 /** Main.dc.html's four Run budget options, in canvas order. Walking-skeleton: nothing downstream
@@ -185,6 +191,7 @@ export function ImplementDialog({
           repositoryPath: cwd,
           provider,
           ...(model ? { model } : {}),
+          ...(ticket.ticketId ? { ticketId: ticket.ticketId } : {}),
         });
         return result.spec;
       })

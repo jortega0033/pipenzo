@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { pipenzoIssueNumberV1Schema, pipenzoRepoRefV1Schema } from './pipenzo-phase-v1.js';
+import { refineSpecV1Schema } from './pipenzo-refine-v1.js';
 import { modelTierSchema } from './pipenzo-review-v1.js';
 import { pipenzoTicketIdV1Schema } from './schemas.js';
 
@@ -312,6 +313,20 @@ export const pipenzoTicketEtagsV1Schema = z
   })
   .strict();
 
+/**
+ * The commit range Implement produced, once it has run at least once. `baseCommit`/`headCommit`
+ * mirror `PipenzoImplementResultV1`/`PipenzoImplementCollectResultV1` in `pipenzo-phase-v1.ts`
+ * (same 40-hex-char pattern) rather than importing either: those are wire *result* shapes for one
+ * in-flight dispatch, this is what the ticket store keeps around afterward so a ticket that already
+ * reached `pipenzo:ready-for-review` can reopen its diff without a live session to ask.
+ */
+export const pipenzoTicketImplementRangeV1Schema = z
+  .object({
+    baseCommit: z.string().regex(/^[0-9a-f]{40}$/),
+    headCommit: z.string().regex(/^[0-9a-f]{40}$/),
+  })
+  .strict();
+
 /* --------------------------------------------------------------------------------- the record */
 
 /**
@@ -361,6 +376,18 @@ export const pipenzoTicketRecordV1Schema = z
     taskType: pipenzoTaskTypeV1Schema,
     stack: pipenzoTicketStackV1Schema,
     worktree: pipenzoTicketWorktreeV1Schema.optional(),
+    /**
+     * The Refine phase's own spec, cached once Implement is dispatched from it. Same optionality
+     * reasoning as `title` above: a ticket that never reached Implement, or one persisted before
+     * this field existed, has none, and a reader falls back to "re-run Refine" rather than treating
+     * an absent spec as corruption. This is what lets a ticket that already reached
+     * `pipenzo:ready-for-review` reopen `DiffReviewScreen` after a restart — that screen's `spec`
+     * prop is otherwise only ever the in-memory value from the `ImplementDialog` session that
+     * produced it.
+     */
+    spec: refineSpecV1Schema.optional(),
+    /** The commit range Implement produced from `spec`, if it has run. See the schema's own doc. */
+    implement: pipenzoTicketImplementRangeV1Schema.optional(),
     attempts: z.array(pipenzoTicketAttemptV1Schema).max(50),
     budget: pipenzoTicketBudgetV1Schema,
     risk: pipenzoTicketRiskV1Schema,
@@ -372,6 +399,7 @@ export const pipenzoTicketRecordV1Schema = z
 export type PipenzoTicketEstimateV1 = z.infer<typeof pipenzoTicketEstimateV1Schema>;
 export type PipenzoTicketStackV1 = z.infer<typeof pipenzoTicketStackV1Schema>;
 export type PipenzoTicketWorktreeV1 = z.infer<typeof pipenzoTicketWorktreeV1Schema>;
+export type PipenzoTicketImplementRangeV1 = z.infer<typeof pipenzoTicketImplementRangeV1Schema>;
 export type PipenzoTicketAttemptV1 = z.infer<typeof pipenzoTicketAttemptV1Schema>;
 export type PipenzoTicketBudgetV1 = z.infer<typeof pipenzoTicketBudgetV1Schema>;
 export type PipenzoTicketRiskV1 = z.infer<typeof pipenzoTicketRiskV1Schema>;

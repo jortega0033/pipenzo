@@ -77,6 +77,7 @@ export function DiffReviewHead({
         branch={branch}
         remote={remote}
         pullRequest={pullRequest}
+        risk={stat.risk}
         onDiscardClick={onDiscardClick}
         discardDisabled={discardDisabled}
         onPushed={onPushed}
