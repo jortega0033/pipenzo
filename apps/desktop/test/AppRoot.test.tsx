@@ -25,6 +25,7 @@ function realBridge(
     // gate". The cases below that care about the difference set this explicitly.
     pipenzoConnectedRepos: vi.fn().mockResolvedValue({ repositories: connectedRepos }),
     pipenzoConnectRepos: vi.fn(),
+    resolvePipenzoCheckout: vi.fn(),
     startGitHubDeviceFlow: vi.fn(),
     openGitHubDeviceVerification: vi.fn().mockResolvedValue(undefined),
     cancelGitHubDeviceFlow: vi.fn().mockResolvedValue(undefined),

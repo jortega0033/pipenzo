@@ -192,6 +192,11 @@ export function createDemoBridge(): AgentDockBridge {
     pipenzoConnectRepos: async () => {
       throw new Error('connecting repositories is not available in demo mode');
     },
+    // `DEMO_REPO` is not a real repository, so there is nothing to clone -- refusing is the honest
+    // answer, the same as implement and refine above.
+    resolvePipenzoCheckout: async () => {
+      throw new Error('preparing a local checkout is not available in demo mode');
+    },
     startGitHubDeviceFlow: async () => {
       throw new Error('signing in to GitHub is not available in demo mode');
     },
