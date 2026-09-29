@@ -211,6 +211,7 @@ function harness(options: HarnessOptions = {}) {
     events,
   });
   return {
+    directory,
     tickets,
     github,
     events,
@@ -218,6 +219,27 @@ function harness(options: HarnessOptions = {}) {
     recovery,
     quarantined: tickets.getRecoveryReport().quarantinedFiles.length,
   };
+}
+
+/**
+ * A second daemon start against the same on-disk ticket store and the same GitHub state -- what
+ * issue #201's fix has to survive. A fresh `FileTicketStore` reloads whatever the first process left
+ * on disk, and a fresh `PipenzoCrashRecovery` has none of the first process's in-memory report, which
+ * is exactly the loss the durable `attempts[].outcome` marker exists to cover.
+ */
+function restart(directory: string, github: FakeGitHubClient) {
+  const tickets = new FileTicketStore(directory);
+  const events = new PipenzoPhaseEventBus();
+  const machine = new PipenzoPhaseMachine({ tickets, github: () => github, events });
+  const recovery = new PipenzoCrashRecovery({
+    tickets,
+    executions: executions({}),
+    sessions: compatSessions({}),
+    logger: noopLogger,
+    machine,
+    events,
+  });
+  return { tickets, events, recovery };
 }
 
 describe('PipenzoCrashRecovery.park', () => {
@@ -684,6 +706,76 @@ describe('PipenzoCrashRecovery.writeLabels', () => {
 
     const attempt = tickets.get(TICKET_ID)?.attempts.find((entry) => entry.sessionId === SESSION_ID);
     expect(attempt?.outcome).toBe('dispatched');
+  });
+});
+
+describe('crash recovery across a restart (issue #201)', () => {
+  it('re-surfaces a ticket whose label write failed, even though no store reports the session again', async () => {
+    // First process: the crash parks the ticket, then the label write fails after reconciliation had
+    // already rewritten the local record back to the lane the ticket crashed in -- the exact sequence
+    // #201 describes, and the one under which the in-memory report used to be the only witness.
+    const { directory, github, tickets, recovery } = harness();
+    recovery.park({ interruptedSessionIds: [SESSION_ID], quarantinedTicketRecordCount: 0 });
+    github.seedIssue(makeIssue(['pipenzo:working']));
+    github.failNext('setIssueLabels', new GitHubClientError('rate_limited', 'rate limited'));
+    await recovery.writeLabels();
+    expect(tickets.get(TICKET_ID)?.lane).toBe('working');
+
+    // Second process: a fresh store loaded from the same disk, a fresh recovery with no memory of the
+    // first process's report, and -- because a session is reported interrupted only once -- neither
+    // store hands it SESSION_ID again.
+    const second = restart(directory, github);
+    const report = second.recovery.park({
+      interruptedSessionIds: [],
+      quarantinedTicketRecordCount: 0,
+    });
+
+    expect(report.parked).toHaveLength(1);
+    expect(report.parked[0]).toMatchObject({
+      ticketId: TICKET_ID,
+      sessionId: SESSION_ID,
+      lane: 'working',
+      labelWrite: 'failed',
+    });
+    // Durably marked, not silently dropped: this is what survived the restart.
+    expect(
+      second.tickets.get(TICKET_ID)?.attempts.find((entry) => entry.sessionId === SESSION_ID)?.outcome,
+    ).toBe('interrupted_unresolved:working');
+
+    // The marker is deliberately not fed back into a retry: a matching local lane cannot rule out a
+    // human having edited the label directly on GitHub while no daemon was running to notice, so a
+    // later writeLabels() call leaves this entry exactly where it is, with no further GitHub write.
+    const rewritten = await second.recovery.writeLabels();
+    expect(rewritten.parked[0]?.labelWrite).toBe('failed');
+    expect(github.calls.filter((call) => call.method === 'setIssueLabels')).toHaveLength(1);
+  });
+
+  it('never re-parks a ticket a human moved while the marker was pending, across a restart', async () => {
+    const { directory, github, tickets, recovery } = harness();
+    recovery.park({ interruptedSessionIds: [SESSION_ID], quarantinedTicketRecordCount: 0 });
+    github.failNext('setIssueLabels', new GitHubClientError('rate_limited', 'rate limited'));
+    await recovery.writeLabels();
+    expect(
+      tickets.get(TICKET_ID)?.attempts.find((entry) => entry.sessionId === SESSION_ID)?.outcome,
+    ).toBe('interrupted_unresolved:working');
+
+    // A human resolves it directly on the board before the next restart.
+    const parked = tickets.get(TICKET_ID)!;
+    tickets.update(TICKET_ID, { ...parked, lane: 'queued', labels: ['pipenzo:queued'] });
+
+    const second = restart(directory, github);
+    const report = second.recovery.park({
+      interruptedSessionIds: [],
+      quarantinedTicketRecordCount: 0,
+    });
+
+    expect(report.parked).toHaveLength(0);
+    // The human's decision stands, untouched.
+    expect(second.tickets.get(TICKET_ID)?.lane).toBe('queued');
+    // The marker is resolved in place, so a third restart does not keep re-scanning a settled ticket.
+    expect(
+      second.tickets.get(TICKET_ID)?.attempts.find((entry) => entry.sessionId === SESSION_ID)?.outcome,
+    ).toBe('interrupted_recovered');
   });
 });
 

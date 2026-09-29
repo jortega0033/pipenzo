@@ -69,9 +69,11 @@ import {
  *   store, so they describe where the ticket actually is, not where the park tried to put it.**
  *   This in-memory report resets on the next restart, and a session is reported interrupted by the
  *   two stores' own sweeps only once ever -- so on its own, this state would be a ticket lost for
- *   good. `apps/daemon/src/pipenzo-crash-recovery.ts` durably marks the ticket's own
- *   `attempts[].outcome` with the lane it just reconciled back to instead (issue #201), so the
- *   interruption survives this process even though the in-memory report does not.
+ *   good. It is not: `apps/daemon/src/pipenzo-crash-recovery.ts` durably marks the ticket's own
+ *   `attempts[].outcome` with the lane it just reconciled back to (issue #201), and re-surfaces this
+ *   ticket as `failed` on every subsequent `park()` for as long as the local record's lane has not
+ *   moved on from that snapshot -- without ever retrying the GitHub write itself, since a local lane
+ *   match cannot rule out a human's own GitHub-side edit made while nothing was running to notice it.
  * - `superseded` — recovery did not leave `pipenzo:interrupted` on the ticket, for one of two
  *   reasons: a human moved it out of the park before the write reached it (the write was abandoned
  *   unperformed), or the write landed but the transition settled on a different label — a racing
