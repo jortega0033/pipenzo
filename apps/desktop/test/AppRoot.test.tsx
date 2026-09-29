@@ -295,6 +295,100 @@ describe('AppRoot pre-app gate (issue #113)', () => {
   });
 
   /**
+   * Issue #342, end to end through the real root: a Queued card opens the Implement dialog, the
+   * dispatch reaches `implementPipenzo` with the daemon-resolved checkout, and -- because the dialog
+   * closes itself on success -- the toast is what tells the person it actually started.
+   */
+  it('starts Implement from a Queued card and confirms it with a toast naming the branch', async () => {
+    const bridge = realBridge();
+    const checkout = '/state/repos/octocat/hello-world';
+    const spec = {
+      schemaVersion: 1 as const,
+      issue: { repo: 'octocat/hello-world', number: 42, title: 'Fix the thing' },
+      summary: 'Fix the thing.',
+      acceptanceCriteria: [{ id: 'AC-1', kind: 'event' as const, text: 'When X, the system shall Y' }],
+      outOfScope: [],
+      filesLikelyTouched: [],
+      estimate: { changedLines: 12, filesTouched: 1, layered: false },
+      openQuestions: [],
+    };
+    bridge.pipenzoListTickets = vi.fn().mockResolvedValue({
+      tickets: [
+        {
+          schemaVersion: 1,
+          ticketId: '00000000-0000-4000-8000-000000000042',
+          repo: 'octocat/hello-world',
+          issueNumber: 42,
+          title: 'Fix the thing',
+          lane: 'queued',
+          phase: 'refine',
+          labels: ['pipenzo:queued'],
+          estimate: { lines: 0, files: 0, layered: false },
+          taskType: 'chore',
+          stack: { parentId: null, childIds: [], index: null },
+          attempts: [],
+          budget: { tokensUsed: 0, limit: 0 },
+          risk: { score: 0, lastResetAt: '2026-01-01T00:00:00.000Z' },
+          precommits: [],
+          etags: {},
+        },
+      ],
+    });
+    bridge.resolvePipenzoCheckout = vi
+      .fn()
+      .mockResolvedValue({ repo: 'octocat/hello-world', repositoryPath: checkout });
+    bridge.inspectWorkspace = vi.fn().mockResolvedValue({
+      schemaVersion: 1,
+      workspaceId: 'c'.repeat(64),
+      incarnation: 'd'.repeat(64),
+      displayName: 'hello-world',
+      reusable: true,
+      state: 'trusted',
+    });
+    bridge.refinePipenzo = vi
+      .fn()
+      .mockResolvedValue({ sessionId: 'r', spec, toolsUsed: [], gateVerdict: 'single' });
+    bridge.claimPipenzoIssue = vi.fn().mockResolvedValue({
+      repo: 'octocat/hello-world',
+      issueNumber: 42,
+      outcome: 'claimed',
+      assignees: ['octocat'],
+      title: 'Fix the thing',
+      htmlUrl: 'https://github.com/octocat/hello-world/issues/42',
+    });
+    bridge.previewWorktree = vi.fn().mockResolvedValue({
+      workspaceId: 'c'.repeat(64),
+      name: 'issue-42',
+      displayTarget: 'issue-42',
+      includeFiles: [],
+      ignoredFiles: [],
+      secretRisk: false,
+      requiresConfirmation: false,
+    });
+    bridge.implementPipenzo = vi.fn().mockResolvedValue({
+      worktreeId: '123e4567-e89b-42d3-a456-426614174000',
+      branch: 'issue-42',
+      baseCommit: 'b'.repeat(40),
+      sessionId: 'implement-1',
+    });
+    (window as unknown as { agentDock: AgentDockBridge }).agentDock = bridge;
+    render(<AppRoot />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Fix the thing/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Refine ticket' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Start' }));
+
+    expect(await screen.findByText('Implement started on #42')).toBeInTheDocument();
+    expect(screen.getByText('octocat/hello-world · issue-42')).toBeInTheDocument();
+    expect(bridge.implementPipenzo).toHaveBeenCalledWith({
+      spec,
+      repositoryPath: checkout,
+      provider: 'claude',
+    });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  /**
    * A machine that cannot store a credential must be told *before* it authorizes, not after: the
    * device flow would otherwise complete on github.com and then fail to save, which looks like
    * Pipenzo losing the token rather than refusing to keep it badly.

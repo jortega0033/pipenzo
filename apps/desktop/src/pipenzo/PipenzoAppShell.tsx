@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import type { PipenzoTicketViewV1 } from '@agent-dock/shared';
+import type { PipenzoImplementResultV1, PipenzoTicketViewV1 } from '@agent-dock/shared';
 import {
   AppShell,
   Crumbs,
@@ -14,6 +14,7 @@ import { Banner } from '../components/primitives/Banner.js';
 import { Button } from '../components/primitives/Button.js';
 import { Card } from '../components/primitives/Card.js';
 import { SyncStatusPill, type SyncStatus } from '../components/primitives/SyncStatusPill.js';
+import { BoardImplementDialog } from './BoardImplementDialog.js';
 import { BoardScreen } from './BoardScreen.js';
 import { SettingsPage } from './SettingsPage.js';
 import { usePipenzoTickets } from './use-pipenzo-tickets.js';
@@ -52,20 +53,41 @@ import { usePipenzoTickets } from './use-pipenzo-tickets.js';
  * `Card` -- the bare id/title anatomy, no variant body -- not a guess at #85/#86/#87's lane-specific
  * card content. Those tickets own what a Working/Needs-human/Ready-for-review card actually shows;
  * this shell only has to prove real tickets reach real lanes.
+ *
+ * ## Queued cards open the Implement dialog (issue #342)
+ *
+ * A Queued card is the one card this shell makes clickable: `Card`'s own `onClick` (which also
+ * makes it a keyboard-reachable `button`) opens `BoardImplementDialog` for that ticket, which
+ * resolves the repo's local checkout (#344) and then mounts the real `ImplementDialog`. Only
+ * Queued, because README's Implement is the action a Queued ticket is waiting for -- a Working,
+ * Ready-for-review or Needs-human card has a different next action, owned by #85/#86/#87, and making
+ * those clickable here would be guessing at it.
+ *
+ * `onImplementStarted` reports a successful dispatch upward rather than toasting here, because the
+ * toast stack lives in `AppRoot` alongside the sync pill's own failure toast. The dialog closes
+ * itself on success: its Start button would otherwise still be there, and a second press would try
+ * to cut a second worktree for the same ticket.
  */
 export function PipenzoAppShell({
   sync,
   onRefreshSync,
+  onImplementStarted,
 }: {
   sync: { status: SyncStatus; label: string };
   onRefreshSync: () => void;
+  onImplementStarted?: (ticket: PipenzoTicketViewV1, started: PipenzoImplementResultV1) => void;
 }) {
   const [view, setView] = useState<'board' | 'settings'>('board');
   const { ticketList, refresh } = usePipenzoTickets();
+  const [implementing, setImplementing] = useState<PipenzoTicketViewV1>();
 
   const renderTicket = useCallback(
     (ticket: PipenzoTicketViewV1) => (
-      <Card id={`#${ticket.issueNumber}`} title={ticket.title ?? `Issue #${ticket.issueNumber}`} />
+      <Card
+        id={`#${ticket.issueNumber}`}
+        title={ticket.title ?? `Issue #${ticket.issueNumber}`}
+        {...(ticket.lane === 'queued' ? { onClick: () => setImplementing(ticket) } : {})}
+      />
     ),
     [],
   );
@@ -117,6 +139,20 @@ export function PipenzoAppShell({
         </>
       ) : (
         <SettingsPage />
+      )}
+      {implementing && (
+        <BoardImplementDialog
+          // Keyed by ticket so opening a different card never inherits the last one's checkout,
+          // trust answer or refined spec.
+          key={implementing.ticketId}
+          ticket={implementing}
+          onClose={() => setImplementing(undefined)}
+          onStarted={(started) => {
+            setImplementing(undefined);
+            refresh();
+            onImplementStarted?.(implementing, started);
+          }}
+        />
       )}
     </AppShell>
   );

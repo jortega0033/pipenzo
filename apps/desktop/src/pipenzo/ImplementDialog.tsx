@@ -327,6 +327,19 @@ export function ImplementDialog({
         Budget applies to this ticket only. When it runs out the ticket parks in Needs human instead
         of retrying.
       </span>
+      {/* Read out rather than implied: which agent Refine and Implement will actually run on. */}
+      <span className="f-help">
+        Runs on <span className="mono">{provider}</span>
+        {model ? (
+          <>
+            {' '}
+            · <span className="mono">{model}</span>
+          </>
+        ) : (
+          ', with its default model'
+        )}
+        .
+      </span>
       {(refine.status === 'error' || start.status === 'error') && (
         <span className="f-err" role="alert">
           {start.error ?? refine.error}
