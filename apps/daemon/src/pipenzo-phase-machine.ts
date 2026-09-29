@@ -314,6 +314,9 @@ const GITHUB_CODES: Record<GitHubClientError['code'], PipenzoPhaseMachineErrorCo
 /** Mirrors `pipenzoTicketRecordV1Schema`'s `attempts: z.array(...).max(50)`, not a second cap. */
 const ATTEMPTS_MAX = 50;
 
+/** Mirrors `pipenzoTicketBudgetV1Schema`'s `tokensUsed: z.number().int().nonnegative().max(...)`. */
+const TICKET_BUDGET_TOKENS_MAX = 2_147_483_647;
+
 /**
  * Wraps a local ticket-store write so a disk failure is reported as one.
  *
@@ -707,6 +710,47 @@ export class PipenzoPhaseMachine {
     }
     const attempts = [...ticket.attempts, attempt].slice(-ATTEMPTS_MAX);
     persist(() => this.#tickets.update(ticketId, { ...ticket, attempts }));
+  }
+
+  /**
+   * Adds real provider token usage to a ticket's local budget (Pipenzo issue #143, slice 1: the
+   * accounting half -- `budget.tokensUsed` had a field and a schema comment
+   * ("`limit: 0` ... means 'no limit configured'") since build step 3, but nothing ever wrote to
+   * `tokensUsed`. This is that write.
+   *
+   * **Local-only, same reasoning as `recordAttempt()`.** `budget` is store-owned, not
+   * GitHub-authoritative -- README's precedence rule names it explicitly, right alongside
+   * `attempts[]`, as something "the JSON ticket store is authoritative for". A session that just
+   * finished (or, for Implement, is still running elsewhere) must be able to have its usage
+   * recorded without waiting on a GitHub round trip or a token that might be rate-limited.
+   *
+   * Returns the updated ticket so a caller deciding whether to park the ticket (the enforcement
+   * half, a separate slice) can read the fresh `budget.tokensUsed` without a second local read.
+   *
+   * `tokens` is added, not set -- a ticket accumulates usage across every session dispatched
+   * against it (Refine, every Implement attempt, Review's reviewer and verifier passes), and each
+   * call site reports only what *that* session used. Non-finite or non-positive values are
+   * ignored rather than thrown: a caller on the hot path of "a session just finished" must not
+   * have a malformed usage report from a provider turn a real completion into an error the
+   * ticket never recovers from. Clamped to the schema's own `budget.tokensUsed` bound
+   * (`pipenzoTicketBudgetV1Schema`: `.max(2_147_483_647)`) rather than allowed to overflow it --
+   * the same reasoning `recordAttempt()`'s `ATTEMPTS_MAX` slice applies to its own array bound.
+   */
+  recordTokenUsage(ticketId: string, tokens: number): PipenzoTicketRecordV1 {
+    const ticket = this.#tickets.get(ticketId);
+    if (!ticket) {
+      throw new PipenzoPhaseMachineError('ticket_not_found', `no such ticket: ${ticketId}`);
+    }
+    if (!Number.isFinite(tokens) || tokens <= 0) {
+      return ticket;
+    }
+    const tokensUsed = Math.min(
+      ticket.budget.tokensUsed + Math.trunc(tokens),
+      TICKET_BUDGET_TOKENS_MAX,
+    );
+    const next: PipenzoTicketRecordV1 = { ...ticket, budget: { ...ticket.budget, tokensUsed } };
+    persist(() => this.#tickets.update(ticketId, next));
+    return next;
   }
 
   #repoRef(ticket: PipenzoTicketRecordV1): RepoRef {

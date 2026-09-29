@@ -305,48 +305,118 @@ export class DispatchOnlyPhaseSessions implements ImplementSessionPort {
       evaluateImplementPermission,
       'daemon-owned-worktree',
     );
-    // Still dispatch-only: `ended` is a promise the orchestrator hangs its own post-session commit
-    // on, not something this call waits for.
-    return { sessionId, ended: sessionEnd(this.#manager, sessionId) };
+    // Still dispatch-only: `ended`/`tokensUsed` are promises the orchestrator (and, through it,
+    // `PipenzoPhaseService`) hang their own post-session work on, not something this call waits for.
+    const observed = observeImplementSession(this.#manager, sessionId);
+    return { sessionId, ended: observed.ended, tokensUsed: observed.tokensUsed };
   }
 }
 
+interface ObservedImplementSession {
+  readonly ended: Promise<ImplementSessionEnd>;
+  /**
+   * Settles with the session's total provider token usage (Pipenzo issue #143), once the session
+   * reaches its terminal event -- 0 if it never reported a `usage` event, or could not be
+   * observed at all. Never rejects, for the same reason `ended` never does: a usage report that
+   * cannot be recovered must read as "nothing to add", not as a failure that could cascade into
+   * the orchestrator's own commit path. See `usageEventTokens()` for why this is the *last*
+   * `usage` event's own numbers, not a sum across every one observed.
+   */
+  readonly tokensUsed: Promise<number>;
+}
+
 /**
- * Settles with how a session ended, once its terminal event is recorded. Never rejects: a session
- * that cannot be observed reads as `failed`, which the orchestrator treats as "commit nothing".
+ * Settles with how a session ended, once its terminal event is recorded, and with the total
+ * tokens it reported along the way. One subscription rather than two: `SessionManager.subscribe`
+ * replays a session's whole recorded history synchronously before returning, so two independent
+ * subscriptions would each have to solve the same "already terminated by the time I subscribed"
+ * race `AwaitedPhaseSessions.#await` documents -- one subscription sidesteps it by construction.
+ *
+ * Never rejects: a session that cannot be observed reads as `failed` / `0` tokens, which the
+ * orchestrator already treats as "commit nothing" and a usage caller reads as "nothing to add".
  */
-function sessionEnd(manager: SessionManager, sessionId: string): Promise<ImplementSessionEnd> {
-  return new Promise<ImplementSessionEnd>((resolve) => {
-    let settled = false;
-    // Same replay subtlety as `AwaitedPhaseSessions.#await`: `subscribe()` replays synchronously,
-    // so a session that already ended settles this before there is anything to unsubscribe.
-    const observer: { off?: () => void } = {};
-    const finish = (end: ImplementSessionEnd): void => {
-      if (settled) return;
-      settled = true;
-      observer.off?.();
-      resolve(end);
-    };
-    const subscription = manager.subscribe(
-      sessionId,
-      0,
-      (_index, event: AgentEventEnvelope) => {
-        if (event.type === 'session.completed') finish('completed');
-        else if (event.type === 'session.failed') finish('failed');
-        else if (event.type === 'session.cancelled') finish('cancelled');
-      },
-      1,
-    );
-    observer.off = subscription;
-    if (!subscription) finish('failed');
-    else if (settled) subscription();
+function observeImplementSession(
+  manager: SessionManager,
+  sessionId: string,
+): ObservedImplementSession {
+  let resolveEnded!: (end: ImplementSessionEnd) => void;
+  let resolveTokens!: (tokens: number) => void;
+  const ended = new Promise<ImplementSessionEnd>((resolve) => {
+    resolveEnded = resolve;
   });
+  const tokensUsed = new Promise<number>((resolve) => {
+    resolveTokens = resolve;
+  });
+
+  let settled = false;
+  let tokens = 0;
+  // Same replay subtlety as `AwaitedPhaseSessions.#await`: `subscribe()` replays synchronously,
+  // so a session that already ended settles this before there is anything to unsubscribe.
+  const observer: { off?: () => void } = {};
+  const finish = (end: ImplementSessionEnd): void => {
+    if (settled) return;
+    settled = true;
+    observer.off?.();
+    resolveEnded(end);
+    resolveTokens(tokens);
+  };
+  const subscription = manager.subscribe(
+    sessionId,
+    0,
+    (_index, event: AgentEventEnvelope) => {
+      if (event.type === 'usage') {
+        tokens = usageEventTokens(event);
+      } else if (event.type === 'session.completed') {
+        finish('completed');
+      } else if (event.type === 'session.failed') {
+        finish('failed');
+      } else if (event.type === 'session.cancelled') {
+        finish('cancelled');
+      }
+    },
+    1,
+  );
+  observer.off = subscription;
+  if (!subscription) finish('failed');
+  else if (settled) subscription();
+
+  return { ended, tokensUsed };
+}
+
+/**
+ * How much of a `usage` event's own numbers count toward a ticket's token budget (Pipenzo issue
+ * #143). Every field is optional on the wire (`AgentEvent`'s `usage` variant), so each is treated
+ * as `0` when absent rather than making the whole event uncountable -- a provider that reports
+ * `outputTokens` but not `inputTokens` on a given turn still has real usage to record.
+ *
+ * `cachedInputTokens` is included alongside `inputTokens`/`outputTokens`, not netted against
+ * them. A cache read is billed at a fraction of a fresh input token, not zero, and a ticket's
+ * budget exists to bound real provider spend -- undercounting a heavy cache-read session would
+ * defeat that, and this module has no per-provider pricing table to net it out correctly even if
+ * it wanted to.
+ *
+ * ## Why the caller keeps only the *last* observed `usage` event, not a running sum
+ *
+ * Claude's own CLI (`claude -p --output-format stream-json`, see `parseClaudeLine` in
+ * `packages/agent-runtime`) emits a `usage` event for *every* assistant/user message, each
+ * carrying that individual API call's own numbers, and then one more at the final `result` line
+ * carrying the CLI's own already-cumulative total for the whole invocation. A multi-turn session's
+ * per-message `input_tokens` grows with the conversation, because each call re-sends the prior
+ * turns as context -- so summing every `usage` event this session emits would count that growing
+ * context repeatedly, once per turn, and then a second time over via the final cumulative report.
+ * Keeping only the last one observed before the terminal event lands on the CLI's own total
+ * instead, which is exactly the number a token budget should bound.
+ */
+function usageEventTokens(event: { inputTokens?: number; outputTokens?: number; cachedInputTokens?: number }): number {
+  return (event.inputTokens ?? 0) + (event.outputTokens ?? 0) + (event.cachedInputTokens ?? 0);
 }
 
 interface AwaitedSession {
   readonly sessionId: string;
   readonly toolsUsed: readonly string[];
   readonly output: unknown;
+  /** See `usageEventTokens()`'s doc comment: the last `usage` event's own numbers, not a sum. */
+  readonly tokensUsed: number;
 }
 
 /** Refine's and Review's port: dispatch, then wait for the session's one terminal event. */
@@ -376,6 +446,7 @@ export class AwaitedPhaseSessions implements RefineSessionPort, ReviewSessionPor
       sessionId: awaited.sessionId,
       toolsUsed: awaited.toolsUsed,
       output: awaited.output,
+      tokensUsed: awaited.tokensUsed,
       findings,
       ...(payload.success && payload.data.verdict ? { verdict: payload.data.verdict } : {}),
     };
@@ -394,6 +465,7 @@ export class AwaitedPhaseSessions implements RefineSessionPort, ReviewSessionPor
     );
     const toolsUsed: string[] = [];
     const texts: string[] = [];
+    let tokensUsed = 0;
     return new Promise<AwaitedSession>((resolve, reject) => {
       let settled = false;
       // `subscribe()` replays everything already recorded *synchronously, before it returns*, so a
@@ -424,9 +496,10 @@ export class AwaitedPhaseSessions implements RefineSessionPort, ReviewSessionPor
         (_index, event: AgentEventEnvelope) => {
           if (event.type === 'tool.started') toolsUsed.push(event.toolName);
           else if (event.type === 'assistant.message') texts.push(event.text);
+          else if (event.type === 'usage') tokensUsed = usageEventTokens(event);
           else if (event.type === 'session.completed') {
             finish(() =>
-              resolve({ sessionId, toolsUsed, output: extractJsonPayload(texts) }),
+              resolve({ sessionId, toolsUsed, output: extractJsonPayload(texts), tokensUsed }),
             );
           } else if (event.type === 'session.failed') {
             finish(() => reject(new PhaseSessionError(event.message)));

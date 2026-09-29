@@ -129,9 +129,10 @@ export interface PipenzoPhaseServiceOptions {
    * per-call pattern this service already uses everywhere else. `read` is here (and not just
    * `transition`) so a retried review of the same outcome can tell it already recorded this one --
    * see `#reportBlownEstimate`. `recordAttempt` is here for `implement()`'s own consequence (issue
-   * #201) -- see `#recordAttempt`.
+   * #201) -- see `#recordAttempt`. `recordTokenUsage` is here for issue #143's own accounting --
+   * see `#recordTokenUsage`.
    */
-  machine?: Pick<PipenzoPhaseMachine, 'read' | 'transition' | 'recordAttempt'>;
+  machine?: Pick<PipenzoPhaseMachine, 'read' | 'transition' | 'recordAttempt' | 'recordTokenUsage'>;
   /** Logs a failed blown-estimate consequence without failing the review call that produced a
    * perfectly good report — see `review()`'s own comment for why. */
   logger?: Logger;
@@ -145,7 +146,9 @@ export class PipenzoPhaseService {
   readonly #worktrees: ImplementWorktreeManager & OwnedWorktreeLocator;
   readonly #github: (() => GitHubClient) | undefined;
   readonly #env: Readonly<Record<string, string | undefined>>;
-  readonly #machine: Pick<PipenzoPhaseMachine, 'read' | 'transition' | 'recordAttempt'> | undefined;
+  readonly #machine:
+    | Pick<PipenzoPhaseMachine, 'read' | 'transition' | 'recordAttempt' | 'recordTokenUsage'>
+    | undefined;
   readonly #logger: Logger | undefined;
 
   constructor(options: PipenzoPhaseServiceOptions) {
@@ -187,7 +190,12 @@ export class PipenzoPhaseService {
       throw toPhaseError(error);
     }
     const conventions = await this.#readConventions(request.repositoryPath);
-    let result: { sessionId: string; spec: PipenzoRefineResultV1['spec']; toolsUsed: readonly string[] };
+    let result: {
+      sessionId: string;
+      spec: PipenzoRefineResultV1['spec'];
+      toolsUsed: readonly string[];
+      tokensUsed?: number;
+    };
     try {
       result = await this.#refine.refine({
         issue: {
@@ -215,6 +223,13 @@ export class PipenzoPhaseService {
     // real but secondary, best-effort and logged, never turning a successful refine into an error.
     if (gateVerdict === 'refuse' && request.ticketId) {
       await this.#reportRefusal(request.ticketId, result.spec);
+    }
+
+    // Issue #143: Refine is one of the three phases that spends a ticket's budget. Best-effort and
+    // logged internally, same reasoning as `#reportRefusal` above -- a bookkeeping failure here
+    // must not turn an already-produced, already-valid spec into a thrown error.
+    if (request.ticketId && result.tokensUsed) {
+      this.#recordTokenUsage(request.ticketId, result.tokensUsed);
     }
 
     return {
@@ -308,6 +323,24 @@ export class PipenzoPhaseService {
       this.#recordAttempt(request.ticketId, started.sessionId, request);
     }
 
+    // Issue #143's accounting for the one phase this route does not wait on. Unlike
+    // `#recordAttempt` above, this cannot run synchronously right here -- Implement is dispatch-
+    // only, and `started.tokensUsed` does not settle until the session this call just started
+    // actually finishes, possibly long after this route has already responded. Fire-and-forget,
+    // same "best-effort, logged, never thrown" reasoning as every other consequence in this file;
+    // there is no in-flight request left by the time it resolves for a thrown error to reach.
+    if (request.ticketId && started.tokensUsed) {
+      const ticketId = request.ticketId;
+      started.tokensUsed
+        .then((tokens) => this.#recordTokenUsage(ticketId, tokens))
+        .catch((error: unknown) => {
+          this.#logger?.warn('could not observe an implement session’s token usage', {
+            ticketId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        });
+    }
+
     // `started.worktreePath` is dropped here, on purpose and by hand. It is the whole point of the
     // route: everything else travels, the path does not.
     return {
@@ -347,6 +380,26 @@ export class PipenzoPhaseService {
       });
     } catch (error) {
       this.#logger?.warn('could not record an implement attempt against its ticket', {
+        ticketId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
+   * Adds real provider token usage to a ticket's local budget (Pipenzo issue #143). Every call
+   * site in this file goes through this one method, so there is exactly one place that decides
+   * how a bookkeeping failure is handled -- best-effort and logged, never thrown, same reasoning
+   * as `#recordAttempt` and every other secondary consequence in this file: a session already ran
+   * and already produced real work by the time any of these are called, so a local write failing
+   * here must never be reported as if the phase itself had failed.
+   */
+  #recordTokenUsage(ticketId: string, tokens: number): void {
+    if (!this.#machine) return;
+    try {
+      this.#machine.recordTokenUsage(ticketId, tokens);
+    } catch (error) {
+      this.#logger?.warn('could not record token usage against its ticket', {
         ticketId,
         error: error instanceof Error ? error.message : String(error),
       });
@@ -419,6 +472,11 @@ export class PipenzoPhaseService {
       throw new PipenzoPhaseError('worktree_not_found', 'no such owned worktree');
     }
     const conventions = await this.#readConventions(location.sourcePath);
+    // Issue #143's accounting for Review's two LLM passes. A plain accumulator, not
+    // `#recordTokenUsage` called per pass -- one bookkeeping write per successful `review()` call,
+    // not one per session inside it, is one fewer place a partial failure could leave the
+    // ticket's budget half-updated.
+    let tokensUsed = 0;
     let report: PipenzoReviewResultV1;
     try {
       report = await this.#review.run({
@@ -433,6 +491,9 @@ export class PipenzoPhaseService {
         reviewer: request.reviewer,
         verifier: request.verifier,
         ...(conventions ? { conventions } : {}),
+        onTokensUsed: (tokens) => {
+          tokensUsed += tokens;
+        },
       });
     } catch (error) {
       throw toPhaseError(error);
@@ -444,6 +505,10 @@ export class PipenzoPhaseService {
     // into a thrown error, the same reasoning `crash-recovery.ts`'s best-effort label write uses.
     if (report.outcome === 'estimate_blown' && request.ticketId) {
       await this.#reportBlownEstimate(request.ticketId, report);
+    }
+
+    if (request.ticketId && tokensUsed > 0) {
+      this.#recordTokenUsage(request.ticketId, tokensUsed);
     }
 
     return report;

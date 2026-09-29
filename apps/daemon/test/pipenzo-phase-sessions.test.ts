@@ -82,6 +82,25 @@ describe('DispatchOnlyPhaseSessions', () => {
     await succeeded.cancelAll(500, 1);
     await failing.cancelAll(500, 1);
   });
+
+  /**
+   * Issue #143, slice 1: `FakeProvider`'s 'success' and 'failure' scenarios both push
+   * `{ type: 'usage', inputTokens: 10, outputTokens: 5 }` before their terminal event (see
+   * `packages/agent-runtime/src/providers/fake/adapter.ts`), so 15 is the real number a session
+   * that reported usage settles with either way -- a budget still accrues against a failed
+   * session's real spend, not just a completed one's.
+   */
+  it('settles tokensUsed with the session’s reported usage once it ends, on success or failure', async () => {
+    const succeeded = managerWith('success');
+    const ok = await new DispatchOnlyPhaseSessions({ sessionManager: succeeded }).run(request);
+    await expect(ok.tokensUsed).resolves.toBe(15);
+
+    const failing = managerWith('failure');
+    const failed = await new DispatchOnlyPhaseSessions({ sessionManager: failing }).run(request);
+    await expect(failed.tokensUsed).resolves.toBe(15);
+    await succeeded.cancelAll(500, 1);
+    await failing.cancelAll(500, 1);
+  });
 });
 
 describe('AwaitedPhaseSessions', () => {
@@ -98,6 +117,14 @@ describe('AwaitedPhaseSessions', () => {
     await expect(
       new AwaitedPhaseSessions({ sessionManager: manager, workspaceTrust: OWNED }).run(request),
     ).rejects.toBeInstanceOf(PhaseSessionError);
+    await manager.cancelAll(500, 1);
+  });
+
+  /** Issue #143, slice 1. See `DispatchOnlyPhaseSessions`'s own usage test for where 15 comes from. */
+  it('reports the session’s tokensUsed alongside its output', async () => {
+    const manager = managerWith('success');
+    const outcome = await new AwaitedPhaseSessions({ sessionManager: manager, workspaceTrust: OWNED }).run(request);
+    expect(outcome.tokensUsed).toBe(15);
     await manager.cancelAll(500, 1);
   });
 });
