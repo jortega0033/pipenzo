@@ -96,6 +96,7 @@ import {
   type AttachmentMetadataV2,
   type StructuredWorkflowRequestV2,
   type StructuredWorkflowResultV2,
+  PIPENZO_PUBLISH_NONCE_HEADER,
   pipenzoPublishRequestV1Schema,
   pipenzoPublishResultV1Schema,
   type PipenzoPublishRequestV1,
@@ -374,10 +375,16 @@ export class AgentDockClient {
      * comment). Errors surface as `DaemonError` with the daemon's own closed `code` union
      * (`uncommitted_changes`, `push_rejected`, `publish_busy`, ...) via the generic
      * `fetchAuthenticated` error path — no route-specific error handling needed here.
+     *
+     * `nonce` (issue #182) is required, not optional: the caller must mint one with
+     * `mintPublishNonce`, from the same secret the daemon was handed over stdin, in direct
+     * response to that same click — never ahead of time, never reused. Its own doc comment in
+     * `@agent-dock/shared`'s `publish-nonce-v1.ts` explains why it travels as a header rather than
+     * a body field.
      */
     pipenzo: {
-      publish: (input: PipenzoPublishRequestV1): Promise<PipenzoPublishResultV1> =>
-        this.publishPipenzoV1(input),
+      publish: (input: PipenzoPublishRequestV1, nonce: string): Promise<PipenzoPublishResultV1> =>
+        this.publishPipenzoV1(input, nonce),
       /**
        * The three phases and the two GitHub issue write ops (issue #184).
        *
@@ -919,13 +926,20 @@ export class AgentDockClient {
     return this.requestV2('/v2/worktrees/cleanup', ownedWorktreeV2Schema, 'protocol-v2 owned worktree', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) }, { expectedStatus: 200 });
   }
 
-  private async publishPipenzoV1(input: PipenzoPublishRequestV1): Promise<PipenzoPublishResultV1> {
+  private async publishPipenzoV1(
+    input: PipenzoPublishRequestV1,
+    nonce: string,
+  ): Promise<PipenzoPublishResultV1> {
     const parsed = validateInput(pipenzoPublishRequestV1Schema, input, 'pipenzo publish request');
     return this.requestV2(
       '/v2/pipenzo/publish',
       pipenzoPublishResultV1Schema,
       'pipenzo publish result',
-      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) },
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', [PIPENZO_PUBLISH_NONCE_HEADER]: nonce },
+        body: JSON.stringify(parsed),
+      },
       { expectedStatus: 200 },
     );
   }

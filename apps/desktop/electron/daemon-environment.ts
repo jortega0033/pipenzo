@@ -1,6 +1,7 @@
 import { inspect } from 'node:util';
 import {
   GITHUB_TOKEN_SHAPE_PATTERN,
+  isPublishNonceSecretShaped,
   type DaemonCredentialSourceV1,
   type PipenzoCredentialSourceV1,
 } from '@agent-dock/shared';
@@ -253,9 +254,23 @@ export function reconcileDaemonTokenSource(
  * A JSON envelope rather than a bare token so a second field never needs a second channel, and
  * newline-terminated so the daemon's reader settles on the line rather than waiting for the pipe to
  * close.
+ *
+ * `publishNonceSecretHex` (issue #182) is exactly that second field: the secret
+ * `mintPublishNonce`/`PublishNonceGate` share, so it travels the same stdin handoff the GitHub
+ * token does rather than `process.env` or a file — the discovery file's own `TEMP`/`HOME` exposure
+ * (see `publish-nonce-v1.ts`'s module comment) is precisely what this secret must never share the
+ * token's fate with.
  */
-export function buildDaemonCredentialMessage(token: string | undefined): string {
-  return `${JSON.stringify(isTokenShaped(token) ? { githubToken: token } : {})}\n`;
+export function buildDaemonCredentialMessage(
+  token: string | undefined,
+  publishNonceSecretHex?: string,
+): string {
+  return `${JSON.stringify({
+    ...(isTokenShaped(token) ? { githubToken: token } : {}),
+    ...(isPublishNonceSecretShaped(publishNonceSecretHex)
+      ? { publishNonceSecret: publishNonceSecretHex }
+      : {}),
+  })}\n`;
 }
 
 /**
@@ -384,6 +399,15 @@ export interface BuildDaemonSpawnPlanInput {
   readonly isPackaged: boolean;
   readonly isDevelopmentBuild: boolean;
   readonly developmentFallbackSuppressed: boolean;
+  /**
+   * Issue #182's publish-nonce secret, hex-encoded -- generated once by `main.ts` at process
+   * start (not per spawn) and handed to every daemon this Electron process spawns or respawns, so
+   * a nonce minted before a respawn and one minted after are checked against the same secret.
+   * Optional so a caller assembling a plan without publish in scope (most tests) need not invent
+   * one; omitting it produces a daemon with no publish-nonce secret at all, which
+   * `PublishNonceGate` treats as "refuse every publish," never as "skip the check."
+   */
+  readonly publishNonceSecretHex?: string | undefined;
 }
 
 /**
@@ -417,7 +441,7 @@ export function buildDaemonSpawnPlan(input: BuildDaemonSpawnPlanInput): DaemonSp
   const env = Object.freeze(
     buildDaemonEnvironment(input.parentEnv, { appId: input.appId, credentialOnStdin: true }),
   );
-  const credentialMessage = buildDaemonCredentialMessage(credential.token);
+  const credentialMessage = buildDaemonCredentialMessage(credential.token, input.publishNonceSecretHex);
   const credentialSource = credential.source;
   const toJSON = (): RedactedDaemonSpawnPlan => ({
     cwd,

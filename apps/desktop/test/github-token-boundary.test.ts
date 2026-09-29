@@ -252,6 +252,26 @@ describe('the plaintext is produced once, and delivered over a pipe', () => {
     expect(redactForwardedDaemonOutput('daemon listening', noCredential)).toBe('daemon listening');
   });
 
+  /**
+   * Issue #182: the publish-nonce secret rides the same one-line envelope, on purpose -- "a second
+   * field never needs a second channel" is this function's own doc comment. Both fields are
+   * independent of each other; asserted with the token present and absent so an implementation
+   * that only remembered to wire one of the two call shapes would not pass this by accident.
+   */
+  it('carries the publish-nonce secret in the same envelope as the token, when given one', () => {
+    const token = 'aRealisticallyLongTokenValue0001';
+    const secretHex = 'ab'.repeat(32);
+    expect(JSON.parse(buildDaemonCredentialMessage(token, secretHex))).toEqual({
+      githubToken: token,
+      publishNonceSecret: secretHex,
+    });
+    expect(JSON.parse(buildDaemonCredentialMessage(undefined, secretHex))).toEqual({
+      publishNonceSecret: secretHex,
+    });
+    // Not 64 lowercase hex characters -- dropped, same as an unshaped token is.
+    expect(JSON.parse(buildDaemonCredentialMessage(token, 'too-short'))).toEqual({ githubToken: token });
+  });
+
   it('spawns exactly one child process from Electron main, and it is the daemon', async () => {
     const files = await sourceFiles(electronSrc());
     const spawners: string[] = [];
@@ -299,6 +319,25 @@ describe('the plaintext is produced once, and delivered over a pipe', () => {
     // *value* is gone from the whole environment object too, the stronger check the sibling test in
     // the next describe block already applies to `buildDaemonEnvironment` directly.
     expect(JSON.stringify(plan.env)).not.toContain(smuggledToken);
+  });
+
+  /**
+   * Issue #182's own wiring, in the same source-regex-tripwire style this file already uses for
+   * `spawnDaemon`'s other plumbing: the secret is generated once, at module scope, from
+   * `randomBytes` -- never derived from a request, a worktree id, or anything renderer-supplied --
+   * handed into every spawn plan, and minted into a nonce only inside the publish IPC handler.
+   */
+  it('generates the publish-nonce secret once and mints a nonce only inside the publish handler', async () => {
+    const main = await readElectron('main.ts');
+    expect(main).toMatch(/const publishNonceSecret = randomBytes\(32\);/);
+    expect(main).toMatch(/publishNonceSecretHex:\s*publishNonceSecret\.toString\('hex'\)/);
+    const handlerAt = main.indexOf("handle('daemon:pipenzo-publish'");
+    expect(handlerAt).toBeGreaterThan(-1);
+    const handlerBody = main.slice(handlerAt, main.indexOf('\n});', handlerAt));
+    expect(handlerBody).toMatch(/mintPublishNonce\(publishNonceSecret\)/);
+    // And it is the only caller of `mintPublishNonce` -- a mint anywhere else (at spawn, at app
+    // start) would make the nonce a standing credential rather than proof of this one click.
+    expect(main.match(/mintPublishNonce\(/g)).toHaveLength(1);
   });
 
   it('never imports the vault into the renderer', async () => {
@@ -586,7 +625,11 @@ describe('which credential the daemon runs on is decided once, and named', () =>
   it("is suppressed for the rest of the process's life by an explicit disconnect (issue #210)", async () => {
     const main = await readElectron('main.ts');
     expect(main).toMatch(/let developmentFallbackSuppressed = false;/);
-    expect(main).toMatch(/developmentFallbackSuppressed,\s*\n\s*\}\);/);
+    // Issue #182 added `publishNonceSecretHex` after this field in the same call -- matched up to
+    // the field this test actually cares about rather than up to the call's closing `});`, so a
+    // future field added after this one does not make this regex start failing for an unrelated
+    // reason.
+    expect(main).toMatch(/developmentFallbackSuppressed,\s*\n\s*publishNonceSecretHex:/);
     // Set unconditionally, in the handler -- not only when `tokenVault.clear()` found a record to
     // remove. A machine with no working credential store at all (`state: 'unavailable'`,
     // `os_encryption_unavailable`/`plaintext_backend`) has no vault file `clear()` could ever find,
