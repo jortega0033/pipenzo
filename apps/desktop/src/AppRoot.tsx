@@ -168,7 +168,20 @@ function PipenzoStartup({
       {demoMode ? (
         <App demoMode={demoMode} onEnterDemo={enterDemoMode} onExitDemo={exitDemoMode} />
       ) : (
-        <PipenzoAppShell sync={sync} onRefreshSync={onRefreshSync} />
+        <PipenzoAppShell
+          sync={sync}
+          onRefreshSync={onRefreshSync}
+          // Issue #342: the dialog closes itself once Implement has dispatched, so this toast is
+          // what tells the person it actually started -- and which branch it is working on.
+          onImplementStarted={(ticket, started) =>
+            toast.push({
+              tone: 'ok',
+              icon: 'implement',
+              title: `Implement started on #${ticket.issueNumber}`,
+              description: `${ticket.repo} · ${started.branch}`,
+            })
+          }
+        />
       )}
       <ToastStack toasts={toast.visible} onDismiss={toast.dismiss} />
     </>
