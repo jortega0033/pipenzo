@@ -1,4 +1,5 @@
 import {
+  PIPENZO_DIFF_SIZE_THRESHOLDS,
   REFINE_SPEC_V1_JSON_SCHEMA,
   refineSpecV1Schema,
   type CreateSessionV2Request,
@@ -239,6 +240,7 @@ export function buildRefinePrompt(issue: RefineIssueInput, conventions?: string)
   const body = issue.body.length > MAX_ISSUE_BODY_CHARS
     ? `${issue.body.slice(0, MAX_ISSUE_BODY_CHARS)}\n\n[issue body truncated]`
     : issue.body;
+  const { onePrMaxLines, onePrMaxFiles, stackMaxLines, stackMaxFiles } = PIPENZO_DIFF_SIZE_THRESHOLDS;
   return [
     'You are the Refine phase of an issue-to-PR loop. Your job is to turn one GitHub issue into a',
     'structured spec. You are NOT implementing it, and you cannot: this session is restricted to',
@@ -271,6 +273,19 @@ export function buildRefinePrompt(issue: RefineIssueInput, conventions?: string)
     '  round it down to look agreeable.',
     '- openQuestions: anything you could not answer from the repository. An empty list is a claim',
     '  that nothing was ambiguous.',
+    '- proposedSplit: OPTIONAL. Only relevant when your own estimate above is a refusal, not a',
+    '  stack. Grade it by the exact rule your estimate will be checked against: at or under',
+    `  ${onePrMaxLines} changed lines and ${onePrMaxFiles} files is one PR; at or under ${stackMaxLines}`,
+    `  lines and ${stackMaxFiles} files with layered: true is a dependency-ordered stack, not a`,
+    '  refusal; anything past that ceiling, or inside that band with layered: false, is a refusal.',
+    '  Only in that refusal case, also produce proposedSplit: an ordered array of independently-',
+    '  shippable parts, each with a one-line summary and its own changedLines/filesTouched numbers,',
+    '  in the exact order they must be built and reviewed. Every part must stand on its own as a',
+    '  real, mergeable PR — buildable and reviewable independent of the parts after it — the same',
+    '  dependency-ordering discipline this project holds its own pull requests to, not an arbitrary',
+    '  slice of the diff. If you cannot honestly produce a decomposition where every part clears that',
+    '  bar, omit proposedSplit entirely rather than inventing placeholder parts: a bad split is worse',
+    '  than none, and an absent field is read as "no split was found," not as an oversight.',
     ...(conventions
       ? [
           '',

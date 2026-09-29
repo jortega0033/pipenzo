@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
+  PIPENZO_DIFF_SIZE_THRESHOLDS,
   REFINE_SPEC_V1_JSON_SCHEMA,
   createSessionV2RequestSchema,
   permissionActionV2Schema,
@@ -10,6 +11,7 @@ import {
   type PermissionActionV2,
   type RefineSpecV1,
 } from '@agent-dock/shared';
+import { evaluateDiffSizeGate } from '../src/refine-gate.js';
 import {
   REFINE_TOOL_ALLOWLIST,
   RefinePhaseError,
@@ -297,6 +299,24 @@ describe('buildRefineSessionRequest', () => {
     expect(prompt).toContain('"AC-1"');
   });
 
+  /**
+   * Issue #271: the prompt must actually ask for a decomposition, using the same numbers
+   * `refine-gate.ts`'s `evaluateDiffSizeGate` grades the estimate against -- not a second,
+   * free-to-drift copy of README's thresholds -- and must tell the model that a bad split is worse
+   * than none, matching the schema's own "no field, no section" doc comment.
+   */
+  it('asks for a real, ordered proposedSplit only on a refusal, using the shared thresholds', () => {
+    const { prompt } = buildRefineSessionRequest({ issue: ISSUE, cwd: process.cwd(), provider: 'claude' });
+    expect(prompt).toContain('proposedSplit');
+    expect(prompt).toContain(String(PIPENZO_DIFF_SIZE_THRESHOLDS.onePrMaxLines));
+    expect(prompt).toContain(String(PIPENZO_DIFF_SIZE_THRESHOLDS.onePrMaxFiles));
+    expect(prompt).toContain(String(PIPENZO_DIFF_SIZE_THRESHOLDS.stackMaxLines));
+    expect(prompt).toContain(String(PIPENZO_DIFF_SIZE_THRESHOLDS.stackMaxFiles));
+    expect(prompt).toContain('independently');
+    expect(prompt).toContain('order they must be built and reviewed');
+    expect(prompt).toContain('omit proposedSplit entirely');
+  });
+
   it('truncates an oversized issue body rather than blowing the prompt bound', () => {
     const request = buildRefineSessionRequest({
       issue: { ...ISSUE, body: 'x'.repeat(200_000) },
@@ -475,6 +495,32 @@ describe('RefineSubagent', () => {
     expect(result.toolsUsed).toEqual(['Read', 'Grep']);
     expect(requests).toHaveLength(1);
     expect(requests[0]?.outputSchema).toBe(REFINE_SPEC_V1_JSON_SCHEMA);
+  });
+
+  /**
+   * Issue #271: when the session's own estimate trips the diff-size gate (evaluateDiffSizeGate
+   * returns 'refuse', the same function `pipenzo-phase-service.ts` calls to decide whether to post
+   * a refusal comment), a `proposedSplit` the provider attached to that same structured-output
+   * response must survive `refine()` untouched -- ordered, every part intact -- all the way out to
+   * the caller that will hand it to `refusalCommentBody` and `RefusalPanel.tsx`.
+   */
+  it('passes a proposedSplit through untouched when the session estimate trips the gate', async () => {
+    const refusalSpec = validSpec({
+      estimate: { changedLines: 900, filesTouched: 40, layered: false },
+      proposedSplit: [
+        { summary: 'Extract the shared validation helper', changedLines: 80, filesTouched: 2 },
+        { summary: 'Wire the new endpoint through it', changedLines: 140, filesTouched: 5 },
+      ],
+    });
+    expect(evaluateDiffSizeGate(refusalSpec.estimate)).toBe('refuse');
+
+    const { port: sessions } = port({ output: refusalSpec });
+    const result = await new RefineSubagent(sessions, gitBaseline()).refine({
+      issue: ISSUE,
+      cwd: process.cwd(),
+      provider: 'claude',
+    });
+    expect(result.spec.proposedSplit).toEqual(refusalSpec.proposedSplit);
   });
 
   it('reports a read-only violation even when the spec itself is perfectly valid', async () => {

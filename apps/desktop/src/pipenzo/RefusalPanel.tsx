@@ -31,11 +31,11 @@ const { onePrMaxLines, onePrMaxFiles, stackMaxLines, stackMaxFiles } = PIPENZO_D
  *   refusal yet; the canvas's own foot slot is left unrendered rather than filled with a time that
  *   does not exist.
  * - **No proposed split unless one was actually generated.** `RefineSpecV1.proposedSplit`
- *   (`@agent-dock/shared`, issue #271) exists as a schema field now, but nothing in
- *   `refine-subagent.ts`'s prompt asks a provider to populate it yet -- that is real product
- *   judgment about prompt content and session design #271 deliberately left undecided, not schema
- *   work. So `proposedSplit` stays optional here too, and the `Split` block renders only when the
- *   caller actually has rows to show, exactly as before this field existed anywhere.
+ *   (`@agent-dock/shared`, issue #271) is asked for by `refine-subagent.ts`'s prompt only when the
+ *   same session's own estimate is a refusal, and the prompt tells the model to omit the field
+ *   rather than invent a split it cannot honestly stand behind -- so a refused ticket with no
+ *   `proposedSplit` is an expected, considered outcome, not a gap. `proposedSplit` stays optional
+ *   here either way, and the `Split` block renders only when the caller actually has rows to show.
  * - **"Open on GitHub" is a real link, not a stubbed callback.** `apps/desktop/electron/main.ts`'s
  *   `setWindowOpenHandler` already routes any `https:` target through the same validated
  *   `openAllowedExternalUrl` gate every other "open externally" path in this app uses -- so a plain
