@@ -33,7 +33,9 @@ describe('reconcileCandidate', () => {
     expect(r.matches[0]).toMatchObject({ number: 318, state: 'open' });
     expect(r.matches[0]!.reason).toContain('baseline');
     const closed = issue(283, 'Add the repo lint command as a Review gate', 'closed');
-    expect(reconcileCandidate(cand(closed.title), snap([closed])).matches[0]!.state).toBe('closed');
+    const onlyClosed = reconcileCandidate(cand(closed.title), snap([closed]));
+    expect(onlyClosed.matches[0]!.state).toBe('closed');
+    expect(onlyClosed.outcome).toBe('possible_duplicate'); // never an open owner
     const tie = reconcileCandidate(
       cand('Persist blown estimate ratio'),
       snap([

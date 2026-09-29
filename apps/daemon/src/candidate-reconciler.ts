@@ -89,10 +89,11 @@ export function reconcileCandidate(
     reason: `shared words: ${[...words].sort().slice(0, MAX_REASON_TOKENS).join(', ')}; overlap score ${match.score}`,
   }));
   const top = scored[0];
-  // One shared word is never enough to call something the owner.
+  // One shared word is never enough to call something the owner, and a closed issue is a
+  // decided ticket, not a live owner: it is reported as closed but only as a possible duplicate.
   const outcome: ReconcileOutcome = !top
     ? 'no_match'
-    : top.score >= OWNER_THRESHOLD && top.words.length >= 2
+    : top.score >= OWNER_THRESHOLD && top.words.length >= 2 && top.state === 'open'
       ? 'existing_owner'
       : 'possible_duplicate';
 
