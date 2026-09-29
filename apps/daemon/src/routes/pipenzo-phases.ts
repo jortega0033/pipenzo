@@ -70,6 +70,9 @@ const PHASE_ERROR_STATUS: Record<PipenzoPhaseErrorCodeV1, number> = {
   reviewer_failed: 502,
   verifier_failed: 502,
   session_failed: 502,
+  // Issue #143, slice 2: the ticket's own current state (its budget is spent) preventing the
+  // operation, same 409 family as workspace_untrusted/branch_failed/claimed_elsewhere above.
+  budget_exhausted: 409,
   token_missing: 412,
   repository_not_configured: 412,
   issue_not_found: 404,

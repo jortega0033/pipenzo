@@ -11,6 +11,7 @@ import {
   PIPENZO_LEGAL_LANE_TRANSITIONS,
   PipenzoPhaseMachine,
   PipenzoPhaseMachineError,
+  isBudgetExhausted,
   isLegalLaneTransition,
 } from '../src/pipenzo-phase-machine.js';
 
@@ -762,7 +763,7 @@ describe('PipenzoPhaseMachine schema read-only guard', () => {
 
 /**
  * Issue #143, slice 1: `budget.tokensUsed` had a field since build step 3, but nothing ever wrote
- * to it. `recordTokenUsage()` is that write; a separate slice is the enforcement consequence.
+ * to it. `recordTokenUsage()` is that write; slice 2 is the separate enforcement consequence.
  */
 describe('PipenzoPhaseMachine.recordTokenUsage', () => {
   it('adds to a ticket with no usage yet, without touching GitHub', () => {
@@ -827,5 +828,38 @@ describe('PipenzoPhaseMachine.recordTokenUsage', () => {
     machine.recordTokenUsage(TICKET_ID, 1_000);
 
     expect(tickets.get(TICKET_ID)?.budget.tokensUsed).toBe(2_147_483_647);
+  });
+});
+
+describe('isBudgetExhausted', () => {
+  it('is false when limit is 0, no matter how much has been spent -- 0 means unlimited', () => {
+    expect(isBudgetExhausted({ tokensUsed: 1_000_000, limit: 0 })).toBe(false);
+  });
+
+  it('is false while spend is below a real limit', () => {
+    expect(isBudgetExhausted({ tokensUsed: 99, limit: 100 })).toBe(false);
+  });
+
+  it('is true once spend reaches the limit exactly, not only once it passes it', () => {
+    expect(isBudgetExhausted({ tokensUsed: 100, limit: 100 })).toBe(true);
+  });
+
+  it('is true once spend passes the limit', () => {
+    expect(isBudgetExhausted({ tokensUsed: 101, limit: 100 })).toBe(true);
+  });
+});
+
+describe('PipenzoPhaseMachine.peekBudget', () => {
+  it('reads a ticket’s budget locally, without a GitHub round trip', () => {
+    const { machine, github } = harness({ ticket: { budget: { tokensUsed: 42, limit: 100 } } });
+
+    expect(machine.peekBudget(TICKET_ID)).toEqual({ tokensUsed: 42, limit: 100 });
+    expect(github.calls).toEqual([]);
+  });
+
+  it('returns undefined for an unknown ticket rather than throwing', () => {
+    const { machine } = harness();
+
+    expect(machine.peekBudget('00000000-0000-4000-8000-00000000ffff')).toBeUndefined();
   });
 });
