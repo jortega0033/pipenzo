@@ -3901,6 +3901,67 @@
     flex-shrink: 0;
   }
 
+  /* Settings' saved-lessons list (issue #128) — ported verbatim from `Settings.dc.html`'s own
+     style block: the same list shape as connected repos, because it is the same promise, a short
+     list of things a person put here, each with the control that takes it back out. See
+     LessonsPanel.tsx. */
+  .lesson-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    background: var(--color-surface);
+    border-radius: var(--radius-pipenzo);
+    padding: 6px;
+  }
+
+  .lesson-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 6px 10px 12px;
+    border-radius: var(--radius-pipenzo-sm);
+    transition: background-color var(--ease-pipenzo);
+  }
+
+  .lesson-item:hover {
+    background: var(--color-surface-3);
+  }
+
+  .li-body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .li-text {
+    font-size: 13px;
+    color: var(--color-text);
+    line-height: 1.45;
+    text-wrap: pretty;
+  }
+
+  .li-meta {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--color-text-faint);
+    line-height: 1.3;
+  }
+
+  .lesson-item .icon-btn {
+    width: 28px;
+    height: 28px;
+    background: transparent;
+    color: var(--color-text-faint);
+    flex-shrink: 0;
+  }
+
+  .lesson-item .icon-btn:hover {
+    background: var(--color-danger);
+    color: var(--color-danger-fg);
+  }
+
   /* Pre-app shell — ported from Connect.dc.html's own layout block (issue #113). Deliberately not
      the `.shell` two-column frame below it: before a credential exists there is no workspace, so
      there is no sidebar, no workspace row and no breadcrumb bar to put in one. See PreAppShell.tsx.
