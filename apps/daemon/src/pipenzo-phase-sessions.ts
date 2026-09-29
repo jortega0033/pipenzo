@@ -1,15 +1,36 @@
+import { realpath } from 'node:fs';
+import { promisify } from 'node:util';
 import {
   reviewFindingV1Schema,
   type AgentEventEnvelope,
   type CreateSessionV2Request,
+  type PermissionActionV2,
+  type ProviderId,
   type ReviewFindingV1,
 } from '@agent-dock/shared';
-import type { StartSessionOptions } from '@agent-dock/agent-runtime';
+import {
+  CLAUDE_CLI_SANDBOX_TOOLS,
+  claudeToolEffects,
+  type StartSessionOptions,
+} from '@agent-dock/agent-runtime';
 import { z } from 'zod';
-import type { SessionManager } from './session-manager.js';
-import type { RefineSessionOutcome, RefineSessionPort } from './refine-subagent.js';
-import type { ImplementSessionOutcome, ImplementSessionPort } from './implement-orchestrator.js';
+import { normalizeEffectsAction } from './permission-policy.js';
+import { WorkspaceAccessError, type SessionManager } from './session-manager.js';
+import {
+  evaluateRefinePermission,
+  type RefineSessionOutcome,
+  type RefineSessionPort,
+} from './refine-subagent.js';
+import {
+  evaluateImplementPermission,
+  type ImplementSessionEnd,
+  type ImplementSessionOutcome,
+  type ImplementSessionPort,
+} from './implement-orchestrator.js';
 import type { LlmPassOutcome, ReviewSessionPort } from './review-gates.js';
+import { resolveWorkspaceIdentity, type WorkspaceIdentity } from './workspace-identity.js';
+import { isWorkspaceTrusted } from './workspace-trust-guard.js';
+import type { WorkspaceTrustStore } from './workspace-trust-store.js';
 
 /**
  * The real adapters between the phase modules' session ports (issues #179-181) and agentdock's own
@@ -37,6 +58,37 @@ import type { LlmPassOutcome, ReviewSessionPort } from './review-gates.js';
  * it would have done anyway ("a provider's structured-output guarantee is not something to take on
  * trust at a phase boundary"). Moving these onto the interactive path is a follow-up, not a
  * silent gap — a payload that does not parse fails the phase rather than being waved through.
+ *
+ * ## What a phase session is allowed to do, decided here rather than inherited
+ *
+ * The legacy path has no per-call permission callback, and a bare `claude -p` inherits whatever the
+ * operator's own Claude settings allow plus any hooks in the repository's `.claude/settings.json`.
+ * A Refine prompt carries an issue body a stranger may have written, and Implement's prompt is
+ * built from the spec Refine derived from it, so every phase is inside a prompt-injection blast
+ * radius. Three things close that before a provider process exists:
+ *
+ * 1. **A stated sandbox per phase** (issue #191): `read-only` for Refine, Draft and Review,
+ *    `workspace-write` for Implement. For Claude that scope is a real launch restriction
+ *    (`buildClaudeArgs()`: an explicit `--tools` set, a `--disallowedTools` floor, a fail-closed
+ *    permission mode, no settings files, no MCP servers).
+ * 2. **The phase's permission evaluator judges that grant before dispatch.** Every tool the Claude
+ *    session will be launched with is classified with agentdock's own effects table and run through
+ *    `evaluateRefinePermission()` (read-only phases) or `evaluateImplementPermission()`; a single
+ *    denial refuses the dispatch (`assertPhaseToolGrant()`). Widening a grant past what a phase's
+ *    evaluator allows is therefore a refused session, not a silently wider one.
+ * 3. **Workspace trust for a caller-named repository.** Refine and Draft read a repository path
+ *    the renderer sends. With a trust store configured, that path must resolve to a trusted
+ *    workspace — the same check `/sessions` applies — and the session is bound to that workspace
+ *    identity, so a revocation blocks or cancels it. Review and Implement run in daemon-owned
+ *    worktrees whose trust is checked against the source repository by `OwnedWorktreeManager`.
+ *
+ * **Codex phases are refused, fail-closed.** `codex exec` has no tool list to restrict: its
+ * `--sandbox` scope is the whole restriction and it leaves the shell available, it still loads the
+ * operator's own Codex config including any `mcp_servers` (which run outside that sandbox), and a
+ * process a Codex session spawns can outlive the session and race the daemon's post-session
+ * commit over the worktree it controls. Every Codex grant includes a command, which every phase
+ * evaluator denies, so `assertProviderGrant()` refuses Codex rather than skipping the check.
+ * Re-enabling it needs Codex's MCP and approval config pinned and live-verified first.
  */
 
 /** Recovers the last well-formed JSON object a session emitted. */
@@ -84,6 +136,17 @@ export interface PhaseSessionOptions {
   timeoutMs?: number;
 }
 
+export interface AwaitedPhaseSessionOptions extends PhaseSessionOptions {
+  /**
+   * Required, so every construction site states which one it is. A trust store means the request's
+   * `cwd` is a caller-named repository (Refine, Draft) and must be a trusted workspace before
+   * anything is dispatched into it. `'daemon-owned-worktree'` means the `cwd` is a worktree the
+   * daemon resolved by id itself (Review), whose trust was bound to its source repository when
+   * `OwnedWorktreeManager` created it.
+   */
+  workspaceTrust: WorkspaceTrustStore | 'daemon-owned-worktree';
+}
+
 const DEFAULT_TIMEOUT_MS = 30 * 60_000;
 
 export class PhaseSessionError extends Error {
@@ -114,18 +177,105 @@ export class PhaseSessionError extends Error {
  */
 type PhaseSandbox = NonNullable<StartSessionOptions['sandbox']>;
 
-function startSession(
+const nativeRealpath = promisify(realpath.native);
+
+/** A phase's fail-closed permission shape: exactly what `evaluate*Permission()` return. */
+export type PhasePermissionEvaluator = (action: PermissionActionV2) => {
+  readonly outcome: 'allow' | 'deny';
+  readonly reason: string;
+};
+
+/**
+ * The action the daemon derives for a Claude built-in tool: agentdock's own effects table
+ * (`claudeToolEffects`, the one the SDK transport classifies every call with) normalized the same
+ * way an approval request is. An unknown tool comes out as an incompletely-described external
+ * side effect, which every phase evaluator denies.
+ */
+export function claudeToolAction(tool: string): PermissionActionV2 {
+  return normalizeEffectsAction({ ...claudeToolEffects(tool), target: `tool:${tool}` });
+}
+
+/**
+ * Refuses a tool grant the phase's own evaluator would deny for any one of its tools. Throws
+ * before anything is dispatched, with the offending tools and reasons as the message.
+ */
+export function assertPhaseToolGrant(
+  tools: readonly string[],
+  evaluate: PhasePermissionEvaluator,
+): void {
+  const denied = tools
+    .map((tool) => ({ tool, verdict: evaluate(claudeToolAction(tool)) }))
+    .filter(({ verdict }) => verdict.outcome !== 'allow')
+    .map(({ tool, verdict }) => `${tool}: ${verdict.reason}`);
+  if (denied.length > 0) {
+    throw new PhaseSessionError(
+      `the phase session was not dispatched: its tool grant exceeds the phase's permissions (${denied.join(', ')})`,
+    );
+  }
+}
+
+function assertProviderGrant(
+  provider: ProviderId,
+  sandbox: PhaseSandbox,
+  evaluate: PhasePermissionEvaluator,
+): void {
+  switch (provider) {
+    case 'claude':
+      assertPhaseToolGrant(CLAUDE_CLI_SANDBOX_TOOLS[sandbox], evaluate);
+      return;
+    case 'codex':
+      // Fail closed. `codex exec` has no tool list to judge: it keeps a shell, loads the operator's
+      // MCP servers outside its sandbox, and a process it spawns can outlive the session and race
+      // the daemon's post-session commit. See the module comment.
+      throw new PhaseSessionError(
+        'phase sessions are not available on Codex yet: its launch cannot be restricted to the phase’s tools',
+      );
+    default: {
+      const unreachable: never = provider;
+      throw new PhaseSessionError(
+        `no phase tool grant is defined for provider ${String(unreachable)}`,
+      );
+    }
+  }
+}
+
+/** The `/sessions` route's admission check, for a phase whose `cwd` the caller named. */
+async function trustedWorkspace(
+  trustStore: WorkspaceTrustStore,
+  cwd: string,
+): Promise<WorkspaceIdentity> {
+  const workspace = await resolveWorkspaceIdentity(cwd).catch(() => undefined);
+  if (!workspace || !(await isWorkspaceTrusted(trustStore, workspace))) {
+    throw new WorkspaceAccessError('workspace is not trusted');
+  }
+  return workspace;
+}
+
+async function startSession(
   manager: SessionManager,
   request: CreateSessionV2Request,
   sandbox: PhaseSandbox,
-): string {
+  evaluate: PhasePermissionEvaluator,
+  workspaceTrust: WorkspaceTrustStore | 'daemon-owned-worktree',
+): Promise<string> {
+  assertProviderGrant(request.provider, sandbox, evaluate);
+  const workspace =
+    workspaceTrust === 'daemon-owned-worktree'
+      ? undefined
+      : await trustedWorkspace(workspaceTrust, request.cwd);
+  // The OS's own spelling of the path (`realpath.native`): Claude Code compares a tool's target with
+  // its working directory by the long form, so a cwd spelled with an 8.3 short name (`GEBRUI~1`)
+  // makes every in-tree read look like an out-of-tree one, which the phase's fail-closed permission
+  // mode then denies. Observed live against a `%TEMP%` path.
+  const cwd = workspace?.canonicalPath ?? request.cwd;
+  const launchCwd = await nativeRealpath(cwd).catch(() => cwd);
   const session = manager.create(
     request.provider,
-    request.cwd,
+    launchCwd,
     request.prompt ?? '',
     undefined, // resumeProviderSessionId
     1, // protocolVersion
-    undefined, // workspace
+    workspace, // binds the session to it: a blocked or revoked workspace refuses or cancels it
     undefined, // providerStatus
     sandbox,
     request.model,
@@ -141,10 +291,56 @@ export class DispatchOnlyPhaseSessions implements ImplementSessionPort {
     this.#manager = options.sessionManager;
   }
 
-  /** The one phase that exists to change files, and so the one that asks for write scope. */
+  /**
+   * The one phase that exists to change files, and so the one that asks for write scope — and
+   * only that: `evaluateImplementPermission()` denies anything that could run a command or reach
+   * the network. Its `cwd` is the owned worktree `ImplementOrchestrator` just created, after
+   * `OwnedWorktreeManager` checked the source repository's trust.
+   */
   async run(request: CreateSessionV2Request): Promise<ImplementSessionOutcome> {
-    return { sessionId: startSession(this.#manager, request, 'workspace-write') };
+    const sessionId = await startSession(
+      this.#manager,
+      request,
+      'workspace-write',
+      evaluateImplementPermission,
+      'daemon-owned-worktree',
+    );
+    // Still dispatch-only: `ended` is a promise the orchestrator hangs its own post-session commit
+    // on, not something this call waits for.
+    return { sessionId, ended: sessionEnd(this.#manager, sessionId) };
   }
+}
+
+/**
+ * Settles with how a session ended, once its terminal event is recorded. Never rejects: a session
+ * that cannot be observed reads as `failed`, which the orchestrator treats as "commit nothing".
+ */
+function sessionEnd(manager: SessionManager, sessionId: string): Promise<ImplementSessionEnd> {
+  return new Promise<ImplementSessionEnd>((resolve) => {
+    let settled = false;
+    // Same replay subtlety as `AwaitedPhaseSessions.#await`: `subscribe()` replays synchronously,
+    // so a session that already ended settles this before there is anything to unsubscribe.
+    const observer: { off?: () => void } = {};
+    const finish = (end: ImplementSessionEnd): void => {
+      if (settled) return;
+      settled = true;
+      observer.off?.();
+      resolve(end);
+    };
+    const subscription = manager.subscribe(
+      sessionId,
+      0,
+      (_index, event: AgentEventEnvelope) => {
+        if (event.type === 'session.completed') finish('completed');
+        else if (event.type === 'session.failed') finish('failed');
+        else if (event.type === 'session.cancelled') finish('cancelled');
+      },
+      1,
+    );
+    observer.off = subscription;
+    if (!subscription) finish('failed');
+    else if (settled) subscription();
+  });
 }
 
 interface AwaitedSession {
@@ -157,10 +353,19 @@ interface AwaitedSession {
 export class AwaitedPhaseSessions implements RefineSessionPort, ReviewSessionPort {
   readonly #manager: SessionManager;
   readonly #timeoutMs: number;
+  readonly #workspaceTrust: WorkspaceTrustStore | 'daemon-owned-worktree';
 
-  constructor(options: PhaseSessionOptions) {
+  constructor(options: AwaitedPhaseSessionOptions) {
     this.#manager = options.sessionManager;
     this.#timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    this.#workspaceTrust = options.workspaceTrust;
+  }
+
+  /** Refine's pre-baseline admission check (see `RefineSessionPort.admit`). */
+  async admit(cwd: string): Promise<void> {
+    if (this.#workspaceTrust !== 'daemon-owned-worktree') {
+      await trustedWorkspace(this.#workspaceTrust, cwd);
+    }
   }
 
   async run(request: CreateSessionV2Request): Promise<RefineSessionOutcome & LlmPassOutcome> {
@@ -178,8 +383,15 @@ export class AwaitedPhaseSessions implements RefineSessionPort, ReviewSessionPor
 
   async #await(request: CreateSessionV2Request): Promise<AwaitedSession> {
     // Refine and Review both only read: Refine produces a spec, Review produces findings and a
-    // verdict, and neither is allowed to edit the tree it is judging. Pinned rather than inherited.
-    const sessionId = startSession(this.#manager, request, 'read-only');
+    // verdict, and neither is allowed to edit the tree it is judging. Pinned rather than inherited,
+    // and judged by the read-only evaluator before dispatch (Review's shape is Refine's exactly).
+    const sessionId = await startSession(
+      this.#manager,
+      request,
+      'read-only',
+      evaluateRefinePermission,
+      this.#workspaceTrust,
+    );
     const toolsUsed: string[] = [];
     const texts: string[] = [];
     return new Promise<AwaitedSession>((resolve, reject) => {

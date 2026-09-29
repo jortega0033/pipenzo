@@ -8,6 +8,7 @@ import {
   parseIssueDraft,
 } from '../src/issue-drafter.js';
 import { REFINE_TOOL_ALLOWLIST, type RefineSessionPort } from '../src/refine-subagent.js';
+import { WorkspaceAccessError } from '../src/session-manager.js';
 
 /**
  * Issue #84's daemon half. The drafter is Refine's shape without Refine's job, and the tests are
@@ -115,6 +116,13 @@ describe('IssueDrafter', () => {
       drafter({ throws: new Error('provider offline') }).draft(REQUEST),
     );
     expect(error.code).toBe('session_failed');
+  });
+
+  it('reports a port refusing an untrusted workspace as workspace_untrusted', async () => {
+    const error = await rejection(() =>
+      drafter({ throws: new WorkspaceAccessError('workspace is not trusted') }).draft(REQUEST),
+    );
+    expect(error.code).toBe('workspace_untrusted');
   });
 });
 

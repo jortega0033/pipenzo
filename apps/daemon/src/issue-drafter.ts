@@ -6,7 +6,12 @@ import {
   type PipenzoIdeaDraftRequestV1,
   type PipenzoIssueDraftV1,
 } from '@agent-dock/shared';
-import { REFINE_TOOL_ALLOWLIST, assertRefineToolsOnly, type RefineSessionPort } from './refine-subagent.js';
+import {
+  REFINE_TOOL_ALLOWLIST,
+  assertRefineToolsOnly,
+  isWorkspaceUntrustedError,
+  type RefineSessionPort,
+} from './refine-subagent.js';
 
 /**
  * The "New from idea" drafter (Pipenzo issue #84).
@@ -35,7 +40,13 @@ import { REFINE_TOOL_ALLOWLIST, assertRefineToolsOnly, type RefineSessionPort } 
 
 const MAX_IDEA_CHARS = 8_000;
 
-export type IssueDraftErrorCode = 'invalid_request' | 'draft_invalid' | 'draft_missing' | 'read_only_violation' | 'session_failed';
+export type IssueDraftErrorCode =
+  | 'invalid_request'
+  | 'draft_invalid'
+  | 'draft_missing'
+  | 'read_only_violation'
+  | 'session_failed'
+  | 'workspace_untrusted';
 
 export class IssueDraftError extends Error {
   readonly code: IssueDraftErrorCode;
@@ -72,6 +83,12 @@ export class IssueDrafter {
     try {
       outcome = await this.#sessions.run(buildIssueDraftSessionRequest(request));
     } catch (error) {
+      if (isWorkspaceUntrustedError(error)) {
+        throw new IssueDraftError(
+          'workspace_untrusted',
+          'the repository is not a trusted workspace; trust it before drafting from it',
+        );
+      }
       throw new IssueDraftError(
         'session_failed',
         error instanceof Error ? error.message : 'the drafting session failed',

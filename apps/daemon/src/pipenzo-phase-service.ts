@@ -583,6 +583,7 @@ const REFINE_CODES: Record<RefinePhaseError['code'], PipenzoPhaseErrorCodeV1> = 
   baseline_unavailable: 'baseline_unavailable',
   dirty_checkout: 'dirty_checkout',
   baseline_changed: 'baseline_changed',
+  workspace_untrusted: 'workspace_untrusted',
 };
 
 const IMPLEMENT_CODES: Record<ImplementOrchestratorError['code'], PipenzoPhaseErrorCodeV1> = {
@@ -592,6 +593,7 @@ const IMPLEMENT_CODES: Record<ImplementOrchestratorError['code'], PipenzoPhaseEr
   worktree_failed: 'worktree_failed',
   worktree_secret_risk: 'worktree_secret_risk',
   branch_failed: 'branch_failed',
+  commit_failed: 'commit_failed',
   session_failed: 'session_failed',
 };
 
@@ -610,6 +612,7 @@ const DRAFT_CODES: Record<IssueDraftError['code'], PipenzoPhaseErrorCodeV1> = {
   draft_missing: 'spec_missing',
   read_only_violation: 'read_only_violation',
   session_failed: 'session_failed',
+  workspace_untrusted: 'workspace_untrusted',
 };
 
 const GITHUB_CODES: Record<GitHubClientError['code'], PipenzoPhaseErrorCodeV1> = {

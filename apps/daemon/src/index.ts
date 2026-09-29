@@ -246,8 +246,13 @@ async function main() {
   });
 
   const phaseService = new PipenzoPhaseService({
-    refineSessions: new AwaitedPhaseSessions({ sessionManager }),
-    reviewSessions: new AwaitedPhaseSessions({ sessionManager }),
+    // Refine and Draft read a repository path the renderer names, so it must be a trusted
+    // workspace; Review reads a daemon-owned worktree resolved by id.
+    refineSessions: new AwaitedPhaseSessions({ sessionManager, workspaceTrust: trustStore }),
+    reviewSessions: new AwaitedPhaseSessions({
+      sessionManager,
+      workspaceTrust: 'daemon-owned-worktree',
+    }),
     implementSessions: new DispatchOnlyPhaseSessions({ sessionManager }),
     worktrees: worktreeManager,
     github: () =>

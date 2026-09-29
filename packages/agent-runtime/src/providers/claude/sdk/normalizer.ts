@@ -40,7 +40,16 @@ function samePath(left: string, right: string): boolean {
   return process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b;
 }
 
-function toolEffects(name: string): { possibleEffects: Effect[]; effectsComplete: boolean } {
+/**
+ * The effects a Claude built-in tool can have, by name. Exported so a caller that grants a tool set
+ * up front (a sandbox-pinned `claude -p` session, which has no per-call permission callback) can
+ * classify that grant with the same table the SDK path classifies each call with. Anything not
+ * named here is an incompletely-described external side effect, so an unknown tool fails closed.
+ */
+export function claudeToolEffects(name: string): {
+  possibleEffects: Effect[];
+  effectsComplete: boolean;
+} {
   if (['Read', 'Glob', 'Grep'].includes(name)) {
     return { possibleEffects: ['read'], effectsComplete: true };
   }
@@ -472,7 +481,7 @@ export class ClaudeAgentSdkNormalizer {
       toolCallId: identity.toolCallId,
       contentBlockId: identity.contentBlockId,
       toolName: name,
-      ...toolEffects(name),
+      ...claudeToolEffects(name),
     });
     return identity;
   }
