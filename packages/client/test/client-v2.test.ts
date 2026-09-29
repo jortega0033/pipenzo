@@ -1125,6 +1125,34 @@ describe('AgentDockClient.v2 pipenzo phases', () => {
     });
   });
 
+  /** Issues #342/#344: the board's connected-repo -> local checkout resolution. */
+  it('resolves a connected repository to its managed checkout over POST /v2/pipenzo/repos/checkout', async () => {
+    const { client, fetchImpl } = routeClient(200, {
+      repo: 'jortega0033/pipenzo',
+      repositoryPath: '/state/repos/jortega0033/pipenzo',
+    });
+    await expect(
+      client.v2.pipenzo.resolveCheckout({ repo: 'jortega0033/pipenzo' }),
+    ).resolves.toEqual({
+      repo: 'jortega0033/pipenzo',
+      repositoryPath: '/state/repos/jortega0033/pipenzo',
+    });
+    const call = fetchImpl.mock.calls.find(([url]) =>
+      String(url).endsWith('/v2/pipenzo/repos/checkout'),
+    );
+    expect((call?.[1] as RequestInit).method).toBe('POST');
+    expect(JSON.parse(String((call?.[1] as RequestInit).body))).toEqual({ repo: 'jortega0033/pipenzo' });
+  });
+
+  it('rejects a malformed checkout request before ever calling fetch', async () => {
+    const fetchImpl = vi.fn();
+    const client = makeClient(fetchImpl);
+    await expect(client.v2.pipenzo.resolveCheckout({ repo: 'not a repo' })).rejects.toBeInstanceOf(
+      ValidationError,
+    );
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it('rejects an unvalidated phase request before ever calling fetch', async () => {
     const fetchImpl = vi.fn();
     const client = makeClient(fetchImpl);

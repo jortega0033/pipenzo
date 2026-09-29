@@ -77,8 +77,8 @@ export const pipenzoRefineRequestV1Schema = z
     issueNumber: pipenzoIssueNumberV1Schema,
     /**
      * The repository checkout Refine reads. Refine writes nothing, so it never gets a worktree —
-     * it reads the operator's own clone, which the renderer already knows the path of because it
-     * is the path the operator chose.
+     * it reads the source checkout directly: for a board ticket, the managed checkout
+     * `POST /v2/pipenzo/repos/checkout` resolved for its connected repository (#342/#344).
      */
     repositoryPath: z.string().min(1).max(4_096),
     provider: providerIdSchema,

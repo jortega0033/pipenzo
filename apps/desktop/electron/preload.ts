@@ -75,6 +75,8 @@ import {
   pipenzoConnectReposRequestV1Schema,
   pipenzoConnectedReposV1Schema,
   pipenzoRepoListV1Schema,
+  pipenzoRepoCheckoutRequestV1Schema,
+  pipenzoRepoCheckoutResultV1Schema,
   pipenzoDeviceCodeV1Schema,
   pipenzoDeviceOutcomeV1Schema,
   pipenzoGitHubConnectionV1Schema,
@@ -149,6 +151,8 @@ import {
   type PipenzoConnectReposRequestV1,
   type PipenzoConnectedReposV1,
   type PipenzoRepoListV1,
+  type PipenzoRepoCheckoutRequestV1,
+  type PipenzoRepoCheckoutResultV1,
   type PipenzoDeviceCodeV1,
   type PipenzoDeviceOutcomeV1,
   type PipenzoGitHubConnectionV1,
@@ -299,6 +303,12 @@ export interface AgentDockBridge {
   pipenzoListRepos(): Promise<PipenzoRepoListV1>;
   pipenzoConnectedRepos(): Promise<PipenzoConnectedReposV1>;
   pipenzoConnectRepos(input: PipenzoConnectReposRequestV1): Promise<PipenzoConnectedReposV1>;
+  /**
+   * A connected repository's managed local checkout (issues #342/#344): the `repositoryPath` the
+   * board's Implement dialog passes to refine and implement. The daemon clones it on first need
+   * and refuses any repository that is not connected.
+   */
+  resolvePipenzoCheckout(input: PipenzoRepoCheckoutRequestV1): Promise<PipenzoRepoCheckoutResultV1>;
   selectAndUploadAttachments(sessionId?: string): Promise<AttachmentMetadataV2[]>;
   validateStructuredOutput(input: StructuredWorkflowRequestV2): Promise<StructuredWorkflowResultV2>;
   createSession(input: CreateSessionInput): Promise<AgentSession>;
@@ -962,6 +972,12 @@ const api: AgentDockBridge = {
     const parsed = pipenzoConnectReposRequestV1Schema.parse(input);
     return pipenzoConnectedReposV1Schema.parse(
       await ipcRenderer.invoke('daemon:pipenzo-connect-repos', parsed),
+    );
+  },
+  async resolvePipenzoCheckout(input) {
+    const parsed = pipenzoRepoCheckoutRequestV1Schema.parse(input);
+    return pipenzoRepoCheckoutResultV1Schema.parse(
+      await ipcRenderer.invoke('daemon:pipenzo-resolve-checkout', parsed),
     );
   },
   async startGitHubDeviceFlow() {

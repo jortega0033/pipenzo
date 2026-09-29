@@ -17,6 +17,7 @@ import { FileSessionStore } from './session-store.js';
 import { FileExecutionGraphStore } from './execution-graph-store.js';
 import { FileTicketStore } from './pipenzo-ticket-store.js';
 import { ConnectedReposStore } from './connected-repos-store.js';
+import { RepoCheckouts, reposRoot } from './repo-checkout.js';
 import { ensureStateDirectory, stateDirectory } from './state-directory.js';
 import { SubagentGraphStore } from './subagent-graph-store.js';
 import { OwnedWorktreeManager } from './worktree-manager.js';
@@ -142,6 +143,12 @@ async function main() {
   const connectedRepos = new ConnectedReposStore(
     join(durableStateDirectory, 'connected-repos-v1.json'),
   );
+  // Where a connected repo's local checkout lives (issues #342/#344): cloned on first need into
+  // `<state dir>/repos/<owner>/<repo>` (or under `PIPENZO_REPOS_DIR`), reused after. One instance,
+  // because it is also what serializes concurrent requests for the same repository -- see
+  // `repo-checkout.ts`. The clone never sees the GitHub credential above; it goes through the
+  // user's own git credential helper, the same floor the publish service's push uses.
+  const repoCheckouts = new RepoCheckouts(reposRoot(durableStateDirectory));
 
   const sessionRecovery = sessionStore.getRecoveryReport();
   const graphRecovery = executionGraphStore.recoveryReport();
@@ -312,6 +319,7 @@ async function main() {
     phaseEvents,
     crashRecovery,
     connectedRepos,
+    repoCheckouts,
     // The same lazy, per-call client boundary as the phase service and phase machine above: built
     // from a token read at call time, never retained between requests.
     pipenzoGitHubClient: () =>
