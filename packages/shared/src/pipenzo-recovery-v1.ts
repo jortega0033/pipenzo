@@ -67,8 +67,11 @@ import {
  *   of that, because nothing in the record distinguishes that case from a human having moved the
  *   ticket while the write was in flight. **`lane` and `labels` on this entry are re-read from the
  *   store, so they describe where the ticket actually is, not where the park tried to put it.**
- *   Note that this report lives in daemon memory and a session is reported interrupted only once,
- *   so a ticket in this state is not re-parked by the next daemon start either.
+ *   This in-memory report resets on the next restart, and a session is reported interrupted by the
+ *   two stores' own sweeps only once ever -- so on its own, this state would be a ticket lost for
+ *   good. `apps/daemon/src/pipenzo-crash-recovery.ts` durably marks the ticket's own
+ *   `attempts[].outcome` with the lane it just reconciled back to instead (issue #201), so the
+ *   interruption survives this process even though the in-memory report does not.
  * - `superseded` — recovery did not leave `pipenzo:interrupted` on the ticket, for one of two
  *   reasons: a human moved it out of the park before the write reached it (the write was abandoned
  *   unperformed), or the write landed but the transition settled on a different label — a racing
