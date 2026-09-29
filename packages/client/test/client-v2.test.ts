@@ -228,14 +228,26 @@ describe('AgentDockClient.v2 MCP control', () => {
     });
     const client = makeClient(fetchImpl);
     await expect(client.v2.integrations.mcp.list('codex', 'C:\\repo')).resolves.toEqual(list);
-    await expect(client.v2.integrations.mcp.configure({
-      provider: 'codex', cwd: 'C:\\repo', action: 'add', name: 'docs', scope: 'user',
-      config: { transport: 'streamable_http', url: 'https://mcp.example.test' },
-    })).resolves.toEqual(list);
-    await expect(client.v2.integrations.mcp.configure({
-      provider: 'codex', cwd: 'C:\\repo', action: 'add', name: 'unsafe', scope: 'user',
-      config: { transport: 'streamable_http', url: 'http://mcp.example.test' },
-    })).rejects.toBeInstanceOf(ValidationError);
+    await expect(
+      client.v2.integrations.mcp.configure({
+        provider: 'codex',
+        cwd: 'C:\\repo',
+        action: 'add',
+        name: 'docs',
+        scope: 'user',
+        config: { transport: 'streamable_http', url: 'https://mcp.example.test' },
+      }),
+    ).resolves.toEqual(list);
+    await expect(
+      client.v2.integrations.mcp.configure({
+        provider: 'codex',
+        cwd: 'C:\\repo',
+        action: 'add',
+        name: 'unsafe',
+        scope: 'user',
+        config: { transport: 'streamable_http', url: 'http://mcp.example.test' },
+      }),
+    ).rejects.toBeInstanceOf(ValidationError);
     expect(fetchImpl).toHaveBeenCalledTimes(3);
     expect(fetchImpl.mock.calls[2]?.[1]).toMatchObject({
       method: 'POST',
@@ -900,8 +912,12 @@ describe('AgentDockClient.v2 worktree cleanup options', () => {
       return jsonResponse(200, CLEANED);
     });
     await expect(makeClient(fetchImpl).v2.worktrees.cleanup(WORKTREE_ID)).resolves.toEqual(CLEANED);
-    const call = fetchImpl.mock.calls.find(([url]) => String(url).endsWith('/v2/worktrees/cleanup'));
-    expect(JSON.parse(String((call?.[1] as RequestInit).body))).toEqual({ worktreeId: WORKTREE_ID });
+    const call = fetchImpl.mock.calls.find(([url]) =>
+      String(url).endsWith('/v2/worktrees/cleanup'),
+    );
+    expect(JSON.parse(String((call?.[1] as RequestInit).body))).toEqual({
+      worktreeId: WORKTREE_ID,
+    });
   });
 
   it('passes deleteUntracked and deleteBranch through to the request body', async () => {
@@ -909,8 +925,13 @@ describe('AgentDockClient.v2 worktree cleanup options', () => {
       if (url.endsWith('/health')) return healthResponse([1, 2]);
       return jsonResponse(200, CLEANED);
     });
-    await makeClient(fetchImpl).v2.worktrees.cleanup(WORKTREE_ID, { deleteUntracked: true, deleteBranch: true });
-    const call = fetchImpl.mock.calls.find(([url]) => String(url).endsWith('/v2/worktrees/cleanup'));
+    await makeClient(fetchImpl).v2.worktrees.cleanup(WORKTREE_ID, {
+      deleteUntracked: true,
+      deleteBranch: true,
+    });
+    const call = fetchImpl.mock.calls.find(([url]) =>
+      String(url).endsWith('/v2/worktrees/cleanup'),
+    );
     expect(JSON.parse(String((call?.[1] as RequestInit).body))).toEqual({
       worktreeId: WORKTREE_ID,
       deleteUntracked: true,
@@ -921,7 +942,10 @@ describe('AgentDockClient.v2 worktree cleanup options', () => {
   it('surfaces worktree_dirty as a typed DaemonError', async () => {
     const fetchImpl = vi.fn().mockImplementation(async (url: string) => {
       if (url.endsWith('/health')) return healthResponse([1, 2]);
-      return jsonResponse(409, { code: 'worktree_dirty', error: 'Dirty worktrees are never removed automatically' });
+      return jsonResponse(409, {
+        code: 'worktree_dirty',
+        error: 'Dirty worktrees are never removed automatically',
+      });
     });
     const failure = await makeClient(fetchImpl)
       .v2.worktrees.cleanup(WORKTREE_ID)
@@ -971,7 +995,15 @@ describe('AgentDockClient.v2 pipenzo publish gate', () => {
   });
 
   it('publishes push-and-open-pull-request with the pull request body attached', async () => {
-    const opened = { ...PUBLISH_RESULT, pullRequest: { number: 12, htmlUrl: 'https://github.com/o/r/pull/12', baseRef: 'main', draft: false } };
+    const opened = {
+      ...PUBLISH_RESULT,
+      pullRequest: {
+        number: 12,
+        htmlUrl: 'https://github.com/o/r/pull/12',
+        baseRef: 'main',
+        draft: false,
+      },
+    };
     const fetchImpl = vi.fn().mockImplementation(async (url: string) => {
       if (url.endsWith('/health')) return healthResponse([1, 2]);
       return jsonResponse(200, opened);
@@ -1007,12 +1039,18 @@ describe('AgentDockClient.v2 pipenzo publish gate', () => {
   it('surfaces the daemon publish gate closed error codes as a typed DaemonError', async () => {
     const fetchImpl = vi.fn().mockImplementation(async (url: string) => {
       if (url.endsWith('/health')) return healthResponse([1, 2]);
-      return jsonResponse(409, { code: 'uncommitted_changes', error: 'the worktree has uncommitted changes' });
+      return jsonResponse(409, {
+        code: 'uncommitted_changes',
+        error: 'the worktree has uncommitted changes',
+      });
     });
     const client = makeClient(fetchImpl);
 
     const failure = await client.v2.pipenzo
-      .publish({ worktreeId: WORKTREE_ID, branch: 'issue-94', operation: 'push' }, 'test-nonce-value')
+      .publish(
+        { worktreeId: WORKTREE_ID, branch: 'issue-94', operation: 'push' },
+        'test-nonce-value',
+      )
       .catch((error: unknown) => error);
     expect(failure).toBeInstanceOf(DaemonError);
     expect(failure).toMatchObject({
@@ -1064,7 +1102,9 @@ describe('AgentDockClient.v2 pipenzo phases', () => {
         provider: 'claude',
       }),
     ).resolves.toEqual(result);
-    const call = fetchImpl.mock.calls.find(([url]) => String(url).endsWith('/v2/pipenzo/implement'));
+    const call = fetchImpl.mock.calls.find(([url]) =>
+      String(url).endsWith('/v2/pipenzo/implement'),
+    );
     expect(call?.[1]).toMatchObject({ method: 'POST' });
     // The schema has no field for one, so a caller cannot name a directory for the daemon either.
     expect(JSON.parse(String((call?.[1] as RequestInit).body))).not.toHaveProperty('worktreePath');
@@ -1084,9 +1124,15 @@ describe('AgentDockClient.v2 pipenzo phases', () => {
     const { fetchImpl, client } = routeClient(200, diffResult);
 
     await expect(
-      client.v2.pipenzo.implementDiff({ worktreeId: WORKTREE_ID, baseCommit: BASE, headCommit: HEAD }),
+      client.v2.pipenzo.implementDiff({
+        worktreeId: WORKTREE_ID,
+        baseCommit: BASE,
+        headCommit: HEAD,
+      }),
     ).resolves.toEqual(diffResult);
-    const call = fetchImpl.mock.calls.find(([url]) => String(url).endsWith('/v2/pipenzo/implement/diff'));
+    const call = fetchImpl.mock.calls.find(([url]) =>
+      String(url).endsWith('/v2/pipenzo/implement/diff'),
+    );
     expect(call?.[1]).toMatchObject({ method: 'POST' });
     expect(JSON.parse(String((call?.[1] as RequestInit).body))).not.toHaveProperty('worktreePath');
   });
@@ -1098,7 +1144,9 @@ describe('AgentDockClient.v2 pipenzo phases', () => {
       baseCommit: BASE,
       headCommit: HEAD,
       implementerTier: 'mid',
-      deterministic: [{ id: 'build', status: 'failed', summary: 'pnpm build exited 1', durationMs: 5 }],
+      deterministic: [
+        { id: 'build', status: 'failed', summary: 'pnpm build exited 1', durationMs: 5 },
+      ],
       risk: 'low',
     };
     const { client } = routeClient(200, report);
@@ -1182,7 +1230,9 @@ describe('AgentDockClient.v2 pipenzo phases', () => {
       String(url).endsWith('/v2/pipenzo/repos/checkout'),
     );
     expect((call?.[1] as RequestInit).method).toBe('POST');
-    expect(JSON.parse(String((call?.[1] as RequestInit).body))).toEqual({ repo: 'jortega0033/pipenzo' });
+    expect(JSON.parse(String((call?.[1] as RequestInit).body))).toEqual({
+      repo: 'jortega0033/pipenzo',
+    });
   });
 
   it('rejects a malformed checkout request before ever calling fetch', async () => {
@@ -1194,11 +1244,56 @@ describe('AgentDockClient.v2 pipenzo phases', () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
+  /** Issue #128: Settings' lesson-memory panel. */
+  it('lists saved lessons over GET /v2/pipenzo/lessons', async () => {
+    const lesson = {
+      schemaVersion: 1 as const,
+      id: '12345678-1234-4234-8234-123456789abc',
+      repo: 'jortega0033/pipenzo',
+      issueNumber: 94,
+      text: 'On Windows the host sets Path, not PATH.',
+      savedAt: '2026-09-06T14:14:00.000Z',
+    };
+    const { client, fetchImpl } = routeClient(200, { lessons: [lesson] });
+
+    await expect(client.v2.pipenzo.lessons()).resolves.toEqual({ lessons: [lesson] });
+    const call = fetchImpl.mock.calls.find(([url]) => String(url).endsWith('/v2/pipenzo/lessons'));
+    expect((call?.[1] as RequestInit | undefined)?.method ?? 'GET').toBe('GET');
+  });
+
+  it('deletes exactly the named lesson over POST /v2/pipenzo/lessons/delete', async () => {
+    const { client, fetchImpl } = routeClient(200, { lessons: [] });
+
+    await expect(
+      client.v2.pipenzo.deleteLesson({ id: '12345678-1234-4234-8234-123456789abc' }),
+    ).resolves.toEqual({ lessons: [] });
+    const call = fetchImpl.mock.calls.find(([url]) =>
+      String(url).endsWith('/v2/pipenzo/lessons/delete'),
+    );
+    expect((call?.[1] as RequestInit).method).toBe('POST');
+    expect(JSON.parse(String((call?.[1] as RequestInit).body))).toEqual({
+      id: '12345678-1234-4234-8234-123456789abc',
+    });
+  });
+
+  it('rejects a malformed lesson delete request before ever calling fetch', async () => {
+    const fetchImpl = vi.fn();
+    const client = makeClient(fetchImpl);
+    await expect(client.v2.pipenzo.deleteLesson({ id: 'not-a-uuid' })).rejects.toBeInstanceOf(
+      ValidationError,
+    );
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it('rejects an unvalidated phase request before ever calling fetch', async () => {
     const fetchImpl = vi.fn();
     const client = makeClient(fetchImpl);
     await expect(
-      client.v2.pipenzo.refine({ issueNumber: 0, repositoryPath: '/repos/pipenzo', provider: 'claude' }),
+      client.v2.pipenzo.refine({
+        issueNumber: 0,
+        repositoryPath: '/repos/pipenzo',
+        provider: 'claude',
+      }),
     ).rejects.toBeInstanceOf(ValidationError);
     await expect(
       client.v2.pipenzo.claimIssue({ issueNumber: 184, assignee: 'not a login' }),

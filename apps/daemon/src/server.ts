@@ -36,6 +36,8 @@ import {
 } from './routes/pipenzo-checkout.js';
 import type { ConnectedReposStore } from './connected-repos-store.js';
 import type { GitHubClient } from './github-client.js';
+import { registerPipenzoLessonRoutes } from './routes/pipenzo-lessons.js';
+import type { LessonStore } from './pipenzo-lesson-store.js';
 import { registerPipenzoHealthRoutes, type PipenzoHealthSource } from './routes/pipenzo-health.js';
 import type { DaemonGitHubCredential } from './github-credential.js';
 
@@ -108,6 +110,12 @@ export interface BuildServerOptions {
    * resolved.
    */
   githubCredential?: DaemonGitHubCredential;
+  /**
+   * Local, human-gated lesson memory (issue #18): Settings' lesson-memory panel (issue #128).
+   * Optional for the same reason every other Pipenzo surface is — a daemon assembled without one
+   * has no lesson routes at all, rather than routes that fail at call time.
+   */
+  lessonStore?: LessonStore;
 }
 
 /**
@@ -196,6 +204,7 @@ export function buildServer(opts: BuildServerOptions): FastifyInstance {
     if (opts.connectedRepos && opts.repoCheckouts)
       registerPipenzoCheckoutRoutes(app, opts.connectedRepos, opts.repoCheckouts);
     if (opts.pipenzoHealth) registerPipenzoHealthRoutes(app, opts.pipenzoHealth);
+    if (opts.lessonStore) registerPipenzoLessonRoutes(app, opts.lessonStore);
     if (opts.attachmentStore)
       registerV2MultimodalRoutes(app, opts.attachmentStore, opts.sessionManager);
   });

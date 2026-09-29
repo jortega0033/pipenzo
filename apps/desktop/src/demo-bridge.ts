@@ -30,6 +30,21 @@ const DEMO_REPOSITORY = {
 /** Fixed rather than `new Date()`, so two demo runs never render differently. */
 const DEMO_CREDENTIAL_STORED_AT = '2025-01-01T00:00:00.000Z';
 
+/** The demo's one saved lesson (issue #128's Settings panel), so "Try a demo" shows a filled-in
+ * lesson-memory list rather than an empty one on the one screen most likely to be opened out of
+ * curiosity. `id` is a fixed, obviously-fake UUID -- deterministic like every other demo fixture,
+ * so two demo runs never render differently -- and `pipenzoDeleteLesson` below actually removes it
+ * from the in-memory list rather than refusing, so the panel's delete control is not the one demo
+ * dead end on an otherwise fully interactive screen. */
+const DEMO_LESSON = {
+  schemaVersion: 1 as const,
+  id: '12345678-1234-4234-8234-123456789abc',
+  repo: DEMO_REPO,
+  issueNumber: 12,
+  text: 'Demo mode never calls a real provider, so a session here never leaves "starting".',
+  savedAt: DEMO_CREDENTIAL_STORED_AT,
+};
+
 /** Deterministic, always-"completed" interactive bridge for the shipped "Try a demo" mode. Reuses
  * the same provider/sandbox/trust fixtures as `asset-capture-bridge.ts` (see
  * `fixtures/provider-fixtures.ts`) so the two can't silently drift, but plays a richer script: it
@@ -47,6 +62,10 @@ export function createDemoBridge(): AgentDockBridge {
   // actually approves or denies -- the demo script is genuinely paused at the approval step, not
   // just delayed behind a fixed timer, so nothing plays past it until the viewer acts.
   let approvalContinuation: (() => void) | undefined;
+  // Local, human-gated lesson memory (issue #18). Mutable so Settings' delete control (issue #128)
+  // has something real to do in demo mode, the same reason `eventCallback` and friends above are
+  // closure state rather than constants.
+  let demoLessons = [DEMO_LESSON];
 
   const interactiveSessionId = '123e4567-e89b-42d3-a456-426614174000';
   const interactiveExecutionId = '123e4567-e89b-42d3-a456-426614174001';
@@ -199,6 +218,11 @@ export function createDemoBridge(): AgentDockBridge {
     // answer, the same as implement and refine above.
     resolvePipenzoCheckout: async () => {
       throw new Error('preparing a local checkout is not available in demo mode');
+    },
+    pipenzoLessons: async () => ({ lessons: demoLessons }),
+    pipenzoDeleteLesson: async (input) => {
+      demoLessons = demoLessons.filter((lesson) => lesson.id !== input.id);
+      return { lessons: demoLessons };
     },
     startGitHubDeviceFlow: async () => {
       throw new Error('signing in to GitHub is not available in demo mode');

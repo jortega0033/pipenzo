@@ -79,6 +79,8 @@ import {
   pipenzoRepoListV1Schema,
   pipenzoRepoCheckoutRequestV1Schema,
   pipenzoRepoCheckoutResultV1Schema,
+  pipenzoLessonListV1Schema,
+  pipenzoLessonDeleteRequestV1Schema,
   pipenzoDeviceCodeV1Schema,
   pipenzoDeviceOutcomeV1Schema,
   pipenzoGitHubConnectionV1Schema,
@@ -157,6 +159,8 @@ import {
   type PipenzoRepoListV1,
   type PipenzoRepoCheckoutRequestV1,
   type PipenzoRepoCheckoutResultV1,
+  type PipenzoLessonListV1,
+  type PipenzoLessonDeleteRequestV1,
   type PipenzoDeviceCodeV1,
   type PipenzoDeviceOutcomeV1,
   type PipenzoGitHubConnectionV1,
@@ -314,6 +318,14 @@ export interface AgentDockBridge {
    * and refuses any repository that is not connected.
    */
   resolvePipenzoCheckout(input: PipenzoRepoCheckoutRequestV1): Promise<PipenzoRepoCheckoutResultV1>;
+  /**
+   * Local, human-gated lesson memory (issue #18): Settings' lesson-memory panel (issue #128).
+   * `pipenzoLessons` is a local daemon read, no GitHub cost. `pipenzoDeleteLesson` removes exactly
+   * the one lesson named and answers with the list afterward — never a filtered view this renderer
+   * assembled itself, the same reasoning `pipenzoConnectRepos` follows.
+   */
+  pipenzoLessons(): Promise<PipenzoLessonListV1>;
+  pipenzoDeleteLesson(input: PipenzoLessonDeleteRequestV1): Promise<PipenzoLessonListV1>;
   selectAndUploadAttachments(sessionId?: string): Promise<AttachmentMetadataV2[]>;
   validateStructuredOutput(input: StructuredWorkflowRequestV2): Promise<StructuredWorkflowResultV2>;
   createSession(input: CreateSessionInput): Promise<AgentSession>;
@@ -987,6 +999,15 @@ const api: AgentDockBridge = {
     const parsed = pipenzoRepoCheckoutRequestV1Schema.parse(input);
     return pipenzoRepoCheckoutResultV1Schema.parse(
       await ipcRenderer.invoke('daemon:pipenzo-resolve-checkout', parsed),
+    );
+  },
+  async pipenzoLessons() {
+    return pipenzoLessonListV1Schema.parse(await ipcRenderer.invoke('daemon:pipenzo-lessons'));
+  },
+  async pipenzoDeleteLesson(input) {
+    const parsed = pipenzoLessonDeleteRequestV1Schema.parse(input);
+    return pipenzoLessonListV1Schema.parse(
+      await ipcRenderer.invoke('daemon:pipenzo-delete-lesson', parsed),
     );
   },
   async startGitHubDeviceFlow() {
