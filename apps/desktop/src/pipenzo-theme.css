@@ -2811,6 +2811,45 @@
     font-weight: 400;
   }
 
+  /* TicketDetail screen shell: header (id, title, stepper row, run-controls slot) plus the
+     centre `.stream` + right `.rail` body -- ported verbatim from TicketDetail.dc.html's own
+     "===== screen =====" section. `.body` and `.rail` are ported separately, under the DiffReview
+     screen shell comment further below -- both artboards share the exact same class names. See
+     TicketDetailScreen.tsx (issue #90) and RailBlock.tsx. */
+  .header {
+    padding: 0 24px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    flex-shrink: 0;
+    background: var(--color-bg);
+  }
+
+  .step-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-top: 4px;
+  }
+
+  .stream {
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    padding-top: 8px;
+  }
+
+  .rail-block {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px;
+    background: var(--color-surface-2);
+    border-radius: var(--radius-pipenzo);
+  }
+
   /* Card .resume block — ported verbatim from Foundations.dc.html's "pipenzo:interrupted" sample
      (the daemon died mid-run). `.resume-kv` is the mono last-phase/worktree-path/session grid;
      `.resume-why` explains why nothing auto-resumed on its own. See Resume.tsx. */
