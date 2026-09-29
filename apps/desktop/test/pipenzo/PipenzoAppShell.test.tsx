@@ -39,6 +39,8 @@ function installBridge(tickets: readonly PipenzoTicketViewV1[] = []) {
     pipenzoConnectedRepos: vi.fn().mockResolvedValue({ repositories: ['octocat/hello-world'] }),
     pipenzoListRepos: vi.fn().mockResolvedValue({ repositories: [], truncated: false }),
     pipenzoConnectRepos: vi.fn(),
+    pipenzoLessons: vi.fn().mockResolvedValue({ lessons: [] }),
+    pipenzoDeleteLesson: vi.fn(),
     pipenzoGitHubConnection: vi
       .fn()
       .mockResolvedValue({ state: 'connected', login: 'octocat', source: 'vault' }),
@@ -340,6 +342,8 @@ describe('PipenzoAppShell', () => {
       pipenzoConnectedRepos: vi.fn().mockResolvedValue({ repositories: ['octocat/hello-world'] }),
       pipenzoListRepos: vi.fn().mockResolvedValue({ repositories: [], truncated: false }),
       pipenzoConnectRepos: vi.fn(),
+      pipenzoLessons: vi.fn().mockResolvedValue({ lessons: [] }),
+      pipenzoDeleteLesson: vi.fn(),
       pipenzoGitHubConnection: vi
         .fn()
         .mockResolvedValue({ state: 'connected', login: 'octocat', source: 'vault' }),
