@@ -18,7 +18,14 @@ import { getBridge } from '../bridge.js';
  */
 export type PipenzoTicketListState =
   | { status: 'loading' }
-  | { status: 'ready'; tickets: readonly PipenzoTicketViewV1[] }
+  | {
+      status: 'ready';
+      tickets: readonly PipenzoTicketViewV1[];
+      /** The Working lane's capacity-pill denominator (issue #85), passed through from
+       * `GET /v2/pipenzo/tickets`'s own optional `workingLaneCapacity` unchanged -- see that
+       * field's doc comment (`pipenzo-phase-machine-v1.ts`) for why it can be absent. */
+      workingLaneCapacity?: number;
+    }
   | { status: 'error' };
 
 /**
@@ -63,7 +70,11 @@ export function usePipenzoTickets(): {
           // overlap when a phase event or a `ready` status arrives before the first settles, and
           // promises have no ordering between them, so the older answer can land last and win.
           if (cancelled || generation !== latest) return;
-          setState({ status: 'ready', tickets: list.tickets });
+          setState({
+            status: 'ready',
+            tickets: list.tickets,
+            workingLaneCapacity: list.workingLaneCapacity,
+          });
         })
         .catch(() => {
           if (cancelled || generation !== latest) return;

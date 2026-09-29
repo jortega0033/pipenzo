@@ -13,6 +13,7 @@ import {
 import { Banner } from '../components/primitives/Banner.js';
 import { Button } from '../components/primitives/Button.js';
 import { Card, CardFoot, CardMeta } from '../components/primitives/Card.js';
+import { WaitNote } from '../components/primitives/CardNote.js';
 import { Chip } from '../components/primitives/Chip.js';
 import { LoadLine } from '../components/primitives/LoadLine.js';
 import { SyncStatusPill, type SyncStatus } from '../components/primitives/SyncStatusPill.js';
@@ -72,10 +73,22 @@ import {
  *
  * `Card` -- id/title, plus the one status chip and foot line each lane's own real data already
  * supports without guessing (Working's phase, Ready-for-review's branch). This still is not a
- * guess at #85/#86/#87's lane-specific card content: Needs-human's seven variants (#86) and
- * Working's capacity pill/held cards (#85) stay their own tickets, and nothing here invents data
+ * guess at #86/#87's lane-specific card content: Needs-human's seven variants (#86) and
+ * Ready-for-review's ci-failed variant (#87) stay their own tickets, and nothing here invents data
  * those tickets are meant to add -- `ticket.phase`/`ticket.worktree` are already real fields on
  * `PipenzoTicketViewV1`, not placeholders standing in for a schema that does not exist yet.
+ *
+ * ## The Working lane's held card (issue #85)
+ *
+ * A Working ticket the ticket-list route reported `concurrency.state === 'held'` (see
+ * `working-lane-concurrency.ts`) renders `Card`'s own `held` dimming plus a `WaitNote` naming the
+ * real overlapping ticket and file straight off the wire -- never invented copy, since both are
+ * `ticket.concurrency`'s own fields once it is that variant. The foot's "Run anyway" is a `Button`
+ * with `disabled` and no `onClick`: `Main.dc.html`'s own markup gives that control no handler at
+ * all (a plain `<button class="btn sm ghost">`, unlike every other card action's `onClick={{...}}`
+ * ), so making it do something here would be inventing an affordance the canvas deliberately left
+ * inert -- there is no real "run this anyway, bypassing the hold" capability behind it yet, and a
+ * clickable button promising one would be a lie the canvas itself does not tell.
  *
  * ## Queued cards open the Implement dialog (issue #342)
  *
@@ -131,20 +144,40 @@ export function PipenzoAppShell({
   const [openRepoPickerToken, setOpenRepoPickerToken] = useState<number | undefined>(undefined);
 
   const renderTicket = useCallback(
-    (ticket: PipenzoTicketViewV1) => (
-      <Card
-        id={`#${ticket.issueNumber}`}
-        title={ticket.title ?? `Issue #${ticket.issueNumber}`}
-        chip={laneChip(ticket)}
-        {...(ticket.lane === 'queued' ? { onClick: () => setImplementing(ticket) } : {})}
-      >
-        {ticket.lane === 'ready-for-review' && ticket.worktree && (
-          <CardFoot>
-            <CardMeta icon="git-branch">{ticket.worktree.branch}</CardMeta>
-          </CardFoot>
-        )}
-      </Card>
-    ),
+    (ticket: PipenzoTicketViewV1) => {
+      const concurrency = ticket.lane === 'working' ? ticket.concurrency : undefined;
+      const held = concurrency?.state === 'held' ? concurrency : undefined;
+      return (
+        <Card
+          id={`#${ticket.issueNumber}`}
+          title={ticket.title ?? `Issue #${ticket.issueNumber}`}
+          chip={laneChip(ticket)}
+          held={held !== undefined}
+          {...(ticket.lane === 'queued' ? { onClick: () => setImplementing(ticket) } : {})}
+        >
+          {held && (
+            <>
+              <WaitNote>
+                <b>Waiting — file overlap with #{held.overlapIssueNumber}.</b> Both plan to touch{' '}
+                <span className="mono">{held.overlapFile}</span>. Starts on its own when #
+                {held.overlapIssueNumber} finishes; a slot is reserved.
+              </WaitNote>
+              <CardFoot>
+                <CardMeta icon="pause">held</CardMeta>
+                <Button size="sm" variant="ghost" disabled>
+                  Run anyway
+                </Button>
+              </CardFoot>
+            </>
+          )}
+          {ticket.lane === 'ready-for-review' && ticket.worktree && (
+            <CardFoot>
+              <CardMeta icon="git-branch">{ticket.worktree.branch}</CardMeta>
+            </CardFoot>
+          )}
+        </Card>
+      );
+    },
     [],
   );
 
@@ -242,6 +275,9 @@ export function PipenzoAppShell({
           <BoardScreen
             tickets={tickets}
             loading={ticketList.status === 'loading'}
+            workingLaneCapacity={
+              ticketList.status === 'ready' ? ticketList.workingLaneCapacity : undefined
+            }
             renderTicket={renderTicket}
           />
         </>

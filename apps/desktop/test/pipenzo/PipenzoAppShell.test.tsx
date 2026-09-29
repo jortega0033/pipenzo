@@ -203,6 +203,48 @@ describe('PipenzoAppShell', () => {
     expect(screen.getByText('refining')).toBeInTheDocument();
   });
 
+  it("renders a held Working card's real overlap ticket and file, with a disabled ghost Run-anyway (issue #85)", async () => {
+    installBridge({
+      tickets: [
+        makeTicket({
+          ticketId: 'a',
+          issueNumber: 97,
+          lane: 'working',
+          concurrency: {
+            state: 'held',
+            overlapTicketId: 'b',
+            overlapIssueNumber: 94,
+            overlapFile: 'stdio-mcp-connection.ts',
+          },
+        }),
+      ],
+    });
+    const { container } = render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+
+    expect(await screen.findByText(/Waiting — file overlap with #94\./)).toBeInTheDocument();
+    expect(screen.getByText('stdio-mcp-connection.ts')).toBeInTheDocument();
+    expect(container.querySelector('.card.held')).toBeInTheDocument();
+
+    // Ghost per the design canvas, which gives this control no `onClick` at all -- `disabled`
+    // both matches that (a native disabled button fires no click handler) and makes the
+    // non-interactivity real for keyboard/screen-reader users, not just visual.
+    const runAnyway = screen.getByRole('button', { name: 'Run anyway' });
+    expect(runAnyway).toBeDisabled();
+  });
+
+  it('renders a Working card with no held state as a plain card -- no WaitNote, no Run-anyway', async () => {
+    installBridge({
+      tickets: [
+        makeTicket({ ticketId: 'a', issueNumber: 94, lane: 'working', concurrency: { state: 'running' } }),
+      ],
+    });
+    const { container } = render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+
+    await screen.findByText('#94');
+    expect(container.querySelector('.card.held')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Run anyway' })).not.toBeInTheDocument();
+  });
+
   it('gives a Ready-for-review card a real chip and its real branch, when one exists', async () => {
     installBridge({
       tickets: [
