@@ -47,8 +47,30 @@ import { repoMonogram, settingsSaveCtaLabel } from './repo-picker.js';
  * - a save in flight refuses to close the dialog, so the picker cannot be abandoned with a `PUT`
  *   still on the wire. The scrim covers this panel while it is open, which is what makes those two
  *   guards a complete pair rather than two halves of a race.
+ *
+ * ## `openPickerToken` (issue #89)
+ *
+ * The sidebar's workspace switcher lives in a different mount than this panel -- `PipenzoAppShell`
+ * versus `SettingsPage` -- so its "Manage repos…" cannot just call a function on this component.
+ * `openPickerToken` is the wiring for "routes to the same picker as first-run": the caller increments
+ * it once per click and this panel opens the picker on every change, not on truthiness, so a second
+ * "Manage repos…" click while this panel is already mounted (already on the Settings screen) still
+ * reopens the picker instead of being a no-op against a value that did not change. It starts
+ * `undefined`, so a plain navigation to Settings -- through its own nav item, not the switcher --
+ * never opens the picker uninvited.
  */
-export function ConnectedReposPanel() {
+export function ConnectedReposPanel({
+  openPickerToken,
+  onRepositoriesChange,
+}: {
+  openPickerToken?: number;
+  /** Fired with the daemon's own answer every time this panel's list changes -- load, remove, or a
+   * picker save. Exists so the workspace switcher, which reads the same connected-repos list
+   * through its own hook, can refresh instead of showing a stale list until its next `ready` event
+   * (see `PipenzoAppShell.tsx`). Optional: a bare `<ConnectedReposPanel />` -- every existing mount
+   * before #89 -- has no such second reader to notify. */
+  onRepositoriesChange?: (repositories: readonly string[]) => void;
+} = {}) {
   const [repositories, setRepositories] = useState<readonly string[] | undefined>(undefined);
   const [loadError, setLoadError] = useState<string | undefined>(undefined);
   const [reloadKey, setReloadKey] = useState(0);
@@ -69,6 +91,11 @@ export function ConnectedReposPanel() {
    * not reachable at all.
    */
   const writing = useRef(false);
+  // Read on every use rather than added to an effect's dependency array, so a caller passing a new
+  // function identity each render (an inline arrow, as `PipenzoAppShell.tsx` writes one) does not
+  // retrigger the loads/writes below -- only this panel's own state changes should do that.
+  const onRepositoriesChangeRef = useRef(onRepositoriesChange);
+  onRepositoriesChangeRef.current = onRepositoriesChange;
 
   useEffect(() => {
     let cancelled = false;
@@ -79,6 +106,7 @@ export function ConnectedReposPanel() {
       .then((connected) => {
         if (cancelled) return;
         setRepositories(connected.repositories);
+        onRepositoriesChangeRef.current?.(connected.repositories);
       })
       .catch((error: unknown) => {
         if (cancelled) return;
@@ -94,6 +122,17 @@ export function ConnectedReposPanel() {
       cancelled = true;
     };
   }, [reloadKey]);
+
+  // The workspace switcher's "Manage repos…" (issue #89): opens on every *change* of the token, not
+  // on truthiness, so a second click while this panel is already mounted reopens the picker rather
+  // than being a no-op against a value the effect has already seen. `undefined` -- a plain
+  // navigation to Settings through its own nav item -- never runs this at all.
+  useEffect(() => {
+    if (openPickerToken === undefined) return;
+    setRemoveError(undefined);
+    setPickerSaving(false);
+    setPicking(true);
+  }, [openPickerToken]);
 
   /**
    * Closing clears the saving flag as well as the dialog.
@@ -133,6 +172,7 @@ export function ConnectedReposPanel() {
           // request instead of the response is how a list on screen starts disagreeing with the
           // file behind it.
           setRepositories(saved.repositories);
+          onRepositoriesChangeRef.current?.(saved.repositories);
         })
         .catch((error: unknown) => {
           writing.current = false;
@@ -266,6 +306,7 @@ export function ConnectedReposPanel() {
           onSavingChange={setPickerSaving}
           onConnected={(saved) => {
             setRepositories(saved);
+            onRepositoriesChangeRef.current?.(saved);
             closePicker();
           }}
         />

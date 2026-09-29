@@ -34,8 +34,18 @@ import { LessonsPanel } from './LessonsPanel.js';
  * selects this screen belongs to the shell ticket, not to the page it would show. This component
  * is the `.page` element the shell's `.main` column renders into, so it can be dropped in without
  * that ticket having to unpick a frame this one guessed at.
+ *
+ * `openRepoPickerToken`/`onConnectedReposChange` (issue #89) pass straight through to
+ * `ConnectedReposPanel` -- see its own doc comments. This page has no opinion on either; it only
+ * sits between the shell that owns the workspace switcher and the panel that owns the picker.
  */
-export function SettingsPage() {
+export function SettingsPage({
+  openRepoPickerToken,
+  onConnectedReposChange,
+}: {
+  openRepoPickerToken?: number;
+  onConnectedReposChange?: (repositories: readonly string[]) => void;
+} = {}) {
   return (
     <div className="page">
       <p className="sec-note">
@@ -46,7 +56,10 @@ export function SettingsPage() {
 
       <div className="cols">
         <div className="col">
-          <ConnectedReposPanel />
+          <ConnectedReposPanel
+            openPickerToken={openRepoPickerToken}
+            onRepositoriesChange={onConnectedReposChange}
+          />
           <LessonsPanel />
         </div>
         <div className="col">

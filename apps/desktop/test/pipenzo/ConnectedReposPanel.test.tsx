@@ -342,4 +342,84 @@ describe('ConnectedReposPanel', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(screen.getByText('octocat/spoon-knife')).toBeInTheDocument();
   });
+
+  /**
+   * Issue #89: the workspace switcher's "Manage repos…" lives in a different mount
+   * (`PipenzoAppShell`) than this panel, so it opens the picker through this prop rather than a
+   * function call.
+   */
+  describe('openPickerToken', () => {
+    it('opens the picker once a token is supplied, without any click', async () => {
+      installBridge({
+        connected: ['octocat/hello-world'],
+        listing: [repo('octocat/hello-world')],
+      });
+      render(<ConnectedReposPanel openPickerToken={1} />);
+
+      expect(await screen.findByRole('dialog')).toBeInTheDocument();
+      expect(screen.getByText('Choose the repos Pipenzo manages')).toBeInTheDocument();
+      // Drains the picker's own load before the test ends, so nothing settles into a later test's
+      // render once this one has been torn down.
+      await screen.findByRole('checkbox', { name: /octocat\/hello-world/ });
+    });
+
+    it('does not open the picker while the token is unset -- an ordinary mount, not a "Manage repos…" one', async () => {
+      installBridge({ connected: ['octocat/hello-world'] });
+      render(<ConnectedReposPanel />);
+      await screen.findByText('octocat/hello-world');
+
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    /**
+     * The panel can already be mounted on the Settings screen when a second "Manage repos…" click
+     * arrives, so the picker has to reopen on a *change* of the token, not merely once at mount --
+     * a component that never unmounts between the two clicks would otherwise see the same truthy
+     * value twice and do nothing the second time.
+     */
+    it('reopens on every change of the token, including while already mounted', async () => {
+      installBridge({
+        connected: ['octocat/hello-world'],
+        listing: [repo('octocat/hello-world')],
+      });
+      const { rerender } = render(<ConnectedReposPanel openPickerToken={1} />);
+      await screen.findByRole('dialog');
+      fireEvent.keyDown(document, { key: 'Escape' });
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+      rerender(<ConnectedReposPanel openPickerToken={2} />);
+
+      expect(await screen.findByRole('dialog')).toBeInTheDocument();
+      // Drains the picker's own load before the test ends, for the same reason the first case does.
+      await screen.findByRole('checkbox', { name: /octocat\/hello-world/ });
+    });
+  });
+
+  describe('onRepositoriesChange', () => {
+    it('is called with the loaded list once the initial read settles', async () => {
+      installBridge({ connected: CONNECTED });
+      const onRepositoriesChange = vi.fn();
+      render(<ConnectedReposPanel onRepositoriesChange={onRepositoriesChange} />);
+      await loaded();
+
+      expect(onRepositoriesChange).toHaveBeenCalledWith(CONNECTED);
+    });
+
+    it('is called again with the daemon’s answer after a removal', async () => {
+      const connect = vi.fn().mockResolvedValue({ repositories: ['octocat/hello-world'] });
+      installBridge({ connected: CONNECTED, connect });
+      const onRepositoriesChange = vi.fn();
+      render(<ConnectedReposPanel onRepositoriesChange={onRepositoriesChange} />);
+      await loaded();
+      onRepositoriesChange.mockClear();
+
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Remove jortega0033/agentdock from this workspace' }),
+      );
+
+      await waitFor(() =>
+        expect(onRepositoriesChange).toHaveBeenCalledWith(['octocat/hello-world']),
+      );
+    });
+  });
 });
