@@ -72,6 +72,8 @@ import type {
   PipenzoRepoListV1,
   PipenzoRepoCheckoutRequestV1,
   PipenzoRepoCheckoutResultV1,
+  PipenzoLessonListV1,
+  PipenzoLessonDeleteRequestV1,
   PipenzoDeviceCodeV1,
   PipenzoDeviceOutcomeV1,
   PipenzoGitHubConnectionV1,
@@ -306,6 +308,13 @@ export interface AgentDockBridge {
    * a first call can take as long as a clone; it refuses any repository that is not connected.
    */
   resolvePipenzoCheckout(input: PipenzoRepoCheckoutRequestV1): Promise<PipenzoRepoCheckoutResultV1>;
+  /**
+   * Local, human-gated lesson memory (issue #18): Settings' lesson-memory panel (issue #128).
+   * `pipenzoDeleteLesson` removes exactly the one lesson named and answers with the daemon's own
+   * list afterward, never a filtered view this renderer assembled itself.
+   */
+  pipenzoLessons(): Promise<PipenzoLessonListV1>;
+  pipenzoDeleteLesson(input: PipenzoLessonDeleteRequestV1): Promise<PipenzoLessonListV1>;
   selectAndUploadAttachments(sessionId?: string): Promise<AttachmentMetadataV2[]>;
   validateStructuredOutput(input: StructuredWorkflowRequestV2): Promise<StructuredWorkflowResultV2>;
   createSession(input: CreateSessionInput): Promise<AgentSession>;

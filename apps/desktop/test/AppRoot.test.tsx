@@ -26,6 +26,8 @@ function realBridge(
     pipenzoConnectedRepos: vi.fn().mockResolvedValue({ repositories: connectedRepos }),
     pipenzoConnectRepos: vi.fn(),
     resolvePipenzoCheckout: vi.fn(),
+    pipenzoLessons: vi.fn().mockResolvedValue({ lessons: [] }),
+    pipenzoDeleteLesson: vi.fn(),
     startGitHubDeviceFlow: vi.fn(),
     openGitHubDeviceVerification: vi.fn().mockResolvedValue(undefined),
     cancelGitHubDeviceFlow: vi.fn().mockResolvedValue(undefined),

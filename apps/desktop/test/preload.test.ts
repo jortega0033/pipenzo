@@ -131,6 +131,10 @@ describe('electron/preload.ts — real bridge (AD-07)', () => {
         // Connected repo -> managed local checkout (issues #342/#344). An ordinary daemon route;
         // the daemon refuses anything not connected, and the clone never sees the vault token.
         'resolvePipenzoCheckout',
+        // Local, human-gated lesson memory (issue #18): Settings' lesson-memory panel (issue
+        // #128). Ordinary daemon routes, same reasoning as the repo picker above.
+        'pipenzoLessons',
+        'pipenzoDeleteLesson',
         'selectAndUploadAttachments',
         'validateStructuredOutput',
         'createSession',

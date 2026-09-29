@@ -126,6 +126,8 @@ import {
   pipenzoRepoListV1Schema,
   pipenzoRepoCheckoutRequestV1Schema,
   pipenzoRepoCheckoutResultV1Schema,
+  pipenzoLessonListV1Schema,
+  pipenzoLessonDeleteRequestV1Schema,
   pipenzoTicketReadRequestV1Schema,
   pipenzoTicketTransitionRequestV1Schema,
   pipenzoTicketReconciliationV1Schema,
@@ -158,6 +160,8 @@ import {
   type PipenzoRepoListV1,
   type PipenzoRepoCheckoutRequestV1,
   type PipenzoRepoCheckoutResultV1,
+  type PipenzoLessonListV1,
+  type PipenzoLessonDeleteRequestV1,
   type PipenzoTicketReadRequestV1,
   type PipenzoTicketTransitionRequestV1,
   type PipenzoTicketReconciliationV1,
@@ -457,6 +461,15 @@ export class AgentDockClient {
       resolveCheckout: (
         input: PipenzoRepoCheckoutRequestV1,
       ): Promise<PipenzoRepoCheckoutResultV1> => this.resolvePipenzoCheckoutV1(input),
+      /**
+       * Local, human-gated lesson memory (issue #18): Settings' lesson-memory panel (issue #128).
+       * `lessons` is a local read with no GitHub cost behind it, matching `connectedRepos` above.
+       * `deleteLesson` is the only write this client exposes yet — saving one is issue #104's own
+       * screen to wire up, not this one's.
+       */
+      lessons: (): Promise<PipenzoLessonListV1> => this.pipenzoLessonsV1(),
+      deleteLesson: (input: PipenzoLessonDeleteRequestV1): Promise<PipenzoLessonListV1> =>
+        this.deletePipenzoLessonV1(input),
       /**
        * The phase machine's ticket surface (issue #188). `readTicket` reconciles a ticket against
        * its issue's labels and returns the result; `transitionTicket` writes a new `pipenzo:` label
@@ -1157,6 +1170,37 @@ export class AgentDockClient {
       pipenzoRepoCheckoutResultV1Schema,
       'pipenzo repo checkout',
       { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) },
+      { expectedStatus: 200 },
+    );
+  }
+
+  private async pipenzoLessonsV1(): Promise<PipenzoLessonListV1> {
+    return this.requestV2(
+      '/v2/pipenzo/lessons',
+      pipenzoLessonListV1Schema,
+      'pipenzo saved lessons',
+      { method: 'GET' },
+      { expectedStatus: 200 },
+    );
+  }
+
+  private async deletePipenzoLessonV1(
+    input: PipenzoLessonDeleteRequestV1,
+  ): Promise<PipenzoLessonListV1> {
+    const parsed = validateInput(
+      pipenzoLessonDeleteRequestV1Schema,
+      input,
+      'pipenzo lesson delete request',
+    );
+    return this.requestV2(
+      '/v2/pipenzo/lessons/delete',
+      pipenzoLessonListV1Schema,
+      'pipenzo saved lessons',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(parsed),
+      },
       { expectedStatus: 200 },
     );
   }

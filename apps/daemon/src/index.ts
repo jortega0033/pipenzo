@@ -18,6 +18,7 @@ import { FileExecutionGraphStore } from './execution-graph-store.js';
 import { FileTicketStore } from './pipenzo-ticket-store.js';
 import { PipenzoAuditStore } from './pipenzo-audit-store.js';
 import { ConnectedReposStore } from './connected-repos-store.js';
+import { LessonStore } from './pipenzo-lesson-store.js';
 import { RepoCheckouts, reposRoot } from './repo-checkout.js';
 import { ensureStateDirectory, stateDirectory } from './state-directory.js';
 import { SubagentGraphStore } from './subagent-graph-store.js';
@@ -167,6 +168,11 @@ async function main() {
   const connectedRepos = new ConnectedReposStore(
     join(durableStateDirectory, 'connected-repos-v1.json'),
   );
+  // Local, human-gated lesson memory (issue #18): the one-line notes a person chose to keep when a
+  // ticket resolved, listed and deletable from Settings (issue #128). Same single-file layout as
+  // `connectedRepos` above, beside the other durable stores — see the store's own module comment for
+  // why a lesson does not belong inside `FileTicketStore`.
+  const lessonStore = new LessonStore(join(durableStateDirectory, 'lessons-v1.json'));
   // Where a connected repo's local checkout lives (issues #342/#344): cloned on first need into
   // `<state dir>/repos/<owner>/<repo>` (or under `PIPENZO_REPOS_DIR`), reused after. One instance,
   // because it is also what serializes concurrent requests for the same repository -- see
@@ -351,6 +357,7 @@ async function main() {
     crashRecovery,
     connectedRepos,
     repoCheckouts,
+    lessonStore,
     // The same lazy, per-call client boundary as the phase service and phase machine above: built
     // from a token read at call time, never retained between requests.
     pipenzoGitHubClient: () =>

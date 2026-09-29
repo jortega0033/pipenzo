@@ -41,6 +41,7 @@ import {
   pipenzoIdeaDraftRequestV1Schema,
   pipenzoConnectReposRequestV1Schema,
   pipenzoRepoCheckoutRequestV1Schema,
+  pipenzoLessonDeleteRequestV1Schema,
   pipenzoTicketReadRequestV1Schema,
   pipenzoTicketTransitionRequestV1Schema,
   structuredWorkflowRequestV2Schema,
@@ -1320,6 +1321,18 @@ handle('daemon:pipenzo-connect-repos', async (_event, input: unknown) => {
 handle('daemon:pipenzo-resolve-checkout', async (_event, input: unknown) => {
   if (!client) throw new Error('daemon is not ready yet');
   return client.v2.pipenzo.resolveCheckout(pipenzoRepoCheckoutRequestV1Schema.parse(input));
+});
+
+// Local, human-gated lesson memory (issue #18): Settings' lesson-memory panel (issue #128).
+// Ordinary daemon routes, same reasoning as the picker channels above -- no credential in main.
+handle('daemon:pipenzo-lessons', async () => {
+  if (!client) throw new Error('daemon is not ready yet');
+  return client.v2.pipenzo.lessons();
+});
+
+handle('daemon:pipenzo-delete-lesson', async (_event, input: unknown) => {
+  if (!client) throw new Error('daemon is not ready yet');
+  return client.v2.pipenzo.deleteLesson(pipenzoLessonDeleteRequestV1Schema.parse(input));
 });
 
 handle('daemon:list-providers', async () => {
