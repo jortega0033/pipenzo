@@ -247,8 +247,21 @@ failure" from "something has" by comparing it against the ticket's current lane,
 The marker is resolved (`interrupted_recovered`) the moment the label lands after all, the transition
 settles on some other real state, or a human moves the ticket before recovery gets to it — never
 touched for any other reason, so it cannot clobber an outcome some future dispatcher or gate wrote.
-On its own this durably records the failure rather than losing it; a later restart reading the marker
-back to decide whether the ticket still belongs on the recovery screen is the follow-up piece.
+
+Every `park()` call, including on a later daemon start, rescans the ticket store for that marker and
+re-adds a matching entry to the recovery report (as `labelWrite: 'failed'` again) as long as the
+ticket's *current* local lane still equals the one recorded in the marker — i.e. nothing has moved it
+since the failure. The moment it no longer matches, the marker is resolved in place instead, so a
+ticket a human has since moved stops being re-surfaced.
+
+This rescan deliberately never feeds the ticket back into `writeLabels()`'s retry loop, even when the
+lane still matches. A lane match only proves nothing *local* has changed; if the daemon was down the
+whole time, a human's own GitHub-side edit would sit unseen in the local record until the next
+reconciling read, and `PipenzoPhaseMachine.transition()` writes unconditionally once the target lane
+is legal — which it almost always is entering Needs-human — so an automatic retry could still land
+`pipenzo:interrupted` over a decision a human made while nothing was running to notice. Recovery keeps
+the ticket visible on the recovery screen across every restart until a human resolves it directly
+(Resume or Discard-and-restart); it does not try to finish the GitHub write for them.
 
 For the same reason, a ticket already holding an unanswered human decision —
 `pipenzo:awaiting-stack-approval`, `pipenzo:needs-pre-scoping`, `pipenzo:merge-conflict`,

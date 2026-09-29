@@ -227,6 +227,10 @@ export class PipenzoCrashRecovery {
       }
     }
 
+    // Re-surface any ticket a previous restart durably marked unresolved (issue #201) -- this daemon
+    // start's own interrupted-session ids, from both stores' one-shot sweeps, will not name it again.
+    this.#reparkUnresolved(parked, parkedByTicket);
+
     if (unmatched > 0) {
       this.#logger.info('interrupted sessions belonged to no Pipenzo ticket', {
         sessions: unmatched,
@@ -402,6 +406,63 @@ export class PipenzoCrashRecovery {
       current.lane === 'needs-human' &&
       current.labels.includes('pipenzo:interrupted')
     );
+  }
+
+  /**
+   * Scans every stored ticket for the durable marker `#markUnresolved` wrote and re-adds it to
+   * `parked` when the ticket's *current* local lane still equals the lane recorded in the marker --
+   * i.e. nothing has moved this ticket, by any means, since the write that named it failed. This is
+   * what makes issue #201's gap closeable: the two stores' own recovery sweeps report a crashed
+   * session interrupted exactly once, so without this a ticket whose label write failed on one
+   * restart is invisible on the next.
+   *
+   * **Deliberately does not feed the result back into `writeLabels()`'s retry loop** -- every
+   * re-surfaced entry here is reported `labelWrite: 'failed'` again, not `'pending'`. Retrying would
+   * need `writeLabels()` to attempt `PipenzoPhaseMachine.transition()`, and that call writes
+   * unconditionally once `isLegalLaneTransition` allows it -- which it almost always does entering
+   * Needs-human (see the phase machine's own module comment on why that path is deliberately
+   * permissive). A local lane match is *not* proof nothing changed on GitHub: if this daemon was down
+   * the whole time, a human's own label edit would sit unseen in the local record until the next
+   * reconciling read, and `transition()`'s internal read would discover it only *after* already
+   * deciding to write -- discovering it too late to stop the write, not in time to prevent it. So an
+   * automatic retry here can still clobber a human's concurrent decision; only a human acting through
+   * Resume or Discard-and-restart is allowed to move this ticket on.
+   *
+   * Skips a ticket already parked this call (from a freshly-interrupted session) and, symmetrically,
+   * resolves the marker in place the moment the local lane no longer matches -- a human moved the
+   * ticket, a reconciling poll caught up with a GitHub-side change, or a later attempt's success
+   * should have cleared the marker but the process died first. Either way this module has nothing
+   * left to raise for it, and leaving the marker would re-scan the same settled ticket forever.
+   */
+  #reparkUnresolved(parked: PipenzoParkedTicketV1[], parkedByTicket: Map<string, number>): void {
+    for (const ticket of this.#tickets.list()) {
+      if (parkedByTicket.has(ticket.ticketId)) continue;
+      const attempt = ticket.attempts.find(
+        (entry) => recoveryUnresolvedLane(entry.outcome) !== undefined,
+      );
+      if (!attempt) continue;
+
+      if (recoveryUnresolvedLane(attempt.outcome) !== ticket.lane) {
+        this.#markResolved(ticket.ticketId, attempt.sessionId);
+        continue;
+      }
+
+      parkedByTicket.set(ticket.ticketId, parked.length);
+      parked.push({
+        ticketId: ticket.ticketId,
+        repo: ticket.repo,
+        issueNumber: ticket.issueNumber,
+        sessionId: attempt.sessionId,
+        lane: ticket.lane,
+        phase: ticket.phase,
+        labels: [...ticket.labels],
+        ...(ticket.worktree
+          ? { worktree: { id: ticket.worktree.id, branch: ticket.worktree.branch } }
+          : {}),
+        resumable: this.#resumable(attempt.sessionId),
+        labelWrite: 'failed',
+      });
+    }
   }
 
   /**
