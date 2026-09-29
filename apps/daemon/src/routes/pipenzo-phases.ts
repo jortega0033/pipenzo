@@ -60,6 +60,9 @@ const PHASE_ERROR_STATUS: Record<PipenzoPhaseErrorCodeV1, number> = {
   worktree_not_found: 404,
   branch_failed: 409,
   commit_failed: 409,
+  // Issue #192: same family as commit_failed/branch_failed above -- the current state of the
+  // dispatched session, not a bad request, and not an upstream failure.
+  implement_empty_diff: 409,
   verifier_tier_too_low: 409,
   diff_unavailable: 409,
   reviewer_failed: 502,
