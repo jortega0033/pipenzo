@@ -20,10 +20,6 @@ export const MAX_MATCHES = 3;
 export const OWNER_THRESHOLD = 0.6;
 export const POSSIBLE_THRESHOLD = 0.35;
 const MAX_REASON_TOKENS = 8;
-const BODY_WEIGHT = 0.75;
-const MIN_TOKENS_FOR_BODY_MATCH = 4;
-/** Bodies are scored on their first slice only, so one huge issue cannot dominate the cost. */
-const MAX_BODY_SCORED_CHARS = 20_000;
 
 const STOPWORDS = new Set(
   'the and for with that this from when then into are not has have any all can will shall should must its add use'.split(
@@ -54,28 +50,21 @@ export function reconcileCandidate(
   if (titleTokens.size === 0) {
     throw new ReconcileError('invalid_candidate', 'candidate title has no searchable words');
   }
-  const allTokens = tokenize([candidate.title, ...candidate.acceptanceCriteria].join(' '));
 
   const scored: (ReconcileMatch & { words: string[] })[] = [];
   for (const issue of issues) {
     const issueTitle = tokenize(issue.title);
     const titleShared = shared(titleTokens, issueTitle);
-    let score = (2 * titleShared.length) / (titleTokens.size + issueTitle.size || 1);
-    let words = titleShared;
-    // The body path needs at least one title word in the issue title, so a long generic body
-    // cannot outrank or replace a real title match.
-    if (titleShared.length > 0 && allTokens.size >= MIN_TOKENS_FOR_BODY_MATCH) {
-      const issueAll = tokenize(`${issue.title} ${issue.body.slice(0, MAX_BODY_SCORED_CHARS)}`);
-      const allShared = shared(allTokens, issueAll);
-      const coverage = (allShared.length / allTokens.size) * BODY_WEIGHT;
-      if (coverage > score) {
-        score = coverage;
-        words = allShared;
-      }
-    }
+    const score = (2 * titleShared.length) / (titleTokens.size + issueTitle.size || 1);
     const rounded = Math.round(score * 100) / 100;
     if (rounded < POSSIBLE_THRESHOLD) continue;
-    scored.push({ number: issue.number, state: issue.state, score: rounded, reason: '', words });
+    scored.push({
+      number: issue.number,
+      state: issue.state,
+      score: rounded,
+      reason: '',
+      words: titleShared,
+    });
   }
 
   scored.sort(
