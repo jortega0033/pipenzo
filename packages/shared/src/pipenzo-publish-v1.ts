@@ -117,6 +117,14 @@ export const PIPENZO_PUBLISH_ERROR_CODES = [
   'token_missing',
   'repository_not_configured',
   'pull_request_failed',
+  /**
+   * Issue #182: the `PIPENZO_PUBLISH_NONCE_HEADER` was missing, malformed, forged, expired, or
+   * already spent. Deliberately one code for all five — see `publish-nonce-v1.ts`'s module
+   * comment for why this route does not distinguish "wrong" from "stale" from "reused" to a
+   * caller: any of the three is exactly the signal a caller without a genuine, fresh click should
+   * see, and distinguishing them would just tell a probing caller which one to try fixing next.
+   */
+  'nonce_invalid',
 ] as const;
 
 export const pipenzoPublishErrorV1Schema = z

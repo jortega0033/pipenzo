@@ -1,10 +1,12 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import {
+  PIPENZO_PUBLISH_NONCE_HEADER,
   pipenzoPublishRequestV1Schema,
   pipenzoPublishResultV1Schema,
   type PipenzoPublishErrorCodeV1,
 } from '@agent-dock/shared';
 import { PublishService, PublishServiceError } from '../publish-service.js';
+import type { PublishNonceGate } from '../publish-nonce-gate.js';
 
 /**
  * The publish gate's only entry point (Pipenzo issue #178).
@@ -22,6 +24,12 @@ import { PublishService, PublishServiceError } from '../publish-service.js';
  *
  * A low rate limit is attached because the failure mode this protects against is a loop, not a
  * flood: publishing is a human-paced action, and nothing legitimate pushes ten branches a minute.
+ *
+ * Issue #182 adds a second factor beside the bearer token: `PIPENZO_PUBLISH_NONCE_HEADER` must
+ * carry a nonce `nonceGate` mints and consumes only in direct response to that same human click
+ * (`publish-nonce-gate.ts`). Checked before the bearer token has even had a chance to gate
+ * anything below this route -- no, checked *after* it, same as every other route on this surface;
+ * what changes here is that authentication is no longer sufficient on its own.
  */
 const PUBLISH_ERROR_STATUS: Record<PipenzoPublishErrorCodeV1, number> = {
   invalid_request: 400,
@@ -36,6 +44,10 @@ const PUBLISH_ERROR_STATUS: Record<PipenzoPublishErrorCodeV1, number> = {
   token_missing: 412,
   repository_not_configured: 412,
   pull_request_failed: 502,
+  // Same status the bearer-token check itself answers with (`auth-token.ts` / `server.ts`): this
+  // is the daemon's other authentication factor, not a validation error, and a caller missing
+  // either should see the same class of response for both.
+  nonce_invalid: 401,
 };
 
 function fail(reply: FastifyReply, code: PipenzoPublishErrorCodeV1, error: string): void {
@@ -45,11 +57,21 @@ function fail(reply: FastifyReply, code: PipenzoPublishErrorCodeV1, error: strin
 export function registerPipenzoPublishRoutes(
   app: FastifyInstance,
   publishService: PublishService,
+  nonceGate: PublishNonceGate,
 ): void {
   app.post(
     '/v2/pipenzo/publish',
     { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
     async (req, reply) => {
+      // Checked, and the nonce burned, before body validation: a malformed body must not let a
+      // caller probe the nonce check for free, and there is no reason to validate a request body
+      // from a caller that has not even proven it holds a fresh, unspent nonce yet. The cost is
+      // that a genuine click with a typo'd body burns its nonce on the failed attempt too -- an
+      // acceptable trade for a human-paced action a second click can always retry.
+      const nonceHeader = req.headers[PIPENZO_PUBLISH_NONCE_HEADER];
+      if (!nonceGate.consume(typeof nonceHeader === 'string' ? nonceHeader : undefined)) {
+        return fail(reply, 'nonce_invalid', 'missing or invalid publish nonce');
+      }
       const parsed = pipenzoPublishRequestV1Schema.safeParse(req.body);
       if (!parsed.success) {
         // Deliberately does not echo the Zod issue list. This body carries a branch name, a PR

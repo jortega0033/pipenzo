@@ -1,4 +1,8 @@
-import { GITHUB_TOKEN_SHAPE_PATTERN, type DaemonCredentialSourceV1 } from '@agent-dock/shared';
+import {
+  GITHUB_TOKEN_SHAPE_PATTERN,
+  isPublishNonceSecretShaped,
+  type DaemonCredentialSourceV1,
+} from '@agent-dock/shared';
 import {
   GITHUB_TOKEN_ENV_KEYS,
   GitHubClientError,
@@ -79,9 +83,16 @@ export const MAX_CREDENTIAL_MESSAGE_BYTES = 8 * 1024;
  */
 export const CREDENTIAL_READ_TIMEOUT_MS = 5_000;
 
-/** The wire shape. One field today; a JSON envelope so a second one does not need a new channel. */
+/**
+ * The wire shape. A JSON envelope so a second field never needs a second channel -- issue #182's
+ * `publishNonceSecret` is exactly that second field, arriving over the same one-line handoff for
+ * the same reason the token does: `apps/desktop/electron/daemon-environment.ts`'s
+ * `buildDaemonCredentialMessage` doc comment names this explicitly.
+ */
 export interface DaemonCredentialMessageV1 {
   readonly githubToken?: string | undefined;
+  /** 32 random bytes, hex-encoded -- see `publish-nonce-v1.ts` and `publish-nonce-gate.ts`. */
+  readonly publishNonceSecret?: string | undefined;
 }
 
 /**
@@ -118,7 +129,11 @@ export function parseDaemonCredentialMessage(raw: string): DaemonCredentialMessa
   }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
   const token = (parsed as { githubToken?: unknown }).githubToken;
-  return isTokenShaped(token) ? { githubToken: token } : {};
+  const nonceSecret = (parsed as { publishNonceSecret?: unknown }).publishNonceSecret;
+  return {
+    ...(isTokenShaped(token) ? { githubToken: token } : {}),
+    ...(isPublishNonceSecretShaped(nonceSecret) ? { publishNonceSecret: nonceSecret } : {}),
+  };
 }
 
 /**
@@ -200,6 +215,28 @@ export function readCredentialMessage(
 }
 
 /**
+ * Reads and parses the one startup message, once. `process.stdin` is a single stream -- only one
+ * reader may ever consume it -- so this is the one call site that does, and `index.ts` hands the
+ * parsed result to every consumer of the handoff (`DaemonGitHubCredential.fromMessage`,
+ * `PublishNonceGate.fromMessage`) rather than each reading `stdin` for itself. Also `#fromStartup`'s
+ * own implementation, unchanged in behavior from before this split.
+ */
+export async function readDaemonStartupMessage(options: {
+  stdin: NodeJS.ReadableStream;
+  env?: Readonly<Record<string, string | undefined>>;
+  maxBytes?: number;
+  timeoutMs?: number;
+}): Promise<DaemonCredentialMessageV1> {
+  const env = options.env ?? process.env;
+  if (env[CREDENTIAL_ON_STDIN_ENV_KEY] !== '1') return {};
+  const raw = await readCredentialMessage(options.stdin, {
+    ...(options.maxBytes === undefined ? {} : { maxBytes: options.maxBytes }),
+    ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
+  });
+  return parseDaemonCredentialMessage(raw);
+}
+
+/**
  * The daemon's one GitHub credential, and the only thing that knows where it came from.
  *
  * Held in a private field rather than written back into `process.env`: putting it back would undo
@@ -222,6 +259,13 @@ export class DaemonGitHubCredential {
     return new DaemonGitHubCredential(isTokenShaped(token) ? token : undefined);
   }
 
+  /** From an already-parsed startup message -- the other half of `fromStartup`, split out so a
+   * single stdin read (`readDaemonStartupMessage`, called once) can feed both this class and
+   * `PublishNonceGate` (issue #182) rather than each reading the one-shot stream for itself. */
+  static fromMessage(message: DaemonCredentialMessageV1): DaemonGitHubCredential {
+    return new DaemonGitHubCredential(isTokenShaped(message.githubToken) ? message.githubToken : undefined);
+  }
+
   /**
    * Reads the startup message when the parent said one is coming, and otherwise touches nothing.
    *
@@ -235,13 +279,7 @@ export class DaemonGitHubCredential {
     maxBytes?: number;
     timeoutMs?: number;
   }): Promise<DaemonGitHubCredential> {
-    const env = options.env ?? process.env;
-    if (env[CREDENTIAL_ON_STDIN_ENV_KEY] !== '1') return DaemonGitHubCredential.none();
-    const raw = await readCredentialMessage(options.stdin, {
-      ...(options.maxBytes === undefined ? {} : { maxBytes: options.maxBytes }),
-      ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
-    });
-    return new DaemonGitHubCredential(parseDaemonCredentialMessage(raw).githubToken);
+    return DaemonGitHubCredential.fromMessage(await readDaemonStartupMessage(options));
   }
 
   /** Whether a credential arrived over the pipe. Says nothing about the environment fallback. */

@@ -359,8 +359,12 @@ describe('the publish service holds its credential narrowly', () => {
     const code = await stripped(join(daemonSrc, 'index.ts'));
 
     // The credential is read once, at startup, from the stdin channel — not from this process's
-    // environment (issue #165).
-    expect(code).toMatch(/DaemonGitHubCredential\.fromStartup\(/);
+    // environment (issue #165). Issue #182 split the raw read out (`readDaemonStartupMessage`,
+    // stdin being a single stream only one reader may consume) so the same parsed message also
+    // feeds `PublishNonceGate`; the credential is now built from that parsed message rather than
+    // reading stdin for itself.
+    expect(code).toMatch(/readDaemonStartupMessage\(\{\s*stdin:\s*process\.stdin\s*\}\)/);
+    expect(code).toMatch(/DaemonGitHubCredential\.fromMessage\(startupMessage\)/);
     expect(code).toMatch(/resolveGitHubCredential:\s*\(env\)\s*=>\s*githubCredential\.resolve\(env\)/);
 
     // Both client factories resolve through that credential, and each is handed the one per-daemon
