@@ -258,6 +258,23 @@ export function buildDaemonCredentialMessage(token: string | undefined): string 
   return `${JSON.stringify(isTokenShaped(token) ? { githubToken: token } : {})}\n`;
 }
 
+/**
+ * Scrubs the one secret main handed the daemon on its stdin from forwarded daemon stdout/stderr,
+ * by exact value.
+ *
+ * The daemon's own logger already redacts what it *decides* to log -- but not a raw Node exception
+ * dump (an uncaught exception or unhandled rejection printed by Node's own default handler) or a
+ * dependency writing straight to stderr, neither of which passes through that layer before main
+ * forwards the chunk to its own console for local debugging. Main already holds the exact token it
+ * put on the daemon's stdin (`credentialMessage`, from `buildDaemonCredentialMessage` above), so an
+ * exact-value scrub here is cheap and format-independent, the same reasoning `github-client.ts`'s
+ * `registerKnownSecret` uses daemon-side for the same token.
+ */
+export function redactForwardedDaemonOutput(text: string, credentialMessage: string): string {
+  const token = (JSON.parse(credentialMessage) as { githubToken?: string }).githubToken;
+  return token ? text.split(token).join('[redacted]') : text;
+}
+
 export interface DaemonEnvironmentOptions {
   readonly appId: string;
   /**

@@ -12,6 +12,7 @@ import {
   buildDaemonEnvironment,
   buildDaemonSpawnPlan,
   reconcileDaemonTokenSource,
+  redactForwardedDaemonOutput,
   resolveDaemonGitHubToken,
   type BuildDaemonSpawnPlanInput,
 } from '../electron/daemon-environment.js';
@@ -234,6 +235,21 @@ describe('the plaintext is produced once, and delivered over a pipe', () => {
     // Nothing to send is an empty envelope, never a null or empty-string credential.
     expect(JSON.parse(buildDaemonCredentialMessage(undefined))).toEqual({});
     expect(JSON.parse(buildDaemonCredentialMessage('too-short'))).toEqual({});
+  });
+
+  it('scrubs the one secret main handed the daemon out of forwarded daemon output', () => {
+    const token = 'aRealisticallyLongTokenValue0001';
+    const message = buildDaemonCredentialMessage(token);
+    expect(redactForwardedDaemonOutput(`error: bad credentials (${token})`, message)).toBe(
+      'error: bad credentials ([redacted])',
+    );
+    // Every occurrence, not just the first -- a raw exception dump can repeat the value.
+    expect(redactForwardedDaemonOutput(`${token} ... caused by ${token}`, message)).toBe(
+      '[redacted] ... caused by [redacted]',
+    );
+    // No credential on stdin -- nothing to scrub, text passes through unchanged.
+    const noCredential = buildDaemonCredentialMessage(undefined);
+    expect(redactForwardedDaemonOutput('daemon listening', noCredential)).toBe('daemon listening');
   });
 
   it('spawns exactly one child process from Electron main, and it is the daemon', async () => {
