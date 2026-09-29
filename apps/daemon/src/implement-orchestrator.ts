@@ -1,12 +1,16 @@
+import { lstat, readFile } from 'node:fs/promises';
+import { devNull } from 'node:os';
+import { join } from 'node:path';
 import {
   refineSpecV1Schema,
   type CreateSessionV2Request,
   type OwnedWorktreeV2,
+  type PermissionActionV2,
   type ProviderId,
   type RefineSpecV1,
 } from '@agent-dock/shared';
 import { runGitCommand, type PipenzoGitRunner } from './pipenzo-git.js';
-import { WorktreeManagerError } from './worktree-manager.js';
+import { WorktreeManagerError, isSecretShapedPath } from './worktree-manager.js';
 import type { OwnedWorktreeLocation } from './publish-service.js';
 
 /**
@@ -30,7 +34,9 @@ import type { OwnedWorktreeLocation } from './publish-service.js';
  *    (`git worktree add --detach`), which is right for its own use and wrong for a ticket that
  *    has to end in a pushable `issue-<n>` branch. The orchestrator creates that branch itself,
  *    through the same `execFile` trust model as everything else — never by asking the agent to
- *    run a git command, which would be the first crack in the boundary #178 exists to hold.
+ *    run a git command, which would be the first crack in the boundary #178 exists to hold. The
+ *    same goes for the commit: the agent only edits files, and once its session completes the
+ *    daemon commits them itself (`#commitWork`), with repository hooks disabled.
  *
  * ## Walking-skeleton simplifications, each owned by a later ticket
  *
@@ -54,6 +60,7 @@ export type ImplementOrchestratorErrorCode =
   | 'worktree_failed'
   | 'worktree_secret_risk'
   | 'branch_failed'
+  | 'commit_failed'
   | 'session_failed';
 
 export class ImplementOrchestratorError extends Error {
@@ -69,6 +76,58 @@ export class ImplementOrchestratorError extends Error {
     this.name = 'ImplementOrchestratorError';
     this.code = code;
     this.details = [...details];
+  }
+}
+
+export type ImplementPermissionVerdict =
+  | { readonly outcome: 'allow'; readonly reason: 'filesystem' }
+  | {
+      readonly outcome: 'deny';
+      readonly reason:
+        | 'command'
+        | 'network'
+        | 'mcp'
+        | 'external_side_effect'
+        | 'destructive'
+        | 'incomplete_effects'
+        | 'unclassifiable';
+    };
+
+/**
+ * The Implement phase's permission shape: it may read and write files, and nothing else. Its
+ * prompt is built from a spec that Refine derived from an issue body a stranger may have written,
+ * so it is inside the same prompt-injection blast radius as Refine. The session being
+ * write-capable must not make the session publish-capable: a command (`git push`, `gh`, `curl`
+ * against the daemon's own publish route with a bearer token read off disk), a network call, or an
+ * MCP invocation is denied. This bounds what the Implement *session* can do. It does not bound what
+ * the files it writes do later, when Review's build/test gates execute them — that is a separate
+ * boundary (`review-gates.ts`), not one this function can hold.
+ *
+ * Fail-closed the same way `evaluateRefinePermission()` is: exactly one branch returns `allow`.
+ */
+export function evaluateImplementPermission(
+  action: PermissionActionV2,
+): ImplementPermissionVerdict {
+  if (action.risk === 'destructive' || action.mcpDestructive) {
+    return { outcome: 'deny', reason: 'destructive' };
+  }
+  switch (action.actionClass) {
+    case 'filesystem':
+      return action.effectsComplete &&
+        action.risk === 'normal' &&
+        (action.operation === 'filesystem.read' || action.operation === 'filesystem.write')
+        ? { outcome: 'allow', reason: 'filesystem' }
+        : { outcome: 'deny', reason: 'incomplete_effects' };
+    case 'command':
+      return { outcome: 'deny', reason: 'command' };
+    case 'network':
+      return { outcome: 'deny', reason: 'network' };
+    case 'mcp':
+      return { outcome: 'deny', reason: 'mcp' };
+    case 'external_side_effect':
+      return { outcome: 'deny', reason: 'external_side_effect' };
+    default:
+      return { outcome: 'deny', reason: 'unclassifiable' };
   }
 }
 
@@ -97,8 +156,17 @@ export interface ImplementWorktreeManager {
   ownedLocation(id: string): OwnedWorktreeLocation | undefined;
 }
 
+/** How a dispatched implement session ended, as the session machinery observed it. */
+export type ImplementSessionEnd = 'completed' | 'failed' | 'cancelled';
+
 export interface ImplementSessionOutcome {
   readonly sessionId: string;
+  /**
+   * Settles once the session reaches its terminal event. The orchestrator commits the worktree
+   * itself only after this resolves `'completed'` — see `#commitWork`. Absent (a port that cannot
+   * observe its session), nothing is ever committed on the agent's behalf.
+   */
+  readonly ended?: Promise<ImplementSessionEnd>;
 }
 
 /** The seam onto agentdock's session machinery, mirroring `RefineSessionPort`. */
@@ -150,8 +218,108 @@ export interface ImplementCollectRequest {
 
 export interface ImplementCollectResult {
   readonly headCommit: string;
-  /** Commits the session produced, oldest first. Empty means the agent committed nothing. */
+  /**
+   * Commits on the ticket branch since the base, oldest first — normally the one the daemon made
+   * after the session completed. Empty means the session left nothing to commit, or has not
+   * finished yet.
+   */
   readonly commits: readonly string[];
+}
+
+/** What the daemon's post-session commit step did, held until `collect()` reports it. */
+type CommitOutcome =
+  | { readonly kind: 'committed'; readonly commit: string }
+  | { readonly kind: 'nothing_to_commit' }
+  | { readonly kind: 'session_not_completed'; readonly end: ImplementSessionEnd }
+  | { readonly kind: 'refused'; readonly error: ImplementOrchestratorError };
+
+interface PendingCommit {
+  /** True once the session's terminal event arrived, i.e. the commit step is running or done. */
+  sessionEnded: boolean;
+  outcome: Promise<CommitOutcome>;
+}
+
+/**
+ * Hooks off, fsmonitor off, for every git command the daemon runs over files the agent wrote.
+ * `core.hooksPath` pointing at the null device means no `pre-commit`, `prepare-commit-msg`,
+ * `commit-msg` or `post-commit` hook is found — including one the agent wrote into a tracked hooks
+ * directory like `.husky/` — which `--no-verify` alone would not cover (it skips only two of them).
+ * Agent-written code never executes as part of a daemon-owned git step.
+ */
+const NO_REPO_CODE = Object.freeze([
+  '-c',
+  `core.hooksPath=${devNull}`,
+  '-c',
+  'core.fsmonitor=false',
+]);
+
+/**
+ * Reads a linked worktree's `.git` pointer file (`gitdir: …`). `undefined` when it is missing, or is
+ * not a plain file — a directory or a symlink is not what `git worktree add` created.
+ */
+export type GitPointerReader = (worktreePath: string) => Promise<string | undefined>;
+
+export const readGitPointer: GitPointerReader = async (worktreePath) => {
+  try {
+    const path = join(worktreePath, '.git');
+    if (!(await lstat(path)).isFile()) return undefined;
+    return (await readFile(path, 'utf8')).trim();
+  } catch {
+    return undefined;
+  }
+};
+
+const COMMIT_SUBJECT_MAX = 72;
+/** `owner/repo`, nothing else: what may be written into the commit's `Refs` line. */
+const REPO_SLUG = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+
+/**
+ * GitHub's closing keywords when followed by something they would close (`#12`, `owner/repo#12`, an
+ * issue URL). A zero-width space after the first letter keeps the word readable and makes it no
+ * longer the keyword, so a merged commit cannot close an issue its text happens to name.
+ */
+const CLOSING_KEYWORD =
+  /\b(close[sd]?|fix(?:e[sd])?|resolve[sd]?)(?=\s*:?\s*(?:#\d|[\w.-]+\/[\w.-]+#\d|https?:\/\/))/gi;
+
+function defangClosingKeywords(value: string): string {
+  return value.replace(CLOSING_KEYWORD, (word) => `${word.slice(0, 1)}\u200b${word.slice(1)}`);
+}
+
+function flattenToOneLine(value: string): string {
+  return Array.from(value, (char) => {
+    const code = char.charCodeAt(0);
+    return code < 0x20 || code === 0x7f ? ' ' : char;
+  })
+    .join('')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * The commit message for the daemon's post-session commit. Everything in the spec is Refine's
+ * model output, and Refine read an issue a stranger may have written, so nothing here is trusted
+ * text:
+ *
+ * - The subject is the title flattened to one line (no forged extra lines), with closing keywords
+ *   defanged, truncated to 72 characters, and suffixed with the issue number.
+ * - There is no body from the spec. The summary used to be one, and a multi-paragraph model string
+ *   as a commit's last paragraphs is exactly how a forged `Co-authored-by:`/`Signed-off-by:`
+ *   trailer or a `Fixes #N` gets in.
+ * - The `Refs owner/repo#n` line is written only when the repository is a plain `owner/repo` slug
+ *   and the number a positive integer; otherwise it is left out rather than repaired. `Refs` is
+ *   neither a closing keyword nor a trailer token.
+ */
+export function buildImplementCommitMessage(spec: RefineSpecV1): string {
+  const number = spec.issue.number;
+  const validNumber = Number.isSafeInteger(number) && number > 0;
+  const suffix = validNumber ? ` (#${number})` : '';
+  let title = defangClosingKeywords(flattenToOneLine(spec.issue.title)) || 'Implement ticket';
+  if (title.length + suffix.length > COMMIT_SUBJECT_MAX) {
+    title = `${title.slice(0, COMMIT_SUBJECT_MAX - suffix.length - 1).trimEnd()}…`;
+  }
+  const repo = spec.issue.repo.trim();
+  const refs = validNumber && REPO_SLUG.test(repo) ? `Refs ${repo}#${number}` : undefined;
+  return refs ? `${title}${suffix}\n\n${refs}` : `${title}${suffix}`;
 }
 
 export interface ImplementResult {
@@ -172,15 +340,25 @@ export class ImplementOrchestrator {
   readonly #worktrees: ImplementWorktreeManager;
   readonly #sessions: ImplementSessionPort;
   readonly #runGit: PipenzoGitRunner;
+  readonly #readGitPointer: GitPointerReader;
+  /**
+   * The post-session commit per worktree path, for sessions this daemon process dispatched. Not
+   * persisted: after a daemon restart there is no session to wait for, and `collect()` reports the
+   * branch as git has it.
+   */
+  readonly #pendingCommits = new Map<string, PendingCommit>();
 
   constructor(options: {
     worktrees: ImplementWorktreeManager;
     sessions: ImplementSessionPort;
     runGit?: PipenzoGitRunner;
+    /** Test seam for the `.git` pointer check in `#commitWork`. */
+    readGitPointer?: GitPointerReader;
   }) {
     this.#worktrees = options.worktrees;
     this.#sessions = options.sessions;
     this.#runGit = options.runGit ?? runGitCommand;
+    this.#readGitPointer = options.readGitPointer ?? readGitPointer;
   }
 
   /**
@@ -220,7 +398,13 @@ export class ImplementOrchestrator {
     }
 
     const baseCommit = await this.#createBranch(location.path, branch);
+    // Captured before the agent runs, so the commit step can tell whether the worktree still
+    // points at the repository the daemon created it from.
+    const gitPointer = await this.#readGitPointer(location.path);
     const session = await this.#runSession(request, spec, location.path);
+    if (session.ended) {
+      this.#commitWhenEnded(location.path, branch, spec, gitPointer, session.ended);
+    }
 
     return {
       worktreeId: worktree.id,
@@ -231,13 +415,23 @@ export class ImplementOrchestrator {
     };
   }
 
-  /** Reads what the dispatched session actually committed. Pure git, no session involvement. */
+  /**
+   * Reads what is on the ticket branch. If the session this daemon dispatched into the worktree has
+   * ended, first waits for the daemon's own commit of its work, and surfaces a refused or failed
+   * commit as `commit_failed` rather than as an empty, successful-looking result. While the session
+   * is still running it reads the branch as it is and never commits partial work.
+   */
   async collect(request: ImplementCollectRequest): Promise<ImplementCollectResult> {
     if (!request.worktreePath.trim()) {
       throw new ImplementOrchestratorError('invalid_request', 'a worktree path is required');
     }
     if (!SHA_PATTERN.test(request.baseCommit)) {
       throw new ImplementOrchestratorError('invalid_request', 'a full base commit sha is required');
+    }
+    const pending = this.#pendingCommits.get(request.worktreePath);
+    if (pending?.sessionEnded) {
+      const outcome = await pending.outcome;
+      if (outcome.kind === 'refused') throw outcome.error;
     }
     const headCommit = await this.#resolveHead(request.worktreePath, request.branch);
     return {
@@ -249,6 +443,7 @@ export class ImplementOrchestrator {
   /** Start plus collect, for a caller that can await the whole phase (the composition tests do). */
   async implement(request: ImplementRequest): Promise<ImplementResult> {
     const started = await this.start(request);
+    await this.#pendingCommits.get(started.worktreePath)?.outcome;
     const collected = await this.collect({
       worktreePath: started.worktreePath,
       branch: started.branch,
@@ -356,6 +551,105 @@ export class ImplementOrchestrator {
     }
   }
 
+  #commitWhenEnded(
+    worktreePath: string,
+    branch: string,
+    spec: RefineSpecV1,
+    gitPointer: string | undefined,
+    ended: Promise<ImplementSessionEnd>,
+  ): void {
+    const pending = { sessionEnded: false } as PendingCommit;
+    pending.outcome = ended
+      .then(
+        (end) => end,
+        (): ImplementSessionEnd => 'failed',
+      )
+      .then(async (end): Promise<CommitOutcome> => {
+        pending.sessionEnded = true;
+        // A failed or cancelled session's half-finished edits are left in the worktree for a human
+        // to look at, never committed as though they were the work.
+        if (end !== 'completed') return { kind: 'session_not_completed', end };
+        return this.#commitWork(worktreePath, branch, spec, gitPointer);
+      })
+      .catch((error: unknown): CommitOutcome => ({
+        kind: 'refused',
+        error:
+          error instanceof ImplementOrchestratorError
+            ? error
+            : new ImplementOrchestratorError(
+                'commit_failed',
+                'the daemon could not commit the implement worktree',
+              ),
+      }));
+    this.#pendingCommits.set(worktreePath, pending);
+  }
+
+  /**
+   * The daemon's own commit of what the completed session wrote — the same trust boundary as
+   * `#createBranch` and the eventual publish. The agent is told not to commit and, on Claude, has
+   * no tool that could; this runs in the daemon, through the hardened `runGitCommand` environment,
+   * with every repository hook and fsmonitor switched off (`NO_REPO_CODE`), after the session's
+   * terminal event.
+   *
+   * Refuses rather than commits when the worktree's `.git` pointer changed, when it is no longer on
+   * the ticket branch, or when the staged set contains a secret-shaped path (the same test
+   * `.worktreeinclude` previews use): staging "everything the agent left" must not be how a copied
+   * `.env` ends up on a branch the publish step pushes.
+   */
+  async #commitWork(
+    cwd: string,
+    branch: string,
+    spec: RefineSpecV1,
+    gitPointer: string | undefined,
+  ): Promise<CommitOutcome> {
+    const git = (args: readonly string[]) => this.#runGit([...NO_REPO_CODE, ...args], cwd);
+    const fail = (message: string, details: readonly string[] = []): never => {
+      throw new ImplementOrchestratorError('commit_failed', message, details);
+    };
+
+    // The worktree's `.git` file sits inside the agent's working directory. Rewritten to point at
+    // an agent-built git directory, its config could name a filter, gpg program or hook the
+    // commands below would run, so nothing runs unless it is exactly what it was before the session.
+    if (!gitPointer || (await this.#readGitPointer(cwd)) !== gitPointer) {
+      fail('the worktree’s .git pointer changed during the session; nothing was committed');
+    }
+
+    const head = await git(['symbolic-ref', '--quiet', 'HEAD']);
+    if (head.code !== 0 || head.stdout.trim() !== `refs/heads/${branch}`) {
+      fail(`the worktree is no longer on ${branch}; nothing was committed`);
+    }
+    const added = await git(['add', '--all']);
+    if (added.code !== 0)
+      fail('could not stage the implement changes', [added.stderr.trim().slice(0, 500)]);
+    const staged = await git(['diff', '--cached', '--name-only', '-z']);
+    if (staged.code !== 0)
+      fail('could not list the staged implement changes', [staged.stderr.trim().slice(0, 500)]);
+    const paths = staged.stdout.split('\0').filter((path) => path.length > 0);
+    if (paths.length === 0) return { kind: 'nothing_to_commit' };
+    const secretShaped = paths.filter((path) => isSecretShapedPath(path));
+    if (secretShaped.length > 0) {
+      await git(['reset', '--quiet']);
+      fail(
+        'the implement session left secret-shaped files in the worktree; nothing was committed',
+        secretShaped.slice(0, 20),
+      );
+    }
+    const committed = await git([
+      'commit',
+      '--no-verify',
+      '--quiet',
+      '-m',
+      buildImplementCommitMessage(spec),
+    ]);
+    if (committed.code !== 0) {
+      fail('git commit failed in the implement worktree', [committed.stderr.trim().slice(0, 500)]);
+    }
+    const commit = await git(['rev-parse', '--verify', '--end-of-options', 'HEAD^{commit}']);
+    const sha = commit.stdout.trim();
+    if (commit.code !== 0 || !SHA_PATTERN.test(sha)) fail('the new commit does not resolve');
+    return { kind: 'committed', commit: sha };
+  }
+
   async #resolveHead(cwd: string, branch: string): Promise<string> {
     const result = await this.#runGit(
       ['rev-parse', '--verify', '--end-of-options', `refs/heads/${branch}^{commit}`],
@@ -424,9 +718,12 @@ export function buildImplementPrompt(spec: RefineSpecV1): string {
   const questions = spec.openQuestions.map((entry) => `  - ${entry}`);
   return [
     'You are the Implement phase of an issue-to-PR loop. A separate read-only Refine phase already',
-    'decided what this ticket is and is not. Implement exactly that spec in this worktree, and',
-    'commit your work. Do not re-scope, do not expand beyond it, and do not go looking for the',
+    'decided what this ticket is and is not. Implement exactly that spec in this worktree by',
+    'editing files. Do not re-scope, do not expand beyond it, and do not go looking for the',
     'original ticket text — the spec below is the agreement.',
+    '',
+    'Do not commit. Leave your changes in the working tree: when your session ends, the daemon',
+    'commits them to this ticket’s branch itself.',
     '',
     'You cannot push and you cannot open a pull request. Publishing is a daemon-side action a human',
     'triggers after reviewing your diff; there is no tool here that does it, and attempting it is a',

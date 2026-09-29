@@ -3,8 +3,10 @@ import type { CreateSessionV2Request, OwnedWorktreeV2, RefineSpecV1 } from '@age
 import {
   ImplementOrchestrator,
   ImplementOrchestratorError,
+  buildImplementCommitMessage,
   buildImplementPrompt,
   ticketBranchName,
+  type ImplementSessionEnd,
   type ImplementSessionPort,
   type ImplementWorktreeManager,
 } from '../src/implement-orchestrator.js';
@@ -108,15 +110,21 @@ function harness(options: {
     switch: ok(''),
     'rev-parse-branch': ok(`${HEAD_SHA}\n`),
     'rev-list': ok(`${'c'.repeat(40)}\n${HEAD_SHA}\n`),
+    'symbolic-ref': ok('refs/heads/issue-180\n'),
+    diff: ok('src/changed.ts\0'),
   };
   const runGit: PipenzoGitRunner = async (args) => {
     gitInvocations.push([...args]);
+    // The daemon's post-session commit prefixes its argv with `-c` overrides; key on the verb.
+    let verbAt = 0;
+    while (args[verbAt] === '-c') verbAt += 2;
+    const verb = args[verbAt] ?? '';
     const key =
-      args[0] === 'rev-parse'
+      verb === 'rev-parse'
         ? args[args.length - 1] === 'HEAD^{commit}'
           ? 'rev-parse-HEAD'
           : 'rev-parse-branch'
-        : (args[0] ?? '');
+        : verb;
     return options.git?.[key] ?? defaults[key] ?? ok();
   };
 
@@ -327,7 +335,90 @@ describe('ImplementOrchestrator.implement', () => {
   });
 });
 
+describe('the daemon-owned post-session commit', () => {
+  const POINTER = async (): Promise<string> => 'gitdir: /repos/pipenzo/.git/worktrees/issue-180';
+
+  function endedLater(): { ended: Promise<ImplementSessionEnd>; end: (e: ImplementSessionEnd) => void } {
+    let end!: (e: ImplementSessionEnd) => void;
+    const ended = new Promise<ImplementSessionEnd>((resolve) => {
+      end = resolve;
+    });
+    return { ended, end };
+  }
+
+  it('does not stage or commit anything while the session is still running', async () => {
+    const h = harness();
+    const { ended, end } = endedLater();
+    const sessions: ImplementSessionPort = { run: async () => ({ sessionId: SESSION_ID, ended }) };
+    const orch = new ImplementOrchestrator({
+      worktrees: h.worktrees,
+      sessions,
+      runGit: h.runGit,
+      readGitPointer: POINTER,
+    });
+    const started = await orch.start({ spec: spec(), repositoryPath: REPO_PATH, provider: 'claude' });
+    await orch.collect(started);
+    expect(h.gitInvocations.some((argv) => argv.includes('add') || argv.includes('commit'))).toBe(false);
+
+    // Once it ends, a later collect waits for the daemon's commit before reading the branch.
+    end('completed');
+    // A route's collect arrives on a later macrotask than the terminal event; model that.
+    await new Promise((resolve) => setImmediate(resolve));
+    await orch.collect(started);
+    const commit = h.gitInvocations.find((argv) => argv.includes('commit'));
+    expect(commit?.slice(0, 4)).toEqual(['-c', expect.stringMatching(/^core\.hooksPath=/), '-c', 'core.fsmonitor=false']);
+    expect(commit).toContain('--no-verify');
+    expect(commit?.[commit.indexOf('-m') + 1]).toBe(buildImplementCommitMessage(spec()));
+  });
+
+  it('refuses to commit when the worktree was moved off the ticket branch', async () => {
+    const h = harness({ git: { 'symbolic-ref': ok('refs/heads/main\n') } });
+    const sessions: ImplementSessionPort = {
+      run: async () => ({ sessionId: SESSION_ID, ended: Promise.resolve('completed' as const) }),
+    };
+    const error = await rejection(() =>
+      new ImplementOrchestrator({
+        worktrees: h.worktrees,
+        sessions,
+        runGit: h.runGit,
+        readGitPointer: POINTER,
+      }).implement({
+        spec: spec(),
+        repositoryPath: REPO_PATH,
+        provider: 'claude',
+      }),
+    );
+    expect(error.code).toBe('commit_failed');
+    expect(h.gitInvocations.some((argv) => argv.includes('commit'))).toBe(false);
+  });
+
+  it('writes a one-line subject that a hostile title cannot break into extra lines', () => {
+    const message = buildImplementCommitMessage(
+      spec({
+        issue: {
+          repo: 'jortega0033/pipenzo',
+          number: 180,
+          title: 'Fix it\n\nSigned-off-by: Somebody Else <x@y>\r\nand '.padEnd(120, 'x'),
+        },
+      }),
+    );
+    const [subject, blank] = message.split('\n');
+    expect(subject).not.toContain('\r');
+    expect(subject?.length).toBeLessThanOrEqual(72);
+    expect(subject?.endsWith('(#180)')).toBe(true);
+    expect(blank).toBe('');
+    expect(message.split('\n').filter((line) => line.startsWith('Signed-off-by'))).toEqual([]);
+    expect(message).toContain('Refs jortega0033/pipenzo#180');
+  });
+});
+
 describe('buildImplementPrompt', () => {
+  it('tells the implementer the daemon commits, so it does not try to', () => {
+    const prompt = buildImplementPrompt(spec());
+    expect(prompt).toContain('Do not commit');
+    expect(prompt).not.toContain('commit your work');
+  });
+
   /**
    * README's Implement step: a fresh session seeded *only* with the spec. Here that is a property
    * of the signature — `buildImplementPrompt` takes a `RefineSpecV1` and nothing else, so there is

@@ -491,6 +491,8 @@ export const PIPENZO_PHASE_ERROR_CODES = [
   'worktree_secret_risk',
   'worktree_not_found',
   'branch_failed',
+  /** The daemon's own post-session `git commit` of the implement worktree failed or was refused. */
+  'commit_failed',
   // review
   'verifier_tier_too_low',
   'diff_unavailable',

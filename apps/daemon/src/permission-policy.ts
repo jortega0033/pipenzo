@@ -85,6 +85,17 @@ function closedOperation(
 
 /** Builds a closed, audit-safe action when an adapter has not supplied richer normalization. */
 export function normalizeApprovalAction(event: ApprovalRequestedEvent): PermissionActionV2 {
+  return normalizeEffectsAction(event);
+}
+
+/**
+ * `normalizeApprovalAction()` over only the effect-bearing fields it reads, so a caller classifying
+ * a tool grant ahead of dispatch (`pipenzo-phase-sessions.ts`) derives the action exactly as an
+ * approval request for that tool would be derived.
+ */
+export function normalizeEffectsAction(
+  event: Pick<ApprovalRequestedEvent, 'possibleEffects' | 'effectsComplete' | 'target' | 'permission'>,
+): PermissionActionV2 {
   const effects = new Set(event.possibleEffects);
   const provider = event.permission ? permissionActionV2Schema.parse(event.permission) : undefined;
   const actionClass = conservativeActionClass(

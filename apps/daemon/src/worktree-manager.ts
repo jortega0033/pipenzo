@@ -91,6 +91,11 @@ function samePath(left: string, right: string): boolean {
     : normalizedLeft === normalizedRight;
 }
 
+/** The secret-shaped path test `.worktreeinclude` previews use, shared with the implement commit. */
+export function isSecretShapedPath(path: string): boolean {
+  return risky(path);
+}
+
 function risky(path: string): boolean {
   return /(^|\/)(\.env|id_rsa|credentials?|secrets?|tokens?)(\.|\/|$)/i.test(
     path.replaceAll('\\', '/'),

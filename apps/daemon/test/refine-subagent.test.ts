@@ -23,6 +23,7 @@ import {
   type RefineSessionPort,
 } from '../src/refine-subagent.js';
 import { validateStructuredOutput } from '../src/structured-output.js';
+import { WorkspaceAccessError } from '../src/session-manager.js';
 import type { PipenzoGitRunner } from '../src/pipenzo-git.js';
 
 const runtimeSrc = join(
@@ -507,6 +508,43 @@ describe('RefineSubagent', () => {
     );
     expect(error.code).toBe('session_failed');
     expect(error.message).toContain('provider transport unavailable');
+  });
+
+  /**
+   * The baseline runs `git status` in the checkout, and in an untrusted checkout that can execute
+   * its `core.fsmonitor` command. Admission has to come first, so no git runs at all.
+   */
+  it('checks workspace trust before running any git in the checkout', async () => {
+    const gitCalls: string[][] = [];
+    const runGit: PipenzoGitRunner = async (args) => {
+      gitCalls.push([...args]);
+      return { stdout: '', stderr: '', code: 0 };
+    };
+    const { port: base, requests } = port();
+    const sessions: RefineSessionPort = {
+      run: base.run,
+      admit: async () => {
+        throw new WorkspaceAccessError('workspace is not trusted');
+      },
+    };
+    const error = await refineError(() =>
+      new RefineSubagent(sessions, runGit).refine({ issue: ISSUE, cwd: process.cwd(), provider: 'claude' }),
+    );
+    expect(error.code).toBe('workspace_untrusted');
+    expect(gitCalls).toEqual([]);
+    expect(requests).toEqual([]);
+  });
+
+  it('reports a port refusing an untrusted workspace as workspace_untrusted', async () => {
+    const sessions: RefineSessionPort = {
+      run: async () => {
+        throw new WorkspaceAccessError('workspace is not trusted');
+      },
+    };
+    const error = await refineError(() =>
+      new RefineSubagent(sessions, gitBaseline()).refine({ issue: ISSUE, cwd: process.cwd(), provider: 'claude' }),
+    );
+    expect(error.code).toBe('workspace_untrusted');
   });
 
   it('refuses a dirty checkout before the provider session ever dispatches (issue #318)', async () => {
