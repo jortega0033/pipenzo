@@ -151,7 +151,7 @@ jobs:
           fi
           gh release create "${{ inputs.tag }}" \
             --target "${{ steps.verify.outputs.commit }}" \
-            --title "AgentDock ${{ inputs.tag }}" \
+            --title "Pipenzo ${{ inputs.tag }}" \
             $draft_flag \
             --notes "Unsigned Windows build. See the attached release-candidate-manifest.json for exact gate results, SBOM availability, and provenance, and docs/release-checklist.md for what this evidence does and does not prove." \
             "${assets[@]}"
