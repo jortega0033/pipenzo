@@ -1,5 +1,5 @@
 /**
- * Input contract for read-only candidate reconciliation (Pipenzo #358, slice 1a): the types the
+ * Input contract for read-only candidate reconciliation (Pipenzo #358, slice 1, input contract): the types the
  * reconciler reads and returns, and the bounds enforced before scoring. Bad input is rejected with
  * a typed error, never guessed at. Scoring lives in `candidate-reconciler.ts`.
  */
