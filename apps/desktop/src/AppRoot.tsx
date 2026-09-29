@@ -181,6 +181,19 @@ function PipenzoStartup({
               description: `${ticket.repo} · ${started.branch}`,
             })
           }
+          // Issue #77: the dialog stays open on its own error (Foundations.dc.html's inline
+          // notice/field-error pair), but a person who closes it anyway should not lose the fact
+          // that nothing started -- danger tone, one action, no auto-dismiss, matching the
+          // "Couldn't start #88 -- GitHub is unreachable" example exactly.
+          onImplementFailed={(ticket, message, retry) =>
+            toast.push({
+              tone: 'danger',
+              icon: 'warning',
+              title: `Couldn't start #${ticket.issueNumber}`,
+              description: message,
+              action: { label: 'Retry', onClick: retry },
+            })
+          }
         />
       )}
       <ToastStack toasts={toast.visible} onDismiss={toast.dismiss} />

@@ -72,10 +72,14 @@ export function PipenzoAppShell({
   sync,
   onRefreshSync,
   onImplementStarted,
+  onImplementFailed,
 }: {
   sync: { status: SyncStatus; label: string };
   onRefreshSync: () => void;
   onImplementStarted?: (ticket: PipenzoTicketViewV1, started: PipenzoImplementResultV1) => void;
+  /** Issue #77: a real Start failure, named by the ticket it failed for -- the toast stack lives in
+   * `AppRoot`, same as the success case above. */
+  onImplementFailed?: (ticket: PipenzoTicketViewV1, message: string, retry: () => void) => void;
 }) {
   const [view, setView] = useState<'board' | 'settings'>('board');
   const { ticketList, refresh } = usePipenzoTickets();
@@ -152,6 +156,7 @@ export function PipenzoAppShell({
             refresh();
             onImplementStarted?.(implementing, started);
           }}
+          onFailed={(message, retry) => onImplementFailed?.(implementing, message, retry)}
         />
       )}
     </AppShell>
