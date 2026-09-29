@@ -231,15 +231,24 @@ has already left the park (`labelWrite: 'superseded'`), and a failure leaves bot
 same story (`labelWrite: 'failed'`). The recovery report, not the lane, is what guarantees an
 interrupted ticket stays visible.
 
-**Known limit, not yet closed.** When a write fails *after* the machine's read reconciled the park
-away, `pipenzo:interrupted` ends up on neither side. The recovery report still names the ticket, but
-that report lives in daemon memory, and a session reported interrupted is terminal in both stores —
-`FileExecutionGraphStore` skips terminal records on load and `FileSessionStore` sweeps only
-`starting`/`running` — so the next daemon start will not report it again. The ticket is then the
-un-owned thing this section exists to eliminate. Recovery still does not re-park, because writing
-over a record a human may have just moved is the worse of the two failures and was measured doing
-real damage. Closing the gap properly needs a durable marker rather than process memory, and is
-tracked as issue #201.
+**When a write fails** *after* the machine's read reconciled the park away, `pipenzo:interrupted` ends
+up on neither side, and the in-memory recovery report alone would not survive a second crash: a
+session reported interrupted is terminal in both stores — `FileExecutionGraphStore` skips terminal
+records on load and `FileSessionStore` sweeps only `starting`/`running` — so the next daemon start
+would not report it again through that path. Recovery still does not re-park the ticket's `lane`,
+because writing over a record a human may have just moved is the worse of the two failures and was
+measured doing real damage.
+
+What it does instead (issue #201) is write a durable marker to the ticket's own `attempts[].outcome`
+for the crashed session — `interrupted_unresolved:<lane>`, the lane being the one the ticket was just
+reconciled back to — leaving `lane`/`labels` themselves untouched. The lane travels with the marker
+rather than in a second field so a later reader can tell "nothing has moved this ticket since the
+failure" from "something has" by comparing it against the ticket's current lane, without guessing.
+The marker is resolved (`interrupted_recovered`) the moment the label lands after all, the transition
+settles on some other real state, or a human moves the ticket before recovery gets to it — never
+touched for any other reason, so it cannot clobber an outcome some future dispatcher or gate wrote.
+On its own this durably records the failure rather than losing it; a later restart reading the marker
+back to decide whether the ticket still belongs on the recovery screen is the follow-up piece.
 
 For the same reason, a ticket already holding an unanswered human decision —
 `pipenzo:awaiting-stack-approval`, `pipenzo:needs-pre-scoping`, `pipenzo:merge-conflict`,

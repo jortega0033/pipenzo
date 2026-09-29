@@ -504,6 +504,10 @@ describe('PipenzoCrashRecovery.writeLabels', () => {
     // Both sides tell the same story: the record reflects GitHub, not a park recovery re-asserted.
     expect(tickets.get(TICKET_ID)?.lane).toBe('ready-for-review');
     expect(tickets.get(TICKET_ID)?.labels).not.toContain('pipenzo:interrupted');
+    // ...but the failure is not only in the in-memory report: it is durably on the ticket's own
+    // record too (issue #201), so it is not lost when this daemon process later exits.
+    const attempt = tickets.get(TICKET_ID)?.attempts.find((entry) => entry.sessionId === SESSION_ID);
+    expect(attempt?.outcome).toBe('interrupted_unresolved:ready-for-review');
   });
 
   it('does not claim written when the settled label set lacks pipenzo:interrupted', async () => {
@@ -666,6 +670,20 @@ describe('PipenzoCrashRecovery.writeLabels', () => {
     const byTicket = new Map(report.parked.map((entry) => [entry.ticketId, entry.labelWrite]));
     expect(byTicket.get(OTHER_TICKET_ID)).toBe('failed');
     expect(byTicket.get(TICKET_ID)).toBe('written');
+  });
+
+  it('leaves attempts[].outcome untouched on a successful write, since the marker was never set', async () => {
+    // `#markResolved` runs unconditionally after every settled transition, but it is guarded to only
+    // ever overwrite this module's own `interrupted_unresolved:<lane>` sentinel -- a first-try success
+    // never wrote one, so the pre-existing outcome (whatever a future dispatcher/gate put there) must
+    // survive untouched.
+    const { tickets, recovery } = harness();
+    recovery.park({ interruptedSessionIds: [SESSION_ID], quarantinedTicketRecordCount: 0 });
+
+    await recovery.writeLabels();
+
+    const attempt = tickets.get(TICKET_ID)?.attempts.find((entry) => entry.sessionId === SESSION_ID);
+    expect(attempt?.outcome).toBe('dispatched');
   });
 });
 

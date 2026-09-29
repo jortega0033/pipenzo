@@ -1,6 +1,8 @@
 import {
+  PIPENZO_LANES,
   PIPENZO_SCHEMA_V1_MARKER_LABEL,
   type PipenzoLabelV1,
+  type PipenzoLaneV1,
   type PipenzoParkedTicketV1,
   type PipenzoRecoveryReportV1,
   type PipenzoTicketRecordV1,
@@ -124,6 +126,37 @@ const EMPTY_REPORT: PipenzoRecoveryReportV1 = {
   quarantinedTicketRecordCount: 0,
   parked: [],
 };
+
+/**
+ * The durable half of issue #201: recovery writes to the matching `attempts[]` entry
+ * (`pipenzoTicketAttemptV1Schema.outcome`, deliberately an open string -- see its doc comment) so
+ * that an interrupted-and-never-labelled ticket has a witness that survives this process, not just
+ * the in-memory report that resets on the next restart. Written and read only by this module.
+ *
+ * `interrupted_unresolved:<lane>` is written when `writeLabels()`'s GitHub write fails -- the exact
+ * sequence #201 names, where label-wins reconciliation has already rewritten the local record back
+ * to the lane the ticket crashed in (`<lane>`), so nothing on either side still says "parked" once
+ * the write also fails. The lane rides along in the string rather than in a second field so a later
+ * consumer of this marker can tell "nothing has moved this ticket since" from "something has" by
+ * comparing the ticket's current local lane against it, without needing a second stored field.
+ *
+ * `interrupted_recovered` replaces it once the ticket is no longer this module's to flag: the label
+ * landed, the transition settled on some other real state, or a human moved the ticket before
+ * recovery got to it. The *resolving* direction (`#markResolved`) checks the existing value is
+ * already `interrupted_unresolved:<lane>` before touching it, so it can never clobber an outcome some
+ * future dispatcher or gate wrote for a different reason; the *unresolving* direction is safe to
+ * write unconditionally, because it only ever runs for the attempt matching a session the daemon has
+ * itself just watched crash.
+ */
+const RECOVERY_OUTCOME_UNRESOLVED_PREFIX = 'interrupted_unresolved:';
+const RECOVERY_OUTCOME_RECOVERED = 'interrupted_recovered';
+
+/** `undefined` for a lane the current build does not recognise, and for any other outcome string. */
+function recoveryUnresolvedLane(outcome: string): PipenzoLaneV1 | undefined {
+  if (!outcome.startsWith(RECOVERY_OUTCOME_UNRESOLVED_PREFIX)) return undefined;
+  const lane = outcome.slice(RECOVERY_OUTCOME_UNRESOLVED_PREFIX.length);
+  return (PIPENZO_LANES as readonly string[]).includes(lane) ? (lane as PipenzoLaneV1) : undefined;
+}
 
 export class PipenzoCrashRecovery {
   readonly #tickets: FileTicketStore;
@@ -259,6 +292,8 @@ export class PipenzoCrashRecovery {
       // human, and re-asserting `interrupted` after they made it would be this module overruling the
       // human it exists to defer to, which is the same harm as the auto-resume it refuses outright.
       if (!this.#stillParked(entry.ticketId)) {
+        // A human already moved this ticket -- resolved, just not by a label this loop wrote.
+        this.#markResolved(entry.ticketId, entry.sessionId);
         updated.push({ ...this.#refreshed(entry), labelWrite: 'superseded' });
         continue;
       }
@@ -275,6 +310,9 @@ export class PipenzoCrashRecovery {
         // label outranks ours (`lane_reconciled`), `ambiguous_labels`, `unlabelled`. Reporting
         // `written` there would assert an agreement that does not exist.
         const landed = result.ticket.labels.includes('pipenzo:interrupted');
+        // The transition settled on *something* real, whether or not it is `interrupted` -- either
+        // way this ticket is no longer the unowned state the marker exists to flag.
+        this.#markResolved(entry.ticketId, entry.sessionId);
         updated.push({
           ...entry,
           lane: result.ticket.lane,
@@ -308,16 +346,20 @@ export class PipenzoCrashRecovery {
         // for would make this surface the only one claiming a state neither store holds, which is
         // the failure the `written` path above is careful to avoid.
         //
-        // **This is where an interrupted ticket can end up with no owner, and it is not fixed here.**
-        // `pipenzo:interrupted` is now on neither side, this report is in memory only, and a session
-        // once reported interrupted is terminal in both stores (`execution-graph-store.ts`'s
-        // `isTerminal` skip, `session-store.ts`'s starting/running-only sweep) so the next daemon
-        // start will not report it again. The ticket is then exactly the un-owned thing #190 exists
-        // to eliminate. Recovery still does not re-park, because the alternative -- writing over a
-        // record a human may have just moved -- is the worse of the two, and it was measured doing
-        // real damage. Closing the gap properly needs a durable marker rather than process memory,
-        // which is issue #201.
-        updated.push({ ...this.#refreshed(entry), labelWrite: 'failed' });
+        // **This is where an interrupted ticket used to end up with no owner (issue #201).**
+        // `pipenzo:interrupted` is now on neither side, and a session once reported interrupted is
+        // terminal in both stores (`execution-graph-store.ts`'s `isTerminal` skip, `session-store.ts`'s
+        // starting/running-only sweep) so the next daemon start will not report it again through that
+        // path. `#markUnresolved` durably marks this attempt on the ticket record itself instead, so
+        // the interruption survives this process even though the in-memory report does not. Recovery
+        // still does not re-park the *lane* here -- only `attempts[].outcome` is touched -- because
+        // the alternative is still writing over a record a human may have just moved, which was
+        // measured doing real damage when this module tried it. The lane travels with the marker
+        // rather than a bare sentinel, so whatever later reads this back can tell "nothing has moved
+        // this ticket since the failure" from "something has" without guessing.
+        const refreshed = this.#refreshed(entry);
+        this.#markUnresolved(entry.ticketId, entry.sessionId, refreshed.lane);
+        updated.push({ ...refreshed, labelWrite: 'failed' });
       }
     }
 
@@ -360,6 +402,53 @@ export class PipenzoCrashRecovery {
       current.lane === 'needs-human' &&
       current.labels.includes('pipenzo:interrupted')
     );
+  }
+
+  /**
+   * Durably marks the attempt behind `sessionId` unresolved at `lane` (issue #201), called only from
+   * `writeLabels()`'s `failed` branch with the ticket's just-reconciled lane -- the sequence where
+   * label-wins reconciliation has already rewritten the local record away from the park before the
+   * write itself throws, leaving neither side able to say the ticket is parked. Deliberately narrow:
+   * this touches `attempts[].outcome` only, never `lane`/`labels` -- rewriting those here would be
+   * re-asserting a park blind to whether the record's current state is reconciliation's doing or a
+   * human's, which is the exact harm `writeLabels()` already refuses.
+   */
+  #markUnresolved(ticketId: string, sessionId: string, lane: PipenzoLaneV1): void {
+    this.#setAttemptOutcome(ticketId, sessionId, `${RECOVERY_OUTCOME_UNRESOLVED_PREFIX}${lane}`);
+  }
+
+  /**
+   * The inverse of `#markUnresolved`. Guarded to only ever overwrite this module's own
+   * `interrupted_unresolved:<lane>` sentinel, never some other outcome a future dispatcher or gate
+   * wrote for a different reason.
+   */
+  #markResolved(ticketId: string, sessionId: string): void {
+    const attempt = this.#tickets.get(ticketId)?.attempts.find((entry) => entry.sessionId === sessionId);
+    if (!attempt || recoveryUnresolvedLane(attempt.outcome) === undefined) return;
+    this.#setAttemptOutcome(ticketId, sessionId, RECOVERY_OUTCOME_RECOVERED);
+  }
+
+  /** Rewrites one attempt's `outcome` by session id. */
+  #setAttemptOutcome(ticketId: string, sessionId: string, outcome: string): void {
+    const current = this.#tickets.get(ticketId);
+    if (!current) return;
+    let changed = false;
+    const attempts = current.attempts.map((attempt) => {
+      if (attempt.sessionId !== sessionId || attempt.outcome === outcome) return attempt;
+      changed = true;
+      return { ...attempt, outcome };
+    });
+    if (!changed) return;
+    try {
+      this.#tickets.update(ticketId, { ...current, attempts });
+    } catch (error) {
+      // Same substitution `#persistPark` makes: the store's own message can carry a path, and the
+      // ticket id is enough for an operator to act on.
+      this.#logger.warn('could not durably record a crash-recovery outcome', {
+        ticketId,
+        ...(isErrnoLike(error) ? { code: error.code } : {}),
+      });
+    }
   }
 
   /** A defensive copy, so a route handler cannot hand a caller the live report to mutate. */
