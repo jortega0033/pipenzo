@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ProviderRegistry, noopLogger } from '@agent-dock/agent-runtime';
-import type { PipenzoTicketRecordV1 } from '@agent-dock/shared';
+import type { PipenzoTicketRecordV1, RefineSpecV1 } from '@agent-dock/shared';
 import { buildServer } from '../src/server.js';
 import { SessionManager } from '../src/session-manager.js';
 import { FakeGitHubClient } from '../src/github-client-fake.js';
@@ -51,6 +51,22 @@ function makeTicket(overrides: Partial<PipenzoTicketRecordV1> = {}): PipenzoTick
     risk: { score: 0, lastResetAt: '2026-01-01T00:00:00.000Z' },
     precommits: [],
     etags: {},
+    ...overrides,
+  };
+}
+
+/** A minimal, schema-valid Refine spec, for tickets that need a real `filesLikelyTouched` to
+ * exercise the Working-lane concurrency report (issue #85). */
+function spec(overrides: Partial<RefineSpecV1> = {}): RefineSpecV1 {
+  return {
+    schemaVersion: 1,
+    issue: { repo: REPO, number: ISSUE_NUMBER, title: 'A ticket' },
+    summary: 'A minimal spec for a route test.',
+    acceptanceCriteria: [{ id: 'AC-1', kind: 'ubiquitous', text: 'The daemon shall do the thing' }],
+    outOfScope: ['Everything else'],
+    filesLikelyTouched: [],
+    estimate: { changedLines: 10, filesTouched: 1, layered: false },
+    openQuestions: [],
     ...overrides,
   };
 }
@@ -162,6 +178,75 @@ describe('GET /v2/pipenzo/tickets', () => {
     const response = await app.inject({ method: 'GET', url: '/v2/pipenzo/tickets' });
 
     expect(response.statusCode).toBe(401);
+  });
+});
+
+describe('GET /v2/pipenzo/tickets — Working lane concurrency (issue #85)', () => {
+  it('reports the fixed capacity default alongside the ticket list', async () => {
+    const { app } = buildApp();
+
+    const response = await app.inject({ method: 'GET', url: '/v2/pipenzo/tickets', headers: auth });
+
+    expect(response.json()).toMatchObject({ workingLaneCapacity: 2 });
+  });
+
+  it('marks a solitary Working ticket running, with no concurrency conflict', async () => {
+    const { app } = buildApp({
+      ticket: { lane: 'working', labels: ['pipenzo:working'], spec: spec({ filesLikelyTouched: ['a.ts'] }) },
+    });
+
+    const response = await app.inject({ method: 'GET', url: '/v2/pipenzo/tickets', headers: auth });
+
+    const body = response.json() as { tickets: Array<{ ticketId: string; concurrency?: unknown }> };
+    expect(body.tickets[0]?.concurrency).toEqual({ state: 'running' });
+  });
+
+  it('holds the later-numbered ticket that overlaps a running one, naming the real ticket and file', async () => {
+    const { app, tickets } = buildApp({
+      ticket: {
+        ticketId: '00000000-0000-4000-8000-000000000001',
+        issueNumber: 94,
+        lane: 'working',
+        labels: ['pipenzo:working'],
+        spec: spec({ issue: { repo: REPO, number: 94, title: 'A ticket' }, filesLikelyTouched: ['stdio-mcp-connection.ts'] }),
+      },
+    });
+    tickets.create(
+      makeTicket({
+        ticketId: '00000000-0000-4000-8000-000000000002',
+        issueNumber: 97,
+        lane: 'working',
+        labels: ['pipenzo:working'],
+        spec: spec({
+          issue: { repo: REPO, number: 97, title: 'Another ticket' },
+          filesLikelyTouched: ['stdio-mcp-connection.ts', 'other.ts'],
+        }),
+      }),
+    );
+
+    const response = await app.inject({ method: 'GET', url: '/v2/pipenzo/tickets', headers: auth });
+
+    const body = response.json() as {
+      tickets: Array<{ issueNumber: number; concurrency?: Record<string, unknown> }>;
+    };
+    const held = body.tickets.find((ticket) => ticket.issueNumber === 97);
+    expect(held?.concurrency).toEqual({
+      state: 'held',
+      overlapTicketId: '00000000-0000-4000-8000-000000000001',
+      overlapIssueNumber: 94,
+      overlapFile: 'stdio-mcp-connection.ts',
+    });
+  });
+
+  it('never evaluates a ticket outside the Working lane, even one with an overlapping spec', async () => {
+    const { app } = buildApp({
+      ticket: { lane: 'queued', labels: ['pipenzo:queued'], spec: spec({ filesLikelyTouched: ['a.ts'] }) },
+    });
+
+    const response = await app.inject({ method: 'GET', url: '/v2/pipenzo/tickets', headers: auth });
+
+    const body = response.json() as { tickets: Array<{ concurrency?: unknown }> };
+    expect(body.tickets[0]).not.toHaveProperty('concurrency');
   });
 });
 
