@@ -1,10 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ProviderRegistry, noopLogger } from '@agent-dock/agent-runtime';
-import {
-  PIPENZO_PUBLISH_NONCE_HEADER,
-  generatePublishNonceSecret,
-  mintPublishNonce,
-} from '@agent-dock/shared';
+import { PIPENZO_PUBLISH_NONCE_HEADER } from '@agent-dock/shared';
+import { generatePublishNonceSecret, mintPublishNonce } from '@agent-dock/shared/src/publish-nonce-node-v1.js';
 import { buildServer } from '../src/server.js';
 import { SessionManager } from '../src/session-manager.js';
 import { PublishService, type OwnedWorktreeLocator } from '../src/publish-service.js';

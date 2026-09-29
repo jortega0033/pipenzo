@@ -1,8 +1,5 @@
-import {
-  PUBLISH_NONCE_FRESHNESS_MS,
-  isPublishNonceSecretShaped,
-  verifyPublishNonceMac,
-} from '@agent-dock/shared';
+import { PUBLISH_NONCE_FRESHNESS_MS, isPublishNonceSecretShaped } from '@agent-dock/shared';
+import { verifyPublishNonceMac } from '@agent-dock/shared/src/publish-nonce-node-v1.js';
 import type { DaemonCredentialMessageV1 } from './github-credential.js';
 
 /**

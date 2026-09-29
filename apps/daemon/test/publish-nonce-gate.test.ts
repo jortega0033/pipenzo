@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { generatePublishNonceSecret, mintPublishNonce } from '@agent-dock/shared';
+import { generatePublishNonceSecret, mintPublishNonce } from '@agent-dock/shared/src/publish-nonce-node-v1.js';
 import { PUBLISH_NONCE_SECRET_ENV_KEY, PublishNonceGate } from '../src/publish-nonce-gate.js';
 import type { DaemonCredentialMessageV1 } from '../src/github-credential.js';
 

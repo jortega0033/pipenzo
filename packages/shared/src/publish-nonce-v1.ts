@@ -1,5 +1,3 @@
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
-
 /**
  * The publish-nonce wire contract (Pipenzo issue #182).
  *
@@ -38,6 +36,21 @@ import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
  * request header (never in the JSON body `PublishService`/`pipenzoPublishRequestV1Schema` already
  * validate as the git-safety argv contract — a route-level auth factor belongs beside the bearer
  * `Authorization` header it supplements, not inside the body those two independently re-validate).
+ *
+ * ## This file is browser-safe on purpose
+ *
+ * Everything below is a pure constant, type, or string check — no `node:crypto`. The functions that
+ * actually mint or verify a nonce (`generatePublishNonceSecret`, `mintPublishNonce`,
+ * `verifyPublishNonceMac`) live in the sibling `publish-nonce-node-v1.ts` instead, and are
+ * deliberately **not** re-exported from this package's main barrel (`index.ts`). `apps/desktop`'s
+ * renderer bundle is built for the browser, and `packages/client` (which the renderer imports) only
+ * ever needs `PIPENZO_PUBLISH_NONCE_HEADER` from this contract, not the crypto operations — so the
+ * whole point of splitting the file is that no import path reachable from the renderer's build graph
+ * can pull `node:crypto` into it. Confirmed the hard way: a single shared file that mixed both kept
+ * `apps/desktop`'s `vite build` failing on `randomBytes is not exported by __vite-browser-external`,
+ * because Rollup still has to resolve every named binding in a graph-reachable module regardless of
+ * whether tree-shaking would later drop it. Only the daemon and Electron main (both real Node
+ * processes) import the Node-only file, via `@agent-dock/shared/publish-nonce-node-v1.js`.
  */
 
 /** The header the route reads it from, and the client attaches it to. Lower-case: Fastify and the
@@ -53,7 +66,9 @@ export const PIPENZO_PUBLISH_NONCE_HEADER = 'x-pipenzo-publish-nonce';
  */
 export const PUBLISH_NONCE_FRESHNESS_MS = 30_000;
 
-const NONCE_PATTERN = /^[0-9a-f]{32}\.[0-9a-z]+\.[0-9a-f]{64}$/;
+/** Also used by `publish-nonce-node-v1.ts`'s `verifyPublishNonceMac` -- kept here, not duplicated,
+ * since it's a pure wire-shape fact, not a crypto operation. */
+export const NONCE_PATTERN = /^[0-9a-f]{32}\.[0-9a-z]+\.[0-9a-f]{64}$/;
 
 /** 32 random bytes, hex-encoded: the shape both `buildDaemonCredentialMessage` (the sender) and
  * `PublishNonceGate` (the reader) agree the secret must have before either will use it. */
@@ -61,46 +76,7 @@ export function isPublishNonceSecretShaped(value: unknown): value is string {
   return typeof value === 'string' && /^[0-9a-f]{64}$/.test(value);
 }
 
-/** A fresh secret for a new Electron main process to hand the daemon over stdin at spawn. */
-export function generatePublishNonceSecret(): Buffer {
-  return randomBytes(32);
-}
-
-function macFor(secret: Buffer, random: string, issuedAtMs: number): string {
-  return createHmac('sha256', secret).update(`${random}.${issuedAtMs.toString(36)}`).digest('hex');
-}
-
-/**
- * Mints one nonce. Call this from inside the click handler itself, never ahead of time and never
- * cached — a nonce minted before the click is not "bound to that specific click," it is a
- * standing credential with the same shape as the bearer token this exists to supplement.
- */
-export function mintPublishNonce(secret: Buffer, now: number = Date.now()): string {
-  const random = randomBytes(16).toString('hex');
-  return `${random}.${now.toString(36)}.${macFor(secret, random, now)}`;
-}
-
 export interface ParsedPublishNonce {
   readonly random: string;
   readonly issuedAtMs: number;
-}
-
-/**
- * Authenticates a nonce against `secret` and returns its parsed fields, or `undefined` for
- * anything malformed or forged. Deliberately stateless: freshness needs "now" and single-use needs
- * a store, and neither belongs in a function every caller (including a stateless unit test) needs
- * to be able to call without standing up either.
- */
-export function verifyPublishNonceMac(secret: Buffer, nonce: string): ParsedPublishNonce | undefined {
-  if (!NONCE_PATTERN.test(nonce)) return undefined;
-  const [random, issuedAtRaw, mac] = nonce.split('.') as [string, string, string];
-  const issuedAtMs = parseInt(issuedAtRaw, 36);
-  if (!Number.isFinite(issuedAtMs)) return undefined;
-  const expected = Buffer.from(macFor(secret, random, issuedAtMs), 'utf8');
-  const actual = Buffer.from(mac, 'utf8');
-  // Equal-length by construction (both are 64 hex characters per NONCE_PATTERN), but
-  // timingSafeEqual throws on a length mismatch rather than returning false -- checked explicitly
-  // so a future loosening of the pattern fails closed instead of throwing past this function.
-  if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) return undefined;
-  return { random, issuedAtMs };
 }
