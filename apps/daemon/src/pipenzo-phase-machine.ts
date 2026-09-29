@@ -318,6 +318,18 @@ const ATTEMPTS_MAX = 50;
 const TICKET_BUDGET_TOKENS_MAX = 2_147_483_647;
 
 /**
+ * Whether a ticket's budget is exhausted (Pipenzo issue #143, slice 2). `limit: 0` means "no
+ * limit configured", verbatim from `pipenzoTicketBudgetV1Schema`'s own doc comment -- a ticket
+ * with a real zero-token budget could never dispatch a single session, which is not a state
+ * anything in this design produces, so `limit === 0` reads as "unbounded", never as "already
+ * spent". Exhaustion is `>=`, not `>`: a ticket that lands exactly on its limit has no budget left
+ * for a next session either.
+ */
+export function isBudgetExhausted(budget: PipenzoTicketRecordV1['budget']): boolean {
+  return budget.limit > 0 && budget.tokensUsed >= budget.limit;
+}
+
+/**
  * Wraps a local ticket-store write so a disk failure is reported as one.
  *
  * The message is this module's own, never the store's: a store error can carry a filesystem path,
@@ -751,6 +763,24 @@ export class PipenzoPhaseMachine {
     const next: PipenzoTicketRecordV1 = { ...ticket, budget: { ...ticket.budget, tokensUsed } };
     persist(() => this.#tickets.update(ticketId, next));
     return next;
+  }
+
+  /**
+   * The current budget for a ticket the local store knows about (Pipenzo issue #143, slice 2's
+   * pre-dispatch guard). No GitHub round trip and no reconciliation, on purpose and for the same
+   * reason `recordAttempt()` and `recordTokenUsage()` are local-only: `budget` is store-owned, and
+   * a dispatch's own pre-flight "has this ticket already spent its budget?" check must not cost a
+   * network call or be blocked by a missing or rate-limited token -- precisely the failure modes a
+   * session dispatch can least afford to wait on.
+   *
+   * `undefined` for an unknown ticket, not a thrown error -- unlike `recordAttempt()` and
+   * `recordTokenUsage()`, every real call site here is a best-effort pre-flight check next to a
+   * dispatch that already has its own, better-informed error path for "no such ticket"; this method
+   * exists only to say "yes/no/don't know" cheaply, not to be the place that reports a missing
+   * ticket as a hard failure.
+   */
+  peekBudget(ticketId: string): PipenzoTicketRecordV1['budget'] | undefined {
+    return this.#tickets.get(ticketId)?.budget;
   }
 
   #repoRef(ticket: PipenzoTicketRecordV1): RepoRef {
