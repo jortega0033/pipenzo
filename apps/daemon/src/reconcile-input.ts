@@ -14,14 +14,17 @@ export interface ReconcileProvenance {
 
 export interface ReconcileCandidate {
   readonly title: string;
+  /** Drafted acceptance criteria; only ever compared with existing issue bodies. */
+  readonly criteria?: readonly string[];
   readonly provenance: ReconcileProvenance;
 }
 
-/** The subset of a GitHub issue the reconciler reads. Titles only in this slice. */
+/** The subset of a GitHub issue the reconciler reads. Body may be absent or null. */
 export interface ReconcileIssue {
   readonly number: number;
   readonly title: string;
   readonly state: 'open' | 'closed';
+  readonly body?: string | null;
 }
 
 export interface ReconcileSnapshot {
@@ -64,6 +67,9 @@ export const MAX_TITLE_CHARS = 256;
 export const MAX_PROVENANCE_REF_CHARS = 300;
 export const MAX_SNAPSHOT_ISSUES = 2_000;
 export const MAX_ISSUE_TITLE_CHARS = 300;
+export const MAX_CRITERIA = 20;
+export const MAX_CRITERION_CHARS = 300;
+export const MAX_ISSUE_BODY_CHARS = 4_000;
 
 export function validateCandidate(candidate: ReconcileCandidate): void {
   const bad = (message: string): never => {
@@ -73,7 +79,14 @@ export function validateCandidate(candidate: ReconcileCandidate): void {
   if (typeof candidate.title !== 'string' || !candidate.title.trim())
     bad('candidate needs a title');
   if (candidate.title.length > MAX_TITLE_CHARS) bad('candidate title is too long');
-  const { provenance } = candidate;
+  const { criteria, provenance } = candidate;
+  if (
+    criteria !== undefined &&
+    (!Array.isArray(criteria) ||
+      criteria.length > MAX_CRITERIA ||
+      criteria.some((c) => typeof c !== 'string' || c.length > MAX_CRITERION_CHARS))
+  )
+    bad('candidate criteria are invalid or too long');
   if (!provenance || !['note', 'url', 'issue', 'other'].includes(provenance.kind))
     bad('candidate provenance kind is invalid');
   if (
@@ -100,12 +113,14 @@ export function validateSnapshot(snapshot: ReconcileSnapshot): ReconcileIssue[] 
       bad('an issue number is invalid');
     if (typeof issue.title !== 'string') bad('an issue title is invalid');
     if (issue.state !== 'open' && issue.state !== 'closed') bad('an issue state is invalid');
+    if (issue.body != null && typeof issue.body !== 'string') bad('an issue body is invalid');
     if (seen.has(issue.number)) continue; // pagination overlap: keep the first copy
     seen.add(issue.number);
     issues.push({
       number: issue.number,
       title: issue.title.slice(0, MAX_ISSUE_TITLE_CHARS),
       state: issue.state,
+      ...(issue.body != null && { body: issue.body.slice(0, MAX_ISSUE_BODY_CHARS) }),
     });
   }
   return issues;
