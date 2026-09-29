@@ -136,6 +136,24 @@ export const pipenzoImplementRequestV1Schema = z
       .optional(),
     /** Explicit human acknowledgement that `.worktreeinclude` may copy a secret-shaped file. */
     acknowledgeIncludeSecretRisk: z.boolean().optional(),
+    /**
+     * Which ticket this implement dispatch is for. Optional the same way `refine`'s and `review`'s
+     * `ticketId` are: every existing caller and test omits it, and a dispatch without one still
+     * starts the session exactly as before. Its only effect is consequential -- when present, the
+     * daemon appends a `PipenzoTicketAttemptV1` to the ticket's `attempts[]` once the session is
+     * confirmed started, which is what gives crash recovery's session-to-ticket matching
+     * (`pipenzo-crash-recovery.ts`, issue #201) real data instead of only what a test hand-seeds.
+     */
+    ticketId: pipenzoTicketIdV1Schema.optional(),
+    /**
+     * The model tier this dispatch runs at, for the same `attempts[]` entry. Optional: model
+     * routing (`Models.dc.html`'s task-type-aware table) is stated as post-MVP and nothing computes
+     * a tier yet, so a caller that has not been given one gets `'mid'` -- `implement-standard`'s
+     * routing class in README's own table, and the same tier the crash-recovery fixtures already
+     * use as their default attempt. A real router overrides this the moment it exists; until then
+     * an attempt still needs *a* value, because `pipenzoTicketAttemptV1Schema.tier` is required.
+     */
+    tier: modelTierSchema.optional(),
   })
   .strict();
 

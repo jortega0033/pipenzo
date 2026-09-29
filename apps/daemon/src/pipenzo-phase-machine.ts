@@ -5,6 +5,7 @@ import {
   pipenzoLabelV1Schema,
   type PipenzoLabelV1,
   type PipenzoLaneV1,
+  type PipenzoTicketAttemptV1,
   type PipenzoTicketRecordV1,
 } from '@agent-dock/shared';
 import {
@@ -139,10 +140,12 @@ export function laneForLabel(label: PipenzoLaneBearingLabelV1): PipenzoLaneV1 {
  * exists to hand them.
  *
  * A guard against the two-step path would have to refuse a human's explicit decision, and the
- * obvious implementation — requiring recorded `attempts` before `ready-for-review` — would also
- * refuse every legitimate transition today, since nothing populates `attempts[]` yet. Refusing real
- * operator actions to close a path that needs two deliberate human acts to walk would cost more
- * than it protects.
+ * obvious implementation — requiring recorded `attempts` before `ready-for-review` — would still be
+ * the wrong guard even now that `recordAttempt()` (issue #201's dispatch-time fix) actually
+ * populates `attempts[]`: a ticket that went `queued` → `needs-human` via crash recovery legitimately
+ * carries a real attempt already, so the presence of one says nothing about whether *this* path was
+ * walked honestly. Refusing real operator actions to close a path that needs two deliberate human
+ * acts to walk would cost more than it protects.
  */
 export const PIPENZO_LEGAL_LANE_TRANSITIONS: Readonly<
   Record<PipenzoLaneV1, readonly PipenzoLaneV1[]>
@@ -297,6 +300,9 @@ const GITHUB_CODES: Record<GitHubClientError['code'], PipenzoPhaseMachineErrorCo
   invalid_response: 'github_failed',
   network: 'github_failed',
 };
+
+/** Mirrors `pipenzoTicketRecordV1Schema`'s `attempts: z.array(...).max(50)`, not a second cap. */
+const ATTEMPTS_MAX = 50;
 
 /**
  * Wraps a local ticket-store write so a disk failure is reported as one.
@@ -606,6 +612,36 @@ export class PipenzoPhaseMachine {
    */
   list(): readonly PipenzoTicketRecordV1[] {
     return this.#tickets.list();
+  }
+
+  /**
+   * Appends one dispatched-session attempt to a ticket's local record (Pipenzo issue #201's own
+   * gap, named in `implement-orchestrator.ts`'s module comment and this module's own transition
+   * doc: "nothing populates `attempts[]` yet"). `pipenzo-crash-recovery.ts`'s session-to-ticket
+   * index is built entirely from `attempts[].sessionId`, so until something called this, that index
+   * was only ever populated by a test hand-seeding it.
+   *
+   * **Local-only, unlike `transition()` and `read()`.** `attempts[]` is store-owned, not
+   * GitHub-authoritative -- README's precedence rule names it explicitly as something "the JSON
+   * ticket store is authoritative for". Recording one must not cost a GitHub round trip or be
+   * blocked by a missing or rate-limited credential: those are exactly the two failure modes a
+   * session dispatch can least afford to wait on, and crash recovery needs this write to have
+   * landed *before* the dispatched session can possibly crash, not after some later network call
+   * gets around to succeeding. No `#announce()` either -- the phase stream carries lane transitions,
+   * and appending an attempt does not move a ticket's lane.
+   *
+   * Bounded to the schema's own `attempts` cap (`pipenzoTicketRecordV1Schema`: `.max(50)`): the
+   * oldest attempt is dropped once a ticket would exceed it, because losing the *newest* one --
+   * exactly the one a live interrupted session would need matched -- would defeat the reason this
+   * method exists.
+   */
+  recordAttempt(ticketId: string, attempt: PipenzoTicketAttemptV1): void {
+    const ticket = this.#tickets.get(ticketId);
+    if (!ticket) {
+      throw new PipenzoPhaseMachineError('ticket_not_found', `no such ticket: ${ticketId}`);
+    }
+    const attempts = [...ticket.attempts, attempt].slice(-ATTEMPTS_MAX);
+    persist(() => this.#tickets.update(ticketId, { ...ticket, attempts }));
   }
 
   #repoRef(ticket: PipenzoTicketRecordV1): RepoRef {

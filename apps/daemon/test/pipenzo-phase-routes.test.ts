@@ -17,7 +17,7 @@ import type {
   PipenzoPhaseMachine,
   PipenzoTicketReconciliation,
 } from '../src/pipenzo-phase-machine.js';
-import type { PipenzoTicketRecordV1 } from '@agent-dock/shared';
+import type { PipenzoTicketAttemptV1, PipenzoTicketRecordV1 } from '@agent-dock/shared';
 
 const TOKEN = 'test-token-pipenzo-phases';
 const WORKTREE_ID = '77777777-8888-4999-8aaa-bbbbbbbbbbbb';
@@ -127,7 +127,7 @@ interface Harness {
   env?: Record<string, string | undefined>;
   withGitHub?: boolean;
   onSession?: (request: CreateSessionV2Request) => void;
-  machine?: Pick<PipenzoPhaseMachine, 'read' | 'transition'>;
+  machine?: Pick<PipenzoPhaseMachine, 'read' | 'transition' | 'recordAttempt'>;
 }
 
 const TICKET_ID = '00000000-0000-4000-8000-0000000000aa';
@@ -159,8 +159,9 @@ function ticketRecord(overrides: Partial<PipenzoTicketRecordV1> = {}): PipenzoTi
  * guard in `#reportBlownEstimate` (issue #266) does not trip by default; the "already recorded"
  * test constructs one with `currentLabel: 'pipenzo:awaiting-stack-approval'` instead.
  */
-class FakeMachine implements Pick<PipenzoPhaseMachine, 'read' | 'transition'> {
+class FakeMachine implements Pick<PipenzoPhaseMachine, 'read' | 'transition' | 'recordAttempt'> {
   readonly calls: Array<{ method: 'read' | 'transition'; ticketId: string; label?: string }> = [];
+  readonly attempts: Array<{ ticketId: string; attempt: PipenzoTicketAttemptV1 }> = [];
   #fail: unknown;
   #currentLabel: PipenzoLaneBearingLabelV1;
 
@@ -171,6 +172,10 @@ class FakeMachine implements Pick<PipenzoPhaseMachine, 'read' | 'transition'> {
   failNext(error: unknown): this {
     this.#fail = error;
     return this;
+  }
+
+  recordAttempt(ticketId: string, attempt: PipenzoTicketAttemptV1): void {
+    this.attempts.push({ ticketId, attempt });
   }
 
   async read(ticketId: string): Promise<PipenzoTicketReconciliation> {
@@ -455,6 +460,100 @@ describe('POST /v2/pipenzo/implement', () => {
     });
     expect(response.body).not.toContain(WORKTREE_PATH);
     expect(response.body).not.toContain('owned');
+  });
+
+  /**
+   * Issue #201's crash-recovery gap, closed: a real implement dispatch now leaves a real
+   * `PipenzoTicketAttemptV1` behind, which is the only thing `pipenzo-crash-recovery.ts`'s
+   * session-to-ticket index reads. See `pipenzo-implement-attempts.test.ts` for the end-to-end
+   * proof that recovery's matching actually finds an attempt recorded this way.
+   */
+  describe('recording the attempt against a ticket (issue #201)', () => {
+    it('appends an attempt once a ticketId is given, with a default tier and model', async () => {
+      const machine = new FakeMachine();
+      const { app } = buildApp({ machine });
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/implement',
+        headers: auth,
+        payload: { spec: spec(), repositoryPath: REPO_PATH, provider: 'claude', ticketId: TICKET_ID },
+      });
+      expect(response.statusCode).toBe(200);
+      expect(machine.attempts).toEqual([
+        {
+          ticketId: TICKET_ID,
+          attempt: { sessionId: SESSION_ID, tier: 'mid', model: 'default', outcome: 'dispatched' },
+        },
+      ]);
+    });
+
+    it('uses the caller-given tier and model instead of the defaults', async () => {
+      const machine = new FakeMachine();
+      const { app } = buildApp({ machine });
+      await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/implement',
+        headers: auth,
+        payload: {
+          spec: spec(),
+          repositoryPath: REPO_PATH,
+          provider: 'claude',
+          model: 'claude-opus',
+          tier: 'frontier',
+          ticketId: TICKET_ID,
+        },
+      });
+      expect(machine.attempts).toEqual([
+        {
+          ticketId: TICKET_ID,
+          attempt: {
+            sessionId: SESSION_ID,
+            tier: 'frontier',
+            model: 'claude-opus',
+            outcome: 'dispatched',
+          },
+        },
+      ]);
+    });
+
+    it('records nothing when no ticketId was given', async () => {
+      const machine = new FakeMachine();
+      const { app } = buildApp({ machine });
+      await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/implement',
+        headers: auth,
+        payload: { spec: spec(), repositoryPath: REPO_PATH, provider: 'claude' },
+      });
+      expect(machine.attempts).toEqual([]);
+    });
+
+    it('does not throw when no phase machine is configured -- the session still starts', async () => {
+      const { app } = buildApp();
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/implement',
+        headers: auth,
+        payload: { spec: spec(), repositoryPath: REPO_PATH, provider: 'claude', ticketId: TICKET_ID },
+      });
+      expect(response.statusCode).toBe(200);
+    });
+
+    it('still reports the session as started when recording the attempt fails -- best-effort, never thrown', async () => {
+      const machine = new FakeMachine();
+      machine.recordAttempt = () => {
+        throw new Error('ticket store refused the write');
+      };
+      const { app } = buildApp({ machine });
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/implement',
+        headers: auth,
+        payload: { spec: spec(), repositoryPath: REPO_PATH, provider: 'claude', ticketId: TICKET_ID },
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({ sessionId: SESSION_ID });
+    });
   });
 
   it('appends the operator’s extra instructions to the spec-derived prompt', async () => {
