@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PipenzoTicketViewV1 } from '@agent-dock/shared';
 import { clearBridgeOverride, setBridgeOverride } from '../../src/bridge.js';
@@ -27,18 +27,26 @@ function makeTicket(overrides: Partial<PipenzoTicketViewV1> = {}): PipenzoTicket
   };
 }
 
-/** Every method the shell's own hook (`usePipenzoTickets`) and `SettingsPage`'s panels reach for
- * on mount, and nothing else -- the same shape `SettingsPage.test.tsx`'s own `installBridge` uses,
- * extended with the board's own ticket-list methods. */
-function installBridge(tickets: readonly PipenzoTicketViewV1[] = []) {
+/** Every method the shell's own hooks (`usePipenzoTickets`, `useConnectedRepoList`) and
+ * `SettingsPage`'s panels reach for on mount, and nothing else -- the same shape
+ * `SettingsPage.test.tsx`'s own `installBridge` uses, extended with the board's own ticket-list
+ * methods. `connectedRepos` defaults to a single repo so every test written before #89 keeps seeing
+ * exactly the workspace it always did. */
+function installBridge(
+  options: {
+    tickets?: readonly PipenzoTicketViewV1[];
+    connectedRepos?: readonly string[];
+  } = {},
+) {
+  const { tickets = [], connectedRepos = ['octocat/hello-world'] } = options;
   setBridgeOverride({
     pipenzoListTickets: vi.fn().mockResolvedValue({ tickets }),
     onPipenzoPhaseEvent: () => () => {},
     getDaemonStatus: vi.fn().mockResolvedValue({ state: 'ready' }),
     onDaemonStatus: () => () => {},
-    pipenzoConnectedRepos: vi.fn().mockResolvedValue({ repositories: ['octocat/hello-world'] }),
+    pipenzoConnectedRepos: vi.fn().mockResolvedValue({ repositories: connectedRepos }),
     pipenzoListRepos: vi.fn().mockResolvedValue({ repositories: [], truncated: false }),
-    pipenzoConnectRepos: vi.fn(),
+    pipenzoConnectRepos: vi.fn().mockResolvedValue({ repositories: connectedRepos }),
     pipenzoLessons: vi.fn().mockResolvedValue({ lessons: [] }),
     pipenzoDeleteLesson: vi.fn(),
     pipenzoGitHubConnection: vi
@@ -86,8 +94,11 @@ describe('PipenzoAppShell', () => {
     expect(
       await screen.findByText(/Reading open issues from/),
     ).toBeInTheDocument();
-    expect(screen.getByText('octocat/hello-world')).toBeInTheDocument();
-    expect(screen.getByText(/first poll of this session/)).toBeInTheDocument();
+    // Scoped to the load-line itself: the workspace switcher's own trigger also names this repo
+    // now that it renders from the same connected-repos read (issue #89).
+    const loadLine = within(container.querySelector('.load-line')!);
+    expect(loadLine.getByText('octocat/hello-world')).toBeInTheDocument();
+    expect(loadLine.getByText(/first poll of this session/)).toBeInTheDocument();
     expect(container.querySelector('.sk-board')).toBeInTheDocument();
     expect(container.querySelector('.board')).not.toBeInTheDocument();
     // Real lane names and dots render immediately, same as the real board -- only counts and cards
@@ -162,10 +173,12 @@ describe('PipenzoAppShell', () => {
   });
 
   it('renders real tickets into their lanes through the base Card primitive', async () => {
-    installBridge([
-      makeTicket({ ticketId: 'a', issueNumber: 42, lane: 'queued', title: 'Fix the thing' }),
-      makeTicket({ ticketId: 'b', issueNumber: 43, lane: 'working' }),
-    ]);
+    installBridge({
+      tickets: [
+        makeTicket({ ticketId: 'a', issueNumber: 42, lane: 'queued', title: 'Fix the thing' }),
+        makeTicket({ ticketId: 'b', issueNumber: 43, lane: 'working' }),
+      ],
+    });
     const { container } = render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
 
     expect(await screen.findByText('Fix the thing')).toBeInTheDocument();
@@ -176,11 +189,13 @@ describe('PipenzoAppShell', () => {
   });
 
   it('gives a Working card a real phase chip, read off the ticket, not guessed', async () => {
-    installBridge([
-      makeTicket({ ticketId: 'a', issueNumber: 42, lane: 'working', phase: 'implement' }),
-      makeTicket({ ticketId: 'b', issueNumber: 43, lane: 'working', phase: 'review' }),
-      makeTicket({ ticketId: 'c', issueNumber: 44, lane: 'working', phase: 'refine' }),
-    ]);
+    installBridge({
+      tickets: [
+        makeTicket({ ticketId: 'a', issueNumber: 42, lane: 'working', phase: 'implement' }),
+        makeTicket({ ticketId: 'b', issueNumber: 43, lane: 'working', phase: 'review' }),
+        makeTicket({ ticketId: 'c', issueNumber: 44, lane: 'working', phase: 'refine' }),
+      ],
+    });
     render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
 
     expect(await screen.findByText('implementing')).toBeInTheDocument();
@@ -189,14 +204,16 @@ describe('PipenzoAppShell', () => {
   });
 
   it('gives a Ready-for-review card a real chip and its real branch, when one exists', async () => {
-    installBridge([
-      makeTicket({
-        ticketId: 'a',
-        issueNumber: 42,
-        lane: 'ready-for-review',
-        worktree: { id: '00000000-0000-4000-8000-000000000002', branch: 'issue-42' },
-      }),
-    ]);
+    installBridge({
+      tickets: [
+        makeTicket({
+          ticketId: 'a',
+          issueNumber: 42,
+          lane: 'ready-for-review',
+          worktree: { id: '00000000-0000-4000-8000-000000000002', branch: 'issue-42' },
+        }),
+      ],
+    });
     render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
 
     expect(await screen.findByText('ready for review')).toBeInTheDocument();
@@ -204,10 +221,12 @@ describe('PipenzoAppShell', () => {
   });
 
   it('renders no chip and no branch for Queued or Needs-human -- neither is a guess this shell makes', async () => {
-    installBridge([
-      makeTicket({ ticketId: 'a', issueNumber: 42, lane: 'queued' }),
-      makeTicket({ ticketId: 'b', issueNumber: 43, lane: 'needs-human' }),
-    ]);
+    installBridge({
+      tickets: [
+        makeTicket({ ticketId: 'a', issueNumber: 42, lane: 'queued' }),
+        makeTicket({ ticketId: 'b', issueNumber: 43, lane: 'needs-human' }),
+      ],
+    });
     const { container } = render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
 
     await screen.findByText('#42');
@@ -440,5 +459,89 @@ describe('PipenzoAppShell', () => {
     expect(
       screen.queryByText(/Couldn.t read the ticket list from the local daemon/),
     ).not.toBeInTheDocument();
+  });
+
+  /**
+   * Issue #89: the workspace switcher, wired to the two reads this shell already makes -- the
+   * connected-repos list and the board's own ticket list -- rather than a mocked or hardcoded count.
+   */
+  describe('the workspace switcher', () => {
+    const AD = 'jortega0033/agentdock';
+    const PZ = 'jortega0033/pipenzo';
+
+    it('renders the first connected repo active, with real per-repo open/running/needs-you counts', async () => {
+      installBridge({
+        connectedRepos: [AD, PZ],
+        tickets: [
+          makeTicket({ ticketId: 'a', repo: AD, lane: 'working' }),
+          makeTicket({ ticketId: 'b', repo: AD, lane: 'working' }),
+          makeTicket({ ticketId: 'c', repo: PZ, lane: 'needs-human' }),
+        ],
+      });
+      render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+
+      const trigger = await screen.findByRole('button', { name: new RegExp(AD) });
+      expect(trigger).toHaveTextContent('2 open · 2 running');
+
+      // The menu lists every connected repo, not only the active one.
+      fireEvent.click(trigger);
+      const menu = within(screen.getByRole('dialog'));
+      expect(menu.getByText('1 open · 1 needs you')).toBeInTheDocument();
+    });
+
+    it('switches the active repo when a different one is picked from the menu', async () => {
+      installBridge({
+        connectedRepos: [AD, PZ],
+        tickets: [makeTicket({ ticketId: 'a', repo: PZ, lane: 'queued' })],
+      });
+      render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+
+      fireEvent.click(await screen.findByRole('button', { name: new RegExp(AD) }));
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(PZ) }));
+
+      expect(await screen.findByRole('button', { name: new RegExp(PZ) })).toBeInTheDocument();
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('"Manage repos…" routes to Settings and opens the same picker as first-run', async () => {
+      installBridge({ connectedRepos: [AD, PZ] });
+      render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+
+      fireEvent.click(await screen.findByRole('button', { name: new RegExp(AD) }));
+      fireEvent.click(screen.getByRole('button', { name: /Manage repos/ }));
+
+      // Routed to Settings...
+      expect(await screen.findByText('Connected repos')).toBeInTheDocument();
+      // ...with the first-run picker already open, not one more click away.
+      expect(await screen.findByText('Choose the repos Pipenzo manages')).toBeInTheDocument();
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
+
+    /** A plain "Settings" nav click must never inherit an earlier "Manage repos…" click's open picker. */
+    it('does not reopen the picker on an ordinary Settings nav click', async () => {
+      installBridge({ connectedRepos: [AD, PZ] });
+      render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+
+      fireEvent.click(await screen.findByRole('button', { name: new RegExp(AD) }));
+      fireEvent.click(screen.getByRole('button', { name: /Manage repos/ }));
+      await screen.findByRole('dialog');
+      fireEvent.keyDown(document, { key: 'Escape' });
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole('button', { name: 'Board' }));
+      await screen.findByText('Queued');
+      fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+
+      await screen.findByText('Connected repos');
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('does not render a switcher trigger while nothing is connected', async () => {
+      installBridge({ connectedRepos: [] });
+      render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+      await screen.findByText('Queued');
+
+      expect(screen.queryByRole('button', { name: /open ·/ })).not.toBeInTheDocument();
+    });
   });
 });

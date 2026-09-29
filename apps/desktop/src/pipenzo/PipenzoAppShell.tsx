@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import type { PipenzoImplementResultV1, PipenzoTicketViewV1 } from '@agent-dock/shared';
-import { getBridge } from '../bridge.js';
 import {
   AppShell,
   Crumbs,
@@ -17,10 +16,17 @@ import { Card, CardFoot, CardMeta } from '../components/primitives/Card.js';
 import { Chip } from '../components/primitives/Chip.js';
 import { LoadLine } from '../components/primitives/LoadLine.js';
 import { SyncStatusPill, type SyncStatus } from '../components/primitives/SyncStatusPill.js';
+import { WorkspaceSwitcher } from '../components/primitives/WorkspaceSwitcher.js';
 import { BoardImplementDialog } from './BoardImplementDialog.js';
 import { BoardScreen } from './BoardScreen.js';
 import { SettingsPage } from './SettingsPage.js';
+import { useConnectedRepoList } from './use-connected-repo-list.js';
 import { usePipenzoTickets } from './use-pipenzo-tickets.js';
+import {
+  buildWorkspaceSwitcherRepos,
+  manageReposNote,
+  resolveActiveRepoId,
+} from './workspace-switcher.js';
 
 /**
  * The real, connected-session shell (issue #274): `Main.dc.html`'s `AppShell`/`Sidebar`/`MainHead`
@@ -84,6 +90,19 @@ import { usePipenzoTickets } from './use-pipenzo-tickets.js';
  * toast stack lives in `AppRoot` alongside the sync pill's own failure toast. The dialog closes
  * itself on success: its Start button would otherwise still be there, and a second press would try
  * to cut a second worktree for the same ticket.
+ *
+ * ## The workspace switcher (issue #89)
+ *
+ * `WorkspaceSwitcher.tsx` (#34) and `RepoPicker.tsx` (#115) were both already built; this shell is
+ * where they get real data. `useConnectedRepoList` answers the connected-repos list itself -- the
+ * same read the load-line's own `connectedRepoNames` now uses, rather than a second, ad-hoc fetch of
+ * the same list for the switcher -- and `usePipenzoTickets`'s own tickets (already fetched here for
+ * the board) are tallied per repo by `workspace-switcher.ts`. "Switch active repo" only ever changes
+ * `requestedActiveRepoId` -- `resolveActiveRepoId` is what falls back to the first connected repo the
+ * moment the requested one stops being connected, rather than pointing the switcher at a repo that no
+ * longer exists. "Manage repos…" does not duplicate `ConnectedReposPanel`'s own picker dialog; it
+ * routes to the Settings screen and hands it `openRepoPickerToken`, which opens that same dialog
+ * there (see that panel's own doc comment for why a token, not a boolean).
  */
 export function PipenzoAppShell({
   sync,
@@ -100,26 +119,16 @@ export function PipenzoAppShell({
 }) {
   const [view, setView] = useState<'board' | 'settings'>('board');
   const { ticketList, refresh } = usePipenzoTickets();
+  const { repoList, refresh: refreshRepoList } = useConnectedRepoList();
   const [implementing, setImplementing] = useState<PipenzoTicketViewV1>();
-  // Best-effort only, and only for the load-line's own wording -- see this file's doc comment on
-  // why an unresolved or multi-repo answer degrades to a generic phrase rather than guessing.
-  const [connectedRepoNames, setConnectedRepoNames] = useState<readonly string[]>();
-
-  useEffect(() => {
-    let cancelled = false;
-    void getBridge()
-      .pipenzoConnectedRepos()
-      .then((connected) => {
-        if (!cancelled) setConnectedRepoNames(connected.repositories);
-      })
-      .catch(() => {
-        // The load-line's fallback phrasing already covers "no answer" -- nothing else reads this
-        // state, so there is nothing to recover into.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // The user's own pick, when they have made one -- resolved against the live connected list by
+  // `resolveActiveRepoId` below rather than trusted on its own, since a repo it names can stop being
+  // connected (removed from Settings) out from under this state.
+  const [requestedActiveRepoId, setRequestedActiveRepoId] = useState<string | undefined>(undefined);
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+  // Incremented once per "Manage repos…" click, `undefined` otherwise (see `ConnectedReposPanel.tsx`'s
+  // own doc comment on why a token rather than a boolean).
+  const [openRepoPickerToken, setOpenRepoPickerToken] = useState<number | undefined>(undefined);
 
   const renderTicket = useCallback(
     (ticket: PipenzoTicketViewV1) => (
@@ -139,18 +148,63 @@ export function PipenzoAppShell({
     [],
   );
 
+  // Best-effort, and shared by the load-line's own wording and the workspace switcher below -- see
+  // this file's doc comment on why an unresolved or multi-repo answer degrades to a generic phrase
+  // rather than guessing, and on why this is the switcher's own data source too, not a second read.
+  const connectedRepoNames = useMemo(
+    () => (repoList.status === 'ready' ? repoList.repositories : []),
+    [repoList],
+  );
+  const tickets = useMemo(
+    () => (ticketList.status === 'ready' ? ticketList.tickets : []),
+    [ticketList],
+  );
+  // Built from the same two real reads the rest of this shell already makes -- the connected-repos
+  // list and the board's own ticket list -- never a mocked or hardcoded count (issue #89).
+  const workspaceRepos = useMemo(
+    () => buildWorkspaceSwitcherRepos(connectedRepoNames, tickets),
+    [connectedRepoNames, tickets],
+  );
+  const activeRepoId = resolveActiveRepoId(connectedRepoNames, requestedActiveRepoId);
+
+  const goToSettings = useCallback(() => {
+    // A plain nav click must never reopen a picker left over from an earlier "Manage repos…" click,
+    // so this always clears the token rather than leaving whatever it last was.
+    setOpenRepoPickerToken(undefined);
+    setView('settings');
+  }, []);
+
+  const onManageRepos = useCallback(() => {
+    // Incremented rather than set to a fixed truthy value: `ConnectedReposPanel` may already be
+    // mounted on the Settings screen, in which case only a *changed* prop retriggers its effect --
+    // see that effect's own comment.
+    setOpenRepoPickerToken((token) => (token ?? 0) + 1);
+    setView('settings');
+  }, []);
+
   return (
     <AppShell
       sidebar={
         <Sidebar>
           <SidebarBrand />
+          {workspaceRepos.length > 0 && (
+            <WorkspaceSwitcher
+              open={switcherOpen}
+              onOpenChange={setSwitcherOpen}
+              repos={workspaceRepos}
+              activeRepoId={activeRepoId ?? ''}
+              onSelectRepo={setRequestedActiveRepoId}
+              onManageRepos={onManageRepos}
+              manageReposNote={manageReposNote(workspaceRepos.length)}
+            />
+          )}
           <NavGroup title="Work">
             <NavItem icon="board" active={view === 'board'} onClick={() => setView('board')}>
               Board
             </NavItem>
           </NavGroup>
           <NavGroup title="Repo">
-            <NavItem icon="settings" active={view === 'settings'} onClick={() => setView('settings')}>
+            <NavItem icon="settings" active={view === 'settings'} onClick={goToSettings}>
               Settings
             </NavItem>
           </NavGroup>
@@ -186,13 +240,16 @@ export function PipenzoAppShell({
             </LoadLine>
           )}
           <BoardScreen
-            tickets={ticketList.status === 'ready' ? ticketList.tickets : []}
+            tickets={tickets}
             loading={ticketList.status === 'loading'}
             renderTicket={renderTicket}
           />
         </>
       ) : (
-        <SettingsPage />
+        <SettingsPage
+          openRepoPickerToken={openRepoPickerToken}
+          onConnectedReposChange={() => refreshRepoList()}
+        />
       )}
       {implementing && (
         <BoardImplementDialog
