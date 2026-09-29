@@ -50,7 +50,13 @@ export type DeterministicGateId = (typeof DETERMINISTIC_GATE_IDS)[number];
  * ran), which is neither a pass nor a fail -- reporting either would imply a comparison that was
  * never made.
  */
-export const gateStatusSchema = z.enum(['passed', 'failed', 'skipped', 'errored', 'not_applicable']);
+export const gateStatusSchema = z.enum([
+  'passed',
+  'failed',
+  'skipped',
+  'errored',
+  'not_applicable',
+]);
 export type GateStatus = z.infer<typeof gateStatusSchema>;
 
 export const deterministicGateResultV1Schema = z
@@ -128,6 +134,20 @@ export const diffScopeV1Schema = z
     }
   });
 
+/**
+ * The publish-gate risk grade (Pipenzo issue #157), on the wire.
+ *
+ * Canonical here, in `@agent-dock/shared`, rather than in `apps/daemon/src/risk-classifier.ts`
+ * where the grade was first defined: a `ReviewReportV1` now carries one (below), which makes it a
+ * genuine wire type crossing the daemon/desktop boundary, not a daemon-internal implementation
+ * detail. `risk-classifier.ts` imports `RiskGrade` from here instead of keeping its own copy, for
+ * the same "no second, driftable definition" reason `SENSITIVE_PATH_PATTERN`'s own doc comment
+ * gives.
+ */
+export const RISK_GRADES = ['low', 'medium', 'high'] as const;
+export type RiskGrade = (typeof RISK_GRADES)[number];
+export const riskGradeV1Schema = z.enum(RISK_GRADES);
+
 export const reviewFindingSeverityV1Schema = z.enum(['info', 'low', 'medium', 'high']);
 
 export const reviewFindingV1Schema = z
@@ -138,7 +158,10 @@ export const reviewFindingV1Schema = z
     line: z.number().int().positive().max(10_000_000).optional(),
     message: z.string().min(1).max(4_000),
     /** The acceptance criterion this finding relates to, when the pass cited one. */
-    criterionId: z.string().regex(/^AC-\d{1,3}$/).optional(),
+    criterionId: z
+      .string()
+      .regex(/^AC-\d{1,3}$/)
+      .optional(),
     /**
      * Whether `path`/`line` were cross-checked against the diff the pass was actually shown
      * (issue #319) — never model-reported. Optional so `llmPassPayloadSchema`
@@ -230,6 +253,14 @@ export const reviewReportV1Schema = z
     headCommit: z.string().regex(/^[0-9a-f]{40}$/),
     implementerTier: modelTierSchema,
     deterministic: z.array(deterministicGateResultV1Schema).max(32),
+    /** The publish-gate risk grade (issue #157), derived from the diff's own touched-file paths —
+     * HIGH when any touched file matches `risk-classifier.ts`'s security/auth/migration pattern,
+     * LOW otherwise. MEDIUM is never produced from a diff alone: that grade only arises from a live
+     * session action's own shape (an MCP call, a network action, an elevated-risk permission ask),
+     * which a completed diff carries no record of — see `classifyRisk`'s own doc comment for why
+     * grading an action and grading a diff are different questions. Always present: `run()` reads
+     * the diff before any gate runs, so every outcome this module can return has one. */
+    risk: riskGradeV1Schema,
     diffScope: diffScopeV1Schema.optional(),
     /** Present for `review_input_incomplete`, `approved`, and `verifier_rejected` — every outcome
      * where whether the LLM passes saw the complete diff is a meaningful question. Absent for a
@@ -242,7 +273,9 @@ export const reviewReportV1Schema = z
   })
   .strict()
   .superRefine((report, ctx) => {
-    const failed = report.deterministic.some((gate) => gate.status === 'failed' || gate.status === 'errored');
+    const failed = report.deterministic.some(
+      (gate) => gate.status === 'failed' || gate.status === 'errored',
+    );
     if (failed && (report.reviewer || report.verifier)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -267,7 +300,10 @@ export const reviewReportV1Schema = z
     // The property #316 exists for: an incomplete input can never be reframed under any other
     // outcome, `approved` included -- the outcome enum is the one thing every caller already
     // switches on, so this is where "cannot move to review-approved" has to be structural.
-    if (report.inputCompleteness?.complete === false && report.outcome !== 'review_input_incomplete') {
+    if (
+      report.inputCompleteness?.complete === false &&
+      report.outcome !== 'review_input_incomplete'
+    ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['outcome'],
@@ -279,7 +315,10 @@ export const reviewReportV1Schema = z
     // a direct self-contradiction. #report() always pairs them correctly today, but the schema is
     // this module's own last line of defence for a report assembled by hand, same reasoning as the
     // ordering invariant above.
-    if (report.outcome === 'review_input_incomplete' && report.inputCompleteness?.complete !== false) {
+    if (
+      report.outcome === 'review_input_incomplete' &&
+      report.inputCompleteness?.complete !== false
+    ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['inputCompleteness'],

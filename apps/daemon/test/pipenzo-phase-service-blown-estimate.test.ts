@@ -11,6 +11,7 @@ function report(overrides: Partial<ReviewReportV1> = {}): ReviewReportV1 {
     baseCommit: SHA,
     headCommit: SHA,
     implementerTier: 'mid',
+    risk: 'low',
     deterministic: [],
     diffScope: {
       implementation: { changedLines: 900, filesTouched: 4 },

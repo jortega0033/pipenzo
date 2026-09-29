@@ -65,6 +65,7 @@ function reviewReport(): PipenzoReviewResultV1 {
     baseCommit: STARTED.baseCommit,
     headCommit: 'b'.repeat(40),
     implementerTier: 'mid',
+    risk: 'low',
     deterministic: [
       { id: 'build', status: 'passed', summary: 'Build and typecheck passed', durationMs: 900 },
     ],

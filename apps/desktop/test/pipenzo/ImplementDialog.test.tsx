@@ -175,6 +175,34 @@ describe('ImplementDialog', () => {
     expect(screen.getByText(/Does the allowlist include PATH\?/)).toBeInTheDocument();
   });
 
+  it('sends the ticket id through to refine when the ticket carries one (issue #270)', async () => {
+    const { refinePipenzo } = installBridge();
+    renderDialog({ ticket: { ...TICKET, ticketId: '123e4567-e89b-42d3-a456-426614174001' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Refine ticket' }));
+
+    await waitFor(() =>
+      expect(refinePipenzo).toHaveBeenCalledWith({
+        repo: 'jortega0033/agentdock',
+        issueNumber: 94,
+        repositoryPath: '/repo',
+        provider: 'claude',
+        ticketId: '123e4567-e89b-42d3-a456-426614174001',
+      }),
+    );
+  });
+
+  it('omits ticketId from the refine request when the ticket has none', async () => {
+    const { refinePipenzo } = installBridge();
+    renderDialog();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Refine ticket' }));
+
+    await waitFor(() => expect(refinePipenzo).toHaveBeenCalled());
+    const [request] = refinePipenzo.mock.calls[0] as [Record<string, unknown>];
+    expect(request).not.toHaveProperty('ticketId');
+  });
+
   it('skips Refine entirely when the caller already holds a real spec', () => {
     const { refinePipenzo } = installBridge();
     renderDialog({ spec: SPEC });

@@ -14,9 +14,11 @@ import {
   type ReviewFindingV1,
   type ReviewInputCompletenessV1,
   type ReviewReportV1,
+  type RiskGrade,
   type VerifierPassV1,
 } from '@agent-dock/shared';
 import { runGitCommand, type PipenzoGitRunner } from './pipenzo-git.js';
+import { matchesSensitivePath } from './risk-classifier.js';
 
 /**
  * The Review phase (Pipenzo issue #181).
@@ -301,9 +303,19 @@ export class ReviewGatesRunner {
     // `skipped` when `generated` is `undefined`, the same value a ticket with no configured
     // generator produces.
     const generated =
-      subject.kind === 'ticket' ? await this.#generateSpecTests(subject.spec, request.worktreePath) : undefined;
+      subject.kind === 'ticket'
+        ? await this.#generateSpecTests(subject.spec, request.worktreePath)
+        : undefined;
     const diff = await this.#readDiff(request);
-    const scope = computeDiffScope(diff.numstat, subject.kind === 'ticket' ? subject.spec.estimate : undefined);
+    const scope = computeDiffScope(
+      diff.numstat,
+      subject.kind === 'ticket' ? subject.spec.estimate : undefined,
+    );
+    // Hoisted above the blocking-gate/incomplete-input branches below so `risk` reaches every
+    // outcome this run can return, not only a fully-approved one -- a diff that fails its own
+    // build but touches `apps/daemon/src/auth/` is still a HIGH-risk diff.
+    const touched = parseTouchedFiles(diff.numstat);
+    const risk = classifyReviewRisk(diff.numstat);
 
     const deterministic = await this.#runDeterministicGates(request, generated, scope);
     const blocking = deterministic.filter(
@@ -333,6 +345,7 @@ export class ReviewGatesRunner {
             : 'deterministic_failed',
         deterministic,
         diffScope: scope,
+        risk,
       });
     }
 
@@ -344,28 +357,39 @@ export class ReviewGatesRunner {
         outcome: 'review_input_incomplete',
         deterministic,
         diffScope: scope,
+        risk,
         inputCompleteness: diff.completeness,
       });
     }
 
-    const touched = parseTouchedFiles(diff.numstat);
     const lineCountCache = new Map<string, number | undefined>();
 
     const reviewer = await this.#runReviewer(request, subject, diff.patch);
     const verifiedReviewer: LlmReviewPassV1 = {
       ...reviewer,
-      findings: await this.#verifyFindingLocations(reviewer.findings, touched, request, lineCountCache),
+      findings: await this.#verifyFindingLocations(
+        reviewer.findings,
+        touched,
+        request,
+        lineCountCache,
+      ),
     };
     const verifier = await this.#runVerifier(request, subject, diff.patch, verifiedReviewer);
     const verifiedVerifier: VerifierPassV1 = {
       ...verifier,
-      findings: await this.#verifyFindingLocations(verifier.findings, touched, request, lineCountCache),
+      findings: await this.#verifyFindingLocations(
+        verifier.findings,
+        touched,
+        request,
+        lineCountCache,
+      ),
     };
 
     return this.#report(request, {
       outcome: verifiedVerifier.verdict === 'approved' ? 'approved' : 'verifier_rejected',
       deterministic,
       diffScope: scope,
+      risk,
       inputCompleteness: diff.completeness,
       reviewer: verifiedReviewer,
       verifier: verifiedVerifier,
@@ -401,7 +425,9 @@ export class ReviewGatesRunner {
       throw new ReviewGateError(
         'invalid_spec',
         'review requires a valid v1 refine spec to gate against',
-        parsed.error.issues.slice(0, 20).map((issue) => `${issue.path.join('.') || '$'}: ${issue.message}`),
+        parsed.error.issues
+          .slice(0, 20)
+          .map((issue) => `${issue.path.join('.') || '$'}: ${issue.message}`),
       );
     }
     return { kind: 'ticket', spec: parsed.data };
@@ -569,7 +595,11 @@ export class ReviewGatesRunner {
     });
 
     if (id === 'diff_scope') {
-      if (scope.estimate === undefined || scope.exceededEstimate === undefined || scope.ratio === undefined) {
+      if (
+        scope.estimate === undefined ||
+        scope.exceededEstimate === undefined ||
+        scope.ratio === undefined
+      ) {
         // No RefineSpecV1 estimate exists to compare against (issue #206's external PR review) --
         // neither a pass nor a fail, so this reports the fact rather than fabricating a verdict
         // against a number nobody predicted. Checking all three fields, not just `estimate`, is
@@ -653,7 +683,10 @@ export class ReviewGatesRunner {
       // Not every repository defines a lint script (issue #283), unlike build/typecheck, which
       // this runner's own repo always does -- recorded as absent, the same honest way an
       // uninstalled gitleaks/semgrep binary is, never as a failure the repo did nothing to earn.
-      return finish('skipped', 'no lint script is defined in this repository; this check did not run');
+      return finish(
+        'skipped',
+        'no lint script is defined in this repository; this check did not run',
+      );
     }
     return finish('failed', `${executable} exited ${result.code}`, gateDetail(result));
   }
@@ -749,6 +782,7 @@ export class ReviewGatesRunner {
       outcome: ReviewReportV1['outcome'];
       deterministic: DeterministicGateResultV1[];
       diffScope: DiffScopeV1;
+      risk: RiskGrade;
       inputCompleteness?: ReviewInputCompletenessV1;
       reviewer?: LlmReviewPassV1;
       verifier?: VerifierPassV1;
@@ -764,6 +798,7 @@ export class ReviewGatesRunner {
       implementerTier: request.implementerTier,
       deterministic: parts.deterministic,
       diffScope: parts.diffScope,
+      risk: parts.risk,
       ...(parts.inputCompleteness ? { inputCompleteness: parts.inputCompleteness } : {}),
       ...(parts.reviewer ? { reviewer: parts.reviewer } : {}),
       ...(parts.verifier ? { verifier: parts.verifier } : {}),
@@ -837,9 +872,7 @@ export function selectVerifier(input: {
   candidates: readonly ModelChoice[];
 }): VerifierSelection {
   const floor = modelTierRank(input.implementer.tier);
-  const eligible = input.candidates.filter(
-    (candidate) => modelTierRank(candidate.tier) >= floor,
-  );
+  const eligible = input.candidates.filter((candidate) => modelTierRank(candidate.tier) >= floor);
   if (eligible.length === 0) {
     return {
       outcome: 'none_eligible',
@@ -904,6 +937,24 @@ function renamedNewPath(path: string): string {
   return arrow === -1 ? path : path.slice(arrow + 4);
 }
 
+/**
+ * The rename counterpart's old path -- undoes the same `old => new`/`prefix{old => new}suffix`
+ * compaction as `renamedNewPath`, but keeps the *pre*-rename half instead of the post-rename one.
+ * `classifyReviewRisk` needs both halves of a rename: grading only the new path lets a diff move a
+ * `security/`/`auth/`/`migrations/` file to an innocuous-looking name in the same commit and drop
+ * out of HIGH grading entirely, even though the diff's content is exactly the sensitive file's own
+ * history. A non-renamed line has no old path distinct from its new one, so this is a no-op for it.
+ */
+function renamedOldPath(path: string): string {
+  const braced = path.match(/^(.*)\{(.*) => .*\}(.*)$/);
+  if (braced) {
+    const [, prefix, oldPart, suffix] = braced;
+    return `${prefix}${oldPart}${suffix}`;
+  }
+  const arrow = path.indexOf(' => ');
+  return arrow === -1 ? path : path.slice(0, arrow);
+}
+
 /** The diff's own touched-file list (issue #319), reusing the same numstat parse as the diff-scope
  * gate rather than a second, driftable pass over it. */
 function parseTouchedFiles(numstat: string): Map<string, TouchedFileInfo> {
@@ -912,6 +963,34 @@ function parseTouchedFiles(numstat: string): Map<string, TouchedFileInfo> {
     touched.set(renamedNewPath(path), { binary: added === '-' || deleted === '-' });
   }
   return touched;
+}
+
+/**
+ * The review report's own `risk` field (issue #157/#160), from the diff's touched-file paths.
+ *
+ * This calls `matchesSensitivePath` directly rather than `risk-classifier.ts`'s `classifyRisk`,
+ * because `classifyRisk` grades a live `PermissionActionV2` -- an `external_side_effect`, an
+ * `mcpDestructive` call, a filesystem write inside the worktree -- and a completed review has none
+ * of that: only the paths the diff actually touched. Synthesizing a fake action shape just to reach
+ * `classifyRisk`'s path branch would be reporting a grade this run cannot support. So this applies
+ * only the one half of the classifier's rule that a diff's own paths can honestly answer: HIGH when
+ * a touched file matches the security/auth/migration pattern, LOW otherwise. MEDIUM never comes out
+ * of this function -- see the `risk` field's own doc comment on `ReviewReportV1`.
+ *
+ * Takes the raw numstat, not `parseTouchedFiles`' already-collapsed-to-new-path map: a rename's old
+ * path matters here even though it doesn't for finding-location verification. Grading only the new
+ * path would let `apps/daemon/src/auth/token-store.ts` renamed to `apps/daemon/src/creds.ts` in the
+ * same diff drop out of HIGH entirely, despite the diff being exactly that sensitive file's own
+ * history -- `renamedOldPath`/`renamedNewPath` are both checked per line for this reason.
+ */
+function classifyReviewRisk(numstat: string): RiskGrade {
+  for (const { path } of parseNumstat(numstat)) {
+    // Both halves of a rename, not just the new path -- see `renamedOldPath`'s own doc comment.
+    if (matchesSensitivePath(renamedNewPath(path)) || matchesSensitivePath(renamedOldPath(path))) {
+      return 'high';
+    }
+  }
+  return 'low';
 }
 
 /** Counts lines the way a line number in a finding means: a trailing newline is not itself a line. */
@@ -980,7 +1059,10 @@ export function computeDiffScope(
     return { implementation, generatedTests };
   }
 
-  const boundedEstimate = { changedLines: estimate.changedLines, filesTouched: estimate.filesTouched };
+  const boundedEstimate = {
+    changedLines: estimate.changedLines,
+    filesTouched: estimate.filesTouched,
+  };
   // A zero estimate has no meaningful ratio; treat any real diff against it as a blown estimate
   // rather than dividing by zero into Infinity.
   const ratio =
@@ -1074,7 +1156,11 @@ function renderConventions(conventions: string | undefined): string[] {
  * this pass. `conventions` is a third, later addition (issue #284) that does not weaken that: it
  * is repo-authored, human-committed prose, never anything derived from this ticket's own session.
  */
-export function buildReviewerPrompt(subject: ReviewSubject, diff: string, conventions?: string): string {
+export function buildReviewerPrompt(
+  subject: ReviewSubject,
+  diff: string,
+  conventions?: string,
+): string {
   return [
     'You are reviewing a diff against the spec it was written to satisfy. You did not write this',
     'code and you are not seeing the session that did — judge the diff on its own terms.',
