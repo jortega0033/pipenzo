@@ -1,0 +1,16 @@
+title = "Pipenzo gitleaks config"
+
+[extend]
+useDefault = true
+
+# gitleaks' generic-api-key rule flags Pipenzo's GitHub OAuth App client id
+# (apps/desktop/electron/github-oauth-app.ts) as a high-entropy secret. It isn't one: GitHub issues
+# no client secret for the device-flow grant type, so the client id is a public identifier, not a
+# credential -- see that file's own doc comment for why it's safe, and deliberate, to commit. This
+# allowlist entry matches only that literal value, not the whole file, so a real secret added to
+# the same file later would still be caught.
+[allowlist]
+description = "Pipenzo's public GitHub OAuth App client id (device flow has no client secret)"
+regexes = [
+  '''Ov23liswKZIFMnbznUMY''',
+]
