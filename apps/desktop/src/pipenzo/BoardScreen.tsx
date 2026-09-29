@@ -9,6 +9,7 @@ import {
   LaneTitle,
 } from '../components/primitives/Lane.js';
 import { Empty } from '../components/primitives/Empty.js';
+import { SkeletonBoard } from '../components/primitives/Skeleton.js';
 import { BOARD_LANES, ticketsByLane } from './board-lanes.js';
 
 /**
@@ -55,10 +56,22 @@ import { BOARD_LANES, ticketsByLane } from './board-lanes.js';
  * picker (#115) or `NewFromIdeaDialog.tsx` (#84, itself still without a real mount point), only the
  * board's own content. Whoever mounts `BoardScreen` for real wires both to the real screens, the
  * same deferral `renderTicket` already established.
+ *
+ * ## The cold-start skeleton is a third signal, not a guess made from an empty `tickets` array (issue #67)
+ *
+ * `loading` takes the same precedence `hasConnectedRepos` already does over `tickets` being empty,
+ * and for the identical reason: an empty `tickets` array means three different things
+ * (`usePipenzoTickets`'s own `'loading'` status, a genuinely clean backlog, and -- above -- no repo
+ * connected yet), and a caller that has actually confirmed which one it is should never have to
+ * fake an empty list to say so. `SkeletonBoard` (`Skeleton.tsx`, ported from `Foundations.dc.html`
+ * and unused anywhere until now) is built from `BOARD_LANES` the same way the real board below is --
+ * real lane names and dots, since the label set already fixes those before any poll returns, with
+ * only the count and the cards themselves standing in as placeholders.
  */
 export function BoardScreen({
   tickets = [],
   hasConnectedRepos = true,
+  loading = false,
   renderTicket,
   onConnectRepo,
   onNewFromIdea,
@@ -68,6 +81,10 @@ export function BoardScreen({
    * made from an empty `tickets` array, which means something different (see this file's own
    * "first-run hero" doc section). */
   hasConnectedRepos?: boolean;
+  /** True only for the board's one cold-start moment: the first ticket-list poll of the session has
+   * not returned yet. Never inferred from `tickets` being empty -- see this file's own doc section
+   * on why that would collide with a genuinely clean backlog. */
+  loading?: boolean;
   renderTicket: (ticket: PipenzoTicketViewV1) => ReactNode;
   /** "Connect a repo", the hero's primary action. Routes to the repo picker (#115). */
   onConnectRepo?: () => void;
@@ -92,6 +109,17 @@ export function BoardScreen({
         every ticket still needs an explicit Implement, and nothing is ever pushed without you. No
         issue for the thing you have in mind? Describe it and pipenzo drafts one.
       </Empty>
+    );
+  }
+
+  if (loading) {
+    return (
+      <SkeletonBoard
+        lanes={BOARD_LANES.map((laneConfig) => ({
+          name: laneConfig.title,
+          dotColor: laneConfig.dotColor,
+        }))}
+      />
     );
   }
 

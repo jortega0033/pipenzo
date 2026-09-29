@@ -55,6 +55,80 @@ afterEach(() => {
 });
 
 describe('PipenzoAppShell', () => {
+  /**
+   * Issue #67: a `pipenzoListTickets` read that has not settled yet used to render the same
+   * empty-lane board a genuinely clean backlog would -- indistinguishable, same as the #276 error
+   * case this mirrors. These assert the cold-start skeleton and load-line render instead, and that
+   * the real board takes over once the read settles, with nothing left behind.
+   */
+  it('shows the SkeletonBoard and a load-line naming the one connected repo while the first read is in flight', async () => {
+    let resolveTickets: ((value: { tickets: PipenzoTicketViewV1[] }) => void) | undefined;
+    setBridgeOverride({
+      pipenzoListTickets: vi.fn(
+        () => new Promise((resolve) => { resolveTickets = resolve; }),
+      ),
+      onPipenzoPhaseEvent: () => () => {},
+      getDaemonStatus: vi.fn().mockResolvedValue({ state: 'ready' }),
+      onDaemonStatus: () => () => {},
+      pipenzoConnectedRepos: vi.fn().mockResolvedValue({ repositories: ['octocat/hello-world'] }),
+      pipenzoListRepos: vi.fn().mockResolvedValue({ repositories: [], truncated: false }),
+      pipenzoConnectRepos: vi.fn(),
+      pipenzoGitHubConnection: vi
+        .fn()
+        .mockResolvedValue({ state: 'connected', login: 'octocat', source: 'vault' }),
+      listProvidersV2: vi.fn().mockResolvedValue([]),
+      disconnectGitHub: vi.fn(),
+    } as never);
+    const { container } = render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+
+    expect(
+      await screen.findByText(/Reading open issues from/),
+    ).toBeInTheDocument();
+    expect(screen.getByText('octocat/hello-world')).toBeInTheDocument();
+    expect(screen.getByText(/first poll of this session/)).toBeInTheDocument();
+    expect(container.querySelector('.sk-board')).toBeInTheDocument();
+    expect(container.querySelector('.board')).not.toBeInTheDocument();
+    // Real lane names and dots render immediately, same as the real board -- only counts and cards
+    // are placeholders.
+    expect(screen.getByText('Queued')).toBeInTheDocument();
+
+    resolveTickets?.({ tickets: [] });
+
+    await waitFor(() => expect(container.querySelector('.board')).toBeInTheDocument());
+    expect(container.querySelector('.sk-board')).not.toBeInTheDocument();
+    expect(container.querySelector('.load-line')).not.toBeInTheDocument();
+  });
+
+  it('falls back to naming "your connected repos" in the load-line when more than one repo is connected', async () => {
+    let resolveTickets: ((value: { tickets: PipenzoTicketViewV1[] }) => void) | undefined;
+    setBridgeOverride({
+      pipenzoListTickets: vi.fn(
+        () => new Promise((resolve) => { resolveTickets = resolve; }),
+      ),
+      onPipenzoPhaseEvent: () => () => {},
+      getDaemonStatus: vi.fn().mockResolvedValue({ state: 'ready' }),
+      onDaemonStatus: () => () => {},
+      pipenzoConnectedRepos: vi
+        .fn()
+        .mockResolvedValue({ repositories: ['octocat/hello-world', 'octocat/spoon-knife'] }),
+      pipenzoListRepos: vi.fn().mockResolvedValue({ repositories: [], truncated: false }),
+      pipenzoConnectRepos: vi.fn(),
+      pipenzoGitHubConnection: vi
+        .fn()
+        .mockResolvedValue({ state: 'connected', login: 'octocat', source: 'vault' }),
+      listProvidersV2: vi.fn().mockResolvedValue([]),
+      disconnectGitHub: vi.fn(),
+    } as never);
+    const { container } = render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+
+    await waitFor(() => expect(container.querySelector('.load-line')).toBeInTheDocument());
+    expect(container.querySelector('.load-line')).toHaveTextContent('your connected repos');
+    expect(container.querySelector('.load-line .mono')).not.toBeInTheDocument();
+
+    resolveTickets?.({ tickets: [] });
+    await waitFor(() => expect(container.querySelector('.load-line')).not.toBeInTheDocument());
+  });
+
   it('renders the board by default, with Board active in the sidebar', async () => {
     installBridge();
     render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
@@ -207,6 +281,7 @@ describe('PipenzoAppShell', () => {
       onPipenzoPhaseEvent: () => () => {},
       getDaemonStatus: vi.fn().mockResolvedValue({ state: 'ready' }),
       onDaemonStatus: () => () => {},
+      pipenzoConnectedRepos: vi.fn().mockResolvedValue({ repositories: [REPO] }),
       resolvePipenzoCheckout: vi.fn().mockResolvedValue({ repo: REPO, repositoryPath: CHECKOUT }),
       inspectWorkspace: vi.fn().mockResolvedValue(TRUSTED),
       setWorkspaceTrust: vi.fn(),
