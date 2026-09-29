@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, dialog, safeStorage, shell, Tray, Menu } from 'electron';
 import { spawn, type ChildProcess } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join, dirname } from 'node:path';
@@ -55,6 +55,7 @@ import {
   type ProviderId,
   type WorkspaceTrustUpdateRequestV2,
 } from '@agent-dock/shared';
+import { mintPublishNonce } from '@agent-dock/shared/src/publish-nonce-node-v1.js';
 import { AgentDockClient, DaemonError } from '@agent-dock/client';
 import { GitHubTokenVault, GitHubTokenVaultError } from './github-token-vault.js';
 import {
@@ -160,6 +161,20 @@ const DAEMON_CREDENTIAL_RESTART_TIMEOUT_MS = 15_000;
 // one, so it isn't duplicated here.
 const APP_ID = process.env.AGENT_DOCK_APP_ID?.trim() || 'agent-dock';
 
+/**
+ * Issue #182's publish-nonce secret. Generated once, here, for this process's whole lifetime --
+ * not per daemon spawn -- so a nonce minted after a credential-change respawn is still checked
+ * against the same secret the currently-running daemon was handed. Held only in memory: it goes
+ * to the daemon over the same stdin handoff the GitHub credential uses
+ * (`spawnDaemon`'s `plan.credentialMessage`, built by `buildDaemonSpawnPlan` below) and is never
+ * written to `process.env`, a file, or the discovery file -- the one channel a file-read-capable
+ * agent session can reach (see `publish-nonce-v1.ts`'s module comment for the full threat model).
+ * Minted into an actual nonce only inside the `daemon:pipenzo-publish` handler below, in direct
+ * response to the renderer's one call from "Push branch" / "Push & open PR" -- never cached,
+ * never handed to the renderer itself.
+ */
+const publishNonceSecret = randomBytes(32);
+
 function discoveryFilePath(): string {
   return join(tmpdir(), 'agent-dock', `${APP_ID}.json`);
 }
@@ -249,6 +264,7 @@ function spawnDaemon(): void {
     isPackaged: app.isPackaged,
     isDevelopmentBuild: IS_DEVELOPMENT_BUILD,
     developmentFallbackSuppressed,
+    publishNonceSecretHex: publishNonceSecret.toString('hex'),
   });
   // Not `plan.credentialSource` here (issue #209): that is main's pre-handoff *intent*, unconfirmed
   // until the daemon's own `/health` report lands in `waitForDaemonReady`'s success branch, which
@@ -1408,9 +1424,17 @@ handle('daemon:cleanup-worktree', async (_event, input: unknown) => {
 // Pipenzo's publish gate (issue #178). Reachable only from this main-process handler, invoked
 // only by the renderer's own "Push branch" / "Push & open PR" click — never from anything agent
 // session-facing (CLAUDE.md hard rule #1; see routes/pipenzo-publish.ts's module comment).
+//
+// Issue #182's nonce is minted right here, not before: this handler runs once per `ipcRenderer
+// .invoke` call, and `isFromMainWindowFrame` (in `handle()` above) plus `PublishActions.tsx` being
+// the bridge's one caller of `publishPipenzo` mean the only way execution reaches this line is a
+// real human click on one of those two buttons, an instant ago. Minting anywhere earlier -- at
+// spawn, at app start -- would make the nonce a standing credential with the bearer token's own
+// shape, not a proof of that specific click.
 handle('daemon:pipenzo-publish', async (_event, input: unknown) => {
   if (!client) throw new Error('daemon is not ready yet');
-  return client.v2.pipenzo.publish(pipenzoPublishRequestV1Schema.parse(input));
+  const parsed = pipenzoPublishRequestV1Schema.parse(input);
+  return client.v2.pipenzo.publish(parsed, mintPublishNonce(publishNonceSecret));
 });
 // Pipenzo's Refine/Implement/Review phases and the two GitHub issue write ops (issue #184). Same
 // boundary and same reasoning as the publish handler above: main-process only, invoked by a

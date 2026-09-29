@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { AGENT_DOCK_SUPPORTED_PROTOCOL_VERSIONS, type RefineSpecV1 } from '@agent-dock/shared';
+import {
+  AGENT_DOCK_SUPPORTED_PROTOCOL_VERSIONS,
+  PIPENZO_PUBLISH_NONCE_HEADER,
+  type RefineSpecV1,
+} from '@agent-dock/shared';
 import { AgentDockClient } from '../src/client.js';
 import {
   DaemonError,
@@ -945,11 +949,20 @@ describe('AgentDockClient.v2 pipenzo publish gate', () => {
     const client = makeClient(fetchImpl);
 
     await expect(
-      client.v2.pipenzo.publish({ worktreeId: WORKTREE_ID, branch: 'issue-94', operation: 'push' }),
+      client.v2.pipenzo.publish(
+        { worktreeId: WORKTREE_ID, branch: 'issue-94', operation: 'push' },
+        'test-nonce-value',
+      ),
     ).resolves.toEqual(PUBLISH_RESULT);
 
     const call = fetchImpl.mock.calls.find(([url]) => String(url).endsWith('/v2/pipenzo/publish'));
     expect(call?.[1]).toMatchObject({ method: 'POST' });
+    // Issue #182: the nonce travels as a header, never in the validated body -- it is a route-
+    // level auth factor beside the bearer `Authorization` header, not part of the git-safety argv
+    // contract the body schema and `PublishService` independently re-validate.
+    expect((call?.[1] as RequestInit & { headers: Record<string, string> }).headers).toMatchObject({
+      [PIPENZO_PUBLISH_NONCE_HEADER]: 'test-nonce-value',
+    });
     expect(JSON.parse(String((call?.[1] as RequestInit).body))).toEqual({
       worktreeId: WORKTREE_ID,
       branch: 'issue-94',
@@ -966,12 +979,15 @@ describe('AgentDockClient.v2 pipenzo publish gate', () => {
     const client = makeClient(fetchImpl);
 
     await expect(
-      client.v2.pipenzo.publish({
-        worktreeId: WORKTREE_ID,
-        branch: 'issue-94',
-        operation: 'push_and_open_pull_request',
-        pullRequest: { title: 'fix: sanitize env', body: 'Closes #94.' },
-      }),
+      client.v2.pipenzo.publish(
+        {
+          worktreeId: WORKTREE_ID,
+          branch: 'issue-94',
+          operation: 'push_and_open_pull_request',
+          pullRequest: { title: 'fix: sanitize env', body: 'Closes #94.' },
+        },
+        'test-nonce-value',
+      ),
     ).resolves.toEqual(opened);
   });
 
@@ -980,7 +996,10 @@ describe('AgentDockClient.v2 pipenzo publish gate', () => {
     const client = makeClient(fetchImpl);
 
     await expect(
-      client.v2.pipenzo.publish({ worktreeId: 'not-a-uuid', branch: 'issue-94', operation: 'push' }),
+      client.v2.pipenzo.publish(
+        { worktreeId: 'not-a-uuid', branch: 'issue-94', operation: 'push' },
+        'test-nonce-value',
+      ),
     ).rejects.toBeInstanceOf(ValidationError);
     expect(fetchImpl).not.toHaveBeenCalled();
   });
@@ -993,7 +1012,7 @@ describe('AgentDockClient.v2 pipenzo publish gate', () => {
     const client = makeClient(fetchImpl);
 
     const failure = await client.v2.pipenzo
-      .publish({ worktreeId: WORKTREE_ID, branch: 'issue-94', operation: 'push' })
+      .publish({ worktreeId: WORKTREE_ID, branch: 'issue-94', operation: 'push' }, 'test-nonce-value')
       .catch((error: unknown) => error);
     expect(failure).toBeInstanceOf(DaemonError);
     expect(failure).toMatchObject({
