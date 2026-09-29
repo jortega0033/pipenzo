@@ -127,7 +127,7 @@ interface Harness {
   env?: Record<string, string | undefined>;
   withGitHub?: boolean;
   onSession?: (request: CreateSessionV2Request) => void;
-  machine?: Pick<PipenzoPhaseMachine, 'read' | 'transition' | 'recordAttempt'>;
+  machine?: Pick<PipenzoPhaseMachine, 'read' | 'transition' | 'recordAttempt' | 'recordTokenUsage'>;
 }
 
 const TICKET_ID = '00000000-0000-4000-8000-0000000000aa';
@@ -159,14 +159,19 @@ function ticketRecord(overrides: Partial<PipenzoTicketRecordV1> = {}): PipenzoTi
  * guard in `#reportBlownEstimate` (issue #266) does not trip by default; the "already recorded"
  * test constructs one with `currentLabel: 'pipenzo:awaiting-stack-approval'` instead.
  */
-class FakeMachine implements Pick<PipenzoPhaseMachine, 'read' | 'transition' | 'recordAttempt'> {
+class FakeMachine
+  implements Pick<PipenzoPhaseMachine, 'read' | 'transition' | 'recordAttempt' | 'recordTokenUsage'>
+{
   readonly calls: Array<{ method: 'read' | 'transition'; ticketId: string; label?: string }> = [];
   readonly attempts: Array<{ ticketId: string; attempt: PipenzoTicketAttemptV1 }> = [];
+  readonly tokenUsage: Array<{ ticketId: string; tokens: number }> = [];
   #fail: unknown;
   #currentLabel: PipenzoLaneBearingLabelV1;
+  #ticket: PipenzoTicketRecordV1;
 
   constructor(currentLabel: PipenzoLaneBearingLabelV1 = 'pipenzo:working') {
     this.#currentLabel = currentLabel;
+    this.#ticket = ticketRecord({ lane: 'working', labels: [currentLabel] });
   }
 
   failNext(error: unknown): this {
@@ -176,6 +181,15 @@ class FakeMachine implements Pick<PipenzoPhaseMachine, 'read' | 'transition' | '
 
   recordAttempt(ticketId: string, attempt: PipenzoTicketAttemptV1): void {
     this.attempts.push({ ticketId, attempt });
+  }
+
+  recordTokenUsage(ticketId: string, tokens: number): PipenzoTicketRecordV1 {
+    this.tokenUsage.push({ ticketId, tokens });
+    this.#ticket = {
+      ...this.#ticket,
+      budget: { ...this.#ticket.budget, tokensUsed: this.#ticket.budget.tokensUsed + tokens },
+    };
+    return this.#ticket;
   }
 
   async read(ticketId: string): Promise<PipenzoTicketReconciliation> {
@@ -801,6 +815,78 @@ describe('POST /v2/pipenzo/review', () => {
       expect(response.json().outcome).toBe('estimate_blown');
       expect(machine.calls).toEqual([{ method: 'read', ticketId: TICKET_ID }]);
       expect(github.issueComments({ owner: 'jortega0033', repo: 'pipenzo' }, 184)).toHaveLength(0);
+    });
+  });
+
+  /** Issue #143's own accounting: Review dispatches two LLM passes, and both spend budget. */
+  describe('token-usage accounting (issue #143)', () => {
+    it('records the reviewer and verifier passes’ combined usage against the ticket', async () => {
+      const machine = new FakeMachine();
+      const { app } = buildApp({ machine, reviewPayload: { tokensUsed: 15 } });
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/review',
+        headers: auth,
+        payload: {
+          spec: spec(),
+          worktreeId: WORKTREE_ID,
+          baseCommit: BASE_SHA,
+          headCommit: HEAD_SHA,
+          implementerTier: 'mid',
+          reviewer: { provider: 'claude', model: 'reviewer-model', tier: 'mid' },
+          verifier: { provider: 'codex', model: 'verifier-model', tier: 'frontier' },
+          ticketId: TICKET_ID,
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json().outcome).toBe('approved');
+      // The fake port's fixed 15 tokens, once for the reviewer pass and once more for the
+      // verifier pass, recorded as a single write -- not one per session.
+      expect(machine.tokenUsage).toEqual([{ ticketId: TICKET_ID, tokens: 30 }]);
+    });
+
+    it('records nothing when no ticketId was given', async () => {
+      const machine = new FakeMachine();
+      const { app } = buildApp({ machine, reviewPayload: { tokensUsed: 15 } });
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/review',
+        headers: auth,
+        payload: {
+          spec: spec(),
+          worktreeId: WORKTREE_ID,
+          baseCommit: BASE_SHA,
+          headCommit: HEAD_SHA,
+          implementerTier: 'mid',
+          reviewer: { provider: 'claude', model: 'reviewer-model', tier: 'mid' },
+          verifier: { provider: 'codex', model: 'verifier-model', tier: 'frontier' },
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(machine.tokenUsage).toEqual([]);
+    });
+
+    it('does not throw when no phase machine was configured -- the report still comes back', async () => {
+      const { app } = buildApp({ reviewPayload: { tokensUsed: 15 } });
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/review',
+        headers: auth,
+        payload: {
+          spec: spec(),
+          worktreeId: WORKTREE_ID,
+          baseCommit: BASE_SHA,
+          headCommit: HEAD_SHA,
+          implementerTier: 'mid',
+          reviewer: { provider: 'claude', model: 'reviewer-model', tier: 'mid' },
+          verifier: { provider: 'codex', model: 'verifier-model', tier: 'frontier' },
+          ticketId: TICKET_ID,
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
     });
   });
 });

@@ -176,6 +176,15 @@ export interface ImplementSessionOutcome {
    * observe its session), nothing is ever committed on the agent's behalf.
    */
   readonly ended?: Promise<ImplementSessionEnd>;
+  /**
+   * Settles with the session's real provider token usage once it ends (Pipenzo issue #143) --
+   * `0` for a session that reported none, absent entirely for a port with no way to observe usage
+   * at all, same "cannot say" vs "said none" distinction as `RefineSessionOutcome.tokensUsed`.
+   * Kept separate from `ended` rather than folded into it (e.g. `{end, tokensUsed}`) so a caller
+   * that only wants the terminal state -- `#commitWhenEnded`, which existed before this ticket --
+   * does not have to change what it reads off the promise it already awaits.
+   */
+  readonly tokensUsed?: Promise<number>;
 }
 
 /** The seam onto agentdock's session machinery, mirroring `RefineSessionPort`. */
@@ -217,6 +226,9 @@ export interface ImplementStartResult {
   readonly branch: string;
   readonly baseCommit: string;
   readonly sessionId: string;
+  /** See `ImplementSessionOutcome.tokensUsed`; carried through unchanged so `PipenzoPhaseService`
+   *  can record it against the ticket once the dispatched session actually finishes. */
+  readonly tokensUsed?: Promise<number>;
 }
 
 export interface ImplementCollectRequest {
@@ -445,6 +457,7 @@ export class ImplementOrchestrator {
       branch,
       baseCommit,
       sessionId: session.sessionId,
+      ...(session.tokensUsed ? { tokensUsed: session.tokensUsed } : {}),
     };
   }
 

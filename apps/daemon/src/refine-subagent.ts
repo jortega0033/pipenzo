@@ -337,6 +337,13 @@ export interface RefineSessionOutcome {
   readonly output: unknown;
   /** Every tool the session actually invoked, as the daemon observed it. */
   readonly toolsUsed: readonly string[];
+  /**
+   * Real provider token usage for this session (Pipenzo issue #143), as `pipenzo-phase-sessions.ts`
+   * observed it -- `undefined` for a port with no usage to report (every test double predating this
+   * ticket), never a bare `0` standing in for "unknown", so a caller can tell "this session used no
+   * tokens" apart from "this port cannot say".
+   */
+  readonly tokensUsed?: number;
 }
 
 /**
@@ -362,6 +369,8 @@ export interface RefineResult {
   readonly sessionId: string;
   readonly spec: RefineSpecV1;
   readonly toolsUsed: readonly string[];
+  /** See `RefineSessionOutcome.tokensUsed`; carried through unchanged. */
+  readonly tokensUsed?: number;
 }
 
 /** Runs one Refine phase end to end: build the request, run it, verify, validate. */
@@ -477,6 +486,7 @@ export class RefineSubagent {
       sessionId: outcome.sessionId,
       spec: parseRefineSpec(outcome.output),
       toolsUsed: [...outcome.toolsUsed],
+      ...(outcome.tokensUsed !== undefined ? { tokensUsed: outcome.tokensUsed } : {}),
     };
   }
 }

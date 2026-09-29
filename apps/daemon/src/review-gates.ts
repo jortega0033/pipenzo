@@ -145,6 +145,12 @@ export interface LlmPassOutcome {
   /** Verifier only. A reviewer's findings are advisory and carry no verdict. */
   readonly verdict?: 'approved' | 'rejected';
   readonly vendorDiversityUnavailable?: boolean;
+  /** See `RefineSessionOutcome.tokensUsed` in `refine-subagent.ts` -- same field, same port
+   *  family, same optionality reasoning. Reported to `ReviewRequest.onTokensUsed`, never folded
+   *  into `LlmReviewPassV1`/`VerifierPassV1` -- those are wire shapes this module hands back to
+   *  the caller verbatim as `ReviewReportV1`, and a ticket's token spend is not part of that
+   *  public report. */
+  readonly tokensUsed?: number;
 }
 
 /** The seam onto agentdock's session machinery, mirroring the Refine and Implement ports. */
@@ -225,6 +231,20 @@ export interface ReviewRequest {
    * it from the *source* repository, never the worktree above -- see that module's own
    * ownership-rule doc comment for why an agent-writable copy must never reach a prompt this way. */
   readonly conventions?: string;
+  /**
+   * A best-effort token-usage sink (Pipenzo issue #143), invoked once for the reviewer pass and
+   * once more for the verifier pass, each time with that one pass's own `tokensUsed` -- never with
+   * a running total, so the caller decides how to accumulate it. Skipped entirely (not called with
+   * `0`) only when the pass's own `LlmPassOutcome.tokensUsed` is `undefined` -- a port that
+   * genuinely cannot say, as opposed to one that observed and reported zero.
+   *
+   * A callback rather than a field on `ReviewReportV1` on purpose: that report is the exact wire
+   * shape `pipenzoReviewResultV1Schema` parses with `.strict()` (see `pipenzo-phase-v1.ts`), so an
+   * extra key on it is not a forward-compatible addition, it is a request that never parses. This
+   * module has no ticket to charge the usage to anyway -- `PipenzoPhaseService.review()` does, and
+   * is the only caller that ever passes this.
+   */
+  readonly onTokensUsed?: (tokens: number) => void;
 }
 
 const DEFAULT_BUILD_COMMAND = ['pnpm', 'build'] as const;
@@ -717,6 +737,7 @@ export class ReviewGatesRunner {
         error instanceof Error ? error.message : 'the reviewer session failed',
       );
     }
+    if (outcome.tokensUsed !== undefined) request.onTokensUsed?.(outcome.tokensUsed);
     return {
       sessionId: outcome.sessionId,
       tier: request.reviewer.tier,
@@ -755,6 +776,7 @@ export class ReviewGatesRunner {
     if (outcome.verdict !== 'approved' && outcome.verdict !== 'rejected') {
       throw new ReviewGateError('verifier_failed', 'the verifier returned no verdict');
     }
+    if (outcome.tokensUsed !== undefined) request.onTokensUsed?.(outcome.tokensUsed);
     return {
       sessionId: outcome.sessionId,
       tier: request.verifier.tier,

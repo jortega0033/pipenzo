@@ -759,3 +759,73 @@ describe('PipenzoPhaseMachine schema read-only guard', () => {
     expect(github.calls.filter((call) => call.method === 'setIssueLabels')).toHaveLength(1);
   });
 });
+
+/**
+ * Issue #143, slice 1: `budget.tokensUsed` had a field since build step 3, but nothing ever wrote
+ * to it. `recordTokenUsage()` is that write; a separate slice is the enforcement consequence.
+ */
+describe('PipenzoPhaseMachine.recordTokenUsage', () => {
+  it('adds to a ticket with no usage yet, without touching GitHub', () => {
+    const { machine, tickets, github } = harness({ ticket: { budget: { tokensUsed: 0, limit: 0 } } });
+
+    machine.recordTokenUsage(TICKET_ID, 1_500);
+
+    expect(tickets.get(TICKET_ID)?.budget).toEqual({ tokensUsed: 1_500, limit: 0 });
+    // Local-only: unlike `transition()` and `read()`, this must never cost a GitHub round trip.
+    expect(github.calls).toEqual([]);
+  });
+
+  it('accumulates across calls rather than overwriting the previous total', () => {
+    const { machine, tickets } = harness({ ticket: { budget: { tokensUsed: 1_000, limit: 0 } } });
+
+    machine.recordTokenUsage(TICKET_ID, 250);
+
+    expect(tickets.get(TICKET_ID)?.budget.tokensUsed).toBe(1_250);
+  });
+
+  it('returns the updated ticket record so a caller can decide whether to park it', () => {
+    const { machine } = harness({ ticket: { budget: { tokensUsed: 100, limit: 0 } } });
+
+    const updated = machine.recordTokenUsage(TICKET_ID, 50);
+
+    expect(updated.budget.tokensUsed).toBe(150);
+  });
+
+  it('ignores a non-positive or non-finite report rather than corrupting the total', () => {
+    const { machine, tickets } = harness({ ticket: { budget: { tokensUsed: 100, limit: 0 } } });
+
+    machine.recordTokenUsage(TICKET_ID, 0);
+    machine.recordTokenUsage(TICKET_ID, -5);
+    machine.recordTokenUsage(TICKET_ID, Number.NaN);
+    machine.recordTokenUsage(TICKET_ID, Number.POSITIVE_INFINITY);
+
+    expect(tickets.get(TICKET_ID)?.budget.tokensUsed).toBe(100);
+  });
+
+  it('does not announce a phase-stream event -- adding usage never moves a lane', () => {
+    const events = new PipenzoPhaseEventBus();
+    const { machine } = harness({ ticket: { budget: { tokensUsed: 0, limit: 0 } }, events });
+
+    machine.recordTokenUsage(TICKET_ID, 10);
+
+    expect(events.retained).toHaveLength(0);
+  });
+
+  it('throws ticket_not_found rather than silently doing nothing for an unknown ticket', () => {
+    const { machine } = harness();
+
+    expect(() => machine.recordTokenUsage('00000000-0000-4000-8000-00000000ffff', 10)).toThrow(
+      PipenzoPhaseMachineError,
+    );
+  });
+
+  it('clamps to the schema’s int32 bound rather than overflowing it', () => {
+    const { machine, tickets } = harness({
+      ticket: { budget: { tokensUsed: 2_147_483_647 - 10, limit: 0 } },
+    });
+
+    machine.recordTokenUsage(TICKET_ID, 1_000);
+
+    expect(tickets.get(TICKET_ID)?.budget.tokensUsed).toBe(2_147_483_647);
+  });
+});
