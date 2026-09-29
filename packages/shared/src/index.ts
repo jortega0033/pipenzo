@@ -24,4 +24,4 @@ export * from './pipenzo-recovery-v1.js';
 export * from './pipenzo-credential-v1.js';
 export * from './pipenzo-health-v1.js';
 export * from './pipenzo-repos-v1.js';
-
+export * from './pipenzo-audit-v1.js';
