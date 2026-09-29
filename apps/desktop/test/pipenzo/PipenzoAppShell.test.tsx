@@ -99,6 +99,46 @@ describe('PipenzoAppShell', () => {
     expect(container.querySelectorAll('.card')).toHaveLength(2);
   });
 
+  it('gives a Working card a real phase chip, read off the ticket, not guessed', async () => {
+    installBridge([
+      makeTicket({ ticketId: 'a', issueNumber: 42, lane: 'working', phase: 'implement' }),
+      makeTicket({ ticketId: 'b', issueNumber: 43, lane: 'working', phase: 'review' }),
+      makeTicket({ ticketId: 'c', issueNumber: 44, lane: 'working', phase: 'refine' }),
+    ]);
+    render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+
+    expect(await screen.findByText('implementing')).toBeInTheDocument();
+    expect(screen.getByText('reviewing')).toBeInTheDocument();
+    expect(screen.getByText('refining')).toBeInTheDocument();
+  });
+
+  it('gives a Ready-for-review card a real chip and its real branch, when one exists', async () => {
+    installBridge([
+      makeTicket({
+        ticketId: 'a',
+        issueNumber: 42,
+        lane: 'ready-for-review',
+        worktree: { id: '00000000-0000-4000-8000-000000000002', branch: 'issue-42' },
+      }),
+    ]);
+    render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+
+    expect(await screen.findByText('ready for review')).toBeInTheDocument();
+    expect(screen.getByText('issue-42')).toBeInTheDocument();
+  });
+
+  it('renders no chip and no branch for Queued or Needs-human -- neither is a guess this shell makes', async () => {
+    installBridge([
+      makeTicket({ ticketId: 'a', issueNumber: 42, lane: 'queued' }),
+      makeTicket({ ticketId: 'b', issueNumber: 43, lane: 'needs-human' }),
+    ]);
+    const { container } = render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+
+    await screen.findByText('#42');
+    expect(container.querySelectorAll('.chip')).toHaveLength(0);
+    expect(container.querySelectorAll('.card-foot')).toHaveLength(0);
+  });
+
   it('shows the current page as the crumb trail', async () => {
     installBridge();
     render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
