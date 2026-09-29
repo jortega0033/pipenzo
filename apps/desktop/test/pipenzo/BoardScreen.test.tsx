@@ -163,4 +163,30 @@ describe('BoardScreen', () => {
       expect(screen.queryByRole('button', { name: 'New from idea' })).not.toBeInTheDocument();
     });
   });
+
+  describe('cold-start loading skeleton (issue #67)', () => {
+    it('renders SkeletonBoard, with real lane names and dots, instead of the four-lane board', () => {
+      const { container } = render(<BoardScreen loading renderTicket={() => null} />);
+      expect(container.querySelector('.board')).not.toBeInTheDocument();
+      expect(container.querySelector('.sk-board')).toBeInTheDocument();
+      expect(container.querySelectorAll('.sk-lane')).toHaveLength(4);
+      expect(screen.getByText('Queued')).toBeInTheDocument();
+      expect(screen.getByText('Working')).toBeInTheDocument();
+      expect(screen.getByText('Ready for review')).toBeInTheDocument();
+      expect(screen.getByText('Needs human')).toBeInTheDocument();
+    });
+
+    it('ignores tickets while loading -- never a real board rendered from a still-empty list', () => {
+      const tickets = [makeTicket({ ticketId: 'a', lane: 'queued', issueNumber: 1 })];
+      render(<BoardScreen loading tickets={tickets} renderTicket={() => null} />);
+      expect(screen.queryByText('ticket #1')).not.toBeInTheDocument();
+      expect(screen.queryByText('Nothing queued')).not.toBeInTheDocument();
+    });
+
+    it('defaults to false, unchanged from before #67', () => {
+      const { container } = render(<BoardScreen renderTicket={() => null} />);
+      expect(container.querySelector('.sk-board')).not.toBeInTheDocument();
+      expect(container.querySelector('.board')).toBeInTheDocument();
+    });
+  });
 });
