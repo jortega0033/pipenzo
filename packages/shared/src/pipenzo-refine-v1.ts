@@ -161,13 +161,14 @@ export const refineSpecV1Schema = z
     openQuestions: z.array(z.string().min(1).max(1_000)).max(20),
     /**
      * A decomposition into independently-shippable, roughly-estimated parts, offered only when the
-     * ticket was too big for even a dependency-ordered stack (issue #271). Optional and absent by
-     * default: nothing in `refine-subagent.ts`'s prompt asks for one yet -- deciding whether that is
-     * the same Refine session's own output, a second pass, and what a cheap-tier read-only session
-     * can honestly claim about a multi-PR decomposition it never wrote any of, is real product
-     * judgment this schema addition does not make for it. Until that lands, every spec omits this
-     * field, `RefusalPanel.tsx`'s `Split` block stays unrendered, and `refusalCommentBody` posts the
-     * estimate alone -- exactly today's behavior, unchanged by this field existing.
+     * ticket was too big for even a dependency-ordered stack (issue #271). Optional, and absent
+     * whenever the same Refine session either did not trip the diff-size gate or judged that it
+     * could not honestly produce a decomposition where every part is independently shippable in the
+     * order given -- `refine-subagent.ts`'s `buildRefinePrompt` asks for a real split only on a
+     * refusal, and explicitly tells the model that a bad split is worse than none, so an absent
+     * field here is a considered "no split was found," not an oversight. When it is present,
+     * `RefusalPanel.tsx`'s `Split` block renders it and `refusalCommentBody` includes the numbered
+     * list; when it is absent, both stay exactly as they were before this field existed.
      */
     proposedSplit: z.array(refineProposedSplitPartV1Schema).min(1).max(20).optional(),
   })
@@ -252,8 +253,10 @@ export const REFINE_SPEC_V1_JSON_SCHEMA = Object.freeze({
       maxItems: 20,
       items: { type: 'string', minLength: 1, maxLength: 1000 },
     },
-    // Not in `required` above: optional on both sides, and absent from every spec today since
-    // nothing in `refine-subagent.ts`'s prompt asks a provider to populate it yet (issue #271).
+    // Not in `required` above: optional on both sides. `refine-subagent.ts`'s prompt (issue #271)
+    // asks a provider to populate this only on a refusal, and only when it can honestly stand
+    // behind every part as independently shippable in the given order -- so it is still legitimately
+    // absent from many refusal specs, not just from every spec that predates this field.
     proposedSplit: {
       type: 'array',
       minItems: 1,

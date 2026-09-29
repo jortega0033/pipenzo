@@ -926,9 +926,10 @@ export function budgetExhaustedCommentBody(budget: PipenzoTicketRecordV1['budget
  * `proposedSplit` (issue #271) renders as a numbered list when present, the same "no field, no
  * section" discipline `RefusalPanel.tsx`'s own `Split` block already applies to the UI half of this
  * same refusal -- so the two surfaces stay in agreement about what is real rather than one saying
- * more than the other. It is `undefined` for every spec today (nothing in `refine-subagent.ts`'s
- * prompt asks a provider to produce one yet), so this branch is unreachable until that separate,
- * still-undecided work lands; the comment says only what is real either way.
+ * more than the other. `refine-subagent.ts`'s prompt now asks the same session for one whenever its
+ * own estimate is a refusal, but it is explicitly told to omit the field rather than fake a split it
+ * cannot stand behind -- so `undefined` here is still a normal, expected outcome, not evidence the
+ * prompt change did nothing.
  */
 export function refusalCommentBody(
   estimate: RefineEstimateV1,
