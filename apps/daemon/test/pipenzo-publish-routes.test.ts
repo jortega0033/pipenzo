@@ -1,11 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { ProviderRegistry, noopLogger } from '@agent-dock/agent-runtime';
+import {
+  PIPENZO_PUBLISH_NONCE_HEADER,
+  generatePublishNonceSecret,
+  mintPublishNonce,
+} from '@agent-dock/shared';
 import { buildServer } from '../src/server.js';
 import { SessionManager } from '../src/session-manager.js';
 import { PublishService, type OwnedWorktreeLocator } from '../src/publish-service.js';
+import { PublishNonceGate } from '../src/publish-nonce-gate.js';
 import type { GitCommandResult, PipenzoGitRunner } from '../src/pipenzo-git.js';
 
 const TOKEN = 'test-token-pipenzo-publish';
+const NONCE_SECRET = generatePublishNonceSecret();
+const nonceHeaders = () => ({ [PIPENZO_PUBLISH_NONCE_HEADER]: mintPublishNonce(NONCE_SECRET) });
 const WORKTREE_ID = '11111111-2222-4333-8444-555555555555';
 const HEAD_SHA = 'b'.repeat(40);
 const WORKTREE_PATH = process.platform === 'win32' ? 'C:\\owned\\issue-178' : '/owned/issue-178';
@@ -33,7 +41,10 @@ const runGit: PipenzoGitRunner = async (args) => {
 /** Every publish now requires a configured repository — the remote's push URL is checked. */
 const REPO_ENV = { PIPENZO_GITHUB_REPO: 'jortega0033/pipenzo' } as const;
 
-function buildApp(env: Record<string, string | undefined> = REPO_ENV) {
+function buildApp(
+  env: Record<string, string | undefined> = REPO_ENV,
+  nonceGate: PublishNonceGate = PublishNonceGate.withSecretHex(NONCE_SECRET.toString('hex')),
+) {
   const registry = new ProviderRegistry();
   return buildServer({
     registry,
@@ -52,6 +63,7 @@ function buildApp(env: Record<string, string | undefined> = REPO_ENV) {
         }),
       }),
     }),
+    publishNonceGate: nonceGate,
   });
 }
 
@@ -62,7 +74,7 @@ describe('POST /v2/pipenzo/publish', () => {
     const response = await buildApp().inject({
       method: 'POST',
       url: '/v2/pipenzo/publish',
-      headers: auth,
+      headers: { ...auth, ...nonceHeaders() },
       payload: { worktreeId: WORKTREE_ID, branch: 'issue-178', operation: 'push' },
     });
     expect(response.statusCode).toBe(200);
@@ -82,7 +94,7 @@ describe('POST /v2/pipenzo/publish', () => {
     }).inject({
       method: 'POST',
       url: '/v2/pipenzo/publish',
-      headers: auth,
+      headers: { ...auth, ...nonceHeaders() },
       payload: {
         worktreeId: WORKTREE_ID,
         branch: 'issue-178',
@@ -131,7 +143,7 @@ describe('POST /v2/pipenzo/publish', () => {
     const response = await app.inject({
       method: 'POST',
       url: '/v2/pipenzo/publish',
-      headers: auth,
+      headers: { ...auth, ...nonceHeaders() },
       payload: { worktreeId: WORKTREE_ID, branch: 'issue-178', operation: 'push' },
     });
     expect(response.statusCode).toBe(404);
@@ -149,7 +161,7 @@ describe('POST /v2/pipenzo/publish', () => {
       const response = await buildApp().inject({
         method: 'POST',
         url: '/v2/pipenzo/publish',
-        headers: auth,
+        headers: { ...auth, ...nonceHeaders() },
         payload,
       });
       expect(response.statusCode).toBe(400);
@@ -161,7 +173,7 @@ describe('POST /v2/pipenzo/publish', () => {
     const response = await buildApp().inject({
       method: 'POST',
       url: '/v2/pipenzo/publish',
-      headers: auth,
+      headers: { ...auth, ...nonceHeaders() },
       payload: {
         worktreeId: '99999999-2222-4333-8444-555555555555',
         branch: 'issue-178',
@@ -176,7 +188,7 @@ describe('POST /v2/pipenzo/publish', () => {
     const response = await buildApp(REPO_ENV).inject({
       method: 'POST',
       url: '/v2/pipenzo/publish',
-      headers: auth,
+      headers: { ...auth, ...nonceHeaders() },
       payload: {
         worktreeId: WORKTREE_ID,
         branch: 'issue-178',
@@ -187,5 +199,108 @@ describe('POST /v2/pipenzo/publish', () => {
     expect(response.statusCode).toBe(412);
     expect(response.json()).toMatchObject({ code: 'token_missing' });
     expect(JSON.stringify(response.json())).not.toMatch(/ghp_/);
+  });
+
+  /**
+   * Issue #182's own acceptance criterion, expressed at the route: the bearer token alone is no
+   * longer sufficient. A caller with a valid `Authorization` header and no nonce at all is exactly
+   * the shape of an agent session that somehow obtained the bearer token off the discovery file
+   * but has no way to mint a nonce that verifies.
+   */
+  describe('the publish nonce (issue #182)', () => {
+    const payload = { worktreeId: WORKTREE_ID, branch: 'issue-178', operation: 'push' } as const;
+
+    it('rejects a bearer-authenticated caller with no nonce header at all', async () => {
+      const response = await buildApp().inject({
+        method: 'POST',
+        url: '/v2/pipenzo/publish',
+        headers: auth,
+        payload,
+      });
+      expect(response.statusCode).toBe(401);
+      expect(response.json()).toEqual({ code: 'nonce_invalid', error: 'missing or invalid publish nonce' });
+    });
+
+    it('rejects a nonce minted for a different secret', async () => {
+      const response = await buildApp().inject({
+        method: 'POST',
+        url: '/v2/pipenzo/publish',
+        headers: { ...auth, [PIPENZO_PUBLISH_NONCE_HEADER]: mintPublishNonce(generatePublishNonceSecret()) },
+        payload,
+      });
+      expect(response.statusCode).toBe(401);
+      expect(response.json()).toMatchObject({ code: 'nonce_invalid' });
+    });
+
+    it('rejects a nonce older than the freshness window', async () => {
+      const stale = mintPublishNonce(NONCE_SECRET, Date.now() - 60_000);
+      const response = await buildApp().inject({
+        method: 'POST',
+        url: '/v2/pipenzo/publish',
+        headers: { ...auth, [PIPENZO_PUBLISH_NONCE_HEADER]: stale },
+        payload,
+      });
+      expect(response.statusCode).toBe(401);
+      expect(response.json()).toMatchObject({ code: 'nonce_invalid' });
+    });
+
+    it('accepts a fresh nonce exactly once, then refuses a replay', async () => {
+      const app = buildApp();
+      const nonce = mintPublishNonce(NONCE_SECRET);
+      const first = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/publish',
+        headers: { ...auth, [PIPENZO_PUBLISH_NONCE_HEADER]: nonce },
+        payload,
+      });
+      expect(first.statusCode).toBe(200);
+
+      const replay = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/publish',
+        headers: { ...auth, [PIPENZO_PUBLISH_NONCE_HEADER]: nonce },
+        payload,
+      });
+      expect(replay.statusCode).toBe(401);
+      expect(replay.json()).toMatchObject({ code: 'nonce_invalid' });
+    });
+
+    /** Never registered without a gate: `server.ts` defaults a missing one to `PublishNonceGate.none()`,
+     * which refuses everything — the boundary's default is "cannot publish," not "skip the check." */
+    it('refuses every request when the daemon has no publish-nonce secret configured', async () => {
+      const response = await buildApp(REPO_ENV, PublishNonceGate.none()).inject({
+        method: 'POST',
+        url: '/v2/pipenzo/publish',
+        headers: { ...auth, ...nonceHeaders() },
+        payload,
+      });
+      expect(response.statusCode).toBe(401);
+      expect(response.json()).toMatchObject({ code: 'nonce_invalid' });
+    });
+
+    /**
+     * A malformed body must not let a caller probe the nonce check for free -- the nonce is
+     * checked, and burned, before the body is even parsed.
+     */
+    it('burns the nonce even when the body that follows is rejected', async () => {
+      const app = buildApp();
+      const nonce = mintPublishNonce(NONCE_SECRET);
+      const badBody = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/publish',
+        headers: { ...auth, [PIPENZO_PUBLISH_NONCE_HEADER]: nonce },
+        payload: { worktreeId: 'not-a-uuid', branch: 'issue-178', operation: 'push' },
+      });
+      expect(badBody.statusCode).toBe(400);
+
+      const retryWithSameNonce = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/publish',
+        headers: { ...auth, [PIPENZO_PUBLISH_NONCE_HEADER]: nonce },
+        payload,
+      });
+      expect(retryWithSameNonce.statusCode).toBe(401);
+      expect(retryWithSameNonce.json()).toMatchObject({ code: 'nonce_invalid' });
+    });
   });
 });
