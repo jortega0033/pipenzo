@@ -124,6 +124,9 @@ export function createDemoBridge(): AgentDockBridge {
     implementResultPipenzo: async () => {
       throw new Error('implement is not available in demo mode');
     },
+    implementDiffPipenzo: async () => {
+      throw new Error('implement is not available in demo mode');
+    },
     reviewPipenzo: async () => {
       throw new Error('review is not available in demo mode');
     },

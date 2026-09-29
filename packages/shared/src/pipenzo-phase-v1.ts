@@ -202,6 +202,55 @@ export const pipenzoImplementCommitsV1Schema = z
   })
   .strict();
 
+/**
+ * The longest diff text this route will put on the wire (issue #90's follow-on stack: mounting the
+ * Review/Diff/Publish hand-off surfaced that no route returned a diff at all -- `ReviewReportV1`
+ * carries a verdict and findings, never the patch itself, and `review-gates.ts` computes one only
+ * to hand it to an LLM pass and discard it).
+ *
+ * Chosen independently from (and happening to equal) `MAX_DIFF_CHARS` in
+ * `apps/daemon/src/review-gates.ts` -- that bound protects an LLM pass's context window; this one
+ * protects the renderer's own memory and render time from an unbounded string crossing the wire.
+ * Two different reasons to cap a diff, not one rule with two names, so a future change to either
+ * should not be assumed to move the other (the same caution `MAX_ISSUE_BODY_CHARS` states next to
+ * `MAX_ISSUE_COMMENT_CHARS` above).
+ */
+export const MAX_IMPLEMENT_DIFF_CHARS = 400_000;
+
+/** Reads the unified diff for a commit range inside an owned worktree, by id (issue #90's stack,
+ * step 2) -- never by path, the same rule every route on this surface already follows. */
+export const pipenzoImplementDiffRequestV1Schema = z
+  .object({
+    worktreeId: z.string().uuid(),
+    baseCommit: z.string().regex(/^[0-9a-f]{40}$/),
+    headCommit: z.string().regex(/^[0-9a-f]{40}$/),
+  })
+  .strict();
+
+export const pipenzoImplementDiffResultV1Schema = z
+  .object({
+    worktreeId: z.string().uuid(),
+    baseCommit: z.string().regex(/^[0-9a-f]{40}$/),
+    headCommit: z.string().regex(/^[0-9a-f]{40}$/),
+    /** `git diff --patch --no-color` over `baseCommit..headCommit`, truncated at
+     * `MAX_IMPLEMENT_DIFF_CHARS` -- the same shape `DiffFileList.tsx` already parses, whether the
+     * text came from this route or from a GitHub PR diff. */
+    diffText: z.string().max(MAX_IMPLEMENT_DIFF_CHARS),
+    /** True when the real diff was longer than `MAX_IMPLEMENT_DIFF_CHARS` and `diffText` is a
+     * prefix of it, never the whole thing. */
+    truncated: z.boolean(),
+    /** From `git diff --numstat` over the same range -- computed once here rather than re-derived
+     * by parsing `diffText` a second time client-side, and correct even when `diffText` itself was
+     * truncated. */
+    additions: z.number().int().nonnegative(),
+    deletions: z.number().int().nonnegative(),
+    filesChanged: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export type PipenzoImplementDiffRequestV1 = z.infer<typeof pipenzoImplementDiffRequestV1Schema>;
+export type PipenzoImplementDiffResultV1 = z.infer<typeof pipenzoImplementDiffResultV1Schema>;
+
 /* ------------------------------------------------------------------ review */
 
 const pipenzoModelChoiceV1Schema = z

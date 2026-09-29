@@ -160,6 +160,7 @@ function installBridge(overrides: Partial<AgentDockBridge> = {}): {
     refinePipenzo: vi.fn(),
     implementPipenzo: vi.fn(),
     implementResultPipenzo: vi.fn(),
+    implementDiffPipenzo: vi.fn(),
     reviewPipenzo: vi.fn(),
     claimPipenzoIssue: vi.fn(),
     createPipenzoIssue: vi.fn(),

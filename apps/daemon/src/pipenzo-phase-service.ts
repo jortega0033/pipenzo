@@ -5,6 +5,8 @@ import type {
   PipenzoCaptureCapabilityRequestV1,
   PipenzoCaptureCapabilityV1,
   PipenzoImplementCommitsV1,
+  PipenzoImplementDiffRequestV1,
+  PipenzoImplementDiffResultV1,
   PipenzoImplementRequestV1,
   PipenzoImplementResultQueryV1,
   PipenzoImplementResultV1,
@@ -324,6 +326,33 @@ export class PipenzoPhaseService {
     }
   }
 
+  /**
+   * Reads the diff for a commit range already known to exist in an owned worktree (issue #90's
+   * stack, step 2) -- the route `DiffFileList.tsx` had nothing to call before this: `ReviewReportV1`
+   * carries a verdict and findings, never the patch itself.
+   */
+  async implementDiff(request: PipenzoImplementDiffRequestV1): Promise<PipenzoImplementDiffResultV1> {
+    const location = this.#worktrees.ownedLocation(request.worktreeId);
+    if (!location) {
+      throw new PipenzoPhaseError('worktree_not_found', 'no such owned worktree');
+    }
+    try {
+      const diff = await this.#implement.diff({
+        worktreePath: location.path,
+        baseCommit: request.baseCommit,
+        headCommit: request.headCommit,
+      });
+      return {
+        worktreeId: request.worktreeId,
+        baseCommit: request.baseCommit,
+        headCommit: request.headCommit,
+        ...diff,
+      };
+    } catch (error) {
+      throw toPhaseError(error);
+    }
+  }
+
   /* ---------------------------------------------------------------- review */
 
   async review(request: PipenzoReviewRequestV1): Promise<PipenzoReviewResultV1> {
@@ -595,6 +624,7 @@ const IMPLEMENT_CODES: Record<ImplementOrchestratorError['code'], PipenzoPhaseEr
   branch_failed: 'branch_failed',
   commit_failed: 'commit_failed',
   session_failed: 'session_failed',
+  diff_unavailable: 'diff_unavailable',
 };
 
 const REVIEW_CODES: Record<ReviewGateError['code'], PipenzoPhaseErrorCodeV1> = {
