@@ -63,6 +63,32 @@ describe('parseDaemonCredentialMessage', () => {
       expect(isTokenShaped(bad)).toBe(false);
     }
   });
+
+  /**
+   * Issue #182: `publishNonceSecret` rides the same one-line envelope as `githubToken` rather than
+   * a second channel — `buildDaemonCredentialMessage`'s own doc comment names this as exactly what
+   * the JSON envelope is for. Both fields are independent: a message can carry either, both, or
+   * neither.
+   */
+  const NONCE_SECRET = 'ab'.repeat(32);
+  it('reads the publish-nonce secret out of a well-formed message', () => {
+    expect(parseDaemonCredentialMessage(`{"publishNonceSecret":"${NONCE_SECRET}"}\n`)).toEqual({
+      publishNonceSecret: NONCE_SECRET,
+    });
+  });
+
+  it('reads both fields when both are present, and neither when neither is', () => {
+    expect(
+      parseDaemonCredentialMessage(`{"githubToken":"${TOKEN}","publishNonceSecret":"${NONCE_SECRET}"}\n`),
+    ).toEqual({ githubToken: TOKEN, publishNonceSecret: NONCE_SECRET });
+    expect(parseDaemonCredentialMessage('{}\n')).toEqual({});
+  });
+
+  it('drops a publish-nonce secret that is not 64 lowercase hex characters', () => {
+    for (const bad of ['too-short', 'AB'.repeat(32), NONCE_SECRET.slice(1), 42, null]) {
+      expect(parseDaemonCredentialMessage(JSON.stringify({ publishNonceSecret: bad }))).toEqual({});
+    }
+  });
 });
 
 describe('readCredentialMessage', () => {

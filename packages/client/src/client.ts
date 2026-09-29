@@ -106,6 +106,8 @@ import {
   pipenzoImplementResultV1Schema,
   pipenzoImplementResultQueryV1Schema,
   pipenzoImplementCommitsV1Schema,
+  pipenzoImplementDiffRequestV1Schema,
+  pipenzoImplementDiffResultV1Schema,
   pipenzoReviewRequestV1Schema,
   pipenzoReviewResultV1Schema,
   pipenzoIssueClaimRequestV1Schema,
@@ -136,6 +138,8 @@ import {
   type PipenzoImplementResultV1,
   type PipenzoImplementResultQueryV1,
   type PipenzoImplementCommitsV1,
+  type PipenzoImplementDiffRequestV1,
+  type PipenzoImplementDiffResultV1,
   type PipenzoReviewRequestV1,
   type PipenzoReviewResultV1,
   type PipenzoIssueClaimRequestV1,
@@ -393,6 +397,11 @@ export class AgentDockClient {
       implementResult: (
         input: PipenzoImplementResultQueryV1,
       ): Promise<PipenzoImplementCommitsV1> => this.implementResultPipenzoV1(input),
+      /** The unified diff for a commit range already known to exist in an owned worktree (issue
+       * #90's stack, step 2) -- what `DiffFileList.tsx` renders. */
+      implementDiff: (
+        input: PipenzoImplementDiffRequestV1,
+      ): Promise<PipenzoImplementDiffResultV1> => this.implementDiffPipenzoV1(input),
       review: (input: PipenzoReviewRequestV1): Promise<PipenzoReviewResultV1> =>
         this.reviewPipenzoV1(input),
       claimIssue: (input: PipenzoIssueClaimRequestV1): Promise<PipenzoIssueClaimResultV1> =>
@@ -966,6 +975,23 @@ export class AgentDockClient {
       '/v2/pipenzo/implement/result',
       pipenzoImplementCommitsV1Schema,
       'pipenzo implement commits',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) },
+      { expectedStatus: 200 },
+    );
+  }
+
+  private async implementDiffPipenzoV1(
+    input: PipenzoImplementDiffRequestV1,
+  ): Promise<PipenzoImplementDiffResultV1> {
+    const parsed = validateInput(
+      pipenzoImplementDiffRequestV1Schema,
+      input,
+      'pipenzo implement diff request',
+    );
+    return this.requestV2(
+      '/v2/pipenzo/implement/diff',
+      pipenzoImplementDiffResultV1Schema,
+      'pipenzo implement diff',
       { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) },
       { expectedStatus: 200 },
     );

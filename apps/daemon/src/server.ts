@@ -21,6 +21,7 @@ import type { AttachmentStore } from './attachment-store.js';
 import { registerV2MultimodalRoutes } from './routes/v2-multimodal.js';
 import type { PublishService } from './publish-service.js';
 import { registerPipenzoPublishRoutes } from './routes/pipenzo-publish.js';
+import { PublishNonceGate } from './publish-nonce-gate.js';
 import type { PipenzoPhaseService } from './pipenzo-phase-service.js';
 import { registerPipenzoPhaseRoutes } from './routes/pipenzo-phases.js';
 import type { PipenzoPhaseMachine } from './pipenzo-phase-machine.js';
@@ -54,6 +55,12 @@ export interface BuildServerOptions {
    * configured otherwise."
    */
   publishService?: PublishService;
+  /**
+   * Issue #182's second factor. Optional the same way `publishService` is, but for the opposite
+   * default: a `publishService` with no gate given here still registers the route behind
+   * `PublishNonceGate.none()`, which refuses every request — never "the check is simply skipped."
+   */
+  publishNonceGate?: PublishNonceGate;
   /**
    * Pipenzo's Refine/Implement/Review phases and GitHub issue write ops (issue #184). Optional for
    * the same reason `publishService` is: a daemon built without it has no phase routes at all,
@@ -178,7 +185,8 @@ export function buildServer(opts: BuildServerOptions): FastifyInstance {
       registerV2ComponentRoutes(app, opts.registry, opts.trustStore);
     }
     registerV2AgentWorktreeRoutes(app, opts.subagentStore, opts.worktreeManager);
-    if (opts.publishService) registerPipenzoPublishRoutes(app, opts.publishService);
+    if (opts.publishService)
+      registerPipenzoPublishRoutes(app, opts.publishService, opts.publishNonceGate ?? PublishNonceGate.none());
     if (opts.phaseService) registerPipenzoPhaseRoutes(app, opts.phaseService);
     if (opts.phaseMachine)
       registerPipenzoTicketRoutes(app, opts.phaseMachine, opts.phaseEvents);

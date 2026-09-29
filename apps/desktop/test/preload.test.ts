@@ -94,6 +94,7 @@ describe('electron/preload.ts — real bridge (AD-07)', () => {
         'refinePipenzo',
         'implementPipenzo',
         'implementResultPipenzo',
+        'implementDiffPipenzo',
         'reviewPipenzo',
         'claimPipenzoIssue',
         'createPipenzoIssue',

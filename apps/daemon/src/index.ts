@@ -34,7 +34,8 @@ import { ExecFileGateCommands } from './gate-commands.js';
 import { OctokitGitHubClient, registerKnownSecret } from './github-client.js';
 import { ConditionalRequestCache } from './github-conditional-cache.js';
 import { GitHubRateLimitTracker } from './github-rate-limit.js';
-import { DaemonGitHubCredential } from './github-credential.js';
+import { DaemonGitHubCredential, readDaemonStartupMessage } from './github-credential.js';
+import { PublishNonceGate } from './publish-nonce-gate.js';
 import { PipenzoPhaseMachine } from './pipenzo-phase-machine.js';
 import { PipenzoPhaseEventBus } from './pipenzo-phase-events.js';
 import { PipenzoCrashRecovery } from './pipenzo-crash-recovery.js';
@@ -62,16 +63,25 @@ async function main() {
   const appId = process.env.AGENT_DOCK_APP_ID?.trim() || DEFAULT_APP_ID;
   assertNoLiveDaemon(appId);
 
-  // The GitHub credential (issue #165), read from stdin before anything else so no code path can
-  // run against a half-initialized one. It arrives over a pipe rather than in this process's
-  // environment because the daemon is the *parent* of every provider subprocess, and a child can
-  // read its parent's initial environment block (`/proc/<ppid>/environ`) — see
-  // `github-credential.ts`. When nothing was injected (a daemon started directly, the live-smoke
-  // harness, CI) this falls back to `PIPENZO_GITHUB_TOKEN` exactly as before.
-  const githubCredential = await DaemonGitHubCredential.fromStartup({ stdin: process.stdin });
+  // The one startup message, read from stdin before anything else so no code path can run against
+  // a half-initialized daemon. `process.stdin` is a single stream -- only one reader may ever
+  // consume it -- so this is the one read, and both the GitHub credential (issue #165) and the
+  // publish-nonce secret (issue #182) are built from its parsed result rather than each reading
+  // stdin for itself. It arrives over a pipe rather than in this process's environment because the
+  // daemon is the *parent* of every provider subprocess, and a child can read its parent's initial
+  // environment block (`/proc/<ppid>/environ`) — see `github-credential.ts`.
+  const startupMessage = await readDaemonStartupMessage({ stdin: process.stdin });
+  // When nothing was injected (a daemon started directly, the live-smoke harness, CI) this falls
+  // back to `PIPENZO_GITHUB_TOKEN` exactly as before.
+  const githubCredential = DaemonGitHubCredential.fromMessage(startupMessage);
   logger.info('github credential source', {
     source: githubCredential.injected ? 'injected' : 'environment-or-absent',
   });
+  // Issue #182's second factor for the publish route. Same fallback shape as the credential above
+  // (`PIPENZO_PUBLISH_NONCE_SECRET` for a daemon nobody injected into); `configured: false` here
+  // means the publish route refuses every request rather than skipping the check.
+  const publishNonceGate = PublishNonceGate.fromMessage(startupMessage);
+  logger.info('publish nonce gate', { configured: publishNonceGate.configured });
   // Issue #211: `redactSecrets` cannot recognize a pre-2021 40-hex classic PAT by shape alone (see
   // its own doc comment) -- but now that the token is resolved once, here, into a first-class
   // object rather than re-read from the environment at each call site, registering the exact value
@@ -80,6 +90,12 @@ async function main() {
   // failure.
   const resolvedGithubToken = githubCredential.tryResolve();
   if (resolvedGithubToken) registerKnownSecret(resolvedGithubToken);
+  // Security-review nit on issue #182: the publish-nonce secret gets the same exact-match
+  // redaction registration the GitHub token does, above -- belt-and-suspenders against the
+  // secret ever surfacing in a log or error string, even though nothing in this codebase logs it
+  // directly today.
+  const nonceSecretForRedaction = publishNonceGate.secretHexForRedaction();
+  if (nonceSecretForRedaction) registerKnownSecret(nonceSecretForRedaction);
   const registry = buildProviderRegistry(logger);
   const durableStateDirectory = stateDirectory({ appId });
   // Every subdirectory below is created independently, some via ensureStateDirectory() (which
@@ -328,6 +344,7 @@ async function main() {
     worktreeManager,
     attachmentStore,
     publishService,
+    publishNonceGate,
     phaseService,
     phaseMachine,
     phaseEvents,
