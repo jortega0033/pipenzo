@@ -2,6 +2,7 @@ import { lstat, readFile } from 'node:fs/promises';
 import { devNull } from 'node:os';
 import { join } from 'node:path';
 import {
+  MAX_IMPLEMENT_DIFF_CHARS,
   refineSpecV1Schema,
   type CreateSessionV2Request,
   type ImplementSessionStateV1,
@@ -10,7 +11,7 @@ import {
   type ProviderId,
   type RefineSpecV1,
 } from '@agent-dock/shared';
-import { runGitCommand, type PipenzoGitRunner } from './pipenzo-git.js';
+import { runGitCommand, type GitCommandResult, type PipenzoGitRunner } from './pipenzo-git.js';
 import { WorktreeManagerError, isSecretShapedPath } from './worktree-manager.js';
 import type { OwnedWorktreeLocation } from './publish-service.js';
 
@@ -68,7 +69,8 @@ export type ImplementOrchestratorErrorCode =
    * branch -- `headCommit === baseCommit`. `collect()` throws this instead of returning an
    * empty-but-successful result once it has itself observed the session end; see its doc comment.
    */
-  | 'implement_empty_diff';
+  | 'implement_empty_diff'
+  | 'diff_unavailable';
 
 export class ImplementOrchestratorError extends Error {
   readonly code: ImplementOrchestratorErrorCode;
@@ -239,6 +241,20 @@ export interface ImplementCollectResult {
    * before this field existed.
    */
   readonly sessionState?: ImplementSessionStateV1;
+}
+
+export interface ImplementDiffRequest {
+  readonly worktreePath: string;
+  readonly baseCommit: string;
+  readonly headCommit: string;
+}
+
+export interface ImplementDiffResult {
+  readonly diffText: string;
+  readonly truncated: boolean;
+  readonly additions: number;
+  readonly deletions: number;
+  readonly filesChanged: number;
 }
 
 /** What the daemon's post-session commit step did, held until `collect()` reports it. */
@@ -474,6 +490,55 @@ export class ImplementOrchestrator {
       );
     }
     return { headCommit, commits, ...(sessionState !== undefined ? { sessionState } : {}) };
+  }
+
+  /**
+   * Reads the unified diff for a commit range already known to exist in the worktree (issue #90's
+   * stack, step 2) — a plain `git diff`, never a checkout or a command that runs a repository hook,
+   * so this needs none of `#commitWork`'s `NO_REPO_CODE` hardening, the same reasoning
+   * `#resolveHead`/`#commitsSince` above already rest on.
+   *
+   * Mirrors `review-gates.ts`'s own `#readDiff` (`git diff --numstat` for the stats, then
+   * `git diff --patch --no-color` for the text) rather than importing it: that module's version is
+   * shaped around feeding an LLM pass (it also returns `ReviewInputCompletenessV1`), and duplicating
+   * two `git diff` invocations here is cheaper than threading a review-shaped return type back out
+   * through a route that has nothing to do with Review.
+   */
+  async diff(request: ImplementDiffRequest): Promise<ImplementDiffResult> {
+    if (!request.worktreePath.trim()) {
+      throw new ImplementOrchestratorError('invalid_request', 'a worktree path is required');
+    }
+    if (!SHA_PATTERN.test(request.baseCommit) || !SHA_PATTERN.test(request.headCommit)) {
+      throw new ImplementOrchestratorError('invalid_request', 'a full base and head commit sha are required');
+    }
+    const range = `${request.baseCommit}..${request.headCommit}`;
+    let numstat: GitCommandResult;
+    let patch: GitCommandResult;
+    try {
+      numstat = await this.#runGit(['diff', '--numstat', '--end-of-options', range], request.worktreePath);
+      if (numstat.code !== 0) {
+        throw new ImplementOrchestratorError('diff_unavailable', 'could not read the diff for this range');
+      }
+      patch = await this.#runGit(
+        ['diff', '--patch', '--no-color', '--end-of-options', range],
+        request.worktreePath,
+      );
+      if (patch.code !== 0) {
+        throw new ImplementOrchestratorError('diff_unavailable', 'could not read the diff for this range');
+      }
+    } catch (error) {
+      if (error instanceof ImplementOrchestratorError) throw error;
+      // git itself failed to run rather than exiting non-zero -- same class of failure
+      // review-gates.ts's own `#readDiff` catch guards against (e.g. pipenzo-git.ts's maxBuffer cap).
+      throw new ImplementOrchestratorError('diff_unavailable', 'could not read the diff for this range');
+    }
+    const stats = summarizeNumstat(numstat.stdout);
+    const truncated = patch.stdout.length > MAX_IMPLEMENT_DIFF_CHARS;
+    return {
+      diffText: truncated ? patch.stdout.slice(0, MAX_IMPLEMENT_DIFF_CHARS) : patch.stdout,
+      truncated,
+      ...stats,
+    };
   }
 
   /** Start plus collect, for a caller that can await the whole phase (the composition tests do). */
@@ -713,6 +778,32 @@ export class ImplementOrchestrator {
       .map((line) => line.trim())
       .filter((line) => SHA_PATTERN.test(line));
   }
+}
+
+/**
+ * Sums a `git diff --numstat` block into the three numbers `DiffReviewHead`'s stat row needs.
+ *
+ * A binary file reports `-\t-\tpath` for its added/deleted columns (numstat's own convention, the
+ * same one `review-gates.ts`'s `computeDiffScope`/`parseTouchedFiles` already read) -- counted as a
+ * touched file with zero changed lines, never `NaN`, since `Number('-')` is not what "no line count
+ * applies" should turn into.
+ */
+function summarizeNumstat(numstat: string): {
+  additions: number;
+  deletions: number;
+  filesChanged: number;
+} {
+  let additions = 0;
+  let deletions = 0;
+  let filesChanged = 0;
+  for (const line of numstat.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    const [added, deleted] = line.split('\t');
+    filesChanged += 1;
+    if (added !== '-') additions += Number(added) || 0;
+    if (deleted !== '-') deletions += Number(deleted) || 0;
+  }
+  return { additions, deletions, filesChanged };
 }
 
 /**

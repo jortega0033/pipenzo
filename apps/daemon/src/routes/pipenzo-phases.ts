@@ -8,6 +8,8 @@ import {
   pipenzoImplementResultQueryV1Schema,
   pipenzoImplementResultV1Schema,
   pipenzoImplementCommitsV1Schema,
+  pipenzoImplementDiffRequestV1Schema,
+  pipenzoImplementDiffResultV1Schema,
   pipenzoIssueClaimRequestV1Schema,
   pipenzoIssueClaimResultV1Schema,
   pipenzoIssueCommentRequestV1Schema,
@@ -134,6 +136,20 @@ export function registerPipenzoPhaseRoutes(
     } catch (error) {
       if (error instanceof PipenzoPhaseError) return fail(reply, error);
       return fail(reply, new PipenzoPhaseError('branch_failed', 'implement result unavailable'));
+    }
+  });
+
+  // Issue #90's stack, step 2: `DiffFileList.tsx` needs a real unified diff and nothing on this
+  // surface returned one before this route -- `ReviewReportV1` carries a verdict and findings,
+  // never the patch itself.
+  app.post('/v2/pipenzo/implement/diff', limits, async (req, reply) => {
+    const parsed = pipenzoImplementDiffRequestV1Schema.safeParse(req.body);
+    if (!parsed.success) return invalid(reply, 'implement diff request');
+    try {
+      reply.send(pipenzoImplementDiffResultV1Schema.parse(await service.implementDiff(parsed.data)));
+    } catch (error) {
+      if (error instanceof PipenzoPhaseError) return fail(reply, error);
+      return fail(reply, new PipenzoPhaseError('diff_unavailable', 'implement diff unavailable'));
     }
   });
 

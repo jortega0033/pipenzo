@@ -56,6 +56,7 @@ export function installAssetCaptureBridge(): void {
     refinePipenzo: async () => { throw new Error('refine is not available while capturing assets'); },
     implementPipenzo: async () => { throw new Error('implement is not available while capturing assets'); },
     implementResultPipenzo: async () => { throw new Error('implement is not available while capturing assets'); },
+    implementDiffPipenzo: async () => { throw new Error('implement is not available while capturing assets'); },
     reviewPipenzo: async () => { throw new Error('review is not available while capturing assets'); },
     claimPipenzoIssue: async () => { throw new Error('claiming is not available while capturing assets'); },
     createPipenzoIssue: async () => { throw new Error('issue creation is not available while capturing assets'); },

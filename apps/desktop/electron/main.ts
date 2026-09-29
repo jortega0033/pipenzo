@@ -32,6 +32,7 @@ import {
   pipenzoRefineRequestV1Schema,
   pipenzoImplementRequestV1Schema,
   pipenzoImplementResultQueryV1Schema,
+  pipenzoImplementDiffRequestV1Schema,
   pipenzoReviewRequestV1Schema,
   pipenzoIssueClaimRequestV1Schema,
   pipenzoIssueCommentRequestV1Schema,
@@ -1427,6 +1428,10 @@ handle('daemon:pipenzo-implement', async (_event, input: unknown) => {
 handle('daemon:pipenzo-implement-result', async (_event, input: unknown) => {
   if (!client) throw new Error('daemon is not ready yet');
   return client.v2.pipenzo.implementResult(pipenzoImplementResultQueryV1Schema.parse(input));
+});
+handle('daemon:pipenzo-implement-diff', async (_event, input: unknown) => {
+  if (!client) throw new Error('daemon is not ready yet');
+  return client.v2.pipenzo.implementDiff(pipenzoImplementDiffRequestV1Schema.parse(input));
 });
 handle('daemon:pipenzo-review', async (_event, input: unknown) => {
   if (!client) throw new Error('daemon is not ready yet');

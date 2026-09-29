@@ -506,6 +506,58 @@ describe('POST /v2/pipenzo/implement', () => {
   });
 });
 
+describe('POST /v2/pipenzo/implement/diff', () => {
+  it('reads the unified diff for a commit range in an owned worktree, addressed by id', async () => {
+    const { app } = buildApp();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v2/pipenzo/implement/diff',
+      headers: auth,
+      payload: { worktreeId: WORKTREE_ID, baseCommit: BASE_SHA, headCommit: HEAD_SHA },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      worktreeId: WORKTREE_ID,
+      baseCommit: BASE_SHA,
+      headCommit: HEAD_SHA,
+      diffText: 'diff --git a/src/a.ts b/src/a.ts\n',
+      truncated: false,
+      additions: 10,
+      deletions: 2,
+      filesChanged: 1,
+    });
+    expect(response.body).not.toContain(WORKTREE_PATH);
+  });
+
+  it('answers 404 for a worktree the daemon does not own', async () => {
+    const { app } = buildApp();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v2/pipenzo/implement/diff',
+      headers: auth,
+      payload: {
+        worktreeId: '00000000-1111-4222-8333-444444444444',
+        baseCommit: BASE_SHA,
+        headCommit: HEAD_SHA,
+      },
+    });
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toMatchObject({ code: 'worktree_not_found' });
+  });
+
+  it('rejects a malformed commit sha without echoing the payload back', async () => {
+    const { app } = buildApp();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v2/pipenzo/implement/diff',
+      headers: auth,
+      payload: { worktreeId: WORKTREE_ID, baseCommit: 'not-a-sha', headCommit: HEAD_SHA },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json().code).toBe('invalid_request');
+  });
+});
+
 describe('POST /v2/pipenzo/review', () => {
   it('runs the gates for a worktree named by id and returns the report', async () => {
     const { app } = buildApp();
@@ -966,6 +1018,7 @@ describe('the phase routes as a surface', () => {
     '/v2/pipenzo/refine',
     '/v2/pipenzo/implement',
     '/v2/pipenzo/implement/result',
+    '/v2/pipenzo/implement/diff',
     '/v2/pipenzo/review',
     '/v2/pipenzo/issues/claim',
     '/v2/pipenzo/issues',

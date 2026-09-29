@@ -54,6 +54,8 @@ import {
   pipenzoImplementResultV1Schema,
   pipenzoImplementResultQueryV1Schema,
   pipenzoImplementCommitsV1Schema,
+  pipenzoImplementDiffRequestV1Schema,
+  pipenzoImplementDiffResultV1Schema,
   pipenzoReviewRequestV1Schema,
   pipenzoReviewResultV1Schema,
   pipenzoIssueClaimRequestV1Schema,
@@ -130,6 +132,8 @@ import {
   type PipenzoImplementResultV1,
   type PipenzoImplementResultQueryV1,
   type PipenzoImplementCommitsV1,
+  type PipenzoImplementDiffRequestV1,
+  type PipenzoImplementDiffResultV1,
   type PipenzoReviewRequestV1,
   type PipenzoReviewResultV1,
   type PipenzoIssueClaimRequestV1,
@@ -236,6 +240,7 @@ export interface AgentDockBridge {
   refinePipenzo(input: PipenzoRefineRequestV1): Promise<PipenzoRefineResultV1>;
   implementPipenzo(input: PipenzoImplementRequestV1): Promise<PipenzoImplementResultV1>;
   implementResultPipenzo(input: PipenzoImplementResultQueryV1): Promise<PipenzoImplementCommitsV1>;
+  implementDiffPipenzo(input: PipenzoImplementDiffRequestV1): Promise<PipenzoImplementDiffResultV1>;
   reviewPipenzo(input: PipenzoReviewRequestV1): Promise<PipenzoReviewResultV1>;
   claimPipenzoIssue(input: PipenzoIssueClaimRequestV1): Promise<PipenzoIssueClaimResultV1>;
   createPipenzoIssue(input: PipenzoIssueCreateRequestV1): Promise<PipenzoIssueCreateResultV1>;
@@ -877,6 +882,10 @@ const api: AgentDockBridge = {
   async implementResultPipenzo(input) {
     const parsed = pipenzoImplementResultQueryV1Schema.parse(input);
     return pipenzoImplementCommitsV1Schema.parse(await ipcRenderer.invoke('daemon:pipenzo-implement-result', parsed));
+  },
+  async implementDiffPipenzo(input) {
+    const parsed = pipenzoImplementDiffRequestV1Schema.parse(input);
+    return pipenzoImplementDiffResultV1Schema.parse(await ipcRenderer.invoke('daemon:pipenzo-implement-diff', parsed));
   },
   async reviewPipenzo(input) {
     const parsed = pipenzoReviewRequestV1Schema.parse(input);

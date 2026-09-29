@@ -1051,6 +1051,27 @@ describe('AgentDockClient.v2 pipenzo phases', () => {
     expect(JSON.parse(String((call?.[1] as RequestInit).body))).not.toHaveProperty('worktreePath');
   });
 
+  it('reads a diff by worktree id and commit range, never by path', async () => {
+    const diffResult = {
+      worktreeId: WORKTREE_ID,
+      baseCommit: BASE,
+      headCommit: HEAD,
+      diffText: 'diff --git a/src/a.ts b/src/a.ts\n',
+      truncated: false,
+      additions: 8,
+      deletions: 2,
+      filesChanged: 1,
+    };
+    const { fetchImpl, client } = routeClient(200, diffResult);
+
+    await expect(
+      client.v2.pipenzo.implementDiff({ worktreeId: WORKTREE_ID, baseCommit: BASE, headCommit: HEAD }),
+    ).resolves.toEqual(diffResult);
+    const call = fetchImpl.mock.calls.find(([url]) => String(url).endsWith('/v2/pipenzo/implement/diff'));
+    expect(call?.[1]).toMatchObject({ method: 'POST' });
+    expect(JSON.parse(String((call?.[1] as RequestInit).body))).not.toHaveProperty('worktreePath');
+  });
+
   it('sends the review request by worktree id and parses the report', async () => {
     const report = {
       schemaVersion: 1,
