@@ -66,6 +66,7 @@ import { GITHUB_OAUTH_CLIENT_ID } from './github-oauth-app.js';
 import {
   buildDaemonSpawnPlan,
   reconcileDaemonTokenSource,
+  redactForwardedDaemonOutput,
   type DaemonGitHubTokenSource,
 } from './daemon-environment.js';
 import { devTokenFilePath, readDevTokenFile } from './dev-token-file.js';
@@ -292,11 +293,12 @@ function spawnDaemon(): void {
   child.stdin?.end(plan.credentialMessage, 'utf8');
 
   daemonChild.stdout?.on('data', (chunk: Buffer) => {
-    // The daemon's own logger already redacts secrets; forward for local debugging only.
-    console.log(`[daemon] ${chunk.toString('utf8').trim()}`);
+    // The daemon's own logger redacts secrets in everything *it* decides to log; this covers what
+    // that layer can't -- see `redactForwardedDaemonOutput`'s own doc comment.
+    console.log(`[daemon] ${redactForwardedDaemonOutput(chunk.toString('utf8').trim(), plan.credentialMessage)}`);
   });
   daemonChild.stderr?.on('data', (chunk: Buffer) => {
-    console.error(`[daemon] ${chunk.toString('utf8').trim()}`);
+    console.error(`[daemon] ${redactForwardedDaemonOutput(chunk.toString('utf8').trim(), plan.credentialMessage)}`);
   });
   // Spawn itself can fail — a missing entry point, a permissions problem — and an unhandled
   // `error` on a ChildProcess is a hard crash. Newly reachable at runtime now that a credential
