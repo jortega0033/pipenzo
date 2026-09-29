@@ -232,6 +232,57 @@ describe('runProviderSession (spawns real node child processes via fixtures)', (
     expect(logger.error).not.toHaveBeenCalled();
   });
 
+  // Issue #193: a provider that states its own reason for failing on stdout (Codex's
+  // `turn.failed`) used to be overwritten by the generic "codex exited with code 1" message once
+  // the process exited non-zero. The specific, actionable text should win instead.
+  it('prefers a parsed turn.failed message over the generic exit-code message', async () => {
+    const handle = runProviderSession(
+      {
+        providerId: 'codex',
+        executableNames: [process.execPath],
+        buildArgs: () => [join(fixturesDir, 'fake-codex-turn-failed.mjs')],
+        parseLine: parseCodexLine,
+      },
+      { sessionId: 'test-session-turn-failed', cwd, prompt: 'hello' },
+      noopLogger,
+    );
+
+    const events = await collectEvents(handle.events);
+
+    // The exit code is still recorded on the error event...
+    const processExit = events.find((e) => e.type === 'error' && e.code === 'PROCESS_EXIT');
+    expect(processExit).toMatchObject({ message: expect.stringContaining('exited with code') });
+
+    // ...but it is no longer the only thing the operator gets: session.failed carries the
+    // provider's own stated reason, remedy and reset time intact.
+    const failed = events.at(-1);
+    expect(failed).toMatchObject({
+      type: 'session.failed',
+      message: expect.stringContaining("You've hit your usage limit"),
+    });
+    expect((failed as { message: string }).message).not.toContain('exited with code');
+  });
+
+  it('bounds and control-character-strips an oversized parsed provider message before it reaches session.failed', async () => {
+    const handle = runProviderSession(
+      {
+        providerId: 'codex',
+        executableNames: [process.execPath],
+        buildArgs: () => [join(fixturesDir, 'fake-codex-turn-failed-oversized.mjs')],
+        parseLine: parseCodexLine,
+      },
+      { sessionId: 'test-session-turn-failed-oversized', cwd, prompt: 'hello' },
+      noopLogger,
+    );
+
+    const events = await collectEvents(handle.events);
+    const failed = events.at(-1) as { type: string; message: string };
+    expect(failed.type).toBe('session.failed');
+    expect(failed.message.startsWith('oversized')).toBe(true);
+    expect(failed.message).not.toContain('\x07');
+    expect(Buffer.byteLength(failed.message, 'utf8')).toBeLessThanOrEqual(4 * 1024);
+  });
+
   it('normalizes codex fixture output through the same skeleton', async () => {
     const handle = runProviderSession(
       {
