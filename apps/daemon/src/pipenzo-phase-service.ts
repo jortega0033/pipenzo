@@ -119,15 +119,17 @@ export interface PipenzoPhaseServiceOptions {
    */
   env?: Readonly<Record<string, string | undefined>>;
   /**
-   * The phase machine (issue #144), narrowed to `read` and `transition`. Optional so a service
-   * built without one (every test that predates this ticket) still reviews exactly as before — it
-   * just has nothing to transition an `estimate_blown` outcome onto. Not the same object review()
+   * The phase machine (issue #144), narrowed to `read`, `transition` and `recordAttempt`. Optional
+   * so a service built without one (every test that predates this ticket) still reviews and
+   * implements exactly as before — it just has nothing to transition an `estimate_blown` outcome
+   * onto, and nowhere to record an implement dispatch's attempt. Not the same object review()
    * builds its GitHub client from: the machine resolves its own client internally, the same lazy,
    * per-call pattern this service already uses everywhere else. `read` is here (and not just
    * `transition`) so a retried review of the same outcome can tell it already recorded this one --
-   * see `#reportBlownEstimate`.
+   * see `#reportBlownEstimate`. `recordAttempt` is here for `implement()`'s own consequence (issue
+   * #201) -- see `#recordAttempt`.
    */
-  machine?: Pick<PipenzoPhaseMachine, 'read' | 'transition'>;
+  machine?: Pick<PipenzoPhaseMachine, 'read' | 'transition' | 'recordAttempt'>;
   /** Logs a failed blown-estimate consequence without failing the review call that produced a
    * perfectly good report — see `review()`'s own comment for why. */
   logger?: Logger;
@@ -141,7 +143,7 @@ export class PipenzoPhaseService {
   readonly #worktrees: ImplementWorktreeManager & OwnedWorktreeLocator;
   readonly #github: (() => GitHubClient) | undefined;
   readonly #env: Readonly<Record<string, string | undefined>>;
-  readonly #machine: Pick<PipenzoPhaseMachine, 'read' | 'transition'> | undefined;
+  readonly #machine: Pick<PipenzoPhaseMachine, 'read' | 'transition' | 'recordAttempt'> | undefined;
   readonly #logger: Logger | undefined;
 
   constructor(options: PipenzoPhaseServiceOptions) {
@@ -289,6 +291,21 @@ export class PipenzoPhaseService {
     } catch (error) {
       throw toPhaseError(error);
     }
+
+    // Issue #201's crash-recovery gap, closed: a real dispatch now leaves a real `attempts[]` entry
+    // behind, so `pipenzo-crash-recovery.ts`'s session-to-ticket index has something to match a
+    // live interrupted session against instead of only what a test hand-seeds. Recorded here,
+    // right after `start()` returns a real `sessionId` -- deliberately *before* anything downstream
+    // learns how the session ends. That is the one choice that actually serves crash recovery:
+    // recording were it deferred to a completed/failed terminal event, the exact sessions that crash
+    // recovery exists to catch -- ones that never reach a terminal event at all -- would be the ones
+    // this never got around to recording, which would defeat the fix. "Confirmed started" (a real
+    // session id exists) is therefore the right point, not "request accepted" (no id yet, nothing to
+    // index) or "confirmed finished" (too late for exactly the crash case).
+    if (request.ticketId) {
+      this.#recordAttempt(request.ticketId, started.sessionId, request);
+    }
+
     // `started.worktreePath` is dropped here, on purpose and by hand. It is the whole point of the
     // route: everything else travels, the path does not.
     return {
@@ -297,6 +314,41 @@ export class PipenzoPhaseService {
       baseCommit: started.baseCommit,
       sessionId: started.sessionId,
     };
+  }
+
+  /**
+   * Best-effort and logged, never thrown -- the same reasoning as `#reportRefusal` and
+   * `#reportBlownEstimate`: a worktree exists and a session is already running by the time this is
+   * called, so a bookkeeping failure here must not be reported as a failure to start. The operator's
+   * natural retry on a thrown error would cut a second worktree for the same ticket, exactly what
+   * the route's own comment says the response-shape case must also avoid.
+   *
+   * `tier` defaults to `'mid'` when the caller has none to give -- model routing does not compute
+   * one yet (README's Model routing section, post-MVP), and `PipenzoTicketAttemptV1.tier` is
+   * required, so an attempt needs *some* value until a real router exists. `model` defaults to
+   * `'default'` for the same reason: `ImplementRequest.model` is optional and, left unset, the
+   * provider's own default model is whatever the CLI resolves it to -- nothing on this path observes
+   * that resolution to report it faithfully instead.
+   */
+  #recordAttempt(
+    ticketId: string,
+    sessionId: string,
+    request: Pick<PipenzoImplementRequestV1, 'tier' | 'model'>,
+  ): void {
+    if (!this.#machine) return;
+    try {
+      this.#machine.recordAttempt(ticketId, {
+        sessionId,
+        tier: request.tier ?? 'mid',
+        model: request.model ?? 'default',
+        outcome: 'dispatched',
+      });
+    } catch (error) {
+      this.#logger?.warn('could not record an implement attempt against its ticket', {
+        ticketId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   async implementResult(

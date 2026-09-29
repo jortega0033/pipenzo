@@ -584,3 +584,101 @@ describe('PipenzoPhaseMachine.list', () => {
     expect(machine.list()).toEqual([tickets.get(TICKET_ID)]);
   });
 });
+
+/**
+ * Issue #201's crash-recovery gap: nothing populated `attempts[]` at real dispatch time, so
+ * `pipenzo-crash-recovery.ts`'s session-to-ticket index only ever had data in a test that hand-
+ * seeded it. `recordAttempt()` is the fix's local write; `pipenzo-implement-attempts.test.ts`
+ * proves the whole dispatch-to-crash-recovery path end to end, and this file covers the method's
+ * own edges.
+ */
+describe('PipenzoPhaseMachine.recordAttempt', () => {
+  it('appends an attempt to a ticket with none yet, without touching GitHub', () => {
+    const { machine, tickets, github } = harness({ ticket: { attempts: [] } });
+
+    machine.recordAttempt(TICKET_ID, {
+      sessionId: 'session-1',
+      tier: 'mid',
+      model: 'claude-sonnet',
+      outcome: 'dispatched',
+    });
+
+    expect(tickets.get(TICKET_ID)?.attempts).toEqual([
+      { sessionId: 'session-1', tier: 'mid', model: 'claude-sonnet', outcome: 'dispatched' },
+    ]);
+    // Local-only: unlike `transition()` and `read()`, this must never cost a GitHub round trip.
+    expect(github.calls).toEqual([]);
+  });
+
+  it('appends to an existing attempts[] rather than replacing it, preserving order', () => {
+    const { machine, tickets } = harness({
+      ticket: {
+        attempts: [{ sessionId: 'session-1', tier: 'mid', model: 'claude-sonnet', outcome: 'dispatched' }],
+      },
+    });
+
+    machine.recordAttempt(TICKET_ID, {
+      sessionId: 'session-2',
+      tier: 'frontier',
+      model: 'claude-opus',
+      outcome: 'dispatched',
+    });
+
+    expect(tickets.get(TICKET_ID)?.attempts.map((attempt) => attempt.sessionId)).toEqual([
+      'session-1',
+      'session-2',
+    ]);
+  });
+
+  it('does not announce a phase-stream event -- appending an attempt never moves a lane', () => {
+    const events = new PipenzoPhaseEventBus();
+    const { machine } = harness({ ticket: { attempts: [] }, events });
+
+    machine.recordAttempt(TICKET_ID, {
+      sessionId: 'session-1',
+      tier: 'mid',
+      model: 'claude-sonnet',
+      outcome: 'dispatched',
+    });
+
+    expect(events.retained).toHaveLength(0);
+  });
+
+  it('throws ticket_not_found rather than silently doing nothing for an unknown ticket', () => {
+    const { machine } = harness();
+
+    expect(() =>
+      machine.recordAttempt('00000000-0000-4000-8000-00000000ffff', {
+        sessionId: 'session-1',
+        tier: 'mid',
+        model: 'claude-sonnet',
+        outcome: 'dispatched',
+      }),
+    ).toThrow(PipenzoPhaseMachineError);
+  });
+
+  it('drops the oldest attempt rather than growing past the schema’s 50-entry cap', () => {
+    const existing = Array.from({ length: 50 }, (_, index) => ({
+      sessionId: `session-${index}`,
+      tier: 'mid' as const,
+      model: 'claude-sonnet',
+      outcome: 'dispatched',
+    }));
+    const { machine, tickets } = harness({ ticket: { attempts: existing } });
+
+    machine.recordAttempt(TICKET_ID, {
+      sessionId: 'session-newest',
+      tier: 'frontier',
+      model: 'claude-opus',
+      outcome: 'dispatched',
+    });
+
+    const stored = tickets.get(TICKET_ID)?.attempts ?? [];
+    expect(stored).toHaveLength(50);
+    // The newest attempt -- the one a live interrupted session would need matched -- survives...
+    expect(stored.at(-1)?.sessionId).toBe('session-newest');
+    // ...and the oldest is what made room for it.
+    expect(stored.some((attempt) => attempt.sessionId === 'session-0')).toBe(false);
+    expect(stored[0]?.sessionId).toBe('session-1');
+  });
+});
