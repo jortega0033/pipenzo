@@ -59,6 +59,7 @@ const PHASE_ERROR_STATUS: Record<PipenzoPhaseErrorCodeV1, number> = {
   worktree_secret_risk: 409,
   worktree_not_found: 404,
   branch_failed: 409,
+  commit_failed: 409,
   verifier_tier_too_low: 409,
   diff_unavailable: 409,
   reviewer_failed: 502,

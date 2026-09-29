@@ -21,26 +21,30 @@ import { runGitCommand, type PipenzoGitRunner } from './pipenzo-git.js';
  * ## How "read-only" is actually enforced, stated honestly
  *
  * The ticket asks whether this is enforceable at the tool-definition level rather than being a
- * prompt instruction a model can ignore. Three layers exist, and they are not equal:
+ * prompt instruction a model can ignore. Phase sessions run on the legacy one-shot path
+ * (`pipenzo-phase-sessions.ts` → `SessionManager.create` → `claude -p`), which has no per-call
+ * daemon permission callback, so the layers are:
  *
- * 1. **Daemon-side permission denial — the real gate, and it is in this module.**
- *    `evaluateRefinePermission()` is a fail-closed function over agentdock's own normalized
- *    `PermissionActionV2`: `filesystem.read` is allowed, everything else — a write, a command, a
- *    network call, an MCP invocation, an `external_side_effect`, or anything it cannot classify —
- *    is denied. Every provider tool call reaches the daemon as one of these before it runs
- *    (`apps/daemon/src/permission-policy.ts`), so a model that ignores the prompt and calls
- *    `Write` gets a denial from the daemon, not a scolding from the prompt.
- * 2. **Agentdock's own baseline, which already helps.** `buildClaudeSdkOptions()` puts `Bash`,
- *    `Agent`, `Skill`, `WebFetch` and `WebSearch` on `disallowedTools` for every session, so the
- *    shell route to a write does not exist for any Pipenzo session, refine or not.
- * 3. **Narrowing the provider's own tool array — not available yet, and this says so rather than
- *    implying otherwise.** Agentdock builds a session's tool list from workspace trust state
- *    (`packages/agent-runtime/src/providers/claude/sdk-options.ts`), with no per-session
- *    allowlist plumbed through `createSessionV2RequestSchema`. Adding one is an upstream
- *    agentdock capability, not a Pipenzo module, and it is filed as such rather than fixed here
- *    by widening an inherited protocol. Until it lands, `REFINE_TOOL_ALLOWLIST` is what layer 1
- *    enforces and what `assertRefineToolsOnly()` verifies after the fact — so a violation is a
- *    hard phase failure with evidence, never a silently-accepted write.
+ * 1. **A pre-dispatch gate over the tool grant — `evaluateRefinePermission()`.** A fail-closed
+ *    function over agentdock's own normalized `PermissionActionV2`: `filesystem.read` is allowed,
+ *    everything else — a write, a command, a network call, an MCP invocation, an
+ *    `external_side_effect`, or anything it cannot classify — is denied. Before a read-only phase
+ *    session dispatches, every tool the provider will be launched with is classified with
+ *    agentdock's own effects table and run through this function; one denial refuses the dispatch
+ *    (`assertPhaseToolGrant()` in `pipenzo-phase-sessions.ts`). It judges the grant, not each call.
+ * 2. **The launch restriction the provider enforces per call.** The session is pinned
+ *    `read-only`, which for Claude is `--restricted`, `--tools Read,Grep,Glob`, a
+ *    `--disallowedTools` floor (`Bash`, `PowerShell`, `WebFetch`, …), `--permission-mode dontAsk`,
+ *    `--setting-sources=` and `--strict-mcp-config` (`buildClaudeArgs()`): no other tool exists,
+ *    the operator's and the repository's settings files are not loaded, and anything outside the
+ *    working directory is denied rather than prompted. Codex cannot be restricted this way (it
+ *    keeps a shell), so Codex phases are refused — see `pipenzo-phase-sessions.ts`.
+ * 3. **Post-hoc verification.** `assertRefineToolsOnly()` checks the tools the session actually
+ *    used against `REFINE_TOOL_ALLOWLIST` — so a violation that got past 1 and 2 is still a hard
+ *    phase failure with evidence, never a silently-accepted write.
+ *
+ * A true per-call `canUseTool` gate needs the SDK transport (`buildClaudeSdkOptions()`), which
+ * agentdock only offers for API-key auth on Windows; moving phases onto it is a follow-up.
  *
  * ## Walking-skeleton simplifications
  *
@@ -77,7 +81,19 @@ export type RefinePhaseErrorCode =
   | 'dirty_checkout'
   /** `HEAD` moved or the checkout became dirty while the (possibly long-running) Refine session was
    * in flight. The spec it produced describes a repository state that no longer exists. */
-  | 'baseline_changed';
+  | 'baseline_changed'
+  /** The session port refused to dispatch into a repository that is not a trusted workspace. */
+  | 'workspace_untrusted';
+
+/**
+ * True for a session port's refusal to dispatch into an untrusted workspace — the
+ * `WorkspaceAccessError` (`code: 'workspace_untrusted'`) `SessionManager` and the phase session
+ * adapters throw. Matched by code rather than class so this module stays independent of the
+ * session machinery behind its port.
+ */
+export function isWorkspaceUntrustedError(error: unknown): boolean {
+  return error instanceof Error && (error as { code?: unknown }).code === 'workspace_untrusted';
+}
 
 /** Typed failure, matching the shape agentdock's own stores and managers throw. */
 export class RefinePhaseError extends Error {
@@ -333,6 +349,13 @@ export interface RefineSessionOutcome {
  */
 export interface RefineSessionPort {
   run(request: CreateSessionV2Request): Promise<RefineSessionOutcome>;
+  /**
+   * Admission for a caller-named repository, checked before anything touches it — before Refine's
+   * own baseline `git` reads, since `git status` in an untrusted checkout can run that checkout's
+   * `core.fsmonitor` command. Rejects with a `workspace_untrusted` error. A port with no trust
+   * model to apply omits it; `run()` still re-checks at dispatch.
+   */
+  admit?(cwd: string): Promise<void>;
 }
 
 export interface RefineResult {
@@ -390,6 +413,19 @@ export class RefineSubagent {
   async refine(input: BuildRefineSessionRequestInput): Promise<RefineResult> {
     const request = buildRefineSessionRequest(input);
 
+    // Trust first: the baseline below runs `git` in this checkout.
+    try {
+      await this.#sessions.admit?.(input.cwd);
+    } catch (error) {
+      if (isWorkspaceUntrustedError(error)) {
+        throw new RefinePhaseError(
+          'workspace_untrusted',
+          'the repository is not a trusted workspace; trust it before running refine',
+        );
+      }
+      throw error;
+    }
+
     // Before the paid/provider session ever dispatches (issue #318): a dirty source checkout is
     // not implementable input for v1. Refuse here, not after burning a Refine call on it.
     const before = await this.#readBaseline(input.cwd);
@@ -406,6 +442,12 @@ export class RefineSubagent {
       outcome = await this.#sessions.run(request);
     } catch (error) {
       if (error instanceof RefinePhaseError) throw error;
+      if (isWorkspaceUntrustedError(error)) {
+        throw new RefinePhaseError(
+          'workspace_untrusted',
+          'the repository is not a trusted workspace; trust it before running refine',
+        );
+      }
       throw new RefinePhaseError(
         'session_failed',
         error instanceof Error ? error.message : 'the refine session failed',
