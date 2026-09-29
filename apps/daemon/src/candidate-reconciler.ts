@@ -1,5 +1,5 @@
 /**
- * Read-only candidate reconciliation (Pipenzo #358, slice 1b: the scorer). A pure function: given a
+ * Read-only candidate reconciliation (Pipenzo #358, slice 1: the scorer). A pure function: given a
  * drafted candidate and an issue snapshot it names the closest existing owner or duplicate. No
  * model, network, GitHub client or write; filing stays the human-clicked `createIssue`. The score
  * is a plain token overlap so a human can read the reason and check it.
