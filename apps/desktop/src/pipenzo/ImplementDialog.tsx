@@ -146,6 +146,7 @@ export function ImplementDialog({
   spec: existingSpec,
   claimPreflight,
   onStarted,
+  onFailed,
 }: {
   open: boolean;
   onClose: () => void;
@@ -165,6 +166,15 @@ export function ImplementDialog({
    */
   claimPreflight?: () => Promise<ClaimPreflightResult>;
   onStarted?: (started: PipenzoImplementResultV1, input: ImplementStartInput) => void;
+  /**
+   * A real Start failure (issue #77) -- everything that throws inside `runStart` below *except* a
+   * claim conflict, which already has its own persistent, non-retryable Notice and is not a
+   * "something went wrong" the way a daemon timeout or a secret-risk refusal is. `retry` is the
+   * same retry `start` itself would run, so the toast's one action (Foundations.dc.html's
+   * "Couldn't start #88 -- GitHub is unreachable" example) does exactly what the dialog's own Retry
+   * button does, whether or not the dialog is still open to see it.
+   */
+  onFailed?: (message: string, retry: () => void) => void;
 }) {
   const [extraInstructions, setExtraInstructions] = useState('');
   const [runBudget, setRunBudget] = useState<RunBudget>('unlimited');
@@ -198,43 +208,56 @@ export function ImplementDialog({
     // avoid. Without a spec there is nothing to send, and nothing here invents one.
     if (!spec) return;
     setClaimConflict(undefined);
+    // Set only by the one throw below that is a refusal, not a failure — everything else that
+    // reaches the .catch beneath is real, and is what issue #77 asks to toast.
+    let isClaimConflict = false;
+    const dispatchStart = async () => {
+      if (spec.issue.number !== ticket.num) {
+        throw new Error(
+          `This spec is for #${spec.issue.number}, not #${ticket.num}. Refuse rather than claim ` +
+            'one ticket and implement another.',
+        );
+      }
+      // Always. There is no branch that skips this, which is the difference between a
+      // pre-flight and a warning.
+      const claim = await (claimPreflight ?? (() => claimIssueForTicket(ticket)))();
+      if (claim.claimed) {
+        isClaimConflict = true;
+        setClaimConflict(claim.assignee);
+        throw new Error(
+          claim.assignee
+            ? `Already claimed by @${claim.assignee} — refusing to start a second worktree on this ticket.`
+            : 'Already claimed by another instance — refusing to start a second worktree on this ticket.',
+        );
+      }
+      // The daemon's `ImplementOrchestrator.start()` runs this same preview and fails closed on
+      // it; this one is here to fail *early*, with the sentence that names the actual problem,
+      // before a claim turns into a half-started ticket. It does not replace the daemon's gate.
+      const preview = await getBridge().previewWorktree({ cwd, name: worktreeName });
+      if (preview.secretRisk) {
+        throw new Error(
+          "This repository's .worktreeinclude would copy a secret-shaped file into the agent " +
+            'worktree. Review it in Settings before starting.',
+        );
+      }
+      return getBridge().implementPipenzo({
+        spec,
+        repositoryPath: cwd,
+        provider,
+        ...(model ? { model } : {}),
+        ...(extraInstructions.trim() ? { extraInstructions: extraInstructions.trim() } : {}),
+      });
+    };
     void start
-      .run(async () => {
-        if (spec.issue.number !== ticket.num) {
-          throw new Error(
-            `This spec is for #${spec.issue.number}, not #${ticket.num}. Refuse rather than claim ` +
-              'one ticket and implement another.',
-          );
-        }
-        // Always. There is no branch that skips this, which is the difference between a
-        // pre-flight and a warning.
-        const claim = await (claimPreflight ?? (() => claimIssueForTicket(ticket)))();
-        if (claim.claimed) {
-          setClaimConflict(claim.assignee);
-          throw new Error(
-            claim.assignee
-              ? `Already claimed by @${claim.assignee} — refusing to start a second worktree on this ticket.`
-              : 'Already claimed by another instance — refusing to start a second worktree on this ticket.',
-          );
-        }
-        // The daemon's `ImplementOrchestrator.start()` runs this same preview and fails closed on
-        // it; this one is here to fail *early*, with the sentence that names the actual problem,
-        // before a claim turns into a half-started ticket. It does not replace the daemon's gate.
-        const preview = await getBridge().previewWorktree({ cwd, name: worktreeName });
-        if (preview.secretRisk) {
-          throw new Error(
-            "This repository's .worktreeinclude would copy a secret-shaped file into the agent " +
-              'worktree. Review it in Settings before starting.',
-          );
-        }
-        return getBridge().implementPipenzo({
-          spec,
-          repositoryPath: cwd,
-          provider,
-          ...(model ? { model } : {}),
-          ...(extraInstructions.trim() ? { extraInstructions: extraInstructions.trim() } : {}),
-        });
-      })
+      .run(() =>
+        dispatchStart().catch((caught) => {
+          if (!isClaimConflict) {
+            const message = caught instanceof Error ? caught.message : 'the request failed';
+            onFailed?.(message, () => void start.retry());
+          }
+          throw caught;
+        }),
+      )
       .then((started) => {
         if (started) onStarted?.(started, { worktreeName, extraInstructions, runBudget });
       });

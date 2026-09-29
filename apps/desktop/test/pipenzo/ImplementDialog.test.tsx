@@ -254,6 +254,47 @@ describe('ImplementDialog', () => {
     );
   });
 
+  /* ---------------------------------------------------------- issue #77: Start-failure toast */
+
+  it('calls onFailed with the real reason on a Start failure, and its retry re-runs the dispatch', async () => {
+    const implementPipenzo = vi.fn().mockRejectedValueOnce(new Error('GitHub is unreachable'));
+    installBridge({ implementPipenzo });
+    const onFailed = vi.fn();
+    renderDialog({ onFailed });
+    await refineAndWait();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    await waitFor(() =>
+      expect(onFailed).toHaveBeenCalledWith('GitHub is unreachable', expect.any(Function)),
+    );
+
+    implementPipenzo.mockResolvedValueOnce(IMPLEMENTED);
+    const [, retry] = onFailed.mock.calls[0] as [string, () => void];
+    retry();
+    await waitFor(() => expect(implementPipenzo).toHaveBeenCalledTimes(2));
+  });
+
+  /** A lost claim race already has its own persistent Notice — not the "something broke" #77 toasts. */
+  it('does not call onFailed on a claim conflict — that is a refusal, not a failure', async () => {
+    installBridge({
+      claimPipenzoIssue: vi.fn().mockResolvedValue({
+        ...CLAIMED,
+        outcome: 'claimed_elsewhere',
+        assignees: ['someone-else'],
+      }),
+    });
+    const onFailed = vi.fn();
+    renderDialog({ onFailed });
+    await refineAndWait();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    // Twice, on purpose, same as the existing claim-race test: the notice and the field error.
+    await waitFor(() =>
+      expect(screen.getAllByText(/claimed by @someone-else/i).length).toBeGreaterThan(0),
+    );
+    expect(onFailed).not.toHaveBeenCalled();
+  });
+
   /** Claiming one ticket and implementing another is the failure a mismatched spec would cause. */
   it('refuses a spec whose issue number is not this ticket’s, before claiming anything', async () => {
     const { implementPipenzo, claimPipenzoIssue } = installBridge();

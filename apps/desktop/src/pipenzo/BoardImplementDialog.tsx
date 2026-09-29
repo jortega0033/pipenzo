@@ -59,11 +59,15 @@ export function BoardImplementDialog({
   ticket,
   onClose,
   onStarted,
+  onFailed,
   provider = BOARD_IMPLEMENT_PROVIDER,
 }: {
   ticket: PipenzoTicketViewV1;
   onClose: () => void;
   onStarted?: (started: PipenzoImplementResultV1) => void;
+  /** Passed straight through to `ImplementDialog`'s own `onFailed` (issue #77) -- this component
+   * mediates reaching that dialog but doesn't add a Start failure surface of its own. */
+  onFailed?: (message: string, retry: () => void) => void;
   provider?: ProviderId;
 }) {
   const prepare = useAsyncAction<PreparedCheckout>();
@@ -91,6 +95,7 @@ export function BoardImplementDialog({
         cwd={prepared.repositoryPath}
         provider={provider}
         onStarted={(started) => onStarted?.(started)}
+        onFailed={onFailed}
       />
     );
   }
