@@ -8,6 +8,14 @@ import { findExecutable } from '../../detect-executable.js';
 import type { Logger } from '../../logger.js';
 import type { ProviderSessionHandle, StartSessionOptions } from '../../types.js';
 import { boundToolEventPayload } from './bound-tool-payload.js';
+import { safeDisplay } from './safe-display.js';
+
+/**
+ * Matches `MAX_FAILURE_MESSAGE_BYTES` in `session-supervisor.ts` (the v2 interactive path's own
+ * bound on a provider-controlled failure message). The two are not mechanically coupled -- either
+ * can move independently -- but there is no reason for this legacy path's ceiling to differ.
+ */
+const MAX_FAILURE_MESSAGE_BYTES = 4 * 1024;
 
 export interface ParsedLine {
   events: AgentEvent[];
@@ -137,6 +145,12 @@ export function runProviderSession(
     spawned.child.stdin.end();
 
     let providerSessionId: string | undefined;
+    // Issue #193: a provider that states its own reason for a fatal failure (Codex's `turn.failed`,
+    // Claude's `is_error` result) reaches this loop as a parsed, schema-shaped `{type:'error',
+    // recoverable:false}` event *before* the process ever exits. Keep the most recent one so the
+    // non-zero-exit branch below can prefer it over the generic exit-code message instead of
+    // silently overwriting it -- the specific cause is already known at that point, not missing.
+    let lastFatalProviderMessage: string | undefined;
     let stderrBytes = 0;
     spawned.child.stderr.on('data', (chunk: Buffer) => {
       // Provider stderr is untrusted and can echo prompts or credentials. Retain only a bounded
@@ -158,6 +172,12 @@ export function runProviderSession(
         const parsed = config.parseLine(raw, logger);
         if (parsed.providerSessionId) providerSessionId = parsed.providerSessionId;
         for (const event of parsed.events) {
+          // Issue #193: record the provider's own stated reason, in case this turns out to be the
+          // fatal one -- the non-zero-exit branch below decides whether the process actually ends
+          // up failing, so this cannot be resolved here on the spot.
+          if (event.type === 'error' && event.recoverable === false && event.message) {
+            lastFatalProviderMessage = event.message;
+          }
           // Issue #185: bound the provider-controlled content a tool event carries before it can
           // reach the daemon's 1 MiB envelope ceiling, which fails the whole session rather than
           // dropping a frame. Every other event is passed through exactly as parsed.
@@ -204,10 +224,18 @@ export function runProviderSession(
         signal,
         stderrBytes,
       });
-      const message = defaultFailureMessage(config.providerId, code, signal);
+      // Issue #193: prefer the provider's own stated reason over the generic exit-code message
+      // when one was parsed off stdout -- the exit code alone ("codex exited with code 1") names
+      // neither the cause nor the remedy a `turn.failed` message like a quota reset time already
+      // gave us. The exit-code message is still recorded on the PROCESS_EXIT `error` event, so the
+      // exit code itself is never lost, only no longer the only thing the operator sees.
+      const exitMessage = defaultFailureMessage(config.providerId, code, signal);
+      const failureMessage = lastFatalProviderMessage
+        ? safeDisplay(lastFatalProviderMessage, MAX_FAILURE_MESSAGE_BYTES, exitMessage)
+        : exitMessage;
       channel.closeWith([
-        { type: 'error', code: 'PROCESS_EXIT', message, recoverable: false },
-        { type: 'session.failed', message },
+        { type: 'error', code: 'PROCESS_EXIT', message: exitMessage, recoverable: false },
+        { type: 'session.failed', message: failureMessage },
       ]);
     }
   }
