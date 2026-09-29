@@ -604,6 +604,13 @@ export const PIPENZO_PHASE_ERROR_CODES = [
   'verifier_failed',
   // shared session failure
   'session_failed',
+  /**
+   * Issue #143, slice 2: this ticket's `budget.limit` is real (non-zero) and `budget.tokensUsed`
+   * has already reached or passed it. Refused before a new session is dispatched -- README's own
+   * stated behaviour is "parks the ticket in Needs human instead of retrying", and a route that
+   * dispatched anyway on a retried request would be exactly the retry that line refuses.
+   */
+  'budget_exhausted',
   // github
   'token_missing',
   'repository_not_configured',

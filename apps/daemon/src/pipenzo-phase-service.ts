@@ -21,6 +21,7 @@ import type {
   PipenzoRefineResultV1,
   PipenzoReviewRequestV1,
   PipenzoReviewResultV1,
+  PipenzoTicketRecordV1,
   RefineEstimateV1,
   RefineProposedSplitPartV1,
 } from '@agent-dock/shared';
@@ -51,7 +52,7 @@ import type { PipenzoGitRunner } from './pipenzo-git.js';
 import { detectScreenshotCapability } from './screenshot-capture.js';
 import { IssueDraftError, IssueDrafter } from './issue-drafter.js';
 import { readPipenzoRepoConfig, type PipenzoCommandConfig } from './pipenzo-repo-config.js';
-import type { PipenzoPhaseMachine } from './pipenzo-phase-machine.js';
+import { isBudgetExhausted, type PipenzoPhaseMachine } from './pipenzo-phase-machine.js';
 import { evaluateDiffSizeGate } from './refine-gate.js';
 
 /**
@@ -129,10 +130,13 @@ export interface PipenzoPhaseServiceOptions {
    * per-call pattern this service already uses everywhere else. `read` is here (and not just
    * `transition`) so a retried review of the same outcome can tell it already recorded this one --
    * see `#reportBlownEstimate`. `recordAttempt` is here for `implement()`'s own consequence (issue
-   * #201) -- see `#recordAttempt`. `recordTokenUsage` is here for issue #143's own accounting --
-   * see `#recordTokenUsage`.
+   * #201) -- see `#recordAttempt`. `recordTokenUsage` and `peekBudget` are here for issue #143's
+   * own accounting and enforcement -- see `#recordTokenUsage` and `#assertBudgetNotExhausted`.
    */
-  machine?: Pick<PipenzoPhaseMachine, 'read' | 'transition' | 'recordAttempt' | 'recordTokenUsage'>;
+  machine?: Pick<
+    PipenzoPhaseMachine,
+    'read' | 'transition' | 'recordAttempt' | 'recordTokenUsage' | 'peekBudget'
+  >;
   /** Logs a failed blown-estimate consequence without failing the review call that produced a
    * perfectly good report — see `review()`'s own comment for why. */
   logger?: Logger;
@@ -147,7 +151,10 @@ export class PipenzoPhaseService {
   readonly #github: (() => GitHubClient) | undefined;
   readonly #env: Readonly<Record<string, string | undefined>>;
   readonly #machine:
-    | Pick<PipenzoPhaseMachine, 'read' | 'transition' | 'recordAttempt' | 'recordTokenUsage'>
+    | Pick<
+        PipenzoPhaseMachine,
+        'read' | 'transition' | 'recordAttempt' | 'recordTokenUsage' | 'peekBudget'
+      >
     | undefined;
   readonly #logger: Logger | undefined;
 
@@ -181,6 +188,7 @@ export class PipenzoPhaseService {
   /* ---------------------------------------------------------------- refine */
 
   async refine(request: PipenzoRefineRequestV1): Promise<PipenzoRefineResultV1> {
+    if (request.ticketId) this.#assertBudgetNotExhausted(request.ticketId);
     const ref = this.#resolveRepo(request.repo);
     const github = this.#requireGitHub();
     let issue;
@@ -225,11 +233,13 @@ export class PipenzoPhaseService {
       await this.#reportRefusal(request.ticketId, result.spec);
     }
 
-    // Issue #143: Refine is one of the three phases that spends a ticket's budget. Best-effort and
-    // logged internally, same reasoning as `#reportRefusal` above -- a bookkeeping failure here
-    // must not turn an already-produced, already-valid spec into a thrown error.
+    // Issue #143: Refine is one of the three phases that spends a ticket's budget (slice 1), and
+    // the one that can also park it (slice 2) -- awaited, unlike `implement()`'s own version of
+    // this below, because refine() is still in its own request/response cycle when this runs.
+    // Best-effort and logged internally, same reasoning as `#reportRefusal` above -- a bookkeeping
+    // failure here must not turn an already-produced, already-valid spec into a thrown error.
     if (request.ticketId && result.tokensUsed) {
-      this.#recordTokenUsage(request.ticketId, result.tokensUsed);
+      await this.#recordTokenUsage(request.ticketId, result.tokensUsed);
     }
 
     return {
@@ -292,6 +302,7 @@ export class PipenzoPhaseService {
   /* ------------------------------------------------------------- implement */
 
   async implement(request: PipenzoImplementRequestV1): Promise<PipenzoImplementResultV1> {
+    if (request.ticketId) this.#assertBudgetNotExhausted(request.ticketId);
     let started;
     try {
       started = await this.#implement.start({
@@ -323,12 +334,14 @@ export class PipenzoPhaseService {
       this.#recordAttempt(request.ticketId, started.sessionId, request);
     }
 
-    // Issue #143's accounting for the one phase this route does not wait on. Unlike
-    // `#recordAttempt` above, this cannot run synchronously right here -- Implement is dispatch-
-    // only, and `started.tokensUsed` does not settle until the session this call just started
-    // actually finishes, possibly long after this route has already responded. Fire-and-forget,
-    // same "best-effort, logged, never thrown" reasoning as every other consequence in this file;
-    // there is no in-flight request left by the time it resolves for a thrown error to reach.
+    // Issue #143's accounting and park-on-exhaustion consequence, for the one phase this route
+    // does not wait on. Unlike `#recordAttempt` above, this cannot run synchronously right here --
+    // Implement is dispatch-only, and `started.tokensUsed` does not settle until the session this
+    // call just started actually finishes, possibly long after this route has already responded.
+    // Fire-and-forget, same "best-effort, logged, never thrown" reasoning as every other
+    // consequence in this file; there is no in-flight request left by the time it resolves for a
+    // thrown error to reach. `#assertBudgetNotExhausted` above is what still refuses the *next*
+    // dispatch even if this particular park is still in flight or itself fails.
     if (request.ticketId && started.tokensUsed) {
       const ticketId = request.ticketId;
       started.tokensUsed
@@ -387,22 +400,89 @@ export class PipenzoPhaseService {
   }
 
   /**
-   * Adds real provider token usage to a ticket's local budget (Pipenzo issue #143). Every call
-   * site in this file goes through this one method, so there is exactly one place that decides
-   * how a bookkeeping failure is handled -- best-effort and logged, never thrown, same reasoning
-   * as `#recordAttempt` and every other secondary consequence in this file: a session already ran
-   * and already produced real work by the time any of these are called, so a local write failing
-   * here must never be reported as if the phase itself had failed.
+   * Adds real provider token usage to a ticket's local budget (Pipenzo issue #143, slice 1), then
+   * checks whether that write just exhausted it (slice 2). Every call site in this file goes
+   * through this one method, so there is exactly one place that decides both how a bookkeeping
+   * failure is handled and what happens the moment a budget runs out.
+   *
+   * The local write is best-effort and logged, never thrown -- same reasoning as `#recordAttempt`
+   * and every other secondary consequence in this file: a session already ran and already produced
+   * real work by the time any of these are called, so a local write failing here must never be
+   * reported as if the phase itself had failed. `#reportBudgetExhausted` below is the same
+   * discipline applied to the park-on-exhaustion consequence.
    */
-  #recordTokenUsage(ticketId: string, tokens: number): void {
+  async #recordTokenUsage(ticketId: string, tokens: number): Promise<void> {
     if (!this.#machine) return;
+    let ticket: PipenzoTicketRecordV1;
     try {
-      this.#machine.recordTokenUsage(ticketId, tokens);
+      ticket = this.#machine.recordTokenUsage(ticketId, tokens);
     } catch (error) {
       this.#logger?.warn('could not record token usage against its ticket', {
         ticketId,
         error: error instanceof Error ? error.message : String(error),
       });
+      return;
+    }
+    if (isBudgetExhausted(ticket.budget)) {
+      await this.#reportBudgetExhausted(ticketId, ticket.budget);
+    }
+  }
+
+  /**
+   * The actual consequence of a budget exhaustion (Pipenzo issue #143, slice 2): transitions the
+   * ticket to `pipenzo:needs-human`, then posts the spend-vs-limit numbers as a comment on its
+   * issue. README states the behaviour plainly -- "parks the ticket in Needs human instead of
+   * retrying" -- and this is that park. Best-effort and logged, never thrown, and guarded against
+   * double-posting on a retried call the same way `#reportBlownEstimate` is: `read()` first, skip
+   * both the transition and the comment if the ticket already carries `pipenzo:needs-human`.
+   *
+   * This is the half of the safety property that reacts to a budget crossing its limit; the other
+   * half is `#assertBudgetNotExhausted`, which refuses a *new* dispatch outright rather than
+   * waiting for one already in flight to finish and trip this. Both exist because a label write
+   * here can itself fail (a rate-limited token, a network blip) -- the pre-dispatch guard is what
+   * still holds "never retrying" even if this park never lands.
+   */
+  async #reportBudgetExhausted(
+    ticketId: string,
+    budget: PipenzoTicketRecordV1['budget'],
+  ): Promise<void> {
+    if (!this.#machine) return;
+    try {
+      const current = await this.#machine.read(ticketId);
+      if (current.ticket.labels.includes('pipenzo:needs-human')) return;
+      const result = await this.#machine.transition(ticketId, 'pipenzo:needs-human');
+      const github = this.#requireGitHub();
+      const ref = parseRepoRef(result.ticket.repo);
+      await github.createIssueComment(ref, result.ticket.issueNumber, budgetExhaustedCommentBody(budget));
+    } catch (error) {
+      this.#logger?.warn('could not park a budget-exhausted ticket', {
+        ticketId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
+   * The pre-dispatch half of issue #143, slice 2's "never retrying" property. Called at the top of
+   * every route that would dispatch a new paid session against a ticket -- `refine()`, `implement()`,
+   * `review()` -- before any of that route's own work happens, so a client that keeps retrying a
+   * request against an already-exhausted ticket gets refused immediately rather than burning
+   * another session first and finding out via `#reportBudgetExhausted` after the fact.
+   *
+   * Reads through `PipenzoPhaseMachine.peekBudget()` -- local-only, no GitHub round trip -- rather
+   * than `read()`: a pre-flight check gating every dispatch must not cost a network call or be
+   * blocked by a rate-limited token, the same reasoning `peekBudget()`'s own doc comment gives.
+   * `undefined` (an unknown ticket, or no machine configured) is treated as "nothing to check"
+   * rather than refused -- this method's only job is to catch a *known*, *already-exhausted*
+   * budget before it is spent further, never to gate dispatch on ticket bookkeeping it cannot see.
+   */
+  #assertBudgetNotExhausted(ticketId: string): void {
+    const budget = this.#machine?.peekBudget(ticketId);
+    if (budget && isBudgetExhausted(budget)) {
+      throw new PipenzoPhaseError(
+        'budget_exhausted',
+        `this ticket’s token budget is exhausted (${budget.tokensUsed}/${budget.limit} tokens used); it is parked in pipenzo:needs-human rather than dispatched again`,
+      );
     }
   }
 
@@ -467,15 +547,17 @@ export class PipenzoPhaseService {
   /* ---------------------------------------------------------------- review */
 
   async review(request: PipenzoReviewRequestV1): Promise<PipenzoReviewResultV1> {
+    if (request.ticketId) this.#assertBudgetNotExhausted(request.ticketId);
     const location = this.#worktrees.ownedLocation(request.worktreeId);
     if (!location) {
       throw new PipenzoPhaseError('worktree_not_found', 'no such owned worktree');
     }
     const conventions = await this.#readConventions(location.sourcePath);
-    // Issue #143's accounting for Review's two LLM passes. A plain accumulator, not
-    // `#recordTokenUsage` called per pass -- one bookkeeping write per successful `review()` call,
-    // not one per session inside it, is one fewer place a partial failure could leave the
-    // ticket's budget half-updated.
+    // Issue #143, slice 1's own accounting for Review's two LLM passes. A plain accumulator, not
+    // `#recordTokenUsage` called per pass -- `report.outcome === 'estimate_blown'`'s branch below
+    // already establishes the pattern of "one bookkeeping write per successful review()`, not one
+    // per session inside it", and a single local write here is one fewer place a partial failure
+    // could leave the ticket's budget half-updated.
     let tokensUsed = 0;
     let report: PipenzoReviewResultV1;
     try {
@@ -508,7 +590,7 @@ export class PipenzoPhaseService {
     }
 
     if (request.ticketId && tokensUsed > 0) {
-      this.#recordTokenUsage(request.ticketId, tokensUsed);
+      await this.#recordTokenUsage(request.ticketId, tokensUsed);
     }
 
     return report;
@@ -815,6 +897,19 @@ export function blownEstimateCommentBody(report: PipenzoReviewResultV1): string 
     `| Files | ${estimate.filesTouched} | ${implementation.filesTouched} |`,
     '',
     'Parked in `pipenzo:awaiting-stack-approval` for a human to decide: accept the overrun, or split it into a stack.',
+  ].join('\n');
+}
+
+/**
+ * The comment posted when a ticket's token budget runs out (Pipenzo issue #143, slice 2).
+ * Exported for the same reason `blownEstimateCommentBody` is: a test can assert its exact shape
+ * without re-running a whole phase dispatch.
+ */
+export function budgetExhaustedCommentBody(budget: PipenzoTicketRecordV1['budget']): string {
+  return [
+    `This ticket’s token budget is exhausted: **${budget.tokensUsed}** tokens used against a limit of **${budget.limit}**.`,
+    '',
+    'Parked in `pipenzo:needs-human`. README’s own rule for a spent budget is to park it rather than retry it -- raise the limit and re-queue it, or take it from here by hand.',
   ].join('\n');
 }
 

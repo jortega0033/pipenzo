@@ -127,7 +127,10 @@ interface Harness {
   env?: Record<string, string | undefined>;
   withGitHub?: boolean;
   onSession?: (request: CreateSessionV2Request) => void;
-  machine?: Pick<PipenzoPhaseMachine, 'read' | 'transition' | 'recordAttempt' | 'recordTokenUsage'>;
+  machine?: Pick<
+    PipenzoPhaseMachine,
+    'read' | 'transition' | 'recordAttempt' | 'recordTokenUsage' | 'peekBudget'
+  >;
 }
 
 const TICKET_ID = '00000000-0000-4000-8000-0000000000aa';
@@ -160,7 +163,11 @@ function ticketRecord(overrides: Partial<PipenzoTicketRecordV1> = {}): PipenzoTi
  * test constructs one with `currentLabel: 'pipenzo:awaiting-stack-approval'` instead.
  */
 class FakeMachine
-  implements Pick<PipenzoPhaseMachine, 'read' | 'transition' | 'recordAttempt' | 'recordTokenUsage'>
+  implements
+    Pick<
+      PipenzoPhaseMachine,
+      'read' | 'transition' | 'recordAttempt' | 'recordTokenUsage' | 'peekBudget'
+    >
 {
   readonly calls: Array<{ method: 'read' | 'transition'; ticketId: string; label?: string }> = [];
   readonly attempts: Array<{ ticketId: string; attempt: PipenzoTicketAttemptV1 }> = [];
@@ -169,9 +176,12 @@ class FakeMachine
   #currentLabel: PipenzoLaneBearingLabelV1;
   #ticket: PipenzoTicketRecordV1;
 
-  constructor(currentLabel: PipenzoLaneBearingLabelV1 = 'pipenzo:working') {
+  constructor(
+    currentLabel: PipenzoLaneBearingLabelV1 = 'pipenzo:working',
+    budget: PipenzoTicketRecordV1['budget'] = { tokensUsed: 0, limit: 0 },
+  ) {
     this.#currentLabel = currentLabel;
-    this.#ticket = ticketRecord({ lane: 'working', labels: [currentLabel] });
+    this.#ticket = ticketRecord({ lane: 'working', labels: [currentLabel], budget });
   }
 
   failNext(error: unknown): this {
@@ -190,6 +200,10 @@ class FakeMachine
       budget: { ...this.#ticket.budget, tokensUsed: this.#ticket.budget.tokensUsed + tokens },
     };
     return this.#ticket;
+  }
+
+  peekBudget(_ticketId: string): PipenzoTicketRecordV1['budget'] {
+    return this.#ticket.budget;
   }
 
   async read(ticketId: string): Promise<PipenzoTicketReconciliation> {
@@ -818,11 +832,41 @@ describe('POST /v2/pipenzo/review', () => {
     });
   });
 
-  /** Issue #143's own accounting: Review dispatches two LLM passes, and both spend budget. */
-  describe('token-usage accounting (issue #143)', () => {
-    it('records the reviewer and verifier passes’ combined usage against the ticket', async () => {
-      const machine = new FakeMachine();
-      const { app } = buildApp({ machine, reviewPayload: { tokensUsed: 15 } });
+  /**
+   * Issue #143, slice 2: `budget.tokensUsed` accounting (slice 1) had somewhere to write, but
+   * nothing yet refused a dispatch or parked a ticket once it ran out. These are the two halves of
+   * that: `#assertBudgetNotExhausted` (refuses a *new* dispatch outright) and
+   * `#reportBudgetExhausted` (parks the ticket the moment a session's own usage crosses the limit).
+   */
+  describe('a budget exhaustion (issue #143)', () => {
+    it('refuses to dispatch -- 409 budget_exhausted -- when the ticket’s budget is already spent', async () => {
+      const machine = new FakeMachine('pipenzo:working', { tokensUsed: 500, limit: 500 });
+      const { app } = buildApp({ machine });
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/review',
+        headers: auth,
+        payload: {
+          spec: spec(),
+          worktreeId: WORKTREE_ID,
+          baseCommit: BASE_SHA,
+          headCommit: HEAD_SHA,
+          implementerTier: 'mid',
+          reviewer: { provider: 'claude', model: 'reviewer-model', tier: 'mid' },
+          verifier: { provider: 'codex', model: 'verifier-model', tier: 'frontier' },
+          ticketId: TICKET_ID,
+        },
+      });
+      expect(response.statusCode).toBe(409);
+      expect(response.json()).toMatchObject({ code: 'budget_exhausted' });
+      // Refused before anything else ran: no read/transition, no recorded usage.
+      expect(machine.calls).toEqual([]);
+      expect(machine.tokenUsage).toEqual([]);
+    });
+
+    it('parks the ticket in needs-human once a review’s own usage crosses the limit, naming the spend and the limit', async () => {
+      const machine = new FakeMachine('pipenzo:working', { tokensUsed: 0, limit: 20 });
+      const { app, github } = buildApp({ machine, reviewPayload: { tokensUsed: 15 } });
       const response = await app.inject({
         method: 'POST',
         url: '/v2/pipenzo/review',
@@ -841,35 +885,23 @@ describe('POST /v2/pipenzo/review', () => {
 
       expect(response.statusCode).toBe(200);
       expect(response.json().outcome).toBe('approved');
-      // The fake port's fixed 15 tokens, once for the reviewer pass and once more for the
-      // verifier pass, recorded as a single write -- not one per session.
+      // The reviewer and verifier each report the fake port's fixed 15 tokens, so 30 crosses the
+      // 20-token limit -- recorded as one write, not two, matching review()'s own accumulator.
       expect(machine.tokenUsage).toEqual([{ ticketId: TICKET_ID, tokens: 30 }]);
+      expect(machine.calls).toEqual([
+        { method: 'read', ticketId: TICKET_ID },
+        { method: 'transition', ticketId: TICKET_ID, label: 'pipenzo:needs-human' },
+      ]);
+      const posted = github.issueComments({ owner: 'jortega0033', repo: 'pipenzo' }, 184);
+      expect(posted).toHaveLength(1);
+      expect(posted[0]?.body).toContain('30');
+      expect(posted[0]?.body).toContain('20');
+      expect(posted[0]?.body).toContain('pipenzo:needs-human');
     });
 
-    it('records nothing when no ticketId was given', async () => {
-      const machine = new FakeMachine();
+    it('does not park a review that stays under its ticket’s limit', async () => {
+      const machine = new FakeMachine('pipenzo:working', { tokensUsed: 0, limit: 1_000 });
       const { app } = buildApp({ machine, reviewPayload: { tokensUsed: 15 } });
-      const response = await app.inject({
-        method: 'POST',
-        url: '/v2/pipenzo/review',
-        headers: auth,
-        payload: {
-          spec: spec(),
-          worktreeId: WORKTREE_ID,
-          baseCommit: BASE_SHA,
-          headCommit: HEAD_SHA,
-          implementerTier: 'mid',
-          reviewer: { provider: 'claude', model: 'reviewer-model', tier: 'mid' },
-          verifier: { provider: 'codex', model: 'verifier-model', tier: 'frontier' },
-        },
-      });
-
-      expect(response.statusCode).toBe(200);
-      expect(machine.tokenUsage).toEqual([]);
-    });
-
-    it('does not throw when no phase machine was configured -- the report still comes back', async () => {
-      const { app } = buildApp({ reviewPayload: { tokensUsed: 15 } });
       const response = await app.inject({
         method: 'POST',
         url: '/v2/pipenzo/review',
@@ -887,7 +919,74 @@ describe('POST /v2/pipenzo/review', () => {
       });
 
       expect(response.statusCode).toBe(200);
+      expect(machine.tokenUsage).toEqual([{ ticketId: TICKET_ID, tokens: 30 }]);
+      // Recorded, but never parked -- 30 is nowhere near the 1,000-token limit.
+      expect(machine.calls).toEqual([]);
     });
+
+    it('a ticket with limit: 0 is never exhausted, no matter how much it has spent', async () => {
+      const machine = new FakeMachine('pipenzo:working', { tokensUsed: 1_000_000, limit: 0 });
+      const { app } = buildApp({ machine });
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/review',
+        headers: auth,
+        payload: {
+          spec: spec(),
+          worktreeId: WORKTREE_ID,
+          baseCommit: BASE_SHA,
+          headCommit: HEAD_SHA,
+          implementerTier: 'mid',
+          reviewer: { provider: 'claude', model: 'reviewer-model', tier: 'mid' },
+          verifier: { provider: 'codex', model: 'verifier-model', tier: 'frontier' },
+          ticketId: TICKET_ID,
+        },
+      });
+      expect(response.statusCode).toBe(200);
+    });
+  });
+});
+
+/** Issue #143, slice 2's pre-dispatch guard, on the other two phases that spend a ticket's budget. */
+describe('the pre-dispatch budget guard (issue #143)', () => {
+  it('refuses /v2/pipenzo/refine with 409 budget_exhausted for an already-spent ticket', async () => {
+    const machine = new FakeMachine('pipenzo:working', { tokensUsed: 100, limit: 100 });
+    const { app } = buildApp({ machine });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v2/pipenzo/refine',
+      headers: auth,
+      payload: { issueNumber: 184, repositoryPath: REPO_PATH, provider: 'claude', ticketId: TICKET_ID },
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ code: 'budget_exhausted' });
+  });
+
+  it('refuses /v2/pipenzo/implement with 409 budget_exhausted for an already-spent ticket', async () => {
+    const machine = new FakeMachine('pipenzo:working', { tokensUsed: 100, limit: 100 });
+    const { app } = buildApp({ machine });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v2/pipenzo/implement',
+      headers: auth,
+      payload: { spec: spec(), repositoryPath: REPO_PATH, provider: 'claude', ticketId: TICKET_ID },
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ code: 'budget_exhausted' });
+    // Nothing was dispatched: no attempt was recorded against the ticket.
+    expect(machine.attempts).toEqual([]);
+  });
+
+  it('does not refuse a request with no ticketId -- there is nothing to check a budget against', async () => {
+    const machine = new FakeMachine('pipenzo:working', { tokensUsed: 100, limit: 100 });
+    const { app } = buildApp({ machine });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v2/pipenzo/implement',
+      headers: auth,
+      payload: { spec: spec(), repositoryPath: REPO_PATH, provider: 'claude' },
+    });
+    expect(response.statusCode).toBe(200);
   });
 });
 
