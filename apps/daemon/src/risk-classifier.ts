@@ -1,5 +1,5 @@
 import { relative, isAbsolute, sep } from 'node:path';
-import type { PermissionActionV2 } from '@agent-dock/shared';
+import type { PermissionActionV2, RiskGrade } from '@agent-dock/shared';
 
 /**
  * The risk classifier (Pipenzo issue #157).
@@ -34,7 +34,11 @@ import type { PermissionActionV2 } from '@agent-dock/shared';
  * `SENSITIVE_PATH_PATTERN` from here rather than defining a second, driftable copy.
  */
 
-export type RiskGrade = 'low' | 'medium' | 'high';
+/** Re-exported from `@agent-dock/shared`, the type's canonical home now that `ReviewReportV1`
+ * (issue #157/#160) carries a grade across the daemon/desktop wire boundary -- kept as a type-only
+ * re-export here rather than a second definition, so existing importers of `./risk-classifier.js`
+ * are unaffected. */
+export type { RiskGrade };
 
 /**
  * Matches a path under a `security/`, `auth/`, or `migrations/` directory, or whose filename

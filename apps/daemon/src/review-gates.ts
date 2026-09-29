@@ -14,9 +14,11 @@ import {
   type ReviewFindingV1,
   type ReviewInputCompletenessV1,
   type ReviewReportV1,
+  type RiskGrade,
   type VerifierPassV1,
 } from '@agent-dock/shared';
 import { runGitCommand, type PipenzoGitRunner } from './pipenzo-git.js';
+import { matchesSensitivePath } from './risk-classifier.js';
 
 /**
  * The Review phase (Pipenzo issue #181).
@@ -301,9 +303,19 @@ export class ReviewGatesRunner {
     // `skipped` when `generated` is `undefined`, the same value a ticket with no configured
     // generator produces.
     const generated =
-      subject.kind === 'ticket' ? await this.#generateSpecTests(subject.spec, request.worktreePath) : undefined;
+      subject.kind === 'ticket'
+        ? await this.#generateSpecTests(subject.spec, request.worktreePath)
+        : undefined;
     const diff = await this.#readDiff(request);
-    const scope = computeDiffScope(diff.numstat, subject.kind === 'ticket' ? subject.spec.estimate : undefined);
+    const scope = computeDiffScope(
+      diff.numstat,
+      subject.kind === 'ticket' ? subject.spec.estimate : undefined,
+    );
+    // Hoisted above the blocking-gate/incomplete-input branches below so `risk` reaches every
+    // outcome this run can return, not only a fully-approved one -- a diff that fails its own
+    // build but touches `apps/daemon/src/auth/` is still a HIGH-risk diff.
+    const touched = parseTouchedFiles(diff.numstat);
+    const risk = classifyReviewRisk(touched.keys());
 
     const deterministic = await this.#runDeterministicGates(request, generated, scope);
     const blocking = deterministic.filter(
@@ -333,6 +345,7 @@ export class ReviewGatesRunner {
             : 'deterministic_failed',
         deterministic,
         diffScope: scope,
+        risk,
       });
     }
 
@@ -344,28 +357,39 @@ export class ReviewGatesRunner {
         outcome: 'review_input_incomplete',
         deterministic,
         diffScope: scope,
+        risk,
         inputCompleteness: diff.completeness,
       });
     }
 
-    const touched = parseTouchedFiles(diff.numstat);
     const lineCountCache = new Map<string, number | undefined>();
 
     const reviewer = await this.#runReviewer(request, subject, diff.patch);
     const verifiedReviewer: LlmReviewPassV1 = {
       ...reviewer,
-      findings: await this.#verifyFindingLocations(reviewer.findings, touched, request, lineCountCache),
+      findings: await this.#verifyFindingLocations(
+        reviewer.findings,
+        touched,
+        request,
+        lineCountCache,
+      ),
     };
     const verifier = await this.#runVerifier(request, subject, diff.patch, verifiedReviewer);
     const verifiedVerifier: VerifierPassV1 = {
       ...verifier,
-      findings: await this.#verifyFindingLocations(verifier.findings, touched, request, lineCountCache),
+      findings: await this.#verifyFindingLocations(
+        verifier.findings,
+        touched,
+        request,
+        lineCountCache,
+      ),
     };
 
     return this.#report(request, {
       outcome: verifiedVerifier.verdict === 'approved' ? 'approved' : 'verifier_rejected',
       deterministic,
       diffScope: scope,
+      risk,
       inputCompleteness: diff.completeness,
       reviewer: verifiedReviewer,
       verifier: verifiedVerifier,
@@ -401,7 +425,9 @@ export class ReviewGatesRunner {
       throw new ReviewGateError(
         'invalid_spec',
         'review requires a valid v1 refine spec to gate against',
-        parsed.error.issues.slice(0, 20).map((issue) => `${issue.path.join('.') || '$'}: ${issue.message}`),
+        parsed.error.issues
+          .slice(0, 20)
+          .map((issue) => `${issue.path.join('.') || '$'}: ${issue.message}`),
       );
     }
     return { kind: 'ticket', spec: parsed.data };
@@ -569,7 +595,11 @@ export class ReviewGatesRunner {
     });
 
     if (id === 'diff_scope') {
-      if (scope.estimate === undefined || scope.exceededEstimate === undefined || scope.ratio === undefined) {
+      if (
+        scope.estimate === undefined ||
+        scope.exceededEstimate === undefined ||
+        scope.ratio === undefined
+      ) {
         // No RefineSpecV1 estimate exists to compare against (issue #206's external PR review) --
         // neither a pass nor a fail, so this reports the fact rather than fabricating a verdict
         // against a number nobody predicted. Checking all three fields, not just `estimate`, is
@@ -653,7 +683,10 @@ export class ReviewGatesRunner {
       // Not every repository defines a lint script (issue #283), unlike build/typecheck, which
       // this runner's own repo always does -- recorded as absent, the same honest way an
       // uninstalled gitleaks/semgrep binary is, never as a failure the repo did nothing to earn.
-      return finish('skipped', 'no lint script is defined in this repository; this check did not run');
+      return finish(
+        'skipped',
+        'no lint script is defined in this repository; this check did not run',
+      );
     }
     return finish('failed', `${executable} exited ${result.code}`, gateDetail(result));
   }
@@ -749,6 +782,7 @@ export class ReviewGatesRunner {
       outcome: ReviewReportV1['outcome'];
       deterministic: DeterministicGateResultV1[];
       diffScope: DiffScopeV1;
+      risk: RiskGrade;
       inputCompleteness?: ReviewInputCompletenessV1;
       reviewer?: LlmReviewPassV1;
       verifier?: VerifierPassV1;
@@ -764,6 +798,7 @@ export class ReviewGatesRunner {
       implementerTier: request.implementerTier,
       deterministic: parts.deterministic,
       diffScope: parts.diffScope,
+      risk: parts.risk,
       ...(parts.inputCompleteness ? { inputCompleteness: parts.inputCompleteness } : {}),
       ...(parts.reviewer ? { reviewer: parts.reviewer } : {}),
       ...(parts.verifier ? { verifier: parts.verifier } : {}),
@@ -837,9 +872,7 @@ export function selectVerifier(input: {
   candidates: readonly ModelChoice[];
 }): VerifierSelection {
   const floor = modelTierRank(input.implementer.tier);
-  const eligible = input.candidates.filter(
-    (candidate) => modelTierRank(candidate.tier) >= floor,
-  );
+  const eligible = input.candidates.filter((candidate) => modelTierRank(candidate.tier) >= floor);
   if (eligible.length === 0) {
     return {
       outcome: 'none_eligible',
@@ -914,6 +947,25 @@ function parseTouchedFiles(numstat: string): Map<string, TouchedFileInfo> {
   return touched;
 }
 
+/**
+ * The review report's own `risk` field (issue #157/#160), from the diff's touched-file paths.
+ *
+ * This calls `matchesSensitivePath` directly rather than `risk-classifier.ts`'s `classifyRisk`,
+ * because `classifyRisk` grades a live `PermissionActionV2` -- an `external_side_effect`, an
+ * `mcpDestructive` call, a filesystem write inside the worktree -- and a completed review has none
+ * of that: only the paths the diff actually touched. Synthesizing a fake action shape just to reach
+ * `classifyRisk`'s path branch would be reporting a grade this run cannot support. So this applies
+ * only the one half of the classifier's rule that a diff's own paths can honestly answer: HIGH when
+ * a touched file matches the security/auth/migration pattern, LOW otherwise. MEDIUM never comes out
+ * of this function -- see the `risk` field's own doc comment on `ReviewReportV1`.
+ */
+function classifyReviewRisk(touchedPaths: Iterable<string>): RiskGrade {
+  for (const path of touchedPaths) {
+    if (matchesSensitivePath(path)) return 'high';
+  }
+  return 'low';
+}
+
 /** Counts lines the way a line number in a finding means: a trailing newline is not itself a line. */
 function countLines(content: string): number {
   if (content === '') return 0;
@@ -980,7 +1032,10 @@ export function computeDiffScope(
     return { implementation, generatedTests };
   }
 
-  const boundedEstimate = { changedLines: estimate.changedLines, filesTouched: estimate.filesTouched };
+  const boundedEstimate = {
+    changedLines: estimate.changedLines,
+    filesTouched: estimate.filesTouched,
+  };
   // A zero estimate has no meaningful ratio; treat any real diff against it as a blown estimate
   // rather than dividing by zero into Infinity.
   const ratio =
@@ -1074,7 +1129,11 @@ function renderConventions(conventions: string | undefined): string[] {
  * this pass. `conventions` is a third, later addition (issue #284) that does not weaken that: it
  * is repo-authored, human-committed prose, never anything derived from this ticket's own session.
  */
-export function buildReviewerPrompt(subject: ReviewSubject, diff: string, conventions?: string): string {
+export function buildReviewerPrompt(
+  subject: ReviewSubject,
+  diff: string,
+  conventions?: string,
+): string {
   return [
     'You are reviewing a diff against the spec it was written to satisfy. You did not write this',
     'code and you are not seeing the session that did — judge the diff on its own terms.',

@@ -47,6 +47,7 @@ function report(outcome: ReviewReportV1['outcome'] = 'awaiting_test_adjudication
     baseCommit: BASE,
     headCommit: HEAD,
     implementerTier: 'mid',
+    risk: 'low',
     deterministic: [
       { id: 'spec_tests', status: 'failed', summary: 'pnpm test exited 1', durationMs: 900 },
     ],

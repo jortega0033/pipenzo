@@ -57,7 +57,13 @@ describe('DiffReviewHead', () => {
   it('renders the ready/waiting mascot decoratively, never pointing at or replacing the publish actions', () => {
     installBridge();
     render(
-      <DiffReviewHead idLine="#94" title="t" stat={STAT} worktreeId={WORKTREE_ID} branch="issue-94" />,
+      <DiffReviewHead
+        idLine="#94"
+        title="t"
+        stat={STAT}
+        worktreeId={WORKTREE_ID}
+        branch="issue-94"
+      />,
     );
     const mascot = screen.getByRole('presentation', { hidden: true });
     expect(mascot).toHaveAttribute('alt', '');
@@ -95,6 +101,32 @@ describe('DiffReviewHead', () => {
   });
 
   it('wires Push branch through to the real publish call for this worktree and branch', async () => {
+    // STAT is risk: 'low' here specifically to exercise the ungated path -- STAT's own HIGH grade
+    // is what PublishActions.test.tsx's approval-card tests exercise instead (CLAUDE.md hard rule
+    // #3: a HIGH-graded push must never auto-allow, so clicking Push branch there opens
+    // HighApprovalCard rather than calling the bridge directly).
+    installBridge();
+    render(
+      <DiffReviewHead
+        idLine="#94"
+        title="t"
+        stat={{ ...STAT, risk: 'low' }}
+        worktreeId={WORKTREE_ID}
+        branch="issue-94"
+        remote="origin"
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Push branch' }));
+    const bridge = window.agentDock as unknown as { publishPipenzo: ReturnType<typeof vi.fn> };
+    expect(bridge.publishPipenzo).toHaveBeenCalledWith({
+      worktreeId: WORKTREE_ID,
+      branch: 'issue-94',
+      remote: 'origin',
+      operation: 'push',
+    });
+  });
+
+  it('gates a HIGH-graded push behind HighApprovalCard instead of publishing on the first click', async () => {
     installBridge();
     render(
       <DiffReviewHead
@@ -108,6 +140,10 @@ describe('DiffReviewHead', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Push branch' }));
     const bridge = window.agentDock as unknown as { publishPipenzo: ReturnType<typeof vi.fn> };
+    expect(bridge.publishPipenzo).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
     expect(bridge.publishPipenzo).toHaveBeenCalledWith({
       worktreeId: WORKTREE_ID,
       branch: 'issue-94',

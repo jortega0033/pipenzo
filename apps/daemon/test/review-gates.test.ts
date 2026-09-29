@@ -31,7 +31,11 @@ import {
   type ReviewSubject,
   type SpecTestGeneratorPort,
 } from '../src/review-gates.js';
-import { GitCommandFailure, type GitCommandResult, type PipenzoGitRunner } from '../src/pipenzo-git.js';
+import {
+  GitCommandFailure,
+  type GitCommandResult,
+  type PipenzoGitRunner,
+} from '../src/pipenzo-git.js';
 
 const BASE = 'a'.repeat(40);
 const HEAD = 'b'.repeat(40);
@@ -147,7 +151,10 @@ function harness(
     ? {
         generate: async () => {
           ran.push('spec-test-generator');
-          return { sessionId: 'generator-session', files: [`${GENERATED_TEST_PREFIX}ac-1.test.ts`] };
+          return {
+            sessionId: 'generator-session',
+            files: [`${GENERATED_TEST_PREFIX}ac-1.test.ts`],
+          };
         },
       }
     : undefined;
@@ -166,7 +173,8 @@ function harness(
         ? { stdout: '', stderr: 'fatal: path not in the working tree', code: 128 }
         : gitResult(content);
     }
-    if (args.includes('--patch')) return gitResult(options.patch ?? 'diff --git a/x b/x\n+added line\n');
+    if (args.includes('--patch'))
+      return gitResult(options.patch ?? 'diff --git a/x b/x\n+added line\n');
     return gitResult('diff --git a/x b/x\n+added line\n');
   };
 
@@ -300,7 +308,9 @@ describe('computeDiffScope — the implementation/test split (issue #145)', () =
     expect(isGeneratedTestPath(`${GENERATED_TEST_PREFIX}ac-1.test.ts`)).toBe(true);
     expect(isGeneratedTestPath('apps/daemon/test/review-gates.test.ts')).toBe(false);
     expect(isGeneratedTestPath('src/sneaky.test.ts')).toBe(false);
-    expect(isGeneratedTestPath(GENERATED_TEST_PREFIX.replaceAll('/', '\\') + 'ac-1.test.ts')).toBe(true);
+    expect(isGeneratedTestPath(GENERATED_TEST_PREFIX.replaceAll('/', '\\') + 'ac-1.test.ts')).toBe(
+      true,
+    );
   });
 });
 
@@ -352,6 +362,7 @@ describe('ReviewGatesRunner — ordering', () => {
       baseCommit: BASE,
       headCommit: HEAD,
       implementerTier: 'mid',
+      risk: 'low',
       deterministic: [{ id: 'build', status: 'failed', summary: 'build failed', durationMs: 10 }],
       reviewer: { sessionId: 's', tier: 'mid', model: 'm', findings: [] },
     };
@@ -367,6 +378,7 @@ describe('ReviewGatesRunner — ordering', () => {
       baseCommit: BASE,
       headCommit: HEAD,
       implementerTier: 'mid',
+      risk: 'low',
       deterministic: [{ id: 'build', status: 'failed', summary: 'build failed', durationMs: 10 }],
     };
     const partial = reviewReportV1Schema.safeParse({
@@ -569,6 +581,57 @@ describe('ReviewGatesRunner — honesty of the evidence', () => {
   });
 });
 
+describe('ReviewGatesRunner — publish-gate risk grade (issue #157/#160)', () => {
+  it('grades a diff that touches none of the sensitive paths as low', async () => {
+    const h = harness({ specTests: true }); // default NUMSTAT: review-gates.ts, pipenzo-review-v1.ts, a generated test
+    const report = await h.runner.run(request());
+    expect(report.risk).toBe('low');
+  });
+
+  it('grades a diff touching an auth path as high, even though the same diff is approved', async () => {
+    const h = harness({
+      specTests: true,
+      numstat: '5\t0\tapps/daemon/src/github-auth-client.ts',
+    });
+    const report = await h.runner.run(request());
+    expect(report.outcome).toBe('approved');
+    expect(report.risk).toBe('high');
+  });
+
+  it('grades a diff touching a migrations directory as high', async () => {
+    const h = harness({ specTests: true, numstat: '20\t0\tdb/migrations/0007_add_risk.sql' });
+    const report = await h.runner.run(request());
+    expect(report.risk).toBe('high');
+  });
+
+  it('does not grade high on a false-positive substring match (authority-list.ts)', async () => {
+    const h = harness({ specTests: true, numstat: '5\t0\tsrc/authority-list.ts' });
+    const report = await h.runner.run(request());
+    expect(report.risk).toBe('low');
+  });
+
+  it('still reports a real risk grade when the run stops at a deterministic failure', async () => {
+    const h = harness({
+      numstat: '900\t0\tsrc/security/enormous.ts',
+      commandResults: { pnpm: { stdout: '', stderr: 'build broke', code: 1 } },
+    });
+    const report = await h.runner.run(request());
+    expect(report.outcome).toBe('deterministic_failed');
+    expect(report.risk).toBe('high');
+  });
+
+  it('still reports a real risk grade when the review input is incomplete', async () => {
+    const h = harness({
+      specTests: true,
+      numstat: '5\t0\tapps/daemon/src/security/scan.ts',
+      patch: 'x'.repeat(MAX_DIFF_CHARS + 1),
+    });
+    const report = await h.runner.run(request());
+    expect(report.outcome).toBe('review_input_incomplete');
+    expect(report.risk).toBe('high');
+  });
+});
+
 describe('ReviewGatesRunner — finding-location verification (issue #319)', () => {
   it('verifies a finding whose path and line are real at the reviewed head commit', async () => {
     const h = harness({
@@ -589,7 +652,12 @@ describe('ReviewGatesRunner — finding-location verification (issue #319)', () 
       specTests: true,
       reviewerOutcome: {
         findings: [
-          { severity: 'medium', path: 'apps/daemon/src/review-gates.ts', line: 999, message: 'nit' },
+          {
+            severity: 'medium',
+            path: 'apps/daemon/src/review-gates.ts',
+            line: 999,
+            message: 'nit',
+          },
         ],
       },
       showResults: { 'apps/daemon/src/review-gates.ts': 'one\ntwo\nthree\n' },
@@ -723,7 +791,10 @@ describe('ReviewGatesRunner — finding-location verification (issue #319)', () 
         run: async (req: CreateSessionV2Request) =>
           req.prompt.includes('adversarial')
             ? { sessionId: 'v', findings: [], verdict: 'approved' as const }
-            : { sessionId: 'r', findings: [{ severity: 'info' as const, message: 'no location claimed' }] },
+            : {
+                sessionId: 'r',
+                findings: [{ severity: 'info' as const, message: 'no location claimed' }],
+              },
       },
       runGit: async (args) => {
         if (args[0] === 'show') showCalls.push(args.at(-1) ?? '');
@@ -815,6 +886,7 @@ describe('ReviewGatesRunner — review input completeness (issue #316)', () => {
       baseCommit: BASE,
       headCommit: HEAD,
       implementerTier: 'mid',
+      risk: 'low',
       deterministic: [{ id: 'build', status: 'passed', summary: 'ok', durationMs: 10 }],
     };
     const parsed = reviewReportV1Schema.safeParse(invalid);
@@ -829,6 +901,7 @@ describe('ReviewGatesRunner — review input completeness (issue #316)', () => {
       baseCommit: BASE,
       headCommit: HEAD,
       implementerTier: 'mid',
+      risk: 'low',
       deterministic: [{ id: 'build', status: 'passed', summary: 'ok', durationMs: 10 }],
       inputCompleteness: { complete: true, limitChars: MAX_DIFF_CHARS },
     };
@@ -872,7 +945,10 @@ describe('ReviewGatesRunner — external PR review (issue #206)', () => {
   it('carries a verifier rejection through, exactly like a ticket review', async () => {
     const h = harness({
       specTests: true,
-      verifierOutcome: { verdict: 'rejected', findings: [{ severity: 'high', message: 'looks wrong' }] },
+      verifierOutcome: {
+        verdict: 'rejected',
+        findings: [{ severity: 'high', message: 'looks wrong' }],
+      },
     });
     const report = await h.runner.run(request({ subject: externalSubject }));
     expect(report.outcome).toBe('verifier_rejected');
@@ -952,7 +1028,10 @@ describe('ReviewGatesRunner — external PR review (issue #206)', () => {
     const hugeTitle = await rejection(() =>
       h.runner.run(
         request({
-          subject: { kind: 'external', pullRequest: { repo: 'a/b', number: 1, title: 'x'.repeat(600) } },
+          subject: {
+            kind: 'external',
+            pullRequest: { repo: 'a/b', number: 1, title: 'x'.repeat(600) },
+          },
         }),
       ),
     );
@@ -961,7 +1040,10 @@ describe('ReviewGatesRunner — external PR review (issue #206)', () => {
     const hugeRepo = await rejection(() =>
       h.runner.run(
         request({
-          subject: { kind: 'external', pullRequest: { repo: 'a/'.repeat(200), number: 1, title: 'x' } },
+          subject: {
+            kind: 'external',
+            pullRequest: { repo: 'a/'.repeat(200), number: 1, title: 'x' },
+          },
         }),
       ),
     );
@@ -1121,7 +1203,10 @@ describe('ReviewGatesRunner — separation of the LLM passes', () => {
   });
 
   it('gives both passes the spec’s criteria and out-of-scope bounds', () => {
-    for (const prompt of [buildReviewerPrompt(ticketSubject(), 'diff'), buildVerifierPrompt(ticketSubject(), 'diff', [])]) {
+    for (const prompt of [
+      buildReviewerPrompt(ticketSubject(), 'diff'),
+      buildVerifierPrompt(ticketSubject(), 'diff', []),
+    ]) {
       expect(prompt).toContain('AC-1');
       expect(prompt).toContain('AC-2');
       expect(prompt).toContain('Model-tier routing');
@@ -1161,7 +1246,11 @@ describe('ReviewGatesRunner — input validation', () => {
   it('refuses an invalid spec, two malformed shas, or a missing worktree path', async () => {
     const h = harness({ specTests: true });
     expect(
-      (await rejection(() => h.runner.run(request({ subject: { kind: 'ticket', spec: { schemaVersion: 1 } } })))).code,
+      (
+        await rejection(() =>
+          h.runner.run(request({ subject: { kind: 'ticket', spec: { schemaVersion: 1 } } })),
+        )
+      ).code,
     ).toBe('invalid_spec');
     expect((await rejection(() => h.runner.run(request({ baseCommit: 'HEAD' })))).code).toBe(
       'invalid_request',
@@ -1173,7 +1262,10 @@ describe('ReviewGatesRunner — input validation', () => {
 
   it('surfaces an unreadable diff distinctly from a gate failure', async () => {
     const runner = new ReviewGatesRunner({
-      commands: { available: async () => true, run: async () => ({ stdout: '', stderr: '', code: 0 }) },
+      commands: {
+        available: async () => true,
+        run: async () => ({ stdout: '', stderr: '', code: 0 }),
+      },
       sessions: { run: async () => ({ sessionId: 's', findings: [] }) },
       runGit: async () => ({ stdout: '', stderr: 'fatal: bad revision', code: 128 }),
     });
@@ -1182,7 +1274,10 @@ describe('ReviewGatesRunner — input validation', () => {
 
   it('surfaces the same diff_unavailable error when git itself fails to run, not just a non-zero exit (issue #333)', async () => {
     const runner = new ReviewGatesRunner({
-      commands: { available: async () => true, run: async () => ({ stdout: '', stderr: '', code: 0 }) },
+      commands: {
+        available: async () => true,
+        run: async () => ({ stdout: '', stderr: '', code: 0 }),
+      },
       sessions: { run: async () => ({ sessionId: 's', findings: [] }) },
       runGit: async () => {
         // The real runGit's own behaviour when the maxBuffer cap is exceeded: reject, don't
