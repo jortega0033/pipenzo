@@ -2,6 +2,7 @@ import type { Logger } from '@agent-dock/agent-runtime';
 import type { PipenzoGitHubHealthV1, PipenzoGitHubQuotaV1 } from '@agent-dock/shared';
 import type { ConnectedReposStore } from './connected-repos-store.js';
 import type { GitHubClient } from './github-client.js';
+import type { PipenzoAuditStore } from './pipenzo-audit-store.js';
 import { PipenzoPhaseMachineError, type PipenzoPhaseMachine } from './pipenzo-phase-machine.js';
 import type { FileTicketStore } from './pipenzo-ticket-store.js';
 
@@ -106,6 +107,13 @@ export interface PipenzoReconcilerOptions {
   /** Reconciles one ticket against its issue's labels. The label-wins path, reused rather than redone. */
   machine: Pick<PipenzoPhaseMachine, 'read'>;
   /**
+   * Where a detected divergence lands (issue #149). Optional so every existing test that does not
+   * care about the audit trail keeps constructing a reconciler without one — divergences are simply
+   * not recorded in that case, the same way an events-less phase machine still transitions and
+   * reconciles, it just has nowhere to announce it.
+   */
+  audit?: Pick<PipenzoAuditStore, 'append'>;
+  /**
    * Built lazily per call, exactly as everywhere else on this surface, and used *only* for
    * `rateLimit()` — which reads the shared tracker and makes no request. The reconciler never
    * calls GitHub through this.
@@ -130,6 +138,7 @@ export class PipenzoReconciler {
   readonly #repos: ConnectedReposStore;
   readonly #tickets: FileTicketStore;
   readonly #machine: Pick<PipenzoPhaseMachine, 'read'>;
+  readonly #audit: Pick<PipenzoAuditStore, 'append'> | undefined;
   readonly #github: (() => GitHubClient) | undefined;
   readonly #logger: Logger | undefined;
   readonly #scheduler: PipenzoReconcilerScheduler;
@@ -153,6 +162,7 @@ export class PipenzoReconciler {
     this.#repos = options.repos;
     this.#tickets = options.tickets;
     this.#machine = options.machine;
+    this.#audit = options.audit;
     this.#github = options.github;
     this.#logger = options.logger;
     this.#scheduler = options.scheduler ?? systemScheduler;
@@ -287,8 +297,26 @@ export class PipenzoReconciler {
     for (const ticketId of ticketIds) {
       if (!this.#running) break;
       try {
-        await this.#machine.read(ticketId);
+        const reconciliation = await this.#machine.read(ticketId);
         reachedGitHub = true;
+        // Issue #149: `read()` already applied label-wins, but until now the `divergence` it
+        // found was discarded right here. Gated on `changed`, not just `divergence !== 'none'` --
+        // a ticket stuck `ambiguous_labels`/`unlabelled` reports that same divergence on every poll
+        // with nothing rewritten (see the phase machine's own doc comment on `changed`), and that
+        // steady state is not a fresh event worth a fresh audit entry every interval. A failure to
+        // append is a local storage problem, not a GitHub one, so it deliberately falls into the
+        // same catch below as a per-ticket failure rather than its own handling.
+        if (this.#audit && reconciliation.changed && reconciliation.divergence !== 'none') {
+          await this.#audit.append({
+            ticketId,
+            kind: 'ticket_divergence',
+            divergence: reconciliation.divergence,
+            previousLane: reconciliation.previousLane,
+            reconciledLane: reconciliation.ticket.lane,
+            observedLabels: [...reconciliation.observedLabels],
+            outcome: 'reconciled_to_label',
+          });
+        }
       } catch (error) {
         const verdict = classifyFailure(error);
         if (verdict.kind === 'credential_rejected') return { kind: 'credential_rejected' };

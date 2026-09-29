@@ -16,6 +16,7 @@ import { SessionAdmissionController, resolveMaxActiveSessions } from './session-
 import { FileSessionStore } from './session-store.js';
 import { FileExecutionGraphStore } from './execution-graph-store.js';
 import { FileTicketStore } from './pipenzo-ticket-store.js';
+import { PipenzoAuditStore } from './pipenzo-audit-store.js';
 import { ConnectedReposStore } from './connected-repos-store.js';
 import { RepoCheckouts, reposRoot } from './repo-checkout.js';
 import { ensureStateDirectory, stateDirectory } from './state-directory.js';
@@ -135,6 +136,13 @@ async function main() {
   // of, and `tickets-v1` keeps this store's on-disk layout parallel to `sessions-v1`. The phase
   // machine below (#188) is what reads and writes it.
   const ticketStore = new FileTicketStore(join(durableStateDirectory, 'tickets-v1'));
+
+  // Pipenzo's own audit log (issue #149): where a lane/label divergence the reconciler's polling
+  // read finds lands, durably -- separate from `auditStore` above, which is agentdock's inherited
+  // permission-approval log and has no field for this concept. See `pipenzo-audit-v1.ts`.
+  const pipenzoAuditStore = new PipenzoAuditStore(
+    join(durableStateDirectory, 'pipenzo-audit-v1.jsonl'),
+  );
 
   // Pipenzo's connected-repos list (issue #115): which repositories a human chose in the first-run
   // picker, and therefore which ones the polling reconciler will iterate. A single file beside the
@@ -276,6 +284,7 @@ async function main() {
     repos: connectedRepos,
     tickets: ticketStore,
     machine: phaseMachine,
+    audit: pipenzoAuditStore,
     github: () =>
       OctokitGitHubClient.fromToken(githubCredential.resolve(), {
         cache: githubConditionalCache,

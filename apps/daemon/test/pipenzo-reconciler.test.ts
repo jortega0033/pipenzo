@@ -3,7 +3,12 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { pipenzoGitHubHealthV1Schema, type PipenzoTicketRecordV1 } from '@agent-dock/shared';
+import {
+  pipenzoGitHubHealthV1Schema,
+  type NewPipenzoAuditEntryV1,
+  type PipenzoAuditEntryV1,
+  type PipenzoTicketRecordV1,
+} from '@agent-dock/shared';
 import { ConnectedReposStore } from '../src/connected-repos-store.js';
 import { FileTicketStore } from '../src/pipenzo-ticket-store.js';
 import { PipenzoPhaseMachine } from '../src/pipenzo-phase-machine.js';
@@ -129,6 +134,27 @@ interface HarnessOptions {
   pollIntervalMs?: number;
   maxAttempts?: number;
   random?: () => number;
+  audit?: FakeAuditStore;
+}
+
+/** A minimal `Pick<PipenzoAuditStore, 'append'>` fake -- exercising `PipenzoReconciler`'s own audit
+ * call site does not need `PipenzoAuditStore`'s real filesystem persistence, which
+ * `pipenzo-audit-store.test.ts` already covers on its own. Does not compute the envelope fields a
+ * real store would (`sequence`/`entryId`/`recordedAt`); it only records what it was called with. */
+interface FakeAuditStore {
+  readonly entries: NewPipenzoAuditEntryV1[];
+  append(entry: NewPipenzoAuditEntryV1): Promise<PipenzoAuditEntryV1>;
+}
+
+function fakeAuditStore(): FakeAuditStore {
+  const entries: NewPipenzoAuditEntryV1[] = [];
+  return {
+    entries,
+    async append(entry: NewPipenzoAuditEntryV1) {
+      entries.push(entry);
+      return entry as unknown as PipenzoAuditEntryV1;
+    },
+  };
 }
 
 function harness(options: HarnessOptions = {}) {
@@ -142,6 +168,7 @@ function harness(options: HarnessOptions = {}) {
     repos,
     tickets,
     machine,
+    audit: options.audit,
     github: () => github,
     scheduler,
     random: options.random ?? (() => 0),
@@ -198,6 +225,71 @@ describe('PipenzoReconciler', () => {
     expect(health.state).toBe('healthy');
     expect(pipenzoGitHubHealthV1Schema.safeParse(health).success).toBe(true);
     expect(github.calls.filter((call) => call.method === 'getIssue')).toHaveLength(2);
+
+    await reconciler.stop();
+  });
+
+  it('records a reconciled lane/label divergence to the audit store (issue #149)', async () => {
+    const ticket = makeTicket({ issueNumber: 11, lane: 'working', labels: ['pipenzo:working'] });
+    // The issue disagrees with the local record -- label-wins reconciliation moves the ticket to
+    // `ready-for-review`, and that is exactly the divergence #149 asks to be recorded.
+    const github = new FakeGitHubClient().seedIssue(makeIssue(11, ['pipenzo:ready-for-review']));
+    const audit = fakeAuditStore();
+    const { repos, reconciler, scheduler } = harness({ tickets: [ticket], github, audit });
+    await repos.replace([REPO]);
+
+    reconciler.start();
+    scheduler.advance(0);
+    await waitFor(() => expect(reconciler.health().state).toBe('healthy'));
+    await reconciler.stop();
+
+    expect(audit.entries).toEqual([
+      expect.objectContaining({
+        ticketId: ticket.ticketId,
+        kind: 'ticket_divergence',
+        divergence: 'lane_reconciled',
+        previousLane: 'working',
+        reconciledLane: 'ready-for-review',
+        observedLabels: ['pipenzo:ready-for-review'],
+        outcome: 'reconciled_to_label',
+      }),
+    ]);
+  });
+
+  it('does not re-record a steady, unresolved divergence on every poll', async () => {
+    // Title matches `makeIssue`'s generated one so the very first read's `changed` reflects only
+    // the divergence, not an incidental title backfill.
+    const ticket = makeTicket({
+      issueNumber: 11,
+      lane: 'working',
+      labels: ['pipenzo:working'],
+      title: 'issue 11',
+    });
+    // No `pipenzo:` label at all: `read()` reports `unlabelled` and -- deliberately -- leaves the
+    // local lane untouched (nothing authoritative to reconcile to), so this divergence persists,
+    // unchanged, on every poll rather than resolving itself the way `lane_reconciled` does.
+    const github = new FakeGitHubClient().seedIssue(makeIssue(11, []));
+    const audit = fakeAuditStore();
+    const { repos, reconciler, scheduler } = harness({
+      tickets: [ticket],
+      github,
+      audit,
+      pollIntervalMs: 1_000,
+    });
+    await repos.replace([REPO]);
+
+    reconciler.start();
+    scheduler.advance(0);
+    await waitFor(() => expect(reconciler.health().state).toBe('healthy'));
+    expect(audit.entries).toHaveLength(0);
+
+    // A second poll observes the same steady `unlabelled` divergence again -- still nothing to
+    // record, because nothing was rewritten either time.
+    scheduler.advance(1_000);
+    await waitFor(() =>
+      expect(github.calls.filter((call) => call.method === 'getIssue')).toHaveLength(2),
+    );
+    expect(audit.entries).toHaveLength(0);
 
     await reconciler.stop();
   });
