@@ -18,6 +18,10 @@ import {
   BoundedPipenzoPhaseSseWriter,
   type PipenzoPhaseEventBus,
 } from '../pipenzo-phase-events.js';
+import {
+  computeWorkingLaneConcurrency,
+  PIPENZO_DEFAULT_WORKING_CAPACITY,
+} from '../working-lane-concurrency.js';
 
 /**
  * The phase-machine routes (Pipenzo issue #188).
@@ -166,8 +170,29 @@ export function registerPipenzoTicketRoutes(
     '/v2/pipenzo/tickets',
     { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } },
     async (_req, reply) => {
+      const records = machine.list();
+      // Issue #85: the same hold-vs-run decision #164 defined, computed over every ticket
+      // currently in the Working lane -- see `working-lane-concurrency.ts` for why this is a
+      // report, not a gate. Every other lane is left out: `computeWorkingLaneConcurrency` has no
+      // opinion on what a non-Working ticket's predicted files overlapping one would mean.
+      const concurrency = computeWorkingLaneConcurrency(
+        records
+          .filter((record) => record.lane === 'working')
+          .map((record) => ({
+            ticketId: record.ticketId,
+            issueNumber: record.issueNumber,
+            filesLikelyTouched: record.spec?.filesLikelyTouched ?? [],
+          })),
+      );
       reply.send(
-        pipenzoTicketListV1Schema.parse({ tickets: machine.list().map(toTicketView) }),
+        pipenzoTicketListV1Schema.parse({
+          tickets: records.map((record) => {
+            const view = toTicketView(record);
+            const state = concurrency.get(record.ticketId);
+            return state ? { ...view, concurrency: state } : view;
+          }),
+          workingLaneCapacity: PIPENZO_DEFAULT_WORKING_CAPACITY,
+        }),
       );
     },
   );

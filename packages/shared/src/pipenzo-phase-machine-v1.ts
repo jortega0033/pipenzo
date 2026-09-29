@@ -60,6 +60,30 @@ export const pipenzoTicketWorktreeViewV1Schema = z
   .strict();
 
 /**
+ * The Working lane's file-overlap-serialisation state (issue #85, a UI-surfacing layer over #164's
+ * `evaluateFileOverlapGate` — see `apps/daemon/src/working-lane-concurrency.ts`). Present only on a
+ * ticket the ticket-list route has evaluated against every other `working`-lane ticket; a ticket in
+ * any other lane, or read through the single-ticket `read`/`transition` routes (which do not have
+ * the whole board to compare against), simply omits it — `undefined` there means "not evaluated",
+ * never "definitely running".
+ */
+export const pipenzoTicketConcurrencyV1Schema = z.discriminatedUnion('state', [
+  z.object({ state: z.literal('running') }).strict(),
+  z
+    .object({
+      state: z.literal('held'),
+      /** The running ticket this one shares a predicted file with. */
+      overlapTicketId: pipenzoTicketIdV1Schema,
+      overlapIssueNumber: pipenzoIssueNumberV1Schema,
+      /** The first (deduplicated) repo-relative path both tickets predict touching. */
+      overlapFile: z.string().min(1).max(4_096),
+    })
+    .strict(),
+]);
+
+export type PipenzoTicketConcurrencyV1 = z.infer<typeof pipenzoTicketConcurrencyV1Schema>;
+
+/**
  * The ticket as it crosses the wire: `pipenzoTicketRecordV1Schema` with `worktree.path` removed.
  *
  * Spelled out field by field rather than derived with `.omit()` on a nested object, because a
@@ -90,6 +114,7 @@ export const pipenzoTicketViewV1Schema = z
     taskType: pipenzoTaskTypeV1Schema,
     stack: pipenzoTicketStackV1Schema,
     worktree: pipenzoTicketWorktreeViewV1Schema.optional(),
+    concurrency: pipenzoTicketConcurrencyV1Schema.optional(),
     attempts: z.array(pipenzoTicketAttemptV1Schema).max(50),
     budget: pipenzoTicketBudgetV1Schema,
     risk: pipenzoTicketRiskV1Schema,
@@ -116,6 +141,17 @@ export const PIPENZO_MAX_LISTED_TICKETS = 5_000;
 export const pipenzoTicketListV1Schema = z
   .object({
     tickets: z.array(pipenzoTicketViewV1Schema).max(PIPENZO_MAX_LISTED_TICKETS),
+    /**
+     * README's bounded-concurrency default (2 tickets at once, hard cap 4) — the Working lane
+     * header's capacity pill denominator (issue #85). Optional, matching `title`'s own reasoning
+     * just above: a caller (a hand-built test fixture, an older cached response) that predates this
+     * field simply has not answered the question this asks, which is different from the daemon
+     * reporting a real cap of zero. Not yet operator-configurable — `NumberStepper.tsx`'s 1-4
+     * settings control isn't wired to anything real yet — so every real response carries the same
+     * fixed constant (`apps/daemon/src/working-lane-concurrency.ts`'s
+     * `PIPENZO_DEFAULT_WORKING_CAPACITY`) until a settings ticket makes it real per-repo state.
+     */
+    workingLaneCapacity: z.number().int().positive().max(4).optional(),
   })
   .strict();
 
