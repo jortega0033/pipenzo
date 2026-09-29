@@ -1,6 +1,8 @@
+import { randomUUID } from 'node:crypto';
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { PIPENZO_MAX_LESSONS } from '@agent-dock/shared';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { LessonStore, LessonStoreError } from '../src/pipenzo-lesson-store.js';
 
@@ -65,16 +67,29 @@ describe('LessonStore', () => {
     );
   });
 
-  // 500 sequential fsync'd writes is genuinely slower than vitest's default 5s budget on a loaded
-  // CI runner -- this is disk time, not a hang, and the concurrent-write test above already covers
-  // the queue's own correctness at a realistic list size.
+  // Seeds the file directly rather than performing PIPENZO_MAX_LESSONS real, sequential fsync'd
+  // writes: 500 of those is genuinely slower than a CI runner's budget under load (this store's own
+  // durability -- temp file, fsync, rename, fsync the directory -- is real disk time per write, by
+  // design), and the concurrent-write test above already covers the write queue's own correctness.
+  // This test's job is only the cap check in `add()`, which reads the list length regardless of how
+  // the file got that long -- a direct write exercises exactly that read path.
   it('refuses more lessons than the panel should ever have to list', async () => {
+    const full = {
+      version: 1 as const,
+      lessons: Array.from({ length: PIPENZO_MAX_LESSONS }, (_, index) => ({
+        schemaVersion: 1 as const,
+        id: randomUUID(),
+        repo: SAMPLE.repo,
+        issueNumber: SAMPLE.issueNumber,
+        text: `lesson ${index}`,
+        savedAt: new Date().toISOString(),
+      })),
+    };
+    await writeFile(filePath, JSON.stringify(full), 'utf8');
+
     const store = new LessonStore(filePath);
-    for (let index = 0; index < 500; index += 1) {
-      await store.add({ ...SAMPLE, text: `lesson ${index}` });
-    }
     await expect(store.add(SAMPLE)).rejects.toBeInstanceOf(LessonStoreError);
-  }, 20_000);
+  });
 
   /**
    * A corrupt state file must not lock Settings' lesson panel out of loading — same reasoning as
