@@ -682,3 +682,80 @@ describe('PipenzoPhaseMachine.recordAttempt', () => {
     expect(stored[0]?.sessionId).toBe('session-1');
   });
 });
+
+/**
+ * Issue #74, the split of #20 that guards the phase machine's write path: an issue carrying a
+ * `pipenzo:schema-vN` marker newer than this build understands (`pipenzo:schema-v1`) must refuse
+ * both reconciliation and transition rather than write v1 semantics over state a newer Pipenzo
+ * already migrated. Named `schema_read_only` because README's own rule is per-repo ("other connected
+ * repos keep polling/running") — these tests cover the one ticket/issue the guard actually sees.
+ */
+describe('PipenzoPhaseMachine schema read-only guard', () => {
+  it('refuses to read a ticket whose issue carries a newer schema marker', async () => {
+    const { machine, tickets } = harness({
+      issueLabels: ['pipenzo:queued', 'pipenzo:schema-v2'],
+    });
+    const before = tickets.get(TICKET_ID);
+
+    await expect(machine.read(TICKET_ID)).rejects.toMatchObject({ code: 'schema_read_only' });
+
+    // Nothing about the local record moved -- a refusal, not a silent skip.
+    expect(tickets.get(TICKET_ID)).toBe(before);
+  });
+
+  it('refuses a transition on the same ticket, and never calls setIssueLabels', async () => {
+    const { machine, github, tickets } = harness({
+      issueLabels: ['pipenzo:queued', 'pipenzo:schema-v2'],
+    });
+
+    await expect(machine.transition(TICKET_ID, 'pipenzo:working')).rejects.toMatchObject({
+      code: 'schema_read_only',
+    });
+
+    // The write this guard exists to prevent never reached GitHub, and the local lane is untouched.
+    expect(github.calls.filter((call) => call.method === 'setIssueLabels')).toHaveLength(0);
+    expect(tickets.get(TICKET_ID)?.lane).toBe('queued');
+  });
+
+  it('names the offending marker in the error details', async () => {
+    const { machine } = harness({ issueLabels: ['pipenzo:queued', 'pipenzo:schema-v3'] });
+
+    await expect(machine.read(TICKET_ID)).rejects.toMatchObject({
+      code: 'schema_read_only',
+      details: ['pipenzo:schema-v3'],
+    });
+  });
+
+  it('is unmoved by an ordinary unrecognised pipenzo label -- only a schema marker triggers it', async () => {
+    // Same fixture as the "ignores an unknown pipenzo-prefixed label" test above: a future *state*
+    // label is silently dropped, not a read-only trip. Only `pipenzo:schema-v<N>` is special-cased.
+    const { machine } = harness({
+      issueLabels: ['pipenzo:queued', 'pipenzo:some-future-state'],
+    });
+
+    await expect(machine.read(TICKET_ID)).resolves.toMatchObject({ ticket: { lane: 'queued' } });
+  });
+
+  it("does not trip on this build's own marker, pipenzo:schema-v1", async () => {
+    const { machine, github } = harness({
+      issueLabels: ['pipenzo:queued', 'pipenzo:schema-v1'],
+    });
+
+    const result = await machine.transition(TICKET_ID, 'pipenzo:working');
+
+    expect(result.ticket.lane).toBe('working');
+    expect(github.calls.filter((call) => call.method === 'setIssueLabels')).toHaveLength(1);
+  });
+
+  it('an ordinary transition with no schema marker at all still writes normally', async () => {
+    // The harness's default fixture carries no `pipenzo:schema-v*` label at all -- this is the
+    // "normal write still works" case the guard must not regress.
+    const { machine, github, tickets } = harness();
+
+    const result = await machine.transition(TICKET_ID, 'pipenzo:working');
+
+    expect(result.ticket.lane).toBe('working');
+    expect(tickets.get(TICKET_ID)?.lane).toBe('working');
+    expect(github.calls.filter((call) => call.method === 'setIssueLabels')).toHaveLength(1);
+  });
+});

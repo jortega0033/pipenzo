@@ -197,6 +197,14 @@ export const PIPENZO_TICKET_ERROR_CODES = [
    * hide that the authoritative side has already moved.
    */
   'store_failed',
+  /**
+   * The issue carries a `pipenzo:schema-vN` marker newer than this build understands (issue #74,
+   * split of #20's "Label-schema versioning and migration path"). Mirrors
+   * `PipenzoPhaseMachineErrorCode`'s own `schema_read_only` -- see
+   * `apps/daemon/src/pipenzo-phase-machine.ts` for where it is actually raised. Both `read` and
+   * `transition` can report it: the guard trips before either route's own GitHub call.
+   */
+  'schema_read_only',
 ] as const;
 
 export const pipenzoTicketErrorV1Schema = z

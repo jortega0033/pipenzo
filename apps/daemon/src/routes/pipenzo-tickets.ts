@@ -69,6 +69,10 @@ const TICKET_ERROR_STATUS: Record<PipenzoTicketErrorCodeV1, number> = {
   github_failed: 502,
   // The daemon's own disk, not an upstream: a 5xx that is genuinely this process's fault.
   store_failed: 500,
+  // Same family as illegal_transition: the request was well formed, but the machine refuses to act
+  // on this ticket's current state -- here because that state is a schema this build cannot safely
+  // read or write, not because the transition itself was illegal.
+  schema_read_only: 409,
 };
 
 function fail(reply: FastifyReply, error: PipenzoPhaseMachineError): void {
