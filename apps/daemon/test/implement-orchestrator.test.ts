@@ -412,6 +412,118 @@ describe('the daemon-owned post-session commit', () => {
   });
 });
 
+describe('issue #192 -- implement_empty_diff', () => {
+  const POINTER = async (): Promise<string> => 'gitdir: /repos/pipenzo/.git/worktrees/issue-180';
+
+  /** Nothing landed on the ticket branch: the branch still resolves to the base commit. */
+  const emptyBranch = { 'rev-parse-branch': ok(`${BASE_SHA}\n`) };
+
+  it('throws once a completed session left nothing staged, instead of reporting an empty success', async () => {
+    const h = harness({ git: { ...emptyBranch, diff: ok('') } });
+    const sessions: ImplementSessionPort = {
+      run: async () => ({ sessionId: SESSION_ID, ended: Promise.resolve('completed' as const) }),
+    };
+    const error = await rejection(() =>
+      new ImplementOrchestrator({
+        worktrees: h.worktrees,
+        sessions,
+        runGit: h.runGit,
+        readGitPointer: POINTER,
+      }).implement({ spec: spec(), repositoryPath: REPO_PATH, provider: 'claude' }),
+    );
+    expect(error.code).toBe('implement_empty_diff');
+    expect(error.message).toContain('completed');
+  });
+
+  it('throws for a failed session too -- same symptom, different cause, same detector', async () => {
+    const h = harness({ git: emptyBranch });
+    const sessions: ImplementSessionPort = {
+      run: async () => ({ sessionId: SESSION_ID, ended: Promise.resolve('failed' as const) }),
+    };
+    const error = await rejection(() =>
+      new ImplementOrchestrator({
+        worktrees: h.worktrees,
+        sessions,
+        runGit: h.runGit,
+        readGitPointer: POINTER,
+      }).implement({ spec: spec(), repositoryPath: REPO_PATH, provider: 'claude' }),
+    );
+    expect(error.code).toBe('implement_empty_diff');
+    expect(error.message).toContain('failed');
+    // A failed session's edits are never staged or committed -- see #commitWork's own comment.
+    expect(h.gitInvocations.some((argv) => argv.includes('add') || argv.includes('commit'))).toBe(
+      false,
+    );
+  });
+
+  it('throws for a cancelled session too', async () => {
+    const h = harness({ git: emptyBranch });
+    const sessions: ImplementSessionPort = {
+      run: async () => ({ sessionId: SESSION_ID, ended: Promise.resolve('cancelled' as const) }),
+    };
+    const error = await rejection(() =>
+      new ImplementOrchestrator({
+        worktrees: h.worktrees,
+        sessions,
+        runGit: h.runGit,
+        readGitPointer: POINTER,
+      }).implement({ spec: spec(), repositoryPath: REPO_PATH, provider: 'claude' }),
+    );
+    expect(error.code).toBe('implement_empty_diff');
+  });
+
+  it('does not throw while the session is still running, even with nothing committed yet', async () => {
+    const h = harness({ git: emptyBranch });
+    const ended = new Promise<ImplementSessionEnd>(() => {
+      // Deliberately never settles: this session is still running.
+    });
+    const sessions: ImplementSessionPort = { run: async () => ({ sessionId: SESSION_ID, ended }) };
+    const orch = new ImplementOrchestrator({
+      worktrees: h.worktrees,
+      sessions,
+      runGit: h.runGit,
+      readGitPointer: POINTER,
+    });
+    const started = await orch.start({ spec: spec(), repositoryPath: REPO_PATH, provider: 'claude' });
+    const collected = await orch.collect(started);
+    expect(collected).toEqual({ headCommit: BASE_SHA, commits: [], sessionState: 'running' });
+  });
+
+  it('reports sessionState completed alongside the commits when the session wrote something', async () => {
+    const h = harness();
+    const sessions: ImplementSessionPort = {
+      run: async () => ({ sessionId: SESSION_ID, ended: Promise.resolve('completed' as const) }),
+    };
+    const result = await new ImplementOrchestrator({
+      worktrees: h.worktrees,
+      sessions,
+      runGit: h.runGit,
+      readGitPointer: POINTER,
+    }).implement({ spec: spec(), repositoryPath: REPO_PATH, provider: 'claude' });
+    expect(result.sessionState).toBe('completed');
+    expect(result.commits.length).toBeGreaterThan(0);
+  });
+
+  /**
+   * Backward compatibility for a session this daemon process never observed ending (a restarted
+   * daemon, or -- as here -- a port that cannot report `ended` at all, same as every harness above
+   * this describe block uses by default). `collect()` cannot tell "still running" from "already
+   * finished" without an observation to go on, so it reports the branch as git has it and leaves
+   * `sessionState` off, rather than guessing and either throwing wrongly or claiming a state it
+   * does not know.
+   */
+  it('reports an empty result without sessionState, and without throwing, when the session is unobservable', async () => {
+    const h = harness({ git: emptyBranch });
+    const result = await orchestrator(h).implement({
+      spec: spec(),
+      repositoryPath: REPO_PATH,
+      provider: 'claude',
+    });
+    expect(result.commits).toEqual([]);
+    expect(result.sessionState).toBeUndefined();
+  });
+});
+
 describe('buildImplementPrompt', () => {
   it('tells the implementer the daemon commits, so it does not try to', () => {
     const prompt = buildImplementPrompt(spec());

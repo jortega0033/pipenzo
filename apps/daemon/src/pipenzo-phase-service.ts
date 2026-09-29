@@ -318,8 +318,14 @@ export class PipenzoPhaseService {
         baseCommit: request.baseCommit,
         headCommit: collected.headCommit,
         commits: [...collected.commits],
+        // Issue #192. Omitted exactly when `collect()` omits it -- see its doc comment and
+        // `ImplementCollectResult.sessionState` for when that is.
+        ...(collected.sessionState !== undefined ? { sessionState: collected.sessionState } : {}),
       };
     } catch (error) {
+      // `ImplementOrchestratorError('implement_empty_diff', …)` from `collect()` arrives here like
+      // every other orchestrator failure and is mapped by `IMPLEMENT_CODES` -- no special case
+      // needed, which is the point of routing every module's errors through one `toPhaseError`.
       throw toPhaseError(error);
     }
   }
@@ -595,6 +601,7 @@ const IMPLEMENT_CODES: Record<ImplementOrchestratorError['code'], PipenzoPhaseEr
   branch_failed: 'branch_failed',
   commit_failed: 'commit_failed',
   session_failed: 'session_failed',
+  implement_empty_diff: 'implement_empty_diff',
 };
 
 const REVIEW_CODES: Record<ReviewGateError['code'], PipenzoPhaseErrorCodeV1> = {

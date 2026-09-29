@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import {
   refineSpecV1Schema,
   type CreateSessionV2Request,
+  type ImplementSessionStateV1,
   type OwnedWorktreeV2,
   type PermissionActionV2,
   type ProviderId,
@@ -61,7 +62,13 @@ export type ImplementOrchestratorErrorCode =
   | 'worktree_secret_risk'
   | 'branch_failed'
   | 'commit_failed'
-  | 'session_failed';
+  | 'session_failed'
+  /**
+   * Issue #192: the implement session reached a terminal state and left nothing on the ticket
+   * branch -- `headCommit === baseCommit`. `collect()` throws this instead of returning an
+   * empty-but-successful result once it has itself observed the session end; see its doc comment.
+   */
+  | 'implement_empty_diff';
 
 export class ImplementOrchestratorError extends Error {
   readonly code: ImplementOrchestratorErrorCode;
@@ -224,6 +231,14 @@ export interface ImplementCollectResult {
    * finished yet.
    */
   readonly commits: readonly string[];
+  /**
+   * Issue #192. Set whenever this daemon process has itself observed the dispatched session, i.e.
+   * there is a `PendingCommit` record for this worktree path. Omitted when it cannot know --
+   * `#pendingCommits` is not persisted, so a daemon restart leaves a mid-flight session
+   * unobservable, and `collect()` falls back to reporting the branch exactly as git has it, same as
+   * before this field existed.
+   */
+  readonly sessionState?: ImplementSessionStateV1;
 }
 
 /** What the daemon's post-session commit step did, held until `collect()` reports it. */
@@ -331,6 +346,8 @@ export interface ImplementResult {
   readonly headCommit: string;
   /** Commits the session produced, oldest first. Empty means the agent committed nothing. */
   readonly commits: readonly string[];
+  /** Issue #192 -- see `ImplementCollectResult.sessionState`. */
+  readonly sessionState?: ImplementSessionStateV1;
   readonly sessionId: string;
 }
 
@@ -420,6 +437,15 @@ export class ImplementOrchestrator {
    * ended, first waits for the daemon's own commit of its work, and surfaces a refused or failed
    * commit as `commit_failed` rather than as an empty, successful-looking result. While the session
    * is still running it reads the branch as it is and never commits partial work.
+   *
+   * Issue #192: once the session has ended (by this daemon's own observation, not a guess) and
+   * `commits` comes back empty, that is no longer reported as an ordinary success either. It throws
+   * `implement_empty_diff` instead -- `headCommit === baseCommit` after a completed, failed or
+   * cancelled session is exactly the shape #191's incident left behind: a session that terminated
+   * cleanly, returned a session id, and touched nothing. A session this daemon cannot observe (no
+   * `PendingCommit` record -- a restarted daemon, or a port with no way to see termination) gets none
+   * of this: `sessionState` is left off the result and the branch is reported exactly as git has it,
+   * the same as before this ticket, because there is no terminal event to have detected.
    */
   async collect(request: ImplementCollectRequest): Promise<ImplementCollectResult> {
     if (!request.worktreePath.trim()) {
@@ -429,15 +455,25 @@ export class ImplementOrchestrator {
       throw new ImplementOrchestratorError('invalid_request', 'a full base commit sha is required');
     }
     const pending = this.#pendingCommits.get(request.worktreePath);
-    if (pending?.sessionEnded) {
-      const outcome = await pending.outcome;
-      if (outcome.kind === 'refused') throw outcome.error;
+    let sessionState: ImplementSessionStateV1 | undefined;
+    if (pending) {
+      if (pending.sessionEnded) {
+        const outcome = await pending.outcome;
+        if (outcome.kind === 'refused') throw outcome.error;
+        sessionState = outcome.kind === 'session_not_completed' ? outcome.end : 'completed';
+      } else {
+        sessionState = 'running';
+      }
     }
     const headCommit = await this.#resolveHead(request.worktreePath, request.branch);
-    return {
-      headCommit,
-      commits: await this.#commitsSince(request.worktreePath, request.baseCommit, headCommit),
-    };
+    const commits = await this.#commitsSince(request.worktreePath, request.baseCommit, headCommit);
+    if (sessionState !== undefined && sessionState !== 'running' && commits.length === 0) {
+      throw new ImplementOrchestratorError(
+        'implement_empty_diff',
+        `the implement session ended (${sessionState}) without committing any changes`,
+      );
+    }
+    return { headCommit, commits, ...(sessionState !== undefined ? { sessionState } : {}) };
   }
 
   /** Start plus collect, for a caller that can await the whole phase (the composition tests do). */
