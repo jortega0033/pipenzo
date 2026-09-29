@@ -12,7 +12,8 @@ import {
 } from '../components/primitives/AppShell.js';
 import { Banner } from '../components/primitives/Banner.js';
 import { Button } from '../components/primitives/Button.js';
-import { Card } from '../components/primitives/Card.js';
+import { Card, CardFoot, CardMeta } from '../components/primitives/Card.js';
+import { Chip } from '../components/primitives/Chip.js';
 import { SyncStatusPill, type SyncStatus } from '../components/primitives/SyncStatusPill.js';
 import { BoardImplementDialog } from './BoardImplementDialog.js';
 import { BoardScreen } from './BoardScreen.js';
@@ -50,9 +51,12 @@ import { usePipenzoTickets } from './use-pipenzo-tickets.js';
  *
  * ## What a ticket card looks like here
  *
- * `Card` -- the bare id/title anatomy, no variant body -- not a guess at #85/#86/#87's lane-specific
- * card content. Those tickets own what a Working/Needs-human/Ready-for-review card actually shows;
- * this shell only has to prove real tickets reach real lanes.
+ * `Card` -- id/title, plus the one status chip and foot line each lane's own real data already
+ * supports without guessing (Working's phase, Ready-for-review's branch). This still is not a
+ * guess at #85/#86/#87's lane-specific card content: Needs-human's seven variants (#86) and
+ * Working's capacity pill/held cards (#85) stay their own tickets, and nothing here invents data
+ * those tickets are meant to add -- `ticket.phase`/`ticket.worktree` are already real fields on
+ * `PipenzoTicketViewV1`, not placeholders standing in for a schema that does not exist yet.
  *
  * ## Queued cards open the Implement dialog (issue #342)
  *
@@ -90,8 +94,15 @@ export function PipenzoAppShell({
       <Card
         id={`#${ticket.issueNumber}`}
         title={ticket.title ?? `Issue #${ticket.issueNumber}`}
+        chip={laneChip(ticket)}
         {...(ticket.lane === 'queued' ? { onClick: () => setImplementing(ticket) } : {})}
-      />
+      >
+        {ticket.lane === 'ready-for-review' && ticket.worktree && (
+          <CardFoot>
+            <CardMeta icon="git-branch">{ticket.worktree.branch}</CardMeta>
+          </CardFoot>
+        )}
+      </Card>
     ),
     [],
   );
@@ -161,4 +172,27 @@ export function PipenzoAppShell({
       )}
     </AppShell>
   );
+}
+
+/**
+ * The one status chip a card gets (issue #274's follow-on: a full backlog audit found every lane's
+ * card rendering identically regardless of real state, even though `Card` already supports one).
+ * Queued and Needs-human are left without one on purpose: Queued's next action is already the
+ * whole card (clicking it opens Implement, which is state enough), and Needs-human's real variant
+ * set -- which label, which of the seven reasons -- is #86's own ticket, not a guess made here.
+ *
+ * `Chip.tsx`'s own doc comment already names these tones for these lanes
+ * (`Refining/Implementing/Reviewing... (warn)`, `Ready for review (ok)`); this reads them off the
+ * one real field each lane's ticket already carries (`phase`) rather than inventing new ones.
+ */
+function laneChip(ticket: PipenzoTicketViewV1) {
+  if (ticket.lane === 'working') {
+    const label =
+      ticket.phase === 'refine' ? 'refining' : ticket.phase === 'review' ? 'reviewing' : 'implementing';
+    return <Chip tone="warn">{label}</Chip>;
+  }
+  if (ticket.lane === 'ready-for-review') {
+    return <Chip tone="ok">ready for review</Chip>;
+  }
+  return undefined;
 }
