@@ -315,7 +315,7 @@ export class ReviewGatesRunner {
     // outcome this run can return, not only a fully-approved one -- a diff that fails its own
     // build but touches `apps/daemon/src/auth/` is still a HIGH-risk diff.
     const touched = parseTouchedFiles(diff.numstat);
-    const risk = classifyReviewRisk(touched.keys());
+    const risk = classifyReviewRisk(diff.numstat);
 
     const deterministic = await this.#runDeterministicGates(request, generated, scope);
     const blocking = deterministic.filter(
@@ -937,6 +937,24 @@ function renamedNewPath(path: string): string {
   return arrow === -1 ? path : path.slice(arrow + 4);
 }
 
+/**
+ * The rename counterpart's old path -- undoes the same `old => new`/`prefix{old => new}suffix`
+ * compaction as `renamedNewPath`, but keeps the *pre*-rename half instead of the post-rename one.
+ * `classifyReviewRisk` needs both halves of a rename: grading only the new path lets a diff move a
+ * `security/`/`auth/`/`migrations/` file to an innocuous-looking name in the same commit and drop
+ * out of HIGH grading entirely, even though the diff's content is exactly the sensitive file's own
+ * history. A non-renamed line has no old path distinct from its new one, so this is a no-op for it.
+ */
+function renamedOldPath(path: string): string {
+  const braced = path.match(/^(.*)\{(.*) => .*\}(.*)$/);
+  if (braced) {
+    const [, prefix, oldPart, suffix] = braced;
+    return `${prefix}${oldPart}${suffix}`;
+  }
+  const arrow = path.indexOf(' => ');
+  return arrow === -1 ? path : path.slice(0, arrow);
+}
+
 /** The diff's own touched-file list (issue #319), reusing the same numstat parse as the diff-scope
  * gate rather than a second, driftable pass over it. */
 function parseTouchedFiles(numstat: string): Map<string, TouchedFileInfo> {
@@ -958,10 +976,19 @@ function parseTouchedFiles(numstat: string): Map<string, TouchedFileInfo> {
  * only the one half of the classifier's rule that a diff's own paths can honestly answer: HIGH when
  * a touched file matches the security/auth/migration pattern, LOW otherwise. MEDIUM never comes out
  * of this function -- see the `risk` field's own doc comment on `ReviewReportV1`.
+ *
+ * Takes the raw numstat, not `parseTouchedFiles`' already-collapsed-to-new-path map: a rename's old
+ * path matters here even though it doesn't for finding-location verification. Grading only the new
+ * path would let `apps/daemon/src/auth/token-store.ts` renamed to `apps/daemon/src/creds.ts` in the
+ * same diff drop out of HIGH entirely, despite the diff being exactly that sensitive file's own
+ * history -- `renamedOldPath`/`renamedNewPath` are both checked per line for this reason.
  */
-function classifyReviewRisk(touchedPaths: Iterable<string>): RiskGrade {
-  for (const path of touchedPaths) {
-    if (matchesSensitivePath(path)) return 'high';
+function classifyReviewRisk(numstat: string): RiskGrade {
+  for (const { path } of parseNumstat(numstat)) {
+    // Both halves of a rename, not just the new path -- see `renamedOldPath`'s own doc comment.
+    if (matchesSensitivePath(renamedNewPath(path)) || matchesSensitivePath(renamedOldPath(path))) {
+      return 'high';
+    }
   }
   return 'low';
 }

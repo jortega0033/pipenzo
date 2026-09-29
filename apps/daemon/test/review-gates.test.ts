@@ -630,6 +630,33 @@ describe('ReviewGatesRunner — publish-gate risk grade (issue #157/#160)', () =
     expect(report.outcome).toBe('review_input_incomplete');
     expect(report.risk).toBe('high');
   });
+
+  it('grades high when a sensitive path is renamed away, not just when it stays', async () => {
+    // git's default numstat compaction: only the new path is visible unless both halves are
+    // checked -- a diff renaming a security-sensitive file to an innocuous name must still grade
+    // high on the old path, or moving a file becomes a way to dodge HIGH review.
+    const h = harness({
+      specTests: true,
+      numstat: '5\t0\tapps/daemon/src/auth/token-store.ts => apps/daemon/src/creds.ts',
+    });
+    const report = await h.runner.run(request());
+    expect(report.risk).toBe('high');
+  });
+
+  it('grades high on the brace-shorthand rename form too', async () => {
+    const h = harness({
+      specTests: true,
+      numstat: '5\t0\tapps/daemon/src/{auth => }/token-store.ts',
+    });
+    const report = await h.runner.run(request());
+    expect(report.risk).toBe('high');
+  });
+
+  it('grades low when neither half of a rename is sensitive', async () => {
+    const h = harness({ specTests: true, numstat: '5\t0\tsrc/old-name.ts => src/new-name.ts' });
+    const report = await h.runner.run(request());
+    expect(report.risk).toBe('low');
+  });
 });
 
 describe('ReviewGatesRunner — finding-location verification (issue #319)', () => {
