@@ -1059,6 +1059,7 @@ describe('AgentDockClient.v2 pipenzo phases', () => {
       headCommit: HEAD,
       implementerTier: 'mid',
       deterministic: [{ id: 'build', status: 'failed', summary: 'pnpm build exited 1', durationMs: 5 }],
+      risk: 'low',
     };
     const { client } = routeClient(200, report);
     await expect(
