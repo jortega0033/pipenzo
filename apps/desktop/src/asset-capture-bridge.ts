@@ -77,6 +77,7 @@ export function installAssetCaptureBridge(): void {
     pipenzoTicketTransition: async () => { throw new Error('ticket transition is not available while capturing assets'); },
     pipenzoListTickets: async () => { throw new Error('ticket list is not available while capturing assets'); },
     pipenzoRecordRiskApprovalOutcome: async () => { throw new Error('recording a risk approval outcome is not available while capturing assets'); },
+    pipenzoRecordRiskActivityOpened: async () => { throw new Error('recording an activity-opened reset is not available while capturing assets'); },
     captureMediumApproval: async () => { throw new Error('the medium-approval flow is not available while capturing assets'); },
     decideMediumApproval: async () => { throw new Error('the medium-approval flow is not available while capturing assets'); },
     mediumApprovalStatus: async () => { throw new Error('the medium-approval flow is not available while capturing assets'); },

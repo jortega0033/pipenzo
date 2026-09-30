@@ -189,6 +189,10 @@ export function createDemoBridge(): AgentDockBridge {
     pipenzoRecordRiskApprovalOutcome: async () => {
       throw new Error('recording a risk approval outcome is not available in demo mode');
     },
+    // Issue #119, same reasoning: no real ticket store for the Activity screen's reset to write to.
+    pipenzoRecordRiskActivityOpened: async () => {
+      throw new Error('recording an activity-opened reset is not available in demo mode');
+    },
     captureMediumApproval: async () => {
       throw new Error('the medium-approval flow is not available in demo mode');
     },

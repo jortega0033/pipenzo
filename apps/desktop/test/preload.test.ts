@@ -109,6 +109,8 @@ describe('electron/preload.ts — real bridge (AD-07)', () => {
         // Issues #95/#97/#98: the risk-approval outcome, and the MEDIUM inline approval flow's own
         // four calls.
         'pipenzoRecordRiskApprovalOutcome',
+        // Issue #119: the reset rule's other half -- opening a ticket's Activity view.
+        'pipenzoRecordRiskActivityOpened',
         'captureMediumApproval',
         'decideMediumApproval',
         'mediumApprovalStatus',

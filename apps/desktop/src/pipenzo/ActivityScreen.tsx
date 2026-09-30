@@ -1,5 +1,6 @@
-import { Fragment, type ReactNode } from 'react';
+import { Fragment, useEffect, type ReactNode } from 'react';
 import type { PipenzoTicketViewV1 } from '@agent-dock/shared';
+import { getBridge } from '../bridge.js';
 import { Banner } from '../components/primitives/Banner.js';
 import { Empty } from '../components/primitives/Empty.js';
 import {
@@ -31,6 +32,20 @@ import {
  *   `precommits[]`/`risk`, which #118 owns). `renderEntry` is required, not defaulted, for the same
  *   reason `BoardScreen`'s `renderTicket` is: a placeholder row built here would be a design #118
  *   gets to guess wrong before it exists.
+ *
+ * ## The "I've looked" reset (issue #119)
+ *
+ * `risk-score.ts`'s asymmetric reset rule names exactly two events that zero a ticket's cumulative
+ * risk score: a HIGH approval, or opening the ticket's Activity view. This screen is that view --
+ * the unfiltered, every-ticket trail `Activity.dc.html` draws -- so mounting it is the "I've looked"
+ * signal for every ticket it is handed at that moment, not just whichever one a person scrolls to.
+ * The reset fires once, on mount, over the `tickets` this component was first given -- deliberately
+ * not re-run when `tickets` changes later (a live update arriving while the screen stays open is
+ * background sync, not a second "I've looked"), which is what keeps this to exactly one
+ * `pipenzoRecordRiskActivityOpened` call per ticket per genuine open rather than one per render. The
+ * call is fire-and-forget: a failed reset must never block this shell from rendering the trail it
+ * exists to show, the same reasoning `pipenzo-tickets.ts`'s own best-effort worktree-cleanup call
+ * uses for not letting a side effect's failure fail the response it rides along with.
  */
 export function ActivityScreen({
   tickets = [],
@@ -50,6 +65,21 @@ export function ActivityScreen({
    *  it without mocking global time. */
   now?: Date;
 }) {
+  useEffect(() => {
+    const ticketIds = new Set(tickets.map((ticket) => ticket.ticketId));
+    for (const ticketId of ticketIds) {
+      void getBridge()
+        .pipenzoRecordRiskActivityOpened({ ticketId })
+        .catch(() => {
+          // Best-effort -- see this file's own doc comment on why a failed reset must not block
+          // the screen.
+        });
+    }
+    // Mount-once, deliberately: see this file's own doc comment for why re-running this on every
+    // `tickets` update would turn a live board sync into a second, spurious "I've looked".
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const { entries, undated } = toActivityFeed(tickets);
 
   if (entries.length === 0 && undated.length === 0) {

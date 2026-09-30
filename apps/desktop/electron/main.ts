@@ -45,6 +45,7 @@ import {
   pipenzoLessonDeleteRequestV1Schema,
   pipenzoTicketReadRequestV1Schema,
   pipenzoTicketTransitionRequestV1Schema,
+  pipenzoTicketRiskActivityOpenedRequestV1Schema,
   pipenzoTicketRiskApprovalOutcomeRequestV1Schema,
   pipenzoMediumApprovalCaptureRequestV1Schema,
   pipenzoMediumApprovalDecideRequestV1Schema,
@@ -1541,6 +1542,14 @@ handle('daemon:pipenzo-risk-approval-outcome', async (_event, input: unknown) =>
   if (!client) throw new Error('daemon is not ready yet');
   return client.v2.pipenzo.recordRiskApprovalOutcome(
     pipenzoTicketRiskApprovalOutcomeRequestV1Schema.parse(input),
+  );
+});
+// The reset rule's other half (issue #119): opening a ticket's Activity view. Same boundary as the
+// risk-approval-outcome handler directly above.
+handle('daemon:pipenzo-risk-activity-opened', async (_event, input: unknown) => {
+  if (!client) throw new Error('daemon is not ready yet');
+  return client.v2.pipenzo.recordRiskActivityOpened(
+    pipenzoTicketRiskActivityOpenedRequestV1Schema.parse(input),
   );
 });
 handle('daemon:pipenzo-medium-approval-capture', async (_event, input: unknown) => {
