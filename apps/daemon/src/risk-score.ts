@@ -102,6 +102,13 @@ function crossedThreshold(score: number): boolean {
   return score >= RISK_SCORE_THRESHOLD;
 }
 
+/** Freezes a freshly-built state object before returning it. `readonly` in `RiskScoreState` is
+ * compile-time only; this is defense-in-depth so a caller that (accidentally or otherwise) mutates
+ * a returned state in place can't corrupt this module's own invariants for the next call. */
+function freezeState(state: RiskScoreState): RiskScoreState {
+  return Object.freeze(state);
+}
+
 /**
  * Grades one classified action against the running score, applying weight accumulation and, when
  * applicable, promotion. Call this once per action, in the order the actions actually happened —
@@ -111,11 +118,19 @@ function crossedThreshold(score: number): boolean {
  * HIGH is handled first and unconditionally: a real HIGH classification always grades HIGH,
  * regardless of `state.pendingPromotion` or `state.score`, and a pending promotion earmarked for
  * "the next MEDIUM" is left untouched by it — a HIGH action neither consumes nor clears it.
+ *
+ * **Fails closed, not open, on anything that isn't a real `RiskGrade`.** `grade` is a closed TS
+ * union at every typed call site, but this is exactly the kind of safety-critical gating logic
+ * (CLAUDE.md hard rule 3) where a value that slips past the type system at a daemon/IPC boundary
+ * must not silently fall through into a weaker path. The alternative of letting anything other
+ * than `'high'`/`'low'` implicitly mean "treat as medium" would violate this module's own stated
+ * property — promotion and grading may only ever tighten gating, never loosen it by omission — so
+ * an unrecognized grade throws instead of being graded as MEDIUM.
  */
 export function gradeAction(state: RiskScoreState, grade: RiskGrade): GradeActionResult {
   if (grade === 'high') {
     return {
-      state: { score: state.score + RISK_SCORE_WEIGHTS.high, pendingPromotion: state.pendingPromotion },
+      state: freezeState({ score: state.score + RISK_SCORE_WEIGHTS.high, pendingPromotion: state.pendingPromotion }),
       effectiveGrade: 'high',
       promoted: false,
     };
@@ -123,26 +138,32 @@ export function gradeAction(state: RiskScoreState, grade: RiskGrade): GradeActio
 
   if (grade === 'low') {
     return {
-      state: { score: state.score + RISK_SCORE_WEIGHTS.low, pendingPromotion: state.pendingPromotion },
+      state: freezeState({ score: state.score + RISK_SCORE_WEIGHTS.low, pendingPromotion: state.pendingPromotion }),
       effectiveGrade: 'low',
       promoted: false,
     };
   }
 
-  // grade === 'medium'
-  if (state.pendingPromotion) {
+  if (grade === 'medium') {
+    if (state.pendingPromotion) {
+      return {
+        state: freezeState({ score: state.score, pendingPromotion: false }),
+        effectiveGrade: 'high',
+        promoted: true,
+      };
+    }
+    const score = state.score + RISK_SCORE_WEIGHTS.medium;
     return {
-      state: { score: state.score, pendingPromotion: false },
-      effectiveGrade: 'high',
-      promoted: true,
+      state: freezeState({ score, pendingPromotion: crossedThreshold(score) }),
+      effectiveGrade: 'medium',
+      promoted: false,
     };
   }
-  const score = state.score + RISK_SCORE_WEIGHTS.medium;
-  return {
-    state: { score, pendingPromotion: crossedThreshold(score) },
-    effectiveGrade: 'medium',
-    promoted: false,
-  };
+
+  // Exhaustiveness check: `grade` is `never` here for every real `RiskGrade`. Reaching this line
+  // means a caller passed something outside the type at runtime -- fail closed rather than guess.
+  const unrecognized: never = grade;
+  throw new Error(`gradeAction: unrecognized risk grade ${JSON.stringify(unrecognized)}`);
 }
 
 /**
@@ -152,7 +173,7 @@ export function gradeAction(state: RiskScoreState, grade: RiskGrade): GradeActio
  */
 export function recordMismatch(state: RiskScoreState): RiskScoreState {
   const score = state.score + RISK_SCORE_WEIGHTS.mismatch;
-  return { score, pendingPromotion: state.pendingPromotion || crossedThreshold(score) };
+  return freezeState({ score, pendingPromotion: state.pendingPromotion || crossedThreshold(score) });
 }
 
 /**

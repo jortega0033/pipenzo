@@ -82,7 +82,8 @@ describe('gradeAction — threshold crossing promotes the next MEDIUM specifical
     ['a HIGH action', 'high'],
   ])('does not let an intervening %s consume or clear the pending promotion', (_label, grade) => {
     const between = gradeAction(atThreshold(), grade);
-    expect(between.state.pendingPromotion).toBe(true);
+    expect(between.effectiveGrade).toBe(grade); // the intervening action is graded normally...
+    expect(between.state.pendingPromotion).toBe(true); // ...but the pending promotion survives it
     const medium = gradeAction(between.state, 'medium');
     expect(medium.effectiveGrade).toBe('high');
     expect(medium.promoted).toBe(true);
@@ -173,6 +174,13 @@ describe('invariant: a real HIGH classification can never be bypassed, softened,
     for (const grade of ['low', 'medium', 'high'] as const) {
       expect(severity[gradeAction(pending, grade).effectiveGrade]).toBeGreaterThanOrEqual(severity[grade]);
     }
+  });
+
+  it('fails closed, not open, on a grade outside the RiskGrade union -- it never silently degrades to MEDIUM gating', () => {
+    // A value that slips past the type system at a daemon/IPC boundary must not fall through into
+    // the weaker MEDIUM path; it must throw rather than be treated as an ordinary, less-scrutinized
+    // action.
+    expect(() => gradeAction(INITIAL_RISK_SCORE_STATE, 'bogus' as RiskGrade)).toThrow();
   });
 
   it('a reset (HIGH approval or opening Activity) only ever zeroes the score -- it cannot itself suppress or weaken a later HIGH grade', () => {
