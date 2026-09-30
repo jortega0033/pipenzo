@@ -53,11 +53,10 @@ export function registerPipenzoConcurrencyRoutes(
         // Only reached once the write above has actually landed -- see the module comment.
         limiter.setLimit(next.executionLimit);
         reply.send(pipenzoConcurrencySettingsV1Schema.parse(next));
-      } catch (error) {
-        reply.code(500).send({
-          code: 'write_failed',
-          error: error instanceof Error ? error.message : 'could not save concurrency settings',
-        });
+      } catch {
+        // Fixed message, matching every other Pipenzo write route: a 500 here is the daemon's own
+        // failure, not something to describe from a caught error's internals.
+        reply.code(500).send({ code: 'write_failed', error: 'could not save concurrency settings' });
       }
     },
   );
