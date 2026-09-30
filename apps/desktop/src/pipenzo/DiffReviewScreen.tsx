@@ -18,6 +18,8 @@ import { TextField } from '../components/primitives/TextField.js';
 import { buildCommitMessage, buildConfidenceLine, buildPullRequestInput } from './pr-assembly.js';
 import { DiffFileList } from './DiffFileList.js';
 import { DiffReviewHead, type DiffReviewStat } from './DiffReviewHead.js';
+import { deriveLessonPrefill } from './lesson-prompt.js';
+import { LessonPrompt } from './LessonPrompt.js';
 import { RailPanel } from './RailPanel.js';
 import { buildReviewRequest, useImplementPoll, useReviewAction } from './use-implement-review.js';
 import { useAsyncAction } from './use-async-action.js';
@@ -44,6 +46,11 @@ import { useAsyncAction } from './use-async-action.js';
  *    instructions" field is a real, typed value rather than an invented default.
  * 4. **Publish**, via `DiffReviewHead`'s own `PublishActions` -- unchanged, already wired to the
  *    real `publishPipenzo` gate.
+ *
+ * A completed push or an opened pull request is also the closest concrete "this ticket has
+ * resolved" event that exists as running code today (issue #104) -- `TicketDetail.dc.html`'s own
+ * `.lesson` prompt is offered once `resolved` flips true, pre-filled from this run's own
+ * `ReviewReportV1` (`lesson-prompt.ts`'s `deriveLessonPrefill`), never from an invented string.
  */
 export function DiffReviewScreen({
   ticket,
@@ -65,6 +72,17 @@ export function DiffReviewScreen({
   const poll = useImplementPoll(started);
   const diff = useImplementDiff(poll.status === 'ready' ? poll.commits : undefined);
   const review = useReviewAction();
+  // Flips once, on a real push or a real opened pull request -- never reset back to false, so
+  // `LessonPrompt` below is offered exactly once for this screen's one run (issue #104).
+  const [resolved, setResolved] = useState(false);
+  const handlePushed = (result: PipenzoPublishResultV1) => {
+    setResolved(true);
+    onPushed?.(result);
+  };
+  const handlePullRequestOpened = (result: PipenzoPublishResultV1) => {
+    setResolved(true);
+    onPullRequestOpened?.(result);
+  };
 
   if (poll.status === 'polling') {
     return (
@@ -144,9 +162,12 @@ export function DiffReviewScreen({
         pullRequest={pullRequest}
         onDiscardClick={onDiscardClick}
         discardDisabled={discardDisabled}
-        onPushed={onPushed}
-        onPullRequestOpened={onPullRequestOpened}
+        onPushed={handlePushed}
+        onPullRequestOpened={handlePullRequestOpened}
       />
+      {resolved && (
+        <LessonPrompt repo={ticket.repo} issueNumber={ticket.num} prefill={deriveLessonPrefill(report)} />
+      )}
       <div className="body">
         <DiffFileList diffText={result.diffText} />
         <div className="rail">
