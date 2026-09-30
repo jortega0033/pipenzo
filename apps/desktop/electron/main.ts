@@ -41,6 +41,7 @@ import {
   pipenzoIdeaDraftRequestV1Schema,
   pipenzoConnectReposRequestV1Schema,
   pipenzoRepoCheckoutRequestV1Schema,
+  pipenzoLessonCreateV1Schema,
   pipenzoLessonDeleteRequestV1Schema,
   pipenzoTicketReadRequestV1Schema,
   pipenzoTicketTransitionRequestV1Schema,
@@ -1323,11 +1324,17 @@ handle('daemon:pipenzo-resolve-checkout', async (_event, input: unknown) => {
   return client.v2.pipenzo.resolveCheckout(pipenzoRepoCheckoutRequestV1Schema.parse(input));
 });
 
-// Local, human-gated lesson memory (issue #18): Settings' lesson-memory panel (issue #128).
-// Ordinary daemon routes, same reasoning as the picker channels above -- no credential in main.
+// Local, human-gated lesson memory (issue #18): Settings' lesson-memory panel (issue #128) and
+// `LessonPrompt`'s "Save lesson" button (issue #104). Ordinary daemon routes, same reasoning as the
+// picker channels above -- no credential in main.
 handle('daemon:pipenzo-lessons', async () => {
   if (!client) throw new Error('daemon is not ready yet');
   return client.v2.pipenzo.lessons();
+});
+
+handle('daemon:pipenzo-create-lesson', async (_event, input: unknown) => {
+  if (!client) throw new Error('daemon is not ready yet');
+  return client.v2.pipenzo.createLesson(pipenzoLessonCreateV1Schema.parse(input));
 });
 
 handle('daemon:pipenzo-delete-lesson', async (_event, input: unknown) => {

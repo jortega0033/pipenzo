@@ -73,6 +73,7 @@ import type {
   PipenzoRepoCheckoutRequestV1,
   PipenzoRepoCheckoutResultV1,
   PipenzoLessonListV1,
+  PipenzoLessonCreateV1,
   PipenzoLessonDeleteRequestV1,
   PipenzoDeviceCodeV1,
   PipenzoDeviceOutcomeV1,
@@ -309,11 +310,13 @@ export interface AgentDockBridge {
    */
   resolvePipenzoCheckout(input: PipenzoRepoCheckoutRequestV1): Promise<PipenzoRepoCheckoutResultV1>;
   /**
-   * Local, human-gated lesson memory (issue #18): Settings' lesson-memory panel (issue #128).
-   * `pipenzoDeleteLesson` removes exactly the one lesson named and answers with the daemon's own
-   * list afterward, never a filtered view this renderer assembled itself.
+   * Local, human-gated lesson memory (issue #18): Settings' lesson-memory panel (issue #128) and
+   * `LessonPrompt`'s "Save lesson" button (issue #104). `pipenzoCreateLesson`/`pipenzoDeleteLesson`
+   * each answer with the daemon's own list afterward, never a filtered view this renderer assembled
+   * itself.
    */
   pipenzoLessons(): Promise<PipenzoLessonListV1>;
+  pipenzoCreateLesson(input: PipenzoLessonCreateV1): Promise<PipenzoLessonListV1>;
   pipenzoDeleteLesson(input: PipenzoLessonDeleteRequestV1): Promise<PipenzoLessonListV1>;
   selectAndUploadAttachments(sessionId?: string): Promise<AttachmentMetadataV2[]>;
   validateStructuredOutput(input: StructuredWorkflowRequestV2): Promise<StructuredWorkflowResultV2>;

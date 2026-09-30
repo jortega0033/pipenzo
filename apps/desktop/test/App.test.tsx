@@ -185,6 +185,7 @@ function installBridge(overrides: Partial<AgentDockBridge> = {}): {
     pipenzoConnectRepos: vi.fn(),
     resolvePipenzoCheckout: vi.fn(),
     pipenzoLessons: vi.fn().mockResolvedValue({ lessons: [] }),
+    pipenzoCreateLesson: vi.fn(),
     pipenzoDeleteLesson: vi.fn(),
     startGitHubDeviceFlow: vi.fn(),
     openGitHubDeviceVerification: vi.fn().mockResolvedValue(undefined),
