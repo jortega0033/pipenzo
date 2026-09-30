@@ -65,11 +65,10 @@ export const pipenzoLessonListV1Schema = z
 export type PipenzoLessonListV1 = z.infer<typeof pipenzoLessonListV1Schema>;
 
 /**
- * What `LessonPrompt`'s "Save lesson" hands the store (issue #104's own concern to wire up — this
- * type exists now only so the store has a typed `add()` to be wired to, rather than a shape guessed
- * at when that ticket lands). `id`/`savedAt`/`schemaVersion` are the store's to generate, not the
- * caller's: a client-supplied id would let two saves collide, and a client-supplied timestamp would
- * let the "saved … ago" reading drift from when the write actually happened.
+ * What `LessonPrompt`'s "Save lesson" hands `POST /v2/pipenzo/lessons` (issue #104).
+ * `id`/`savedAt`/`schemaVersion` are the store's to generate, not the caller's: a client-supplied id
+ * would let two saves collide, and a client-supplied timestamp would let the "saved … ago" reading
+ * drift from when the write actually happened.
  */
 export const pipenzoLessonCreateV1Schema = z
   .object({

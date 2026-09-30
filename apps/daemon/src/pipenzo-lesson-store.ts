@@ -48,10 +48,9 @@ async function syncParentDirectory(directory: string): Promise<void> {
  * ## Why `list()`/`add()`/`remove()`, not `replace()`
  *
  * `ConnectedReposStore.replace()` fits a picker whose checkboxes describe the complete selection.
- * Lessons are the opposite shape: `add()` is one save (issue #104's "Save lesson" button, wired to
- * this store's `create()` counterpart once that ticket lands), and `remove()` is one per-item delete
- * (issue #128's Settings row) — "it is not an index", so removing one lesson must never require
- * resending every other one.
+ * Lessons are the opposite shape: `add()` is one save (issue #104's "Save lesson" button, wired
+ * through `POST /v2/pipenzo/lessons`), and `remove()` is one per-item delete (issue #128's Settings
+ * row) — "it is not an index", so removing one lesson must never require resending every other one.
  *
  * ## Why a corrupt file reads as an empty list, exactly like `ConnectedReposStore`
  *
@@ -100,10 +99,10 @@ export class LessonStore {
     return this.#cached;
   }
 
-  /** Saves one lesson and returns it. Not reachable from any route yet — issue #104 is what wires
-   *  `LessonPrompt`'s "Save lesson" to this method; it exists now so that ticket has a store to call
-   *  rather than one it has to design from scratch, and so this store's own tests can seed data
-   *  without reaching around the public API to write a file by hand. */
+  /** Saves one lesson and returns it. Reachable from `POST /v2/pipenzo/lessons`
+   *  (`routes/pipenzo-lessons.ts`), which `LessonPrompt`'s "Save lesson" button calls (issue #104).
+   *  This store's own tests also call it directly, to seed data without reaching around the public
+   *  API to write a file by hand. */
   async add(input: PipenzoLessonCreateV1): Promise<PipenzoLessonV1> {
     return this.#mutate((current) => {
       if (current.lessons.length >= PIPENZO_MAX_LESSONS) {

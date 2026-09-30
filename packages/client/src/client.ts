@@ -127,6 +127,7 @@ import {
   pipenzoRepoCheckoutRequestV1Schema,
   pipenzoRepoCheckoutResultV1Schema,
   pipenzoLessonListV1Schema,
+  pipenzoLessonCreateV1Schema,
   pipenzoLessonDeleteRequestV1Schema,
   pipenzoTicketReadRequestV1Schema,
   pipenzoTicketTransitionRequestV1Schema,
@@ -161,6 +162,7 @@ import {
   type PipenzoRepoCheckoutRequestV1,
   type PipenzoRepoCheckoutResultV1,
   type PipenzoLessonListV1,
+  type PipenzoLessonCreateV1,
   type PipenzoLessonDeleteRequestV1,
   type PipenzoTicketReadRequestV1,
   type PipenzoTicketTransitionRequestV1,
@@ -462,12 +464,13 @@ export class AgentDockClient {
         input: PipenzoRepoCheckoutRequestV1,
       ): Promise<PipenzoRepoCheckoutResultV1> => this.resolvePipenzoCheckoutV1(input),
       /**
-       * Local, human-gated lesson memory (issue #18): Settings' lesson-memory panel (issue #128).
-       * `lessons` is a local read with no GitHub cost behind it, matching `connectedRepos` above.
-       * `deleteLesson` is the only write this client exposes yet — saving one is issue #104's own
-       * screen to wire up, not this one's.
+       * Local, human-gated lesson memory (issue #18): `lessons`/`deleteLesson` back Settings' panel
+       * (issue #128); `createLesson` is `LessonPrompt`'s "Save lesson" button (issue #104). All
+       * three are a local read/write with no GitHub cost behind them.
        */
       lessons: (): Promise<PipenzoLessonListV1> => this.pipenzoLessonsV1(),
+      createLesson: (input: PipenzoLessonCreateV1): Promise<PipenzoLessonListV1> =>
+        this.createPipenzoLessonV1(input),
       deleteLesson: (input: PipenzoLessonDeleteRequestV1): Promise<PipenzoLessonListV1> =>
         this.deletePipenzoLessonV1(input),
       /**
@@ -1180,6 +1183,25 @@ export class AgentDockClient {
       pipenzoLessonListV1Schema,
       'pipenzo saved lessons',
       { method: 'GET' },
+      { expectedStatus: 200 },
+    );
+  }
+
+  private async createPipenzoLessonV1(input: PipenzoLessonCreateV1): Promise<PipenzoLessonListV1> {
+    const parsed = validateInput(
+      pipenzoLessonCreateV1Schema,
+      input,
+      'pipenzo lesson create request',
+    );
+    return this.requestV2(
+      '/v2/pipenzo/lessons',
+      pipenzoLessonListV1Schema,
+      'pipenzo saved lessons',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(parsed),
+      },
       { expectedStatus: 200 },
     );
   }

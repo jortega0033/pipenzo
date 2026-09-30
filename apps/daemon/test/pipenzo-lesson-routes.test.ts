@@ -77,6 +77,83 @@ describe('GET /v2/pipenzo/lessons', () => {
   });
 });
 
+describe('POST /v2/pipenzo/lessons', () => {
+  it('saves a lesson and answers with the daemon own list afterward', async () => {
+    const { app, store } = buildApp();
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v2/pipenzo/lessons',
+      headers: auth,
+      payload: {
+        repo: 'octocat/hello-world',
+        issueNumber: 94,
+        text: 'On Windows the host sets Path, not PATH.',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.lessons).toHaveLength(1);
+    expect(body.lessons[0]).toMatchObject({
+      repo: 'octocat/hello-world',
+      issueNumber: 94,
+      text: 'On Windows the host sets Path, not PATH.',
+    });
+    // ...and it actually persisted, not just the in-request echo.
+    expect((await store.list()).lessons).toEqual(body.lessons);
+  });
+
+  it('refuses a malformed body without echoing the validator', async () => {
+    const { app } = buildApp();
+    for (const payload of [
+      { repo: 'octocat/a', issueNumber: 1 },
+      { repo: 'not a repo ref', issueNumber: 1, text: 'x' },
+      { repo: 'octocat/a', issueNumber: -1, text: 'x' },
+      { repo: 'octocat/a', issueNumber: 1, text: '' },
+      { repo: 'octocat/a', issueNumber: 1, text: 'x', extra: true },
+      {},
+    ]) {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/lessons',
+        headers: auth,
+        payload,
+      });
+      expect(response.statusCode).toBe(400);
+      expect(response.json().code).toBe('invalid_request');
+      expect(JSON.stringify(response.json())).not.toMatch(/zod|issues|invalid_type/i);
+    }
+  });
+
+  it('refuses an unauthenticated caller', async () => {
+    const { app } = buildApp();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v2/pipenzo/lessons',
+      payload: { repo: 'octocat/a', issueNumber: 1, text: 'x' },
+    });
+    expect(response.statusCode).toBe(401);
+  });
+
+  it('does not exist on a daemon assembled without a lesson store', async () => {
+    const registry = new ProviderRegistry();
+    const app = buildServer({
+      registry,
+      sessionManager: new SessionManager(registry, noopLogger),
+      token: TOKEN,
+      logger: noopLogger,
+    });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v2/pipenzo/lessons',
+      headers: auth,
+      payload: { repo: 'octocat/a', issueNumber: 1, text: 'x' },
+    });
+    expect(response.statusCode).toBe(404);
+  });
+});
+
 describe('POST /v2/pipenzo/lessons/delete', () => {
   it('removes exactly the named lesson and answers with the list afterward', async () => {
     const { app, store } = buildApp();

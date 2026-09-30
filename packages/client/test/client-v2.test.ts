@@ -1261,6 +1261,35 @@ describe('AgentDockClient.v2 pipenzo phases', () => {
     expect((call?.[1] as RequestInit | undefined)?.method ?? 'GET').toBe('GET');
   });
 
+  /** Issue #104: `LessonPrompt`'s "Save lesson" button. */
+  it('saves a lesson over POST /v2/pipenzo/lessons', async () => {
+    const { client, fetchImpl } = routeClient(200, { lessons: [] });
+
+    await expect(
+      client.v2.pipenzo.createLesson({
+        repo: 'jortega0033/pipenzo',
+        issueNumber: 94,
+        text: 'On Windows the host sets Path, not PATH.',
+      }),
+    ).resolves.toEqual({ lessons: [] });
+    const call = fetchImpl.mock.calls.find(([url]) => String(url).endsWith('/v2/pipenzo/lessons'));
+    expect((call?.[1] as RequestInit).method).toBe('POST');
+    expect(JSON.parse(String((call?.[1] as RequestInit).body))).toEqual({
+      repo: 'jortega0033/pipenzo',
+      issueNumber: 94,
+      text: 'On Windows the host sets Path, not PATH.',
+    });
+  });
+
+  it('rejects a malformed lesson create request before ever calling fetch', async () => {
+    const fetchImpl = vi.fn();
+    const client = makeClient(fetchImpl);
+    await expect(
+      client.v2.pipenzo.createLesson({ repo: 'not a repo', issueNumber: 94, text: 'x' }),
+    ).rejects.toBeInstanceOf(ValidationError);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it('deletes exactly the named lesson over POST /v2/pipenzo/lessons/delete', async () => {
     const { client, fetchImpl } = routeClient(200, { lessons: [] });
 
