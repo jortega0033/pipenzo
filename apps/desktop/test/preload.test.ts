@@ -152,6 +152,10 @@ describe('electron/preload.ts — real bridge (AD-07)', () => {
         'pipenzoLessons',
         'pipenzoCreateLesson',
         'pipenzoDeleteLesson',
+        // Bounded local concurrency's settings (issue #126): Settings' Concurrency panel. Ordinary
+        // daemon routes, same reasoning as the lesson/repo channels above.
+        'pipenzoConcurrencySettings',
+        'pipenzoUpdateConcurrencySettings',
         'selectAndUploadAttachments',
         'validateStructuredOutput',
         'createSession',

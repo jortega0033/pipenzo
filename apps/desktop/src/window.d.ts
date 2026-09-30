@@ -75,6 +75,8 @@ import type {
   PipenzoLessonListV1,
   PipenzoLessonCreateV1,
   PipenzoLessonDeleteRequestV1,
+  PipenzoConcurrencySettingsV1,
+  PipenzoConcurrencySettingsUpdateV1,
   PipenzoDeviceCodeV1,
   PipenzoDeviceOutcomeV1,
   PipenzoGitHubConnectionV1,
@@ -417,6 +419,14 @@ export interface AgentDockBridge {
   pipenzoLessons(): Promise<PipenzoLessonListV1>;
   pipenzoCreateLesson(input: PipenzoLessonCreateV1): Promise<PipenzoLessonListV1>;
   pipenzoDeleteLesson(input: PipenzoLessonDeleteRequestV1): Promise<PipenzoLessonListV1>;
+  /**
+   * Bounded local concurrency's settings (issue #126): Settings' Concurrency panel. An ordinary
+   * daemon route, same reasoning as the lesson/repo channels above -- no credential in main.
+   */
+  pipenzoConcurrencySettings(): Promise<PipenzoConcurrencySettingsV1>;
+  pipenzoUpdateConcurrencySettings(
+    input: PipenzoConcurrencySettingsUpdateV1,
+  ): Promise<PipenzoConcurrencySettingsV1>;
   selectAndUploadAttachments(sessionId?: string): Promise<AttachmentMetadataV2[]>;
   validateStructuredOutput(input: StructuredWorkflowRequestV2): Promise<StructuredWorkflowResultV2>;
   createSession(input: CreateSessionInput): Promise<AgentSession>;

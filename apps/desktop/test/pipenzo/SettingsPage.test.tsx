@@ -29,6 +29,12 @@ function installBridge() {
     pipenzoLessons: vi.fn().mockResolvedValue({ lessons: [] }),
     pipenzoCreateLesson: vi.fn(),
     pipenzoDeleteLesson: vi.fn(),
+    pipenzoConcurrencySettings: vi
+      .fn()
+      .mockResolvedValue({ schemaVersion: 1, executionLimit: 2, runBudget: 'unlimited' }),
+    pipenzoUpdateConcurrencySettings: vi.fn(),
+    pipenzoListTickets: vi.fn().mockResolvedValue({ tickets: [], workingLaneCapacity: 2 }),
+    onPipenzoPhaseEvent: () => () => {},
     pipenzoGitHubConnection: vi
       .fn()
       .mockResolvedValue({ state: 'connected', login: 'octocat', source: 'vault' }),
@@ -90,6 +96,17 @@ describe('SettingsPage', () => {
     expect(await screen.findByText('Lesson memory')).toBeInTheDocument();
     const leftColumn = container.querySelectorAll('.cols > .col')[0];
     const panels = leftColumn?.querySelectorAll('.form-panel');
-    expect(panels).toHaveLength(2);
+    expect(panels).toHaveLength(3);
+  });
+
+  it('hosts the concurrency panel, between connected repos and lesson memory', async () => {
+    installBridge();
+    const { container } = renderSettingsPage();
+    await screen.findByText('octocat/hello-world');
+
+    expect(await screen.findByText('Concurrency')).toBeInTheDocument();
+    const leftColumn = container.querySelectorAll('.cols > .col')[0];
+    const panels = leftColumn?.querySelectorAll('.form-panel');
+    expect(panels?.[1]?.textContent).toContain('Concurrency');
   });
 });

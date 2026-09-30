@@ -1,5 +1,6 @@
 import { AccountPanel } from './AccountPanel.js';
 import { AppearancePanel } from './AppearancePanel.js';
+import { ConcurrencyPanel } from './ConcurrencyPanel.js';
 import { ConnectedReposPanel } from './ConnectedReposPanel.js';
 import { LessonsPanel } from './LessonsPanel.js';
 
@@ -23,9 +24,9 @@ import { LessonsPanel } from './LessonsPanel.js';
  * flex column (`gap: 16px`), so a column holding more than one panel stacks them with the same
  * rhythm the canvas draws — which is why `ConnectedReposPanel` and `LessonsPanel` share one `.col`
  * below rather than each claiming a grid cell of their own. The left column holds Connected repos
- * (#125) then Lesson memory (#128), in the canvas's own order; the right holds Account / Providers /
- * Disconnect (#130). The remaining canvas panels are their own still-open tickets — Concurrency
- * (#126) and Default mode (#127) slot into the left column between the two below once built,
+ * (#125), Concurrency (#126) and Lesson memory (#128), in the canvas's own order; the right holds
+ * Account / Providers / Disconnect (#130). The remaining canvas panels are their own still-open
+ * tickets — Default mode (#127) slots into the left column below Concurrency once built,
  * Notifications (#129) into the right — and each drops into its column here rather than restating
  * the layout.
  *
@@ -61,6 +62,7 @@ export function SettingsPage({
             openPickerToken={openRepoPickerToken}
             onRepositoriesChange={onConnectedReposChange}
           />
+          <ConcurrencyPanel />
           <LessonsPanel />
         </div>
         <div className="col">

@@ -129,6 +129,8 @@ import {
   pipenzoLessonListV1Schema,
   pipenzoLessonCreateV1Schema,
   pipenzoLessonDeleteRequestV1Schema,
+  pipenzoConcurrencySettingsV1Schema,
+  pipenzoConcurrencySettingsUpdateV1Schema,
   pipenzoTicketReadRequestV1Schema,
   pipenzoTicketTransitionRequestV1Schema,
   pipenzoTicketReconciliationV1Schema,
@@ -183,6 +185,8 @@ import {
   type PipenzoLessonListV1,
   type PipenzoLessonCreateV1,
   type PipenzoLessonDeleteRequestV1,
+  type PipenzoConcurrencySettingsV1,
+  type PipenzoConcurrencySettingsUpdateV1,
   type PipenzoTicketReadRequestV1,
   type PipenzoTicketTransitionRequestV1,
   type PipenzoTicketReconciliationV1,
@@ -511,6 +515,17 @@ export class AgentDockClient {
         this.createPipenzoLessonV1(input),
       deleteLesson: (input: PipenzoLessonDeleteRequestV1): Promise<PipenzoLessonListV1> =>
         this.deletePipenzoLessonV1(input),
+      /**
+       * Bounded local concurrency's settings (issue #126): Settings' Concurrency panel.
+       * `concurrencySettings` reads the workspace's execution-limit / run-budget values;
+       * `updateConcurrencySettings` changes one or both and takes effect immediately -- the daemon
+       * updates its live enforcement the moment the write lands, not on next restart.
+       */
+      concurrencySettings: (): Promise<PipenzoConcurrencySettingsV1> =>
+        this.pipenzoConcurrencySettingsV1(),
+      updateConcurrencySettings: (
+        input: PipenzoConcurrencySettingsUpdateV1,
+      ): Promise<PipenzoConcurrencySettingsV1> => this.updatePipenzoConcurrencySettingsV1(input),
       /**
        * The phase machine's ticket surface (issue #188). `readTicket` reconciles a ticket against
        * its issue's labels and returns the result; `transitionTicket` writes a new `pipenzo:` label
@@ -1239,6 +1254,37 @@ export class AgentDockClient {
       '/v2/pipenzo/repos/connected',
       pipenzoConnectedReposV1Schema,
       'pipenzo connected repositories',
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(parsed),
+      },
+      { expectedStatus: 200 },
+    );
+  }
+
+  private async pipenzoConcurrencySettingsV1(): Promise<PipenzoConcurrencySettingsV1> {
+    return this.requestV2(
+      '/v2/pipenzo/concurrency',
+      pipenzoConcurrencySettingsV1Schema,
+      'pipenzo concurrency settings',
+      { method: 'GET' },
+      { expectedStatus: 200 },
+    );
+  }
+
+  private async updatePipenzoConcurrencySettingsV1(
+    input: PipenzoConcurrencySettingsUpdateV1,
+  ): Promise<PipenzoConcurrencySettingsV1> {
+    const parsed = validateInput(
+      pipenzoConcurrencySettingsUpdateV1Schema,
+      input,
+      'pipenzo concurrency settings update request',
+    );
+    return this.requestV2(
+      '/v2/pipenzo/concurrency',
+      pipenzoConcurrencySettingsV1Schema,
+      'pipenzo concurrency settings',
       {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },

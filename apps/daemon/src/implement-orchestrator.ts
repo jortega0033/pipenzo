@@ -14,6 +14,11 @@ import {
 import { runGitCommand, type GitCommandResult, type PipenzoGitRunner } from './pipenzo-git.js';
 import { WorktreeManagerError, isSecretShapedPath } from './worktree-manager.js';
 import type { OwnedWorktreeLocation } from './publish-service.js';
+import {
+  PipenzoExecutionLimiterError,
+  type PipenzoExecutionLease,
+  type PipenzoExecutionLimiter,
+} from './pipenzo-execution-limiter.js';
 
 /**
  * The Implement phase (Pipenzo issue #180) — "spec in, worktree with commits out", and nothing
@@ -70,7 +75,13 @@ export type ImplementOrchestratorErrorCode =
    * empty-but-successful result once it has itself observed the session end; see its doc comment.
    */
   | 'implement_empty_diff'
-  | 'diff_unavailable';
+  | 'diff_unavailable'
+  /**
+   * Issue #126: the workspace's configured execution limit is already at capacity. Thrown before
+   * any worktree is created or branch cut -- see `pipenzo-execution-limiter.ts` for why this is a
+   * refusal rather than a queue.
+   */
+  | 'execution_limit_exceeded';
 
 export class ImplementOrchestratorError extends Error {
   readonly code: ImplementOrchestratorErrorCode;
@@ -393,17 +404,27 @@ export class ImplementOrchestrator {
    */
   readonly #pendingCommits = new Map<string, PendingCommit>();
 
+  readonly #executionLimiter?: PipenzoExecutionLimiter;
+
   constructor(options: {
     worktrees: ImplementWorktreeManager;
     sessions: ImplementSessionPort;
     runGit?: PipenzoGitRunner;
     /** Test seam for the `.git` pointer check in `#commitWork`. */
     readGitPointer?: GitPointerReader;
+    /**
+     * Epic #5's execution limit (issue #126). Optional, matching every other Pipenzo surface's own
+     * convention: an orchestrator built without one (every test that predates this ticket, and any
+     * daemon assembled for a route test) still dispatches exactly as before, with no ceiling of its
+     * own beyond agentdock's generic `SessionAdmissionController` one layer down.
+     */
+    executionLimiter?: PipenzoExecutionLimiter;
   }) {
     this.#worktrees = options.worktrees;
     this.#sessions = options.sessions;
     this.#runGit = options.runGit ?? runGitCommand;
     this.#readGitPointer = options.readGitPointer ?? readGitPointer;
+    this.#executionLimiter = options.executionLimiter;
   }
 
   /**
@@ -424,33 +445,69 @@ export class ImplementOrchestrator {
     }
     const branch = ticketBranchName(spec.issue.number);
 
-    const preview = await this.#preview(request, branch);
-    if (preview.secretRisk && request.acknowledgeIncludeSecretRisk !== true) {
-      throw new ImplementOrchestratorError(
-        'worktree_secret_risk',
-        'this repository’s .worktreeinclude would copy a secret-shaped file into the agent worktree',
-        preview.includeFiles.slice(0, 20),
-      );
-    }
+    // Issue #126: acquired before any worktree is created or branch cut, and held for the whole
+    // in-flight window -- worktree setup is part of the same budget "how many tickets are actively
+    // Working" is meant to bound, not just the session itself. Thrown as a typed orchestrator error
+    // (never a bare `PipenzoExecutionLimiterError`) so every other caller of `start()` sees the same
+    // `ImplementOrchestratorError`/`code` shape it already handles for every other refusal here --
+    // note `acquire()` itself is inside the `try` below, not before it: thrown there too, it must
+    // still go through the same conversion rather than escape this method unwrapped.
+    let lease: PipenzoExecutionLease | undefined;
+    const releaseLease = (): void => lease?.release();
+    let leaseTransferred = false;
+    try {
+      lease = this.#executionLimiter?.acquire();
+      const preview = await this.#preview(request, branch);
+      if (preview.secretRisk && request.acknowledgeIncludeSecretRisk !== true) {
+        throw new ImplementOrchestratorError(
+          'worktree_secret_risk',
+          'this repository’s .worktreeinclude would copy a secret-shaped file into the agent worktree',
+          preview.includeFiles.slice(0, 20),
+        );
+      }
 
-    const worktree = await this.#createWorktree(request, branch);
-    const location = this.#worktrees.ownedLocation(worktree.id);
-    if (!location) {
-      throw new ImplementOrchestratorError(
-        'worktree_failed',
-        'the newly created worktree could not be located',
-      );
-    }
+      const worktree = await this.#createWorktree(request, branch);
+      const location = this.#worktrees.ownedLocation(worktree.id);
+      if (!location) {
+        throw new ImplementOrchestratorError(
+          'worktree_failed',
+          'the newly created worktree could not be located',
+        );
+      }
 
-    const baseCommit = await this.#createBranch(location.path, branch);
-    // Captured before the agent runs, so the commit step can tell whether the worktree still
-    // points at the repository the daemon created it from.
-    const gitPointer = await this.#readGitPointer(location.path);
-    const session = await this.#runSession(request, spec, location.path);
-    if (session.ended) {
-      this.#commitWhenEnded(location.path, branch, spec, gitPointer, session.ended);
-    }
+      const baseCommit = await this.#createBranch(location.path, branch);
+      // Captured before the agent runs, so the commit step can tell whether the worktree still
+      // points at the repository the daemon created it from.
+      const gitPointer = await this.#readGitPointer(location.path);
+      const session = await this.#runSession(request, spec, location.path);
+      if (session.ended) {
+        this.#commitWhenEnded(location.path, branch, spec, gitPointer, session.ended);
+        // The dispatch itself is what `start()` waits for, not the session's whole lifetime -- see
+        // this method's own doc comment. The lease transfers to the session's own end instead of
+        // being released here, so a concurrently-dispatched second ticket cannot claim this slot
+        // while the first ticket's Implement session is still actually running.
+        leaseTransferred = true;
+        void session.ended.then(releaseLease, releaseLease);
+      }
 
+      return this.#finishStart(worktree, location, branch, baseCommit, session);
+    } catch (error) {
+      if (error instanceof PipenzoExecutionLimiterError) {
+        throw new ImplementOrchestratorError('execution_limit_exceeded', error.message);
+      }
+      throw error;
+    } finally {
+      if (!leaseTransferred) releaseLease();
+    }
+  }
+
+  #finishStart(
+    worktree: OwnedWorktreeV2,
+    location: OwnedWorktreeLocation,
+    branch: string,
+    baseCommit: string,
+    session: ImplementSessionOutcome,
+  ): ImplementStartResult {
     return {
       worktreeId: worktree.id,
       worktreePath: location.path,

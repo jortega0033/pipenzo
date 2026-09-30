@@ -71,6 +71,10 @@ function installBridge(
     pipenzoLessons: vi.fn().mockResolvedValue({ lessons: [] }),
     pipenzoCreateLesson: vi.fn(),
     pipenzoDeleteLesson: vi.fn(),
+    pipenzoConcurrencySettings: vi
+      .fn()
+      .mockResolvedValue({ schemaVersion: 1, executionLimit: 2, runBudget: 'unlimited' }),
+    pipenzoUpdateConcurrencySettings: vi.fn(),
     pipenzoGitHubConnection: vi
       .fn()
       .mockResolvedValue({ state: 'connected', login: 'octocat', source: 'vault' }),
@@ -634,6 +638,10 @@ describe('PipenzoAppShell', () => {
       pipenzoLessons: vi.fn().mockResolvedValue({ lessons: [] }),
       pipenzoCreateLesson: vi.fn(),
       pipenzoDeleteLesson: vi.fn(),
+    pipenzoConcurrencySettings: vi
+      .fn()
+      .mockResolvedValue({ schemaVersion: 1, executionLimit: 2, runBudget: 'unlimited' }),
+    pipenzoUpdateConcurrencySettings: vi.fn(),
       pipenzoGitHubConnection: vi
         .fn()
         .mockResolvedValue({ state: 'connected', login: 'octocat', source: 'vault' }),

@@ -101,6 +101,8 @@ import {
   pipenzoLessonListV1Schema,
   pipenzoLessonCreateV1Schema,
   pipenzoLessonDeleteRequestV1Schema,
+  pipenzoConcurrencySettingsV1Schema,
+  pipenzoConcurrencySettingsUpdateV1Schema,
   pipenzoDeviceCodeV1Schema,
   pipenzoDeviceOutcomeV1Schema,
   pipenzoGitHubConnectionV1Schema,
@@ -201,6 +203,8 @@ import {
   type PipenzoLessonListV1,
   type PipenzoLessonCreateV1,
   type PipenzoLessonDeleteRequestV1,
+  type PipenzoConcurrencySettingsV1,
+  type PipenzoConcurrencySettingsUpdateV1,
   type PipenzoDeviceCodeV1,
   type PipenzoDeviceOutcomeV1,
   type PipenzoGitHubConnectionV1,
@@ -406,6 +410,14 @@ export interface AgentDockBridge {
   pipenzoLessons(): Promise<PipenzoLessonListV1>;
   pipenzoCreateLesson(input: PipenzoLessonCreateV1): Promise<PipenzoLessonListV1>;
   pipenzoDeleteLesson(input: PipenzoLessonDeleteRequestV1): Promise<PipenzoLessonListV1>;
+  /**
+   * Bounded local concurrency's settings (issue #126): Settings' Concurrency panel. An ordinary
+   * daemon route, same reasoning as the lesson/repo channels above -- no credential in main.
+   */
+  pipenzoConcurrencySettings(): Promise<PipenzoConcurrencySettingsV1>;
+  pipenzoUpdateConcurrencySettings(
+    input: PipenzoConcurrencySettingsUpdateV1,
+  ): Promise<PipenzoConcurrencySettingsV1>;
   selectAndUploadAttachments(sessionId?: string): Promise<AttachmentMetadataV2[]>;
   validateStructuredOutput(input: StructuredWorkflowRequestV2): Promise<StructuredWorkflowResultV2>;
   createSession(input: CreateSessionInput): Promise<AgentSession>;
@@ -1154,6 +1166,17 @@ const api: AgentDockBridge = {
     const parsed = pipenzoLessonDeleteRequestV1Schema.parse(input);
     return pipenzoLessonListV1Schema.parse(
       await ipcRenderer.invoke('daemon:pipenzo-delete-lesson', parsed),
+    );
+  },
+  async pipenzoConcurrencySettings() {
+    return pipenzoConcurrencySettingsV1Schema.parse(
+      await ipcRenderer.invoke('daemon:pipenzo-concurrency-settings'),
+    );
+  },
+  async pipenzoUpdateConcurrencySettings(input) {
+    const parsed = pipenzoConcurrencySettingsUpdateV1Schema.parse(input);
+    return pipenzoConcurrencySettingsV1Schema.parse(
+      await ipcRenderer.invoke('daemon:pipenzo-update-concurrency-settings', parsed),
     );
   },
   async startGitHubDeviceFlow() {

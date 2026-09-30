@@ -47,6 +47,9 @@ import type { LessonStore } from './pipenzo-lesson-store.js';
 import { registerPipenzoHealthRoutes, type PipenzoHealthSource } from './routes/pipenzo-health.js';
 import type { DaemonGitHubCredential } from './github-credential.js';
 import type { TicketWorktreeStorePort } from './pipenzo-worktree-lifecycle.js';
+import { registerPipenzoConcurrencyRoutes } from './routes/pipenzo-concurrency.js';
+import type { PipenzoConcurrencyStore } from './pipenzo-concurrency-store.js';
+import type { PipenzoExecutionLimiter } from './pipenzo-execution-limiter.js';
 
 export interface BuildServerOptions {
   registry: ProviderRegistry;
@@ -149,6 +152,15 @@ export interface BuildServerOptions {
    * `phaseService` it also needs, has no stack-approval routes at all.
    */
   stackApprovalStore?: StackApprovalStore;
+  /**
+   * Bounded local concurrency's settings (Pipenzo issue #126): Settings' Concurrency panel. Both
+   * optional, and only ever registered together -- the route has nothing to enforce a change
+   * against without the live limiter, and nothing to persist a change to without the store. A
+   * daemon assembled without either has no concurrency route at all, matching every other Pipenzo
+   * surface's own convention.
+   */
+  concurrencyStore?: PipenzoConcurrencyStore;
+  executionLimiter?: PipenzoExecutionLimiter;
 }
 
 /**
@@ -237,6 +249,7 @@ export function buildServer(opts: BuildServerOptions): FastifyInstance {
         opts.ticketStore && opts.worktreeManager
           ? { tickets: opts.ticketStore, worktrees: opts.worktreeManager }
           : undefined,
+        opts.executionLimiter,
       );
     if (opts.phaseMachine && opts.worktreeManager && opts.mediumApprovalStore)
       registerPipenzoMediumApprovalRoutes(
@@ -266,6 +279,8 @@ export function buildServer(opts: BuildServerOptions): FastifyInstance {
       registerPipenzoCheckoutRoutes(app, opts.connectedRepos, opts.repoCheckouts);
     if (opts.pipenzoHealth) registerPipenzoHealthRoutes(app, opts.pipenzoHealth);
     if (opts.lessonStore) registerPipenzoLessonRoutes(app, opts.lessonStore);
+    if (opts.concurrencyStore && opts.executionLimiter)
+      registerPipenzoConcurrencyRoutes(app, opts.concurrencyStore, opts.executionLimiter);
     if (opts.attachmentStore)
       registerV2MultimodalRoutes(app, opts.attachmentStore, opts.sessionManager);
   });

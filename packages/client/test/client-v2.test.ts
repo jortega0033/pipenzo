@@ -1314,6 +1314,50 @@ describe('AgentDockClient.v2 pipenzo phases', () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
+  /** Issue #126: Settings' Concurrency panel. */
+  it('reads concurrency settings over GET /v2/pipenzo/concurrency', async () => {
+    const settings = { schemaVersion: 1 as const, executionLimit: 2, runBudget: 'unlimited' as const };
+    const { client, fetchImpl } = routeClient(200, settings);
+
+    await expect(client.v2.pipenzo.concurrencySettings()).resolves.toEqual(settings);
+    const call = fetchImpl.mock.calls.find(([url]) =>
+      String(url).endsWith('/v2/pipenzo/concurrency'),
+    );
+    expect((call?.[1] as RequestInit | undefined)?.method ?? 'GET').toBe('GET');
+  });
+
+  it('updates concurrency settings over PUT /v2/pipenzo/concurrency', async () => {
+    const settings = { schemaVersion: 1 as const, executionLimit: 3, runBudget: 'unlimited' as const };
+    const { client, fetchImpl } = routeClient(200, settings);
+
+    await expect(
+      client.v2.pipenzo.updateConcurrencySettings({ executionLimit: 3 }),
+    ).resolves.toEqual(settings);
+    const call = fetchImpl.mock.calls.find(([url]) =>
+      String(url).endsWith('/v2/pipenzo/concurrency'),
+    );
+    expect((call?.[1] as RequestInit).method).toBe('PUT');
+    expect(JSON.parse(String((call?.[1] as RequestInit).body))).toEqual({ executionLimit: 3 });
+  });
+
+  it('rejects an out-of-range execution limit before ever calling fetch', async () => {
+    const fetchImpl = vi.fn();
+    const client = makeClient(fetchImpl);
+    await expect(
+      client.v2.pipenzo.updateConcurrencySettings({ executionLimit: 5 }),
+    ).rejects.toBeInstanceOf(ValidationError);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('rejects an empty concurrency settings update before ever calling fetch', async () => {
+    const fetchImpl = vi.fn();
+    const client = makeClient(fetchImpl);
+    await expect(client.v2.pipenzo.updateConcurrencySettings({})).rejects.toBeInstanceOf(
+      ValidationError,
+    );
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it('rejects an unvalidated phase request before ever calling fetch', async () => {
     const fetchImpl = vi.fn();
     const client = makeClient(fetchImpl);
