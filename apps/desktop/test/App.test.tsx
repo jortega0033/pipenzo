@@ -201,6 +201,10 @@ function installBridge(overrides: Partial<AgentDockBridge> = {}): {
       .fn()
       .mockResolvedValue({ schemaVersion: 1, executionLimit: 2, runBudget: 'unlimited' }),
     pipenzoUpdateConcurrencySettings: vi.fn(),
+    pipenzoCaptureSettings: vi
+      .fn()
+      .mockResolvedValue({ schemaVersion: 1, screenshotEnabled: true, escapeHatchEnabled: false }),
+    pipenzoUpdateCaptureSettings: vi.fn(),
     startGitHubDeviceFlow: vi.fn(),
     openGitHubDeviceVerification: vi.fn().mockResolvedValue(undefined),
     cancelGitHubDeviceFlow: vi.fn().mockResolvedValue(undefined),

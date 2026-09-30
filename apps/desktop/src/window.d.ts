@@ -77,6 +77,8 @@ import type {
   PipenzoLessonDeleteRequestV1,
   PipenzoConcurrencySettingsV1,
   PipenzoConcurrencySettingsUpdateV1,
+  PipenzoCaptureSettingsV1,
+  PipenzoCaptureSettingsUpdateV1,
   PipenzoDeviceCodeV1,
   PipenzoDeviceOutcomeV1,
   PipenzoGitHubConnectionV1,
@@ -427,6 +429,15 @@ export interface AgentDockBridge {
   pipenzoUpdateConcurrencySettings(
     input: PipenzoConcurrencySettingsUpdateV1,
   ): Promise<PipenzoConcurrencySettingsV1>;
+  /**
+   * The Models & gates screen's agent-captured panel (issue #470): the
+   * `screenshotEnabled`/`escapeHatchEnabled` preference. An ordinary daemon route, same reasoning
+   * as the lesson/repo/concurrency channels above -- no credential in main.
+   */
+  pipenzoCaptureSettings(): Promise<PipenzoCaptureSettingsV1>;
+  pipenzoUpdateCaptureSettings(
+    input: PipenzoCaptureSettingsUpdateV1,
+  ): Promise<PipenzoCaptureSettingsV1>;
   selectAndUploadAttachments(sessionId?: string): Promise<AttachmentMetadataV2[]>;
   validateStructuredOutput(input: StructuredWorkflowRequestV2): Promise<StructuredWorkflowResultV2>;
   createSession(input: CreateSessionInput): Promise<AgentSession>;

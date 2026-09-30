@@ -44,6 +44,7 @@ import {
   pipenzoLessonCreateV1Schema,
   pipenzoLessonDeleteRequestV1Schema,
   pipenzoConcurrencySettingsUpdateV1Schema,
+  pipenzoCaptureSettingsUpdateV1Schema,
   pipenzoTicketReadRequestV1Schema,
   pipenzoTicketTransitionRequestV1Schema,
   pipenzoTicketRiskActivityOpenedRequestV1Schema,
@@ -1365,6 +1366,19 @@ handle('daemon:pipenzo-update-concurrency-settings', async (_event, input: unkno
   return client.v2.pipenzo.updateConcurrencySettings(
     pipenzoConcurrencySettingsUpdateV1Schema.parse(input),
   );
+});
+
+// The Models & gates screen's agent-captured panel (issue #470): the
+// `screenshotEnabled`/`escapeHatchEnabled` preference. Ordinary daemon routes, same reasoning as
+// the lesson/repo/concurrency channels above -- no credential in main.
+handle('daemon:pipenzo-capture-settings', async () => {
+  if (!client) throw new Error('daemon is not ready yet');
+  return client.v2.pipenzo.captureSettings();
+});
+
+handle('daemon:pipenzo-update-capture-settings', async (_event, input: unknown) => {
+  if (!client) throw new Error('daemon is not ready yet');
+  return client.v2.pipenzo.updateCaptureSettings(pipenzoCaptureSettingsUpdateV1Schema.parse(input));
 });
 
 handle('daemon:list-providers', async () => {
