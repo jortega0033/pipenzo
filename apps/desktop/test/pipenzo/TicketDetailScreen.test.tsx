@@ -52,6 +52,28 @@ describe('TicketDetailScreen', () => {
     expect(stream).toHaveTextContent('event one');
   });
 
+  it('renders the lesson prompt slot after the stream children, only when supplied', () => {
+    const { rerender } = render(
+      <TicketDetailScreen ticketId="#94" title="t">
+        <span>event one</span>
+      </TicketDetailScreen>,
+    );
+    expect(screen.queryByTestId('lesson-prompt')).not.toBeInTheDocument();
+
+    rerender(
+      <TicketDetailScreen
+        ticketId="#94"
+        title="t"
+        lessonPrompt={<div data-testid="lesson-prompt">Worth remembering?</div>}
+      >
+        <span>event one</span>
+      </TicketDetailScreen>,
+    );
+    const stream = document.querySelector('.stream')!;
+    const children = Array.from(stream.children);
+    expect(children.at(-1)).toHaveAttribute('data-testid', 'lesson-prompt');
+  });
+
   it('lays out the four rail blocks in TicketDetail.dc.html order: Status, Cumulative risk, Model routing, Subscription headroom', () => {
     render(
       <TicketDetailScreen

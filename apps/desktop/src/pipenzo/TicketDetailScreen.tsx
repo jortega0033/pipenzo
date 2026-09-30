@@ -16,6 +16,10 @@ import type { ReactNode } from 'react';
  * Slots into `AppShell`'s `.main`, under its own `MainHead` -- neither built here, for the same
  * reason `BoardScreen.tsx`'s own doc comment gives: the nav that mounts this screen and the header
  * above it belong to the shell-wiring ticket (#341), not to the screen itself.
+ *
+ * `lessonPrompt` (issue #104) is the same kind of slot: `LessonPrompt` (`TicketDetail.dc.html`'s
+ * `.lesson`), placed at the foot of the stream once a caller's own ticket-resolved signal fires --
+ * this shell only reserves where it renders, the same deferral every other slot here already gets.
  */
 export function TicketDetailScreen({
   ticketId,
@@ -27,6 +31,7 @@ export function TicketDetailScreen({
   riskBlock,
   modelRoutingBlock,
   headroomBlock,
+  lessonPrompt,
   children,
 }: {
   /** e.g. `"#94"` -- `.h-id`, matching `TicketDetail.dc.html`'s `{{tId}}`. */
@@ -48,6 +53,9 @@ export function TicketDetailScreen({
   headroomBlock?: ReactNode;
   /** The centre activity stream's own content (#93). */
   children?: ReactNode;
+  /** `LessonPrompt`, or omitted before the ticket has resolved (or when #93's own activity stream
+   *  handles it inline instead -- either is a caller decision, not this shell's). */
+  lessonPrompt?: ReactNode;
 }) {
   return (
     <>
@@ -63,7 +71,10 @@ export function TicketDetailScreen({
         {runControls}
       </div>
       <div className="body">
-        <div className="stream">{children}</div>
+        <div className="stream">
+          {children}
+          {lessonPrompt}
+        </div>
         <div className="rail">
           {statusBlock}
           {riskBlock}
