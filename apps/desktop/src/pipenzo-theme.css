@@ -5421,4 +5421,167 @@
   .spin {
     animation: none !important;
   }
+
+  /* Activity feed container and row — ported verbatim from Activity.dc.html (issue #118, the
+     last split of epic #3). `.feed-head`/`.feed-count`/`.day`/`.feed` back ActivityScreen.tsx's
+     own classNames (#116); `.act*` backs ActivityRow.tsx, the real `renderEntry` this ticket
+     builds. One row per recorded ticket, not per mocked event -- see activity-grouping.ts's own
+     doc comment for why. */
+  .feed-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-shrink: 0;
+  }
+
+  .feed-count {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--color-text-faint);
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  .day {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--color-text-faint);
+    line-height: 1;
+    padding: 4px 4px 8px;
+    flex-shrink: 0;
+  }
+
+  .feed {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .act {
+    display: grid;
+    grid-template-columns: 48px 28px minmax(0, 1fr) 16px;
+    gap: 14px;
+    align-items: start;
+    padding: 12px 14px;
+    border-radius: var(--radius-pipenzo);
+    background: var(--color-surface);
+    cursor: pointer;
+    transition: background-color var(--ease-pipenzo);
+  }
+
+  .act:hover {
+    background: var(--color-surface-2);
+  }
+
+  .act:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  .act-time {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--color-text-faint);
+    line-height: 28px;
+    text-align: right;
+  }
+
+  .act-ic {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--color-surface-3);
+    color: var(--color-text-soft);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .act-ic.ok {
+    background: var(--color-ok);
+    color: var(--color-ok-fg);
+  }
+
+  .act-ic.warn {
+    background: var(--color-warn);
+    color: var(--color-warn-fg);
+  }
+
+  .act-ic.bad {
+    background: var(--color-danger);
+    color: var(--color-danger-fg);
+  }
+
+  .act-body {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .act-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    min-height: 28px;
+  }
+
+  .act-id {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--color-text-faint);
+    flex-shrink: 0;
+  }
+
+  .act-title {
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.3;
+    text-wrap: pretty;
+  }
+
+  .act:hover .act-title {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  .act-detail {
+    font-size: 12px;
+    color: var(--color-text-soft);
+    line-height: 1.5;
+    text-wrap: pretty;
+  }
+
+  .act-detail b {
+    color: var(--color-text);
+    font-weight: 700;
+  }
+
+  .act-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px 12px;
+    flex-wrap: wrap;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--color-text-faint);
+    line-height: 1.4;
+  }
+
+  .act-go {
+    color: var(--color-surface-4);
+    align-self: center;
+    transition: color var(--ease-pipenzo);
+  }
+
+  .act:hover .act-go {
+    color: var(--color-text-faint);
+  }
 }
