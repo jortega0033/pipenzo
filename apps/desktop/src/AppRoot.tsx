@@ -232,6 +232,18 @@ function PipenzoStartup({
                 : {}),
             })
           }
+          // Issue #82: the card has already snapped back by the time this fires (see
+          // `use-board-drag-drop.ts`) -- this toast is what tells the person the drag didn't
+          // actually move anything, the same "the screen that did it isn't there to say so" reasoning
+          // `onImplementFailed` above already uses for a dialog that closed itself.
+          onTicketTransitionFailed={(ticket, message) =>
+            toast.push({
+              tone: 'danger',
+              icon: 'warning',
+              title: `Couldn't move #${ticket.issueNumber}`,
+              description: message,
+            })
+          }
         />
       )}
       <ToastStack toasts={toast.visible} onDismiss={toast.dismiss} />

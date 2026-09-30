@@ -1,5 +1,16 @@
-import { Fragment, type ReactNode } from 'react';
-import type { PipenzoTicketViewV1 } from '@agent-dock/shared';
+import { Fragment, useCallback, useMemo, type ReactNode } from 'react';
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import { CSS } from '@dnd-kit/utilities';
+import type { PipenzoLaneV1, PipenzoTicketViewV1 } from '@agent-dock/shared';
 import {
   Board,
   Lane,
@@ -12,7 +23,66 @@ import {
 import { LaneCap } from '../components/primitives/LaneCap.js';
 import { Empty } from '../components/primitives/Empty.js';
 import { SkeletonBoard } from '../components/primitives/Skeleton.js';
-import { BOARD_LANES, ticketsByLane } from './board-lanes.js';
+import { BOARD_LANES, resolveBoardCardDrop, ticketsByLane } from './board-lanes.js';
+
+/**
+ * A lane's `.lane-cards` well, made into a dnd-kit drop target (issue #82). `BoardScreen`'s own
+ * "structural only" lanes (`Lane.tsx`'s own doc comment) still render exactly the same markup —
+ * this only adds the ref `useDroppable` needs and a class while a drag is hovering, both additive
+ * to `LaneCards`' existing contract (see that component's own doc comment on why `ref`/`className`
+ * are safe to add there).
+ */
+function DroppableLaneCards({ lane, children }: { lane: PipenzoLaneV1; children: ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({ id: lane });
+  return (
+    <LaneCards ref={setNodeRef} className={isOver ? 'drop-active' : undefined}>
+      {children}
+    </LaneCards>
+  );
+}
+
+/**
+ * One ticket card, made draggable (issue #82). Wraps whatever `renderTicket` returns rather than
+ * reaching into `Card.tsx` — that component is owned by #85/#86/#87's own card bodies, not this
+ * ticket, and `useDraggable`'s ref/listeners/attributes attach just as well to a wrapper as to the
+ * card's own root.
+ *
+ * `PointerSensor`'s own activation distance (`sensors` below) is what keeps `Card`'s existing
+ * `onClick` (open the ticket, or open Implement) working normally for a plain click — a drag only
+ * starts once the pointer has actually moved, so a click's own listeners never see a captured
+ * pointer they didn't ask for.
+ *
+ * `attributes` overrides `useDraggable`'s own default `role="button"`/`tabIndex=0` -- `Card.tsx`
+ * already renders exactly that (`role={onClick ? 'button' : undefined}`, `tabIndex={0}`) on its own
+ * root whenever it takes an `onClick`, which every card `renderTicket` produces does. Leaving dnd-
+ * kit's defaults in place would nest one ARIA button-role element inside another, and put two
+ * separate tab stops (and two separate Enter/Space handlers -- Card's own `onClick`, dnd-kit's own
+ * drag-start) on what is visually one card; `screen.getByRole('button', ...)` in every screen that
+ * clicks a card (this repo's own test suite included) would then match two elements instead of one.
+ * `role: 'group'`/`tabIndex: -1` make this wrapper a plain, non-interactive grouping node instead —
+ * pointer dragging (this ticket's own ask) is unaffected, since `listeners` still carries the
+ * pointer activators regardless of `attributes`; the one real cost is that a keyboard user tabbing
+ * through the board lands on `Card`'s own tab stop, not this wrapper's, so `KeyboardSensor`'s drag
+ * activation is reachable by dispatching a key event at this node directly (as this file's own test
+ * does) but not yet by a plain Tab press -- a follow-up, not a regression this ticket introduces.
+ */
+function DraggableTicketCard({ ticket, children }: { ticket: PipenzoTicketViewV1; children: ReactNode }) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: ticket.ticketId,
+    attributes: { role: 'group', roleDescription: 'draggable ticket card', tabIndex: -1 },
+  });
+  return (
+    <div
+      ref={setNodeRef}
+      className={isDragging ? 'dragging' : undefined}
+      style={transform ? { transform: CSS.Translate.toString(transform) } : undefined}
+      {...listeners}
+      {...attributes}
+    >
+      {children}
+    </div>
+  );
+}
 
 /**
  * The Board screen's own content (issue #81): `Main.dc.html`'s `.board` grid of four lanes, with
@@ -81,6 +151,7 @@ export function BoardScreen({
   renderTicket,
   onConnectRepo,
   onNewFromIdea,
+  onCardDrop,
 }: {
   tickets?: readonly PipenzoTicketViewV1[];
   /** `false` only once a caller has actually confirmed zero repos are connected -- never a guess
@@ -102,7 +173,38 @@ export function BoardScreen({
   onConnectRepo?: () => void;
   /** "New from idea", the hero's secondary action. Opens `NewFromIdeaDialog` (#84). */
   onNewFromIdea?: () => void;
+  /**
+   * A card was dropped on a different lane than it started in (issue #82). Optional, the same way
+   * `onConnectRepo`/`onNewFromIdea` are: this file owns the drag gesture (`resolveBoardCardDrop`
+   * turns it into "this ticket, this lane"), not what happens next -- the optimistic move, the real
+   * `pipenzoTicketTransition` call, and reconciling against the next poll are
+   * `use-board-drag-drop.ts`'s job, wired in by whoever mounts this screen for real
+   * (`PipenzoAppShell.tsx`), the same deferral `renderTicket` already established. A board with no
+   * handler still drags and drops visually; it just moves nothing.
+   */
+  onCardDrop?: (ticket: PipenzoTicketViewV1, targetLane: PipenzoLaneV1) => void;
 }) {
+  // Issue #82. `PointerSensor`'s distance constraint is what keeps a plain click on a card (open
+  // the ticket, or open Implement) working unchanged -- a drag does not start, and the pointer is
+  // not captured, until it has actually moved past that threshold. `KeyboardSensor` needs no
+  // constraint of its own: it only activates on its own key (Space/Enter on a focused card), never
+  // on an arbitrary keypress a click could produce.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor),
+  );
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const overLane = event.over ? (event.over.id as PipenzoLaneV1) : undefined;
+      const resolved = resolveBoardCardDrop(tickets, String(event.active.id), overLane);
+      if (resolved) onCardDrop?.(resolved.ticket, resolved.targetLane);
+    },
+    [tickets, onCardDrop],
+  );
+  // Computed here, ahead of the early returns below, because `useMemo` -- like every other hook in
+  // this component -- has to run on every render regardless of which branch below ends up used.
+  const grouped = useMemo(() => ticketsByLane(tickets), [tickets]);
+
   if (!hasConnectedRepos) {
     return (
       <Empty
@@ -135,51 +237,55 @@ export function BoardScreen({
     );
   }
 
-  const grouped = ticketsByLane(tickets);
-
   return (
-    <Board>
-      {BOARD_LANES.map((laneConfig) => {
-        const laneTickets = grouped[laneConfig.lane];
-        // Issue #85: the Working lane's own capacity pill. `running` excludes anything the
-        // ticket-list route already reported `held` (a ticket the file-overlap gate serialised
-        // against another Working ticket) -- see `working-lane-concurrency.ts` for who computes
-        // `concurrency` and why a ticket the route hasn't evaluated (any non-Working ticket) never
-        // carries the field at all.
-        const capacity = laneConfig.lane === 'working' ? workingLaneCapacity : undefined;
-        const runningCount =
-          laneConfig.lane === 'working'
-            ? laneTickets.filter((ticket) => ticket.concurrency?.state !== 'held').length
-            : 0;
-        return (
-          <Lane key={laneConfig.lane}>
-            <LaneHead>
-              <LaneTitle dotColor={laneConfig.dotColor}>{laneConfig.title}</LaneTitle>
-              {capacity !== undefined ? (
-                <LaneHeadRight>
-                  <LaneCap kind={runningCount >= capacity ? 'full' : 'running'}>
-                    {runningCount} of {capacity} running
-                  </LaneCap>
+    <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+      <Board>
+        {BOARD_LANES.map((laneConfig) => {
+          const laneTickets = grouped[laneConfig.lane];
+          // Issue #85: the Working lane's own capacity pill. `running` excludes anything the
+          // ticket-list route already reported `held` (a ticket the file-overlap gate serialised
+          // against another Working ticket) -- see `working-lane-concurrency.ts` for who computes
+          // `concurrency` and why a ticket the route hasn't evaluated (any non-Working ticket) never
+          // carries the field at all.
+          const capacity = laneConfig.lane === 'working' ? workingLaneCapacity : undefined;
+          const runningCount =
+            laneConfig.lane === 'working'
+              ? laneTickets.filter((ticket) => ticket.concurrency?.state !== 'held').length
+              : 0;
+          return (
+            <Lane key={laneConfig.lane}>
+              <LaneHead>
+                <LaneTitle dotColor={laneConfig.dotColor}>{laneConfig.title}</LaneTitle>
+                {capacity !== undefined ? (
+                  <LaneHeadRight>
+                    <LaneCap kind={runningCount >= capacity ? 'full' : 'running'}>
+                      {runningCount} of {capacity} running
+                    </LaneCap>
+                    <LaneCount>{laneTickets.length}</LaneCount>
+                  </LaneHeadRight>
+                ) : (
                   <LaneCount>{laneTickets.length}</LaneCount>
-                </LaneHeadRight>
-              ) : (
-                <LaneCount>{laneTickets.length}</LaneCount>
-              )}
-            </LaneHead>
-            <LaneCards>
-              {laneTickets.length === 0 ? (
-                <Empty variant="lane" title={laneConfig.emptyTitle}>
-                  {laneConfig.emptySub}
-                </Empty>
-              ) : (
-                laneTickets.map((ticket) => (
-                  <Fragment key={ticket.ticketId}>{renderTicket(ticket)}</Fragment>
-                ))
-              )}
-            </LaneCards>
-          </Lane>
-        );
-      })}
-    </Board>
+                )}
+              </LaneHead>
+              <DroppableLaneCards lane={laneConfig.lane}>
+                {laneTickets.length === 0 ? (
+                  <Empty variant="lane" title={laneConfig.emptyTitle}>
+                    {laneConfig.emptySub}
+                  </Empty>
+                ) : (
+                  laneTickets.map((ticket) => (
+                    <Fragment key={ticket.ticketId}>
+                      <DraggableTicketCard ticket={ticket}>
+                        {renderTicket(ticket)}
+                      </DraggableTicketCard>
+                    </Fragment>
+                  ))
+                )}
+              </DroppableLaneCards>
+            </Lane>
+          );
+        })}
+      </Board>
+    </DndContext>
   );
 }
