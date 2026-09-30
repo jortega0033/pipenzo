@@ -409,6 +409,97 @@ describe('PipenzoAppShell', () => {
     expect(screen.getByText('issue-42')).toBeInTheDocument();
   });
 
+  /* --------------------------------------- issue #87: Ready-for-review's ci-failed card variant */
+
+  it('gives a ci-failed Ready-for-review ticket its own chip and a FailNote naming the real recorded fix attempt', async () => {
+    installBridge({
+      tickets: [
+        makeTicket({
+          ticketId: 'a',
+          issueNumber: 85,
+          lane: 'ready-for-review',
+          labels: ['pipenzo:ready-for-review', 'pipenzo:ci-failed'],
+          attempts: [
+            { sessionId: 's1', tier: 'mid', model: 'claude-sonnet-5', outcome: 'gate_failed' },
+            { sessionId: 's2', tier: 'mid', model: 'claude-sonnet-5', outcome: 'fix_committed' },
+          ],
+        }),
+      ],
+    });
+    const { container } = render(
+      <ThemeProvider>
+        <PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />
+      </ThemeProvider>,
+    );
+
+    expect(await screen.findByText('ci-failed · fix ready')).toBeInTheDocument();
+    expect(container.querySelector('.chip-ci')).toBeInTheDocument();
+    // The note reads off the *last* recorded attempt (the committed fix), not the first (the
+    // gate failure) -- real tier/model, not the canvas's invented PR number or diff stat.
+    expect(
+      screen.getByText(/A fix attempt has since committed \(mid tier, claude-sonnet-5\)/),
+    ).toBeInTheDocument();
+    expect(container.querySelector('.fail-note')).toBeInTheDocument();
+  });
+
+  it('falls back to an honest no-attempt FailNote for a ci-failed ticket with an empty attempts[]', async () => {
+    installBridge({
+      tickets: [
+        makeTicket({
+          ticketId: 'a',
+          issueNumber: 85,
+          lane: 'ready-for-review',
+          labels: ['pipenzo:ready-for-review', 'pipenzo:ci-failed'],
+          attempts: [],
+        }),
+      ],
+    });
+    render(
+      <ThemeProvider>
+        <PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />
+      </ThemeProvider>,
+    );
+
+    expect(await screen.findByText('ci-failed · fix ready')).toBeInTheDocument();
+    expect(
+      screen.getByText(/It only moves here once a fix attempt commits/),
+    ).toBeInTheDocument();
+  });
+
+  it('never shows the ci-failed chip or FailNote for a plain gates-passed Ready-for-review ticket, and never the plain chip for a ci-failed one', async () => {
+    installBridge({
+      tickets: [
+        makeTicket({
+          ticketId: 'a',
+          issueNumber: 90,
+          lane: 'ready-for-review',
+          labels: ['pipenzo:ready-for-review'],
+        }),
+        makeTicket({
+          ticketId: 'b',
+          issueNumber: 85,
+          lane: 'ready-for-review',
+          labels: ['pipenzo:ready-for-review', 'pipenzo:ci-failed'],
+          attempts: [{ sessionId: 's1', tier: 'mid', model: 'claude-sonnet-5', outcome: 'fix_committed' }],
+        }),
+      ],
+    });
+    const { container } = render(
+      <ThemeProvider>
+        <PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />
+      </ThemeProvider>,
+    );
+
+    await screen.findByText('ready for review');
+    expect(screen.getByText('ci-failed · fix ready')).toBeInTheDocument();
+    // Exactly one of each -- the gates-passed card never also reads as ci-failed, and vice versa.
+    expect(screen.getAllByText('ready for review')).toHaveLength(1);
+    expect(screen.getAllByText('ci-failed · fix ready')).toHaveLength(1);
+    expect(container.querySelectorAll('.fail-note')).toHaveLength(1);
+    expect(container.querySelectorAll('.chip-ok')).toHaveLength(1);
+    expect(container.querySelectorAll('.chip-ci')).toHaveLength(1);
+  });
+
   it('renders no chip and no branch for Queued or Needs-human -- neither is a guess this shell makes', async () => {
     installBridge({
       tickets: [

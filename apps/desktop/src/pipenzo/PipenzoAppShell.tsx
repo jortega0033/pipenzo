@@ -18,7 +18,7 @@ import {
 import { Banner } from '../components/primitives/Banner.js';
 import { Button } from '../components/primitives/Button.js';
 import { Card, CardFoot, CardMeta } from '../components/primitives/Card.js';
-import { WaitNote } from '../components/primitives/CardNote.js';
+import { FailNote, WaitNote } from '../components/primitives/CardNote.js';
 import { Chip } from '../components/primitives/Chip.js';
 import { LoadLine } from '../components/primitives/LoadLine.js';
 import { SyncStatusPill, type SyncStatus } from '../components/primitives/SyncStatusPill.js';
@@ -151,11 +151,12 @@ import {
  * ## What a ticket card looks like here
  *
  * `Card` -- id/title, plus the one status chip and foot line each lane's own real data already
- * supports without guessing (Working's phase, Ready-for-review's branch). This still is not a
- * guess at #86/#87's lane-specific card content: Needs-human's seven variants (#86) and
- * Ready-for-review's ci-failed variant (#87) stay their own tickets, and nothing here invents data
- * those tickets are meant to add -- `ticket.phase`/`ticket.worktree` are already real fields on
- * `PipenzoTicketViewV1`, not placeholders standing in for a schema that does not exist yet.
+ * supports without guessing (Working's phase, Ready-for-review's branch and, since issue #87, its
+ * own ci-failed `FailNote`). This still is not a guess at #86's lane-specific card content:
+ * Needs-human's seven variants stay their own ticket, and nothing here invents data that ticket is
+ * meant to add -- `ticket.phase`/`ticket.worktree`/`ticket.labels`/`ticket.attempts` are already
+ * real fields on `PipenzoTicketViewV1`, not placeholders standing in for a schema that does not
+ * exist yet.
  *
  * ## The Working lane's held card (issue #85)
  *
@@ -174,10 +175,10 @@ import {
  * A Queued card's `onClick` (via `Card`'s own, which also makes it a keyboard-reachable `button`)
  * opens `BoardImplementDialog` for that ticket, which resolves the repo's local checkout (#344) and
  * then mounts the real `ImplementDialog` -- unchanged from #342. README's Implement is the action a
- * Queued ticket is waiting for; a Working, Ready-for-review or Needs-human card's own *lane-specific*
- * next action (a held card's real "run anyway", Needs-human's seven reason variants, Ready-for-
- * review's ci-failed card) is still owned by #85/#86/#87 and not guessed at here. But every card
- * already carries the one action every lane shares regardless of what its own ticket eventually
+ * Queued ticket is waiting for; a Working or Needs-human card's own *lane-specific* next action (a
+ * held card's real "run anyway", Needs-human's seven reason variants) is still owned by #86 and
+ * not guessed at here -- Ready-for-review's own ci-failed card is issue #87, built above. But every
+ * card already carries the one action every lane shares regardless of what its own ticket eventually
  * adds: viewing the ticket's detail. That is what a click on any non-Queued card does now --
  * `goToTicketDetail`, the same navigation `ActivityRow`'s `onOpenTicket` reports to below -- so a
  * person can actually reach the phase stepper, rail blocks and activity stream #341 was asked to
@@ -304,10 +305,17 @@ export function PipenzoAppShell({
               </CardFoot>
             </>
           )}
-          {ticket.lane === 'ready-for-review' && ticket.worktree && (
-            <CardFoot>
-              <CardMeta icon="git-branch">{ticket.worktree.branch}</CardMeta>
-            </CardFoot>
+          {ticket.lane === 'ready-for-review' && (
+            <>
+              {ticket.labels.includes('pipenzo:ci-failed') && (
+                <FailNote>{ciFixReadyDetail(ticket)}</FailNote>
+              )}
+              {ticket.worktree && (
+                <CardFoot>
+                  <CardMeta icon="git-branch">{ticket.worktree.branch}</CardMeta>
+                </CardFoot>
+              )}
+            </>
           )}
         </Card>
       );
@@ -653,6 +661,17 @@ function loadLineTarget(repoNames: readonly string[] | undefined): ReactNode {
  * `Chip.tsx`'s own doc comment already names these tones for these lanes
  * (`Refining/Implementing/Reviewing... (warn)`, `Ready for review (ok)`); this reads them off the
  * one real field each lane's ticket already carries (`phase`) rather than inventing new ones.
+ *
+ * Ready-for-review's own two variants (issue #87): a ticket carrying `pipenzo:ci-failed` is the
+ * `ci-failed · fix ready` card -- `Main.dc.html`'s own `ready` sample data spells the chip text
+ * exactly that way (`chipLabel: 'ci-failed · fix ready'`), and `activity-row.ts`'s own
+ * `classifyActivityRow` already treats that label as this ticket's one real signal for the same
+ * lane. This never re-derives whether a fix is actually ready -- `pipenzo-phase-machine.ts`'s own
+ * `needs-human` -> `ready-for-review` transition (README's `pipenzo:ci-failed` row) is what keeps
+ * that label on a ticket sitting in *this* lane true to "the fix commits, then it moves here"; a
+ * ticket in this lane with the label is trusted the same way `board-lanes.ts`'s own module comment
+ * already trusts `lane` itself. Every other ready-for-review ticket -- no `pipenzo:ci-failed` --
+ * is the plain gates-passed case.
  */
 function laneChip(ticket: PipenzoTicketViewV1) {
   if (ticket.lane === 'working') {
@@ -661,7 +680,29 @@ function laneChip(ticket: PipenzoTicketViewV1) {
     return <Chip tone="warn">{label}</Chip>;
   }
   if (ticket.lane === 'ready-for-review') {
+    if (ticket.labels.includes('pipenzo:ci-failed')) {
+      return <Chip tone="ci">ci-failed · fix ready</Chip>;
+    }
     return <Chip tone="ok">ready for review</Chip>;
   }
   return undefined;
+}
+
+/**
+ * The `FailNote` body for the ci-failed ready-for-review card (issue #87). `Main.dc.html`'s own
+ * sample reads "typecheck failed on PR #115... committed +3 -1 locally" -- a real PR number and a
+ * real diff stat for the fix commit, neither of which `PipenzoTicketViewV1` carries today (its
+ * `attempts[]` entries are `sessionId`/`tier`/`model`/`outcome` only; see
+ * `pipenzo-ticket-v1.ts`'s own doc comment on why the attempt-outcome vocabulary is still the
+ * phase machine's to define). Rather than inventing either number, this reads the one real signal
+ * the wire shape does carry -- the last recorded attempt's tier and model -- the same restraint
+ * `activity-row.ts`'s own `pipenzo:ci-failed` branch already applies, and the same honest fallback
+ * for a ticket whose `attempts[]` came back empty (should not happen for a ticket the phase machine
+ * actually moved here, but this card does not assume the invariant instead of checking it).
+ */
+function ciFixReadyDetail(ticket: PipenzoTicketViewV1): string {
+  const last = ticket.attempts[ticket.attempts.length - 1];
+  return last
+    ? `A post-merge-request check failed. A fix attempt has since committed (${last.tier} tier, ${last.model}) and is waiting on this same human push gate -- it is never resubmitted on its own.`
+    : 'A post-merge-request check failed on this ticket. It only moves here once a fix attempt commits -- nothing is pushed without an explicit human approval.';
 }
