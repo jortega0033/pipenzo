@@ -51,6 +51,8 @@ import {
   pipenzoMediumApprovalDecideRequestV1Schema,
   pipenzoMediumApprovalStatusRequestV1Schema,
   pipenzoMediumApprovalUndoRequestV1Schema,
+  pipenzoHighApprovalCaptureRequestV1Schema,
+  pipenzoHighApprovalDecideRequestV1Schema,
   structuredWorkflowRequestV2Schema,
   providerIdSchema,
   type AgentCommandV2,
@@ -1573,6 +1575,16 @@ handle('daemon:pipenzo-medium-approval-status', async (_event, input: unknown) =
 handle('daemon:pipenzo-medium-approval-undo', async (_event, input: unknown) => {
   if (!client) throw new Error('daemon is not ready yet');
   return client.v2.pipenzo.undoMediumApproval(pipenzoMediumApprovalUndoRequestV1Schema.parse(input));
+});
+handle('daemon:pipenzo-high-approval-capture', async (_event, input: unknown) => {
+  if (!client) throw new Error('daemon is not ready yet');
+  return client.v2.pipenzo.captureHighApproval(
+    pipenzoHighApprovalCaptureRequestV1Schema.parse(input),
+  );
+});
+handle('daemon:pipenzo-high-approval-decide', async (_event, input: unknown) => {
+  if (!client) throw new Error('daemon is not ready yet');
+  return client.v2.pipenzo.decideHighApproval(pipenzoHighApprovalDecideRequestV1Schema.parse(input));
 });
 /**
  * "Retry now" / "Poll now" (#70/#71/#75): forces the reconciler's next tick to run immediately.

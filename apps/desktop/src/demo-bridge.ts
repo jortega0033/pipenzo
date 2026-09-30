@@ -205,6 +205,13 @@ export function createDemoBridge(): AgentDockBridge {
     undoMediumApproval: async () => {
       throw new Error('the medium-approval flow is not available in demo mode');
     },
+    // The HIGH full publish-gate card (issue #98): same reasoning as the MEDIUM stubs above.
+    captureHighApproval: async () => {
+      throw new Error('the high-approval flow is not available in demo mode');
+    },
+    decideHighApproval: async () => {
+      throw new Error('the high-approval flow is not available in demo mode');
+    },
     // Demo mode has no daemon to stream from; subscribing is inert rather than an error.
     onPipenzoPhaseEvent: () => () => {},
     onPipenzoGitHubHealth: () => () => {},

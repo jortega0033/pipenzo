@@ -115,6 +115,10 @@ describe('electron/preload.ts — real bridge (AD-07)', () => {
         'decideMediumApproval',
         'mediumApprovalStatus',
         'undoMediumApproval',
+        // Issue #98: the HIGH full publish-gate card's own two calls -- no status/undo pair, since
+        // HIGH never offers Undo.
+        'captureHighApproval',
+        'decideHighApproval',
         'onPipenzoPhaseEvent',
         // The GitHub connection-health stream (issue #257), plus its manual poll trigger (#70/#71/#75).
         'onPipenzoGitHubHealth',

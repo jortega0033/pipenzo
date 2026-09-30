@@ -89,6 +89,10 @@ import type {
   PipenzoMediumApprovalStatusResultV1,
   PipenzoMediumApprovalUndoRequestV1,
   PipenzoMediumApprovalUndoResultV1,
+  PipenzoHighApprovalCaptureRequestV1,
+  PipenzoHighApprovalCaptureResultV1,
+  PipenzoHighApprovalDecideRequestV1,
+  PipenzoHighApprovalDecideResultV1,
 } from '@agent-dock/shared';
 import type {
   RendererInteraction,
@@ -285,6 +289,25 @@ export interface AgentDockBridge {
   undoMediumApproval(
     input: PipenzoMediumApprovalUndoRequestV1,
   ): Promise<PipenzoMediumApprovalUndoResultV1>;
+  /**
+   * The HIGH full publish-gate card (issue #98), the HIGH-risk sibling of the four MEDIUM calls
+   * above -- two calls, not four, since HIGH never offers Undo (see
+   * `pipenzo-high-approval-v1.ts`'s module comment):
+   *
+   * - `captureHighApproval` records which ticket/branch a HIGH decision is about *before* the card
+   *   is shown -- "block run" in practice means a caller must hold this call's `approvalId` before
+   *   running the gated action at all.
+   * - `decideHighApproval` records the human's Approve/Reject. An `'approve'` also resets the
+   *   cumulative-risk strip to zero daemon-side (the asymmetric reset rule's HIGH half) and returns
+   *   the ticket's risk record; a `'reject'` requires a non-empty `reason` (enforced on the wire, not
+   *   just by a disabled button) and never touches the score.
+   */
+  captureHighApproval(
+    input: PipenzoHighApprovalCaptureRequestV1,
+  ): Promise<PipenzoHighApprovalCaptureResultV1>;
+  decideHighApproval(
+    input: PipenzoHighApprovalDecideRequestV1,
+  ): Promise<PipenzoHighApprovalDecideResultV1>;
   /**
    * Subscribes to live phase changes (issue #189).
    *

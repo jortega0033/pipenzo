@@ -39,6 +39,7 @@ import { DaemonGitHubCredential, readDaemonStartupMessage } from './github-crede
 import { PublishNonceGate } from './publish-nonce-gate.js';
 import { PipenzoPhaseMachine } from './pipenzo-phase-machine.js';
 import { MediumApprovalStore } from './medium-approval-store.js';
+import { HighApprovalStore } from './high-approval-store.js';
 import { PipenzoPhaseEventBus } from './pipenzo-phase-events.js';
 import { PipenzoCrashRecovery } from './pipenzo-crash-recovery.js';
 import { PipenzoReconciler } from './pipenzo-reconciler.js';
@@ -352,6 +353,11 @@ async function main() {
   // whatever renderer state was waiting on it is gone too.
   const mediumApprovalStore = new MediumApprovalStore();
 
+  // The HIGH full publish-gate card's own approval store (issue #98). In-process and
+  // per-daemon-lifetime like `mediumApprovalStore` above, but there is no undo half to preserve on
+  // restart even in principle -- a HIGH decision is never revisited once made.
+  const highApprovalStore = new HighApprovalStore();
+
   const app = buildServer({
     registry,
     sessionManager,
@@ -368,6 +374,7 @@ async function main() {
     phaseMachine,
     phaseEvents,
     mediumApprovalStore,
+    highApprovalStore,
     crashRecovery,
     connectedRepos,
     repoCheckouts,
