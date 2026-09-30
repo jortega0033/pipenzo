@@ -118,7 +118,7 @@ describe('classifyNeedsHumanCard', () => {
     const ticket = makeTicket({
       labels: ['pipenzo:needs-human'],
       attempts: [
-        { sessionId: 's1', tier: 'low', model: 'sonnet', outcome: 'gate_failed' },
+        { sessionId: 's1', tier: 'cheap', model: 'sonnet', outcome: 'gate_failed' },
         { sessionId: 's2', tier: 'mid', model: 'sonnet', outcome: 'gate_failed' },
         { sessionId: 's3', tier: 'mid', model: 'sonnet', outcome: 'timed_out' },
       ],
@@ -133,7 +133,7 @@ describe('classifyNeedsHumanCard', () => {
   it('classifies a bare pipenzo:needs-human ticket with fewer than the threshold as generic', () => {
     const ticket = makeTicket({
       labels: ['pipenzo:needs-human'],
-      attempts: [{ sessionId: 's1', tier: 'low', model: 'sonnet', outcome: 'denied' }],
+      attempts: [{ sessionId: 's1', tier: 'cheap', model: 'sonnet', outcome: 'denied' }],
     });
     const card = classifyNeedsHumanCard(ticket);
     expect(card.variant).toBe('generic');
