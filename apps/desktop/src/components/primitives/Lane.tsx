@@ -24,10 +24,20 @@ export function Lane({ children }: { children: ReactNode }) {
 }
 
 /** `.lane-head` — 40px tall, `LaneTitle` on the left and whatever a lane wants on its right (a
- * `LaneCount`, and for Working's own header only, its `LaneCap` capacity pill — #85, not built
- * here) laid out `justify-content: space-between`. */
+ * `LaneCount`, and for Working's own header only, its `LaneCap` capacity pill, grouped through
+ * `LaneHeadRight` — see that component's own doc comment) laid out `justify-content:
+ * space-between`. */
 export function LaneHead({ children }: { children: ReactNode }) {
   return <div className="lane-head">{children}</div>;
+}
+
+/** `.lane-r` (issue #85) — groups `.lane-head`'s right-side controls into one flex item with its
+ * own gap, so `.lane-head`'s `justify-content: space-between` still only ever sees two children
+ * (`LaneTitle` and this) regardless of how many controls sit on the right. `Main.dc.html`'s own
+ * markup wraps this only around the Working lane's capacity pill plus its count -- every other
+ * lane's bare `LaneCount` stays a direct `LaneHead` child, unchanged. */
+export function LaneHeadRight({ children }: { children: ReactNode }) {
+  return <span className="lane-r">{children}</span>;
 }
 
 /** `.lane-title` — the `.lane-dot` plus the lane's name, uppercase and mono-tracked per the

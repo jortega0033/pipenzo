@@ -164,6 +164,70 @@ describe('BoardScreen', () => {
     });
   });
 
+  describe('Working lane capacity pill (issue #85)', () => {
+    it('renders no pill when workingLaneCapacity is unanswered, unchanged from before #85', () => {
+      const tickets = [makeTicket({ ticketId: 'a', lane: 'working', issueNumber: 94 })];
+      const { container } = render(<BoardScreen tickets={tickets} renderTicket={() => null} />);
+      const workingLane = container.querySelectorAll('.board > .lane')[1];
+      expect(workingLane?.querySelector('.lane-cap')).not.toBeInTheDocument();
+    });
+
+    it('counts only non-held Working tickets as running, under capacity', () => {
+      const tickets = [
+        makeTicket({
+          ticketId: 'a',
+          lane: 'working',
+          issueNumber: 94,
+          concurrency: { state: 'running' },
+        }),
+      ];
+      const { container } = render(
+        <BoardScreen tickets={tickets} workingLaneCapacity={2} renderTicket={() => null} />,
+      );
+      const pill = container.querySelector('.lane-cap')!;
+      expect(pill).toHaveTextContent('1 of 2 running');
+      expect(pill.className).not.toContain('full');
+    });
+
+    it('excludes held tickets from the running count, and turns the pill amber once running hits capacity', () => {
+      const tickets = [
+        makeTicket({
+          ticketId: 'a',
+          lane: 'working',
+          issueNumber: 94,
+          concurrency: { state: 'running' },
+        }),
+        makeTicket({
+          ticketId: 'b',
+          lane: 'working',
+          issueNumber: 103,
+          concurrency: { state: 'running' },
+        }),
+        makeTicket({
+          ticketId: 'c',
+          lane: 'working',
+          issueNumber: 97,
+          concurrency: {
+            state: 'held',
+            overlapTicketId: 'a',
+            overlapIssueNumber: 94,
+            overlapFile: 'stdio-mcp-connection.ts',
+          },
+        }),
+      ];
+      const { container } = render(
+        <BoardScreen tickets={tickets} workingLaneCapacity={2} renderTicket={() => null} />,
+      );
+      const pill = container.querySelector('.lane-cap')!;
+      // 2 running + 1 held == 3 tickets in the lane (the plain .lane-count), but the pill itself
+      // only ever counts the 2 that are actually occupying a slot.
+      expect(pill).toHaveTextContent('2 of 2 running');
+      expect(pill.className).toContain('full');
+      const workingLane = container.querySelectorAll('.board > .lane')[1];
+      expect(workingLane?.querySelector('.lane-count')).toHaveTextContent('3');
+    });
+  });
+
   describe('cold-start loading skeleton (issue #67)', () => {
     it('renders SkeletonBoard, with real lane names and dots, instead of the four-lane board', () => {
       const { container } = render(<BoardScreen loading renderTicket={() => null} />);

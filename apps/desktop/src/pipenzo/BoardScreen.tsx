@@ -6,8 +6,10 @@ import {
   LaneCards,
   LaneCount,
   LaneHead,
+  LaneHeadRight,
   LaneTitle,
 } from '../components/primitives/Lane.js';
+import { LaneCap } from '../components/primitives/LaneCap.js';
 import { Empty } from '../components/primitives/Empty.js';
 import { SkeletonBoard } from '../components/primitives/Skeleton.js';
 import { BOARD_LANES, ticketsByLane } from './board-lanes.js';
@@ -26,10 +28,13 @@ import { BOARD_LANES, ticketsByLane } from './board-lanes.js';
  * ## What a ticket looks like is deliberately not this file's decision
  *
  * `renderTicket` is required rather than defaulted, because guessing at card content here would be
- * exactly the frame-guessing `SettingsPage.tsx`'s own doc comment warns against: #85 (Working
- * lane's capacity pill and held cards), #86 (Needs-human's seven variants) and #87
- * (Ready-for-review plus the ci-failed card) each own a real card body, and a placeholder built
- * here would be a card body this file guessed wrong on all three fronts before any of them land.
+ * exactly the frame-guessing `SettingsPage.tsx`'s own doc comment warns against: #86 (Needs-human's
+ * seven variants) and #87 (Ready-for-review plus the ci-failed card) each own a real card body, and
+ * a placeholder built here would be a card body this file guessed wrong on both fronts before
+ * either lands. Working's own held-card body is #85's too, and lands the same way (in whatever
+ * `renderTicket` a caller supplies) -- but #85's *lane-header* capacity pill is structural to this
+ * file's own `.lane-head`, the same way `LaneCount` already is, so it is built here; see
+ * `workingLaneCapacity` below.
  *
  * ## Where `tickets` comes from is a known gap, not an oversight
  *
@@ -72,6 +77,7 @@ export function BoardScreen({
   tickets = [],
   hasConnectedRepos = true,
   loading = false,
+  workingLaneCapacity,
   renderTicket,
   onConnectRepo,
   onNewFromIdea,
@@ -85,6 +91,12 @@ export function BoardScreen({
    * not returned yet. Never inferred from `tickets` being empty -- see this file's own doc section
    * on why that would collide with a genuinely clean backlog. */
   loading?: boolean;
+  /** The Working lane header's capacity pill denominator (issue #85), straight off
+   * `GET /v2/pipenzo/tickets`' own `workingLaneCapacity` (`use-pipenzo-tickets.ts`). Undefined until
+   * the first ticket-list read settles, or for any caller (a test, an older cached response) that
+   * predates the field -- the pill simply does not render rather than guessing a number, the same
+   * "not yet answered" reasoning `title`'s own optionality already uses. */
+  workingLaneCapacity?: number;
   renderTicket: (ticket: PipenzoTicketViewV1) => ReactNode;
   /** "Connect a repo", the hero's primary action. Routes to the repo picker (#115). */
   onConnectRepo?: () => void;
@@ -129,11 +141,30 @@ export function BoardScreen({
     <Board>
       {BOARD_LANES.map((laneConfig) => {
         const laneTickets = grouped[laneConfig.lane];
+        // Issue #85: the Working lane's own capacity pill. `running` excludes anything the
+        // ticket-list route already reported `held` (a ticket the file-overlap gate serialised
+        // against another Working ticket) -- see `working-lane-concurrency.ts` for who computes
+        // `concurrency` and why a ticket the route hasn't evaluated (any non-Working ticket) never
+        // carries the field at all.
+        const capacity = laneConfig.lane === 'working' ? workingLaneCapacity : undefined;
+        const runningCount =
+          laneConfig.lane === 'working'
+            ? laneTickets.filter((ticket) => ticket.concurrency?.state !== 'held').length
+            : 0;
         return (
           <Lane key={laneConfig.lane}>
             <LaneHead>
               <LaneTitle dotColor={laneConfig.dotColor}>{laneConfig.title}</LaneTitle>
-              <LaneCount>{laneTickets.length}</LaneCount>
+              {capacity !== undefined ? (
+                <LaneHeadRight>
+                  <LaneCap kind={runningCount >= capacity ? 'full' : 'running'}>
+                    {runningCount} of {capacity} running
+                  </LaneCap>
+                  <LaneCount>{laneTickets.length}</LaneCount>
+                </LaneHeadRight>
+              ) : (
+                <LaneCount>{laneTickets.length}</LaneCount>
+              )}
             </LaneHead>
             <LaneCards>
               {laneTickets.length === 0 ? (

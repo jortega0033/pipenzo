@@ -2041,6 +2041,14 @@
     line-height: 1;
   }
 
+  /* Groups the Working lane header's capacity pill with its count (issue #85) -- ported verbatim
+     from Main.dc.html, `.lane-r{display:flex;align-items:center;gap:8px;}`. */
+  .lane-r {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
   .lane-cards {
     flex: 1;
     overflow-y: auto;
