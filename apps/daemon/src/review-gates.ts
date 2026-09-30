@@ -949,7 +949,7 @@ interface TouchedFileInfo {
  * pre-existing, lower-stakes rename gap (a size metric, not a trust signal), a wrong touched-file
  * match here directly produces a false `locationVerified: false` on a legitimate finding.
  */
-function renamedNewPath(path: string): string {
+export function renamedNewPath(path: string): string {
   const braced = path.match(/^(.*)\{.* => (.*)\}(.*)$/);
   if (braced) {
     const [, prefix, newPart, suffix] = braced;
@@ -1023,7 +1023,7 @@ function countLines(content: string): number {
   return lines.length;
 }
 
-interface NumstatLine {
+export interface NumstatLine {
   readonly added: string;
   readonly deleted: string;
   readonly path: string;
@@ -1034,8 +1034,11 @@ interface NumstatLine {
  * which is a rename-compacted form (`old => new`) for a renamed file rather than a plain path;
  * `computeDiffScope` leaves that pre-existing gap as-is (a size metric, lower stakes), while
  * `parseTouchedFiles` below normalizes it via `renamedNewPath`, since a wrong match there produces
- * a false `locationVerified: false` on a legitimate finding. */
-function parseNumstat(numstat: string): NumstatLine[] {
+ * a false `locationVerified: false` on a legitimate finding.
+ *
+ * Exported (issue #148) so the undo-snapshot module can derive a touched-path list from the same
+ * numstat parse instead of a third, driftable pass over the format. */
+export function parseNumstat(numstat: string): NumstatLine[] {
   const lines: NumstatLine[] = [];
   for (const line of numstat.split(/\r?\n/)) {
     if (!line.trim()) continue;
