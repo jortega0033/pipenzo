@@ -43,6 +43,7 @@ import {
   pipenzoRepoCheckoutRequestV1Schema,
   pipenzoLessonCreateV1Schema,
   pipenzoLessonDeleteRequestV1Schema,
+  pipenzoConcurrencySettingsUpdateV1Schema,
   pipenzoTicketReadRequestV1Schema,
   pipenzoTicketTransitionRequestV1Schema,
   pipenzoTicketRiskActivityOpenedRequestV1Schema,
@@ -1350,6 +1351,20 @@ handle('daemon:pipenzo-create-lesson', async (_event, input: unknown) => {
 handle('daemon:pipenzo-delete-lesson', async (_event, input: unknown) => {
   if (!client) throw new Error('daemon is not ready yet');
   return client.v2.pipenzo.deleteLesson(pipenzoLessonDeleteRequestV1Schema.parse(input));
+});
+
+// Bounded local concurrency's settings (issue #126): Settings' Concurrency panel. Ordinary daemon
+// routes, same reasoning as the lesson/repo channels above -- no credential in main.
+handle('daemon:pipenzo-concurrency-settings', async () => {
+  if (!client) throw new Error('daemon is not ready yet');
+  return client.v2.pipenzo.concurrencySettings();
+});
+
+handle('daemon:pipenzo-update-concurrency-settings', async (_event, input: unknown) => {
+  if (!client) throw new Error('daemon is not ready yet');
+  return client.v2.pipenzo.updateConcurrencySettings(
+    pipenzoConcurrencySettingsUpdateV1Schema.parse(input),
+  );
 });
 
 handle('daemon:list-providers', async () => {

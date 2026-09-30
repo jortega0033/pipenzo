@@ -1,4 +1,9 @@
-import type { AgentEvent, AgentEventV2Envelope, AgentSession } from '@agent-dock/shared';
+import type {
+  AgentEvent,
+  AgentEventV2Envelope,
+  AgentSession,
+  PipenzoConcurrencySettingsV1,
+} from '@agent-dock/shared';
 import type {
   RendererApprovalInteraction,
   RendererInteraction,
@@ -66,6 +71,14 @@ export function createDemoBridge(): AgentDockBridge {
   // has something real to do in demo mode, the same reason `eventCallback` and friends above are
   // closure state rather than constants.
   let demoLessons = [DEMO_LESSON];
+  // Bounded local concurrency's settings (issue #126). Mutable for the same reason: Settings'
+  // Concurrency panel should be something real to play with in demo mode, not a stepper that
+  // silently resets on every click.
+  let demoConcurrencySettings: PipenzoConcurrencySettingsV1 = {
+    schemaVersion: 1,
+    executionLimit: 2,
+    runBudget: 'unlimited',
+  };
 
   const interactiveSessionId = '123e4567-e89b-42d3-a456-426614174000';
   const interactiveExecutionId = '123e4567-e89b-42d3-a456-426614174001';
@@ -275,6 +288,15 @@ export function createDemoBridge(): AgentDockBridge {
     pipenzoDeleteLesson: async (input) => {
       demoLessons = demoLessons.filter((lesson) => lesson.id !== input.id);
       return { lessons: demoLessons };
+    },
+    pipenzoConcurrencySettings: async () => demoConcurrencySettings,
+    pipenzoUpdateConcurrencySettings: async (input) => {
+      demoConcurrencySettings = {
+        ...demoConcurrencySettings,
+        ...(input.executionLimit !== undefined ? { executionLimit: input.executionLimit } : {}),
+        ...(input.runBudget !== undefined ? { runBudget: input.runBudget } : {}),
+      };
+      return demoConcurrencySettings;
     },
     startGitHubDeviceFlow: async () => {
       throw new Error('signing in to GitHub is not available in demo mode');
