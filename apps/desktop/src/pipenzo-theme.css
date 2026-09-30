@@ -2841,6 +2841,23 @@
     margin-top: 4px;
   }
 
+  /* The "Needs you" ticket switcher (issue #92) -- `.switch` wraps the `.label` plus a `.seg`
+     control, ported verbatim from TicketDetail.dc.html's own "===== screen =====" section. The
+     switch's own segment buttons are monospace (ticket numbers), unlike `.seg`'s default sans-serif
+     label text -- scoped to `.switch .seg button` rather than widened on the shared `.seg` rule,
+     which every other pill-switch in the canvas (Simple/Expert, Connect's step bar, Activity's
+     filter tabs) still renders in the sans typeface. See TicketSwitcherPanel.tsx. */
+  .switch {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+
+  .switch .seg button {
+    font-family: var(--font-mono);
+  }
+
   .stream {
     overflow-y: auto;
     display: flex;
