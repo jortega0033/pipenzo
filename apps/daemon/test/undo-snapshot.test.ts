@@ -1,9 +1,10 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs';
 import { mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import type { RiskGrade } from '../src/risk-classifier.js';
 import {
   UndoSnapshotError,
   captureUndoSnapshot,
@@ -12,6 +13,28 @@ import {
   touchedPathsFromNumstat,
   type UndoSnapshotV1,
 } from '../src/undo-snapshot.js';
+
+/**
+ * Whether this sandbox can create a symlink/junction at all. Creating one needs a privilege
+ * ordinary Windows accounts don't have without Developer Mode or an elevated prompt, so the
+ * traversal/symlink-kind tests below need to know this *before* deciding to run, not discover it
+ * mid-test. Probed once, synchronously, at module load, with a throwaway link the try/finally
+ * cleans up immediately -- so a real privilege loss shows up as a `skipped` test in the run
+ * summary (visible, not silently swallowed as a false pass), rather than either a hard failure on
+ * a sandbox that was never going to have the privilege, or a middle-of-test `return` that vitest
+ * has no way to distinguish from "this test had nothing left to assert."
+ */
+const SYMLINK_SUPPORTED = (() => {
+  const probeDir = mkdtempSync(join(tmpdir(), 'pipenzo-undo-symlink-probe-'));
+  try {
+    symlinkSync(join(probeDir, 'target'), join(probeDir, 'link'), 'file');
+    return true;
+  } catch {
+    return false;
+  } finally {
+    rmSync(probeDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
+})();
 
 /**
  * Every test in the `captureUndoSnapshot`/`restoreUndoSnapshot` describe block spawns real `git`
@@ -69,6 +92,16 @@ describe('isUndoAvailable', () => {
     expect(isUndoAvailable('low')).toBe(true);
     expect(isUndoAvailable('medium')).toBe(true);
     expect(isUndoAvailable('high')).toBe(false);
+  });
+
+  it('refuses (fails closed) for a value that is not one of the three known grades', () => {
+    // isUndoAvailable is written as an allowlist specifically so this doesn't default to true.
+    // TypeScript can't produce this value through captureUndoSnapshot's own typed input, but
+    // UndoSnapshotV1 is documented as data a caller can hold onto and replay -- so a value that
+    // skipped that typing (a stale enum from a future version, a deserialization bug, a typo some
+    // other module introduces) must still be refused, not silently treated as undo-eligible.
+    expect(isUndoAvailable('critical' as unknown as RiskGrade)).toBe(false);
+    expect(isUndoAvailable(undefined as unknown as RiskGrade)).toBe(false);
   });
 });
 
@@ -200,6 +233,52 @@ describe('captureUndoSnapshot / restoreUndoSnapshot', () => {
   );
 
   it(
+    'refuses (fails closed) to snapshot an action whose riskGrade is not one of the three known grades',
+    async () => {
+      const root = initRepo();
+      commitAll(root, 'seed');
+
+      const attempt = captureUndoSnapshot({
+        worktreeRoot: root,
+        branch: 'main',
+        touchedPaths: [join(root, 'file.txt')],
+        // Neither a valid RiskGrade nor reachable through captureUndoSnapshot's own typed input in
+        // practice -- simulates a caller that bypassed the type system (a stale value, a bad cast).
+        riskGrade: 'critical' as unknown as RiskGrade,
+      });
+
+      await expect(attempt).rejects.toMatchObject({ code: 'high_risk_blocked' });
+    },
+    GIT_HEAVY_TIMEOUT_MS,
+  );
+
+  it(
+    'refuses (fails closed) to restore a snapshot whose riskGrade is not one of the three known grades, and performs no write',
+    async () => {
+      const root = initRepo();
+      const filePath = join(root, 'file.txt');
+      await writeFile(filePath, 'original\n');
+      commitAll(root, 'seed');
+
+      const malformedSnapshot: UndoSnapshotV1 = {
+        worktreeRoot: root,
+        branch: 'main',
+        headShaAtSnapshot: headSha(root),
+        riskGrade: 'critical' as unknown as RiskGrade,
+        capturedAt: new Date().toISOString(),
+        entries: [{ path: filePath, existedBefore: true, content: Buffer.from('original\n') }],
+      };
+
+      await writeFile(filePath, 'tampered\n');
+      const outcome = await restoreUndoSnapshot(malformedSnapshot);
+
+      expect(outcome).toEqual({ restored: false, reason: 'high_risk_blocked' });
+      expect(await readFile(filePath, 'utf8')).toBe('tampered\n');
+    },
+    GIT_HEAVY_TIMEOUT_MS,
+  );
+
+  it(
     'refuses to restore a HIGH-graded snapshot even if one is assembled by hand, and performs no write',
     async () => {
       // A HIGH snapshot can never come from captureUndoSnapshot (the previous test proves that),
@@ -248,7 +327,7 @@ describe('captureUndoSnapshot / restoreUndoSnapshot', () => {
     GIT_HEAVY_TIMEOUT_MS,
   );
 
-  it(
+  it.skipIf(!SYMLINK_SUPPORTED)(
     'rejects a touched path that escapes the worktree through a symlinked ancestor directory',
     async () => {
       const root = initRepo();
@@ -256,13 +335,7 @@ describe('captureUndoSnapshot / restoreUndoSnapshot', () => {
       await writeFile(join(outsideDir, 'secret.txt'), 'outside content\n');
 
       const linkPath = join(root, 'linked');
-      try {
-        await symlink(outsideDir, linkPath, 'junction');
-      } catch {
-        // Creating a symlink/junction needs a privilege this sandbox may not have; the lexical
-        // traversal test above already covers the non-symlink case, so skip rather than fail.
-        return;
-      }
+      await symlink(outsideDir, linkPath, 'junction');
       commitAll(root, 'seed');
 
       await expect(
@@ -277,7 +350,7 @@ describe('captureUndoSnapshot / restoreUndoSnapshot', () => {
     GIT_HEAVY_TIMEOUT_MS,
   );
 
-  it(
+  it.skipIf(!SYMLINK_SUPPORTED)(
     'refuses to snapshot a symlink itself rather than silently treating it as a plain file',
     async () => {
       // The symlink's target is deliberately *inside* the worktree, isolating "this touched path
@@ -288,11 +361,7 @@ describe('captureUndoSnapshot / restoreUndoSnapshot', () => {
       await writeFile(realFile, 'real content\n');
 
       const linkPath = join(root, 'link.txt');
-      try {
-        await symlink(realFile, linkPath, 'file');
-      } catch {
-        return; // no symlink privilege in this sandbox; see the directory-junction test above
-      }
+      await symlink(realFile, linkPath, 'file');
       commitAll(root, 'seed');
 
       await expect(
@@ -303,6 +372,40 @@ describe('captureUndoSnapshot / restoreUndoSnapshot', () => {
           riskGrade: 'medium',
         }),
       ).rejects.toMatchObject({ code: 'unsupported_path_kind' });
+    },
+    GIT_HEAVY_TIMEOUT_MS,
+  );
+
+  it.skipIf(!SYMLINK_SUPPORTED)(
+    'refuses to restore through a path that was swapped for a symlink after the snapshot was captured',
+    async () => {
+      // The gap this closes: assertInsideWorktree's containment check realpaths through symlinks
+      // on purpose (to catch an escape via a symlinked ancestor), so a symlink whose target is
+      // still inside the worktree passes containment cleanly. Without a kind re-check right before
+      // the write, restoreUndoSnapshot would follow that symlink and silently clobber whatever file
+      // it now points at -- a different file than the one the snapshot actually recorded.
+      const root = initRepo();
+      const touchedPath = join(root, 'file.txt');
+      await writeFile(touchedPath, 'original\n');
+      const decoyPath = join(root, 'decoy.txt');
+      await writeFile(decoyPath, 'decoy content that must survive untouched\n');
+      commitAll(root, 'seed');
+
+      const snapshot = await captureUndoSnapshot({
+        worktreeRoot: root,
+        branch: 'main',
+        touchedPaths: [touchedPath],
+        riskGrade: 'medium',
+      });
+
+      // The MEDIUM action (or something else entirely) removes the original file and swaps a
+      // symlink into its place, pointing at a different in-worktree file.
+      await rm(touchedPath, { force: true });
+      await symlink(decoyPath, touchedPath, 'file');
+
+      await expect(restoreUndoSnapshot(snapshot)).rejects.toMatchObject({ code: 'unsupported_path_kind' });
+      // The decoy must be untouched: restore must never have followed the symlink to write there.
+      expect(await readFile(decoyPath, 'utf8')).toBe('decoy content that must survive untouched\n');
     },
     GIT_HEAVY_TIMEOUT_MS,
   );

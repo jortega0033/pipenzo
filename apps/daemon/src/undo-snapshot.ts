@@ -76,12 +76,23 @@ export type UndoOutcome =
   | { readonly restored: true }
   | { readonly restored: false; readonly reason: 'expired' | 'high_risk_blocked' };
 
-/** Whether this ticket's undo mechanism may ever be offered for an action graded `riskGrade`.
- * `false` only for `'high'` — the one structural exclusion this module exists to enforce. Callers
- * building a UI or API entry point for "Undo" should gate on this before even rendering the
- * affordance, in addition to the enforcement inside `captureUndoSnapshot`/`restoreUndoSnapshot`. */
+/**
+ * Whether this ticket's undo mechanism may ever be offered for an action graded `riskGrade`. Also
+ * the shared check `captureUndoSnapshot`/`restoreUndoSnapshot` use for their own HIGH exclusion.
+ *
+ * Written as an allowlist (`'low' | 'medium'`), not a blocklist (`!== 'high'`), even though
+ * `RiskGrade` has exactly three members at the type level and the two forms are equivalent for any
+ * value TypeScript actually checked. They stop being equivalent the moment a value crosses a
+ * runtime boundary TypeScript can't see through — and `UndoSnapshotV1` is documented above as
+ * exactly that: "plain data a caller could hold onto and replay," not a value this module
+ * necessarily constructed and typed itself. A blocklist fails *open* (treats it as undo-eligible)
+ * on `undefined`, a typo, or a future fourth grade nobody's taught this module about yet; an
+ * allowlist fails *closed* on the same inputs. CLAUDE.md hard rule 3 — "no exceptions, ever" — is a
+ * fail-closed rule, so the check enforcing it has to be fail-closed too, not just correct for the
+ * three values it was written against.
+ */
 export function isUndoAvailable(riskGrade: RiskGrade): boolean {
-  return riskGrade !== 'high';
+  return riskGrade === 'low' || riskGrade === 'medium';
 }
 
 /** Turns `git diff --numstat` output into an absolute touched-path list for
@@ -143,6 +154,32 @@ async function assertInsideWorktree(realRoot: string, candidate: string): Promis
 }
 
 /**
+ * Refuses to act on `absolute` if its current on-disk kind isn't one a filesystem-only restore can
+ * safely handle. `captureUndoSnapshot` already refuses a path that *starts out* as a symlink or a
+ * directory; this is the restore-side twin of that check, and it matters independently, not just
+ * defensively. A snapshot is captured right before an action runs but can be restored much later —
+ * seconds, minutes, an entire session — and nothing stops something else from swapping the path for
+ * a symlink into a different in-worktree file in between. `assertInsideWorktree`'s containment
+ * check alone would *not* catch that: it realpaths through symlinks on purpose (to catch an escape
+ * via a symlinked ancestor directory), so a symlink whose target is still inside the worktree
+ * passes containment cleanly even though writing through it — `fs.writeFile` follows symlinks by
+ * default — would silently overwrite whatever file the symlink now points at instead of the path
+ * the snapshot actually recorded. Checking again, right here, immediately before the write or
+ * remove, is what closes that gap; a path that no longer exists at all is fine either way
+ * (`writeFile` creates it fresh, and removing a path that isn't there is already a no-op).
+ */
+async function assertRestorableKind(absolute: string): Promise<void> {
+  const metadata = await lstat(absolute).catch(() => undefined);
+  if (!metadata) return;
+  if (metadata.isSymbolicLink() || !metadata.isFile()) {
+    throw new UndoSnapshotError(
+      'unsupported_path_kind',
+      `${absolute} changed kind (symlink or directory) since it was snapshotted -- refusing to restore through it`,
+    );
+  }
+}
+
+/**
  * Captures the pre-action content of exactly `touchedPaths`, for later restore by
  * `restoreUndoSnapshot`. Throws `UndoSnapshotError('high_risk_blocked')` for a HIGH-graded action
  * without reading anything — see the module comment.
@@ -151,7 +188,7 @@ export async function captureUndoSnapshot(input: CaptureUndoSnapshotInput): Prom
   const { worktreeRoot, branch, touchedPaths, riskGrade } = input;
   const gitRunner = input.gitRunner ?? runGitCommand;
 
-  if (riskGrade === 'high') {
+  if (!isUndoAvailable(riskGrade)) {
     throw new UndoSnapshotError('high_risk_blocked', 'Undo is never offered for a HIGH-risk action');
   }
 
@@ -202,7 +239,7 @@ export async function restoreUndoSnapshot(
   snapshot: UndoSnapshotV1,
   options: { readonly gitRunner?: PipenzoGitRunner } = {},
 ): Promise<UndoOutcome> {
-  if (snapshot.riskGrade === 'high') {
+  if (!isUndoAvailable(snapshot.riskGrade)) {
     return { restored: false, reason: 'high_risk_blocked' };
   }
 
@@ -218,6 +255,7 @@ export async function restoreUndoSnapshot(
     // possibly against a mutated filesystem, so every write still earns its own containment check
     // rather than trusting whatever `captureUndoSnapshot` decided earlier.
     const absolute = await assertInsideWorktree(realRoot, entry.path);
+    await assertRestorableKind(absolute);
     if (entry.existedBefore) {
       await mkdir(dirname(absolute), { recursive: true });
       await writeFile(absolute, entry.content ?? Buffer.alloc(0));
