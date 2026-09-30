@@ -26,6 +26,7 @@ import type { PipenzoPhaseService } from './pipenzo-phase-service.js';
 import { registerPipenzoPhaseRoutes } from './routes/pipenzo-phases.js';
 import type { PipenzoPhaseMachine } from './pipenzo-phase-machine.js';
 import { registerPipenzoTicketRoutes } from './routes/pipenzo-tickets.js';
+import type { PipenzoAuditStore } from './pipenzo-audit-store.js';
 import { registerPipenzoMediumApprovalRoutes } from './routes/pipenzo-medium-approval.js';
 import type { MediumApprovalStore } from './medium-approval-store.js';
 import { registerPipenzoHighApprovalRoutes } from './routes/pipenzo-high-approval.js';
@@ -94,6 +95,14 @@ export interface BuildServerOptions {
    * "no dependency, no new behaviour" rule every other optional surface here follows.
    */
   ticketStore?: TicketWorktreeStorePort;
+  /**
+   * Issue #82's board drag-and-drop divergence audit, narrowed to just the `append` the ticket-
+   * transition route calls -- the same store (and the same `Pick`) `PipenzoReconciler` already
+   * writes a poll-found divergence to. Optional for the same reason every other Pipenzo surface is:
+   * a daemon assembled without one still transitions tickets exactly as before, it just has nowhere
+   * to record a drag that disagreed with what GitHub reported.
+   */
+  pipenzoAuditStore?: Pick<PipenzoAuditStore, 'append'>;
   /**
    * Crash recovery's parked set (issue #190). Optional for the same reason the rest of this surface
    * is: a daemon built without it has no recovery route at all, rather than one that answers with an
@@ -250,6 +259,7 @@ export function buildServer(opts: BuildServerOptions): FastifyInstance {
           ? { tickets: opts.ticketStore, worktrees: opts.worktreeManager }
           : undefined,
         opts.executionLimiter,
+        opts.pipenzoAuditStore,
       );
     if (opts.phaseMachine && opts.worktreeManager && opts.mediumApprovalStore)
       registerPipenzoMediumApprovalRoutes(

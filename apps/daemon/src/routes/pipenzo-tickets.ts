@@ -32,6 +32,7 @@ import {
   type TicketWorktreeStorePort,
 } from '../pipenzo-worktree-lifecycle.js';
 import type { PipenzoExecutionLimiter } from '../pipenzo-execution-limiter.js';
+import type { PipenzoAuditStore } from '../pipenzo-audit-store.js';
 
 /**
  * The phase-machine routes (Pipenzo issue #188).
@@ -99,6 +100,46 @@ function fail(reply: FastifyReply, error: PipenzoPhaseMachineError): void {
 
 function invalid(reply: FastifyReply, what: string): void {
   reply.code(400).send({ code: 'invalid_request', error: `invalid ${what}` });
+}
+
+/**
+ * Issue #82: writes the same `ticket_divergence` audit entry `pipenzo-reconciler.ts`'s own `#tick`
+ * writes for a `read()`-found divergence, here for one this route's own `transition()` call found
+ * instead -- a board drag whose optimistic move disagreed with what GitHub actually reported, either
+ * because the write landed on a different lane than asked (a concurrent label change raced the
+ * drag) or because the transition was refused outright against a lane that had just moved out from
+ * under the local record. Gated the same way the reconciler gates its own call: `changed` and
+ * `divergence !== 'none'`, so a ticket that is steadily `ambiguous_labels`/`unlabelled` does not get
+ * a fresh entry for every drag attempt.
+ *
+ * Best-effort and never allowed to turn a write (or a refusal) this route has already decided on
+ * into a different response -- the same reasoning `worktreeCleanup`'s own call site below states: a
+ * local audit-log failure is not the caller's problem, and must not mask the real outcome of the
+ * drag.
+ */
+async function auditTransitionDivergence(
+  audit: Pick<PipenzoAuditStore, 'append'> | undefined,
+  ticketId: string,
+  reconciliation: PipenzoTicketReconciliation,
+  logger: FastifyInstance['log'] | undefined,
+): Promise<void> {
+  if (!audit || !reconciliation.changed || reconciliation.divergence === 'none') return;
+  try {
+    await audit.append({
+      ticketId,
+      kind: 'ticket_divergence',
+      divergence: reconciliation.divergence,
+      previousLane: reconciliation.previousLane,
+      reconciledLane: reconciliation.ticket.lane,
+      observedLabels: [...reconciliation.observedLabels],
+      outcome: 'reconciled_to_label',
+    });
+  } catch (error) {
+    logger?.warn(
+      { ticketId, error: error instanceof Error ? error.message : String(error) },
+      'pipenzo ticket-transition divergence audit write failed',
+    );
+  }
 }
 
 /**
@@ -202,6 +243,14 @@ export function registerPipenzoTicketRoutes(
    * readout can never show two different ceilings.
    */
   executionLimiter?: Pick<PipenzoExecutionLimiter, 'limit'>,
+  /**
+   * Issue #82's board drag-and-drop: where a lane/label divergence the transition route's own call
+   * to `machine.transition()` finds lands, the same store (and the same narrowed `Pick`, for the
+   * same reason -- this route has no business doing anything to the audit log but append) the
+   * reconciler's `#tick` already writes to for a poll-found divergence. Optional so every test and
+   * caller that predates this ticket keeps transitioning exactly as before, with no audit entry.
+   */
+  audit?: Pick<PipenzoAuditStore, 'append'>,
 ): void {
   const limits = { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } };
 
@@ -264,9 +313,28 @@ export function registerPipenzoTicketRoutes(
     try {
       result = await machine.transition(parsed.data.ticketId, parsed.data.label);
     } catch (error) {
-      if (error instanceof PipenzoPhaseMachineError) return fail(reply, error);
+      if (error instanceof PipenzoPhaseMachineError) {
+        // Issue #82: a refusal can still be the discovery of a real divergence -- see
+        // `PipenzoPhaseMachineError.reconciliation`'s own doc comment for when `transition()`
+        // attaches one. Audited before the refusal is sent, never after: the caller's snap-back and
+        // the audit trail should agree on what happened, not race each other.
+        if (error.code === 'illegal_transition' && error.reconciliation) {
+          await auditTransitionDivergence(
+            audit,
+            parsed.data.ticketId,
+            error.reconciliation,
+            app.log,
+          );
+        }
+        return fail(reply, error);
+      }
       return fail(reply, new PipenzoPhaseMachineError('github_failed', 'ticket transition failed'));
     }
+    // Issue #82: the write succeeded, but what GitHub reported back may not be the lane the drag
+    // asked for (a concurrent label change raced it) -- see `transitionDivergenceFor`. Audited
+    // before the worktree-cleanup/reply steps below, all for the same "never let a side effect mask
+    // the primary outcome" reason each of those already states for itself.
+    await auditTransitionDivergence(audit, parsed.data.ticketId, result, app.log);
     // Best-effort, outside the try above and never allowed to turn a written label into a failed
     // response — same reasoning as the implement route's own comment. A cleanup refusal or failure
     // is surfaced by `cleanupTerminalWorktree()` itself, not by this route.
