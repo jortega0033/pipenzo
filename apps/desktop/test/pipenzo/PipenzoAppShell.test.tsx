@@ -500,13 +500,8 @@ describe('PipenzoAppShell', () => {
     expect(container.querySelectorAll('.chip-ci')).toHaveLength(1);
   });
 
-  it('renders no chip and no branch for Queued or Needs-human -- neither is a guess this shell makes', async () => {
-    installBridge({
-      tickets: [
-        makeTicket({ ticketId: 'a', issueNumber: 42, lane: 'queued' }),
-        makeTicket({ ticketId: 'b', issueNumber: 43, lane: 'needs-human' }),
-      ],
-    });
+  it('renders no chip and no card-foot for a Queued card -- its next action is the whole card', async () => {
+    installBridge({ tickets: [makeTicket({ ticketId: 'a', issueNumber: 42, lane: 'queued' })] });
     const { container } = render(
       <ThemeProvider>
         <PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />
@@ -516,6 +511,273 @@ describe('PipenzoAppShell', () => {
     await screen.findByText('#42');
     expect(container.querySelectorAll('.chip')).toHaveLength(0);
     expect(container.querySelectorAll('.card-foot')).toHaveLength(0);
+  });
+
+  /* --------------------------------------- issue #86: Needs-human's five real card variants */
+
+  it('gives a needs-pre-scoping ticket its chip and a quiet Split naming the real estimate', async () => {
+    installBridge({
+      tickets: [
+        makeTicket({
+          ticketId: 'a',
+          issueNumber: 113,
+          lane: 'needs-human',
+          labels: ['pipenzo:needs-pre-scoping'],
+          estimate: { lines: 1340, files: 31, layered: false },
+        }),
+      ],
+    });
+    const { container } = render(
+      <ThemeProvider>
+        <PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />
+      </ThemeProvider>,
+    );
+
+    expect(await screen.findByText('pipenzo:needs-pre-scoping')).toBeInTheDocument();
+    expect(container.querySelector('.chip-neutral')).toBeInTheDocument();
+    expect(screen.getByText('Declined at Refine · nothing written')).toBeInTheDocument();
+    expect(screen.getByText(/1,340 changed lines/)).toBeInTheDocument();
+    expect(screen.getByText(/31 files/)).toBeInTheDocument();
+  });
+
+  it("renders a needs-pre-scoping ticket's real cached proposedSplit rows when one survived", async () => {
+    installBridge({
+      tickets: [
+        makeTicket({
+          ticketId: 'a',
+          issueNumber: 113,
+          lane: 'needs-human',
+          labels: ['pipenzo:needs-pre-scoping'],
+          refusal: {
+            estimate: { changedLines: 1340, filesTouched: 31, layered: false },
+            proposedSplit: [
+              { summary: 'Introduce a storage interface', changedLines: 90, filesTouched: 4 },
+            ],
+          },
+        }),
+      ],
+    });
+    render(
+      <ThemeProvider>
+        <PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />
+      </ThemeProvider>,
+    );
+
+    expect(await screen.findByText('Introduce a storage interface')).toBeInTheDocument();
+    expect(screen.getByText(/90 lines/)).toBeInTheDocument();
+  });
+
+  it('gives an awaiting-stack-approval ticket its chip and the real estimate, with no fabricated split rows', async () => {
+    installBridge({
+      tickets: [
+        makeTicket({
+          ticketId: 'a',
+          issueNumber: 108,
+          lane: 'needs-human',
+          labels: ['pipenzo:awaiting-stack-approval'],
+          estimate: { lines: 212, files: 9, layered: true },
+        }),
+      ],
+    });
+    const { container } = render(
+      <ThemeProvider>
+        <PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />
+      </ThemeProvider>,
+    );
+
+    expect(await screen.findByText('pipenzo:awaiting-stack-approval')).toBeInTheDocument();
+    expect(container.querySelector('.chip-warn')).toBeInTheDocument();
+    expect(screen.getByText('Awaiting a human decision on how to split or proceed')).toBeInTheDocument();
+    expect(screen.getByText(/212 changed lines/)).toBeInTheDocument();
+    expect(container.querySelectorAll('.split-row')).toHaveLength(0);
+  });
+
+  it('names the real materialized child count once an awaiting-stack-approval ticket has one', async () => {
+    installBridge({
+      tickets: [
+        makeTicket({
+          ticketId: 'a',
+          issueNumber: 108,
+          lane: 'needs-human',
+          labels: ['pipenzo:awaiting-stack-approval'],
+          stack: {
+            parentId: null,
+            childIds: [
+              '00000000-0000-4000-8000-000000000010',
+              '00000000-0000-4000-8000-000000000011',
+            ],
+            index: null,
+          },
+        }),
+      ],
+    });
+    render(
+      <ThemeProvider>
+        <PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />
+      </ThemeProvider>,
+    );
+
+    expect(await screen.findByText('Proposed stack · 2 PRs')).toBeInTheDocument();
+  });
+
+  it('gives an interrupted ticket its chip and a Notice naming the real phase and worktree branch', async () => {
+    installBridge({
+      tickets: [
+        makeTicket({
+          ticketId: 'a',
+          issueNumber: 92,
+          lane: 'needs-human',
+          labels: ['pipenzo:interrupted'],
+          phase: 'implement',
+          worktree: { id: '00000000-0000-4000-8000-000000000005', branch: 'issue-92' },
+        }),
+      ],
+    });
+    const { container } = render(
+      <ThemeProvider>
+        <PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />
+      </ThemeProvider>,
+    );
+
+    expect(await screen.findByText('pipenzo:interrupted')).toBeInTheDocument();
+    expect(screen.getByText('The daemon died mid-run')).toBeInTheDocument();
+    expect(screen.getByText('Implement')).toBeInTheDocument();
+    expect(screen.getByText('issue-92')).toBeInTheDocument();
+    expect(container.querySelector('.notice.warn')).toBeInTheDocument();
+  });
+
+  it('never fabricates a worktree branch for an interrupted ticket that never provisioned one', async () => {
+    installBridge({
+      tickets: [
+        makeTicket({
+          ticketId: 'a',
+          issueNumber: 92,
+          lane: 'needs-human',
+          labels: ['pipenzo:interrupted'],
+          phase: 'refine',
+        }),
+      ],
+    });
+    render(
+      <ThemeProvider>
+        <PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />
+      </ThemeProvider>,
+    );
+
+    expect(await screen.findByText('Refine')).toBeInTheDocument();
+    expect(screen.queryByText(/Worktree branch/)).not.toBeInTheDocument();
+  });
+
+  it('gives a merge-conflict ticket its chip and a file-less Conflict block, with no fabricated PR number', async () => {
+    installBridge({
+      tickets: [
+        makeTicket({
+          ticketId: 'a',
+          issueNumber: 101,
+          lane: 'needs-human',
+          labels: ['pipenzo:merge-conflict'],
+        }),
+      ],
+    });
+    const { container } = render(
+      <ThemeProvider>
+        <PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />
+      </ThemeProvider>,
+    );
+
+    expect(await screen.findByText('pipenzo:merge-conflict')).toBeInTheDocument();
+    expect(screen.getByText('Conflicts with main')).toBeInTheDocument();
+    expect(screen.getByText(/Nothing failed and no commit is lost\./)).toBeInTheDocument();
+    expect(container.querySelector('.conflict-files')).not.toBeInTheDocument();
+  });
+
+  it('gives a ticket parked after 3+ failures its own "3 failed" chip and FailNote naming the real last attempt', async () => {
+    installBridge({
+      tickets: [
+        makeTicket({
+          ticketId: 'a',
+          issueNumber: 87,
+          lane: 'needs-human',
+          labels: ['pipenzo:needs-human'],
+          attempts: [
+            { sessionId: 's1', tier: 'low', model: 'sonnet', outcome: 'gate_failed' },
+            { sessionId: 's2', tier: 'mid', model: 'sonnet', outcome: 'gate_failed' },
+            { sessionId: 's3', tier: 'mid', model: 'sonnet', outcome: 'vitest timed out' },
+          ],
+        }),
+      ],
+    });
+    const { container } = render(
+      <ThemeProvider>
+        <PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />
+      </ThemeProvider>,
+    );
+
+    expect(await screen.findByText('3 failed')).toBeInTheDocument();
+    expect(container.querySelector('.chip-danger')).toBeInTheDocument();
+    expect(screen.getByText(/Parked after 3 failed attempts/)).toBeInTheDocument();
+    expect(screen.getByText(/vitest timed out/)).toBeInTheDocument();
+    expect(container.querySelector('.fail-note')).toBeInTheDocument();
+  });
+
+  it('gives a plain parked ticket (fewer than 3 attempts, no specific label) the honest generic chip and note', async () => {
+    installBridge({
+      tickets: [
+        makeTicket({
+          ticketId: 'a',
+          issueNumber: 89,
+          lane: 'needs-human',
+          labels: ['pipenzo:needs-human'],
+          attempts: [],
+        }),
+      ],
+    });
+    render(
+      <ThemeProvider>
+        <PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />
+      </ThemeProvider>,
+    );
+
+    expect(await screen.findByText('pipenzo:needs-human')).toBeInTheDocument();
+    expect(screen.getByText(/no attempts recorded yet/)).toBeInTheDocument();
+  });
+
+  it('never renders more than one Needs-human variant chip on the same card', async () => {
+    installBridge({
+      tickets: [
+        makeTicket({
+          ticketId: 'a',
+          issueNumber: 108,
+          lane: 'needs-human',
+          labels: ['pipenzo:awaiting-stack-approval'],
+        }),
+        makeTicket({
+          ticketId: 'b',
+          issueNumber: 113,
+          lane: 'needs-human',
+          labels: ['pipenzo:needs-pre-scoping'],
+        }),
+        makeTicket({
+          ticketId: 'c',
+          issueNumber: 101,
+          lane: 'needs-human',
+          labels: ['pipenzo:merge-conflict'],
+        }),
+      ],
+    });
+    render(
+      <ThemeProvider>
+        <PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />
+      </ThemeProvider>,
+    );
+
+    expect(await screen.findByText('pipenzo:awaiting-stack-approval')).toBeInTheDocument();
+    expect(screen.getAllByText('pipenzo:awaiting-stack-approval')).toHaveLength(1);
+    expect(screen.getAllByText('pipenzo:needs-pre-scoping')).toHaveLength(1);
+    expect(screen.getAllByText('pipenzo:merge-conflict')).toHaveLength(1);
+    // Each card renders exactly the one Split/Conflict block its own variant owns, never a mix.
+    expect(screen.queryByText('Conflicts with main')).toBeInTheDocument();
+    expect(screen.queryAllByText('Conflicts with main')).toHaveLength(1);
   });
 
   it('shows the current page as the crumb trail', async () => {
