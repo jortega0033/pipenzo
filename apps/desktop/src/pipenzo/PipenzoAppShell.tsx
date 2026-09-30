@@ -225,6 +225,7 @@ export function PipenzoAppShell({
   onPushed,
   onPullRequestOpened,
   onTicketTransitionFailed,
+  initialTicketId,
 }: {
   sync: { status: SyncStatus; label: string };
   onRefreshSync: () => void;
@@ -242,10 +243,14 @@ export function PipenzoAppShell({
    * `use-board-drag-drop.ts`) by the time this fires. Mirrors `onImplementFailed` exactly: the toast
    * stack lives in `AppRoot.tsx`, not here. */
   onTicketTransitionFailed?: (ticket: PipenzoTicketViewV1, message: string) => void;
+  /** Issue #133: `SimpleModeShell`'s "See the technical details" crossover link, via
+   * `AppRoot.tsx` -- see this file's own doc comment section on it. Read once, as this shell's
+   * starting `view`/`selectedTicketId`, never afterwards. */
+  initialTicketId?: string;
 }) {
   const [view, setView] = useState<
     'board' | 'settings' | 'activity' | 'ticket-detail' | 'diff-review' | 'models'
-  >('board');
+  >(initialTicketId ? 'ticket-detail' : 'board');
   const { ticketList, refresh } = usePipenzoTickets();
   const { repoList, refresh: refreshRepoList } = useConnectedRepoList();
   const [implementing, setImplementing] = useState<PipenzoTicketViewV1>();
@@ -263,7 +268,7 @@ export function PipenzoAppShell({
   // The ticket TicketDetail is currently open on -- a ticket id, not the ticket object itself, so
   // switching lanes/lists under it (a live board sync) is picked up on the next render rather than
   // pinning a stale snapshot (issue #341).
-  const [selectedTicketId, setSelectedTicketId] = useState<string | undefined>(undefined);
+  const [selectedTicketId, setSelectedTicketId] = useState<string | undefined>(initialTicketId);
   // The user's own pick, when they have made one -- resolved against the live connected list by
   // `resolveActiveRepoId` below rather than trusted on its own, since a repo it names can stop being
   // connected (removed from Settings) out from under this state.
