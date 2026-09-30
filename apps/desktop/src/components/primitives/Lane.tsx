@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from 'react';
+import { forwardRef, type CSSProperties, type ReactNode } from 'react';
 
 /**
  * The kanban board's own shell (issue #81) — `Main.dc.html`'s `.board` grid of four `.lane`
@@ -63,7 +63,20 @@ export function LaneCount({ children }: { children: ReactNode }) {
 /** `.lane-cards` — the scrollable well a lane's cards stack in (`overflow-y: auto`, its own scroll
  * container independent of the other three lanes and of the page itself). Renders whatever a
  * caller gives it per ticket, or an `Empty` `lane`-variant when there is nothing to show — see the
- * module comment for why deciding *what* that is stays out of this file. */
-export function LaneCards({ children }: { children: ReactNode }) {
-  return <div className="lane-cards">{children}</div>;
-}
+ * module comment for why deciding *what* that is stays out of this file.
+ *
+ * `ref`/`className` (issue #82) exist for exactly one caller: `BoardScreen.tsx` hooks dnd-kit's
+ * `useDroppable` ref to this well so a card can be dropped into it, and adds a drop-active class
+ * while a drag is hovering over it. Every other caller (and every test written before #82) keeps
+ * passing neither and gets the same bare `.lane-cards` div as always — this is additive, not a
+ * signal that this component now has an opinion about drag-and-drop itself.
+ */
+export const LaneCards = forwardRef<HTMLDivElement, { children: ReactNode; className?: string }>(
+  function LaneCards({ children, className }, ref) {
+    return (
+      <div ref={ref} className={className ? `lane-cards ${className}` : 'lane-cards'}>
+        {children}
+      </div>
+    );
+  },
+);

@@ -3,6 +3,22 @@ import { describe, expect, it, vi } from 'vitest';
 import type { PipenzoTicketViewV1 } from '@agent-dock/shared';
 import { BoardScreen } from '../../src/pipenzo/BoardScreen.js';
 
+/** A `DOMRect`-shaped plain object -- enough for dnd-kit's own rect measuring, which reads plain
+ * fields off whatever `getBoundingClientRect` returns rather than requiring a real `DOMRect`. */
+function rect(left: number, top: number, width: number, height: number) {
+  return {
+    left,
+    top,
+    right: left + width,
+    bottom: top + height,
+    width,
+    height,
+    x: left,
+    y: top,
+    toJSON: () => ({}),
+  };
+}
+
 const REPO = 'jortega0033/pipenzo';
 
 function makeTicket(overrides: Partial<PipenzoTicketViewV1> = {}): PipenzoTicketViewV1 {
@@ -251,6 +267,113 @@ describe('BoardScreen', () => {
       const { container } = render(<BoardScreen renderTicket={() => null} />);
       expect(container.querySelector('.sk-board')).not.toBeInTheDocument();
       expect(container.querySelector('.board')).toBeInTheDocument();
+    });
+  });
+
+  describe('drag-and-drop (issue #82)', () => {
+    it('wires every card as a dnd-kit draggable', () => {
+      const tickets = [makeTicket({ ticketId: 'a', lane: 'queued', issueNumber: 1 })];
+      const { container } = render(
+        <BoardScreen tickets={tickets} renderTicket={(ticket) => <span>#{ticket.issueNumber}</span>} />,
+      );
+      // dnd-kit's own `useDraggable` attaches these to whatever node gets its `setNodeRef` --
+      // proof the card is really wired to the hook, not just visually present. `role="group"` /
+      // `tabIndex=-1` are this file's own override (see `DraggableTicketCard`'s doc comment): a
+      // plain `useDraggable` default of `role="button"`/`tabIndex=0` would duplicate `Card.tsx`'s
+      // own button semantics on the nested real card.
+      const handle = container.querySelector('[aria-roledescription="draggable ticket card"]');
+      expect(handle).toBeInTheDocument();
+      expect(handle).toHaveAttribute('role', 'group');
+      expect(handle).toHaveAttribute('tabindex', '-1');
+      expect(handle).toHaveTextContent('#1');
+    });
+
+    /** dnd-kit's `KeyboardSensor` wires its own document-level keydown listener on a macrotask
+     * *after* the activating keydown (`attach()`'s own `setTimeout(() => this.listeners.add(...))`
+     * in its source) -- a real tick has to pass before the subsequent arrow-key/drop sequence is
+     * heard at all, or every one of those events is dispatched into a sensor that isn't listening
+     * yet and silently does nothing. */
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+    it('never calls onCardDrop for a plain click -- only DndContext drag events reach it', () => {
+      const onCardDrop = vi.fn();
+      const tickets = [makeTicket({ ticketId: 'a', lane: 'queued', issueNumber: 1 })];
+      render(
+        <BoardScreen
+          tickets={tickets}
+          renderTicket={(ticket) => <button type="button">#{ticket.issueNumber}</button>}
+          onCardDrop={onCardDrop}
+        />,
+      );
+      // `useDraggable`'s own default `attributes` put `role="button"` on the wrapper div too (see
+      // the drag-handle query elsewhere in this block), so the inner button is found by its own
+      // text rather than by role, to click exactly that node and nothing broader.
+      fireEvent.click(screen.getByText('#1'));
+      expect(onCardDrop).not.toHaveBeenCalled();
+    });
+
+    it('drags a card from one lane onto another with the keyboard and reports the real ticket and target lane', async () => {
+      const onCardDrop = vi.fn();
+      const tickets = [
+        makeTicket({ ticketId: 'a', lane: 'queued', issueNumber: 1 }),
+        makeTicket({ ticketId: 'b', lane: 'working', issueNumber: 2 }),
+      ];
+      const { container } = render(
+        <BoardScreen
+          tickets={tickets}
+          renderTicket={(ticket) => <span>#{ticket.issueNumber}</span>}
+          onCardDrop={onCardDrop}
+        />,
+      );
+
+      const lanes = container.querySelectorAll('.board > .lane');
+      const queuedWell = lanes[0]!.querySelector('.lane-cards')!;
+      const workingWell = lanes[1]!.querySelector('.lane-cards')!;
+      const handle = container.querySelector('[aria-roledescription="draggable ticket card"]')!;
+
+      // Real, if arbitrary, layout -- dnd-kit's own collision detection reads these through
+      // `getBoundingClientRect`, which jsdom otherwise answers with an all-zero rect for every
+      // element, making every droppable indistinguishable from every other.
+      (queuedWell as HTMLElement).getBoundingClientRect = () => rect(0, 0, 200, 400) as DOMRect;
+      (workingWell as HTMLElement).getBoundingClientRect = () => rect(300, 0, 200, 400) as DOMRect;
+      (handle as HTMLElement).getBoundingClientRect = () => rect(20, 20, 100, 40) as DOMRect;
+
+      // Pick up (Space), move right into the Working lane's rect (dnd-kit's keyboard sensor moves
+      // 25px per arrow press; 350px clears the gap to the second lane's rect), drop (Space).
+      fireEvent.keyDown(handle, { code: 'Space' });
+      await tick();
+      for (let step = 0; step < 14; step += 1) {
+        fireEvent.keyDown(handle, { code: 'ArrowRight' });
+      }
+      fireEvent.keyDown(handle, { code: 'Space' });
+
+      expect(onCardDrop).toHaveBeenCalledTimes(1);
+      expect(onCardDrop).toHaveBeenCalledWith(tickets[0], 'working');
+    });
+
+    it('drops the card back on its own lane as a no-op -- resolveBoardCardDrop is what enforces this, not a guess made here', async () => {
+      const onCardDrop = vi.fn();
+      const tickets = [makeTicket({ ticketId: 'a', lane: 'queued', issueNumber: 1 })];
+      const { container } = render(
+        <BoardScreen
+          tickets={tickets}
+          renderTicket={(ticket) => <span>#{ticket.issueNumber}</span>}
+          onCardDrop={onCardDrop}
+        />,
+      );
+
+      const lanes = container.querySelectorAll('.board > .lane');
+      const queuedWell = lanes[0]!.querySelector('.lane-cards')!;
+      const handle = container.querySelector('[aria-roledescription="draggable ticket card"]')!;
+      (queuedWell as HTMLElement).getBoundingClientRect = () => rect(0, 0, 200, 400) as DOMRect;
+      (handle as HTMLElement).getBoundingClientRect = () => rect(20, 20, 100, 40) as DOMRect;
+
+      fireEvent.keyDown(handle, { code: 'Space' });
+      await tick();
+      fireEvent.keyDown(handle, { code: 'ArrowDown' });
+      fireEvent.keyDown(handle, { code: 'Space' });
+
+      expect(onCardDrop).not.toHaveBeenCalled();
     });
   });
 });
