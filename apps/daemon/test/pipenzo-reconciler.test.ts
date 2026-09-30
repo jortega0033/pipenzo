@@ -21,6 +21,7 @@ import {
   PipenzoReconciler,
   type PipenzoReconcilerScheduler,
 } from '../src/pipenzo-reconciler.js';
+import type { TerminalWorktreeCleanupPort } from '../src/pipenzo-worktree-lifecycle.js';
 
 const REPO = 'jortega0033/pipenzo';
 const REF = { owner: 'jortega0033', repo: 'pipenzo' };
@@ -135,6 +136,7 @@ interface HarnessOptions {
   maxAttempts?: number;
   random?: () => number;
   audit?: FakeAuditStore;
+  worktrees?: TerminalWorktreeCleanupPort;
 }
 
 /** A minimal `Pick<PipenzoAuditStore, 'append'>` fake -- exercising `PipenzoReconciler`'s own audit
@@ -170,12 +172,32 @@ function harness(options: HarnessOptions = {}) {
     machine,
     audit: options.audit,
     github: () => github,
+    worktrees: options.worktrees,
     scheduler,
     random: options.random ?? (() => 0),
     pollIntervalMs: options.pollIntervalMs,
     maxAttempts: options.maxAttempts,
   });
   return { repos, tickets, github, machine, scheduler, reconciler };
+}
+
+/**
+ * Records every `cleanup()` call it receives; never throws, matching a real successful cleanup.
+ * `ownedLocation` reports "unresolvable" throughout -- this harness is exercising the reconciler's
+ * own wiring, not the branch sweep, which `pipenzo-worktree-lifecycle.test.ts` already covers
+ * against real git; returning `undefined` here skips it instead of spawning a real (and pointless)
+ * `git branch -D` subprocess against a path that does not exist.
+ */
+function fakeWorktreeCleanup(): TerminalWorktreeCleanupPort & { calls: string[] } {
+  const calls: string[] = [];
+  return {
+    calls,
+    cleanup: async (id: string) => {
+      calls.push(id);
+      return {};
+    },
+    ownedLocation: () => undefined,
+  };
 }
 
 describe('PipenzoReconciler', () => {
@@ -736,6 +758,73 @@ describe('PipenzoReconciler', () => {
       expect(scheduler.timers.size).toBe(0);
 
       await waitFor(() => expect(reconciler.health().state).toBe('healthy'));
+      await reconciler.stop();
+    });
+  });
+
+  describe('terminal-state worktree cleanup (issue #159)', () => {
+    it('cleans up a ticket’s worktree once its issue reads as closed', async () => {
+      const worktreeId = 'a1a1a1a1-b2b2-4c3c-8d4d-e5e5e5e5e5e5';
+      const ticket = makeTicket({
+        issueNumber: 11,
+        worktree: { id: worktreeId, path: 'C:\\owned\\ticket', branch: 'issue-11' },
+      });
+      const github = new FakeGitHubClient().seedIssue({
+        ...makeIssue(11, ['pipenzo:working']),
+        state: 'closed',
+      });
+      const worktrees = fakeWorktreeCleanup();
+      const { repos, tickets, reconciler, scheduler } = harness({
+        tickets: [ticket],
+        github,
+        worktrees,
+      });
+      await repos.replace([REPO]);
+
+      reconciler.start();
+      scheduler.advance(0);
+
+      await waitFor(() => expect(worktrees.calls).toEqual([worktreeId]));
+      await waitFor(() => expect(tickets.get(ticket.ticketId)?.worktree).toBeUndefined());
+
+      await reconciler.stop();
+    });
+
+    it('never calls cleanup for a ticket whose issue is still open', async () => {
+      const ticket = makeTicket({
+        issueNumber: 11,
+        worktree: { id: 'b1b1b1b1-c2c2-4d3d-8e4e-f5f5f5f5f5f5', path: 'C:\\owned\\ticket', branch: 'issue-11' },
+      });
+      const github = new FakeGitHubClient().seedIssue(makeIssue(11, ['pipenzo:working']));
+      const worktrees = fakeWorktreeCleanup();
+      const { repos, reconciler, scheduler } = harness({ tickets: [ticket], github, worktrees });
+      await repos.replace([REPO]);
+
+      reconciler.start();
+      scheduler.advance(0);
+
+      await waitFor(() => expect(reconciler.health().state).toBe('healthy'));
+      expect(worktrees.calls).toEqual([]);
+
+      await reconciler.stop();
+    });
+
+    it('does not call cleanup at all when no worktree port was configured', async () => {
+      const ticket = makeTicket({ issueNumber: 11 });
+      const github = new FakeGitHubClient().seedIssue({
+        ...makeIssue(11, ['pipenzo:working']),
+        state: 'closed',
+      });
+      // No `worktrees` option -- matches every reconciler test above this block, and must keep
+      // polling exactly as it did before this ticket.
+      const { repos, reconciler, scheduler } = harness({ tickets: [ticket], github });
+      await repos.replace([REPO]);
+
+      reconciler.start();
+      scheduler.advance(0);
+
+      await waitFor(() => expect(reconciler.health().state).toBe('healthy'));
+
       await reconciler.stop();
     });
   });

@@ -315,6 +315,9 @@ async function main() {
         cache: githubConditionalCache,
         rateLimits: githubRateLimits,
       }),
+    // Issue #159: a ticket whose issue closes (merged or closed unmerged) since the last poll gets
+    // its worktree cleaned up on this same tick.
+    worktrees: worktreeManager,
     logger,
   });
 
@@ -361,6 +364,9 @@ async function main() {
     connectedRepos,
     repoCheckouts,
     lessonStore,
+    // Issue #159: lets the ticket-transition route look up a ticket's recorded worktree and clean
+    // it up on an abandonment (working/ready-for-review -> queued).
+    ticketStore,
     // The same lazy, per-call client boundary as the phase service and phase machine above: built
     // from a token read at call time, never retained between requests.
     pipenzoGitHubClient: () =>

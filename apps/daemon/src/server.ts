@@ -40,6 +40,7 @@ import { registerPipenzoLessonRoutes } from './routes/pipenzo-lessons.js';
 import type { LessonStore } from './pipenzo-lesson-store.js';
 import { registerPipenzoHealthRoutes, type PipenzoHealthSource } from './routes/pipenzo-health.js';
 import type { DaemonGitHubCredential } from './github-credential.js';
+import type { TicketWorktreeStorePort } from './pipenzo-worktree-lifecycle.js';
 
 export interface BuildServerOptions {
   registry: ProviderRegistry;
@@ -77,6 +78,13 @@ export interface BuildServerOptions {
    * a route test wants.
    */
   phaseEvents?: PipenzoPhaseEventBus;
+  /**
+   * Terminal-state worktree cleanup (issue #159). Optional, and independently of `worktreeManager`:
+   * without a ticket store the transition route has nowhere to read a ticket's recorded worktree id
+   * back from, so it degrades to transitioning exactly as it did before this ticket, the same
+   * "no dependency, no new behaviour" rule every other optional surface here follows.
+   */
+  ticketStore?: TicketWorktreeStorePort;
   /**
    * Crash recovery's parked set (issue #190). Optional for the same reason the rest of this surface
    * is: a daemon built without it has no recovery route at all, rather than one that answers with an
@@ -197,7 +205,14 @@ export function buildServer(opts: BuildServerOptions): FastifyInstance {
       registerPipenzoPublishRoutes(app, opts.publishService, opts.publishNonceGate ?? PublishNonceGate.none());
     if (opts.phaseService) registerPipenzoPhaseRoutes(app, opts.phaseService);
     if (opts.phaseMachine)
-      registerPipenzoTicketRoutes(app, opts.phaseMachine, opts.phaseEvents);
+      registerPipenzoTicketRoutes(
+        app,
+        opts.phaseMachine,
+        opts.phaseEvents,
+        opts.ticketStore && opts.worktreeManager
+          ? { tickets: opts.ticketStore, worktrees: opts.worktreeManager }
+          : undefined,
+      );
     if (opts.crashRecovery) registerPipenzoRecoveryRoutes(app, opts.crashRecovery);
     if (opts.connectedRepos && opts.pipenzoGitHubClient)
       registerPipenzoRepoRoutes(app, opts.connectedRepos, opts.pipenzoGitHubClient);
