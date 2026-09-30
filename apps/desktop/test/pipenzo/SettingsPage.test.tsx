@@ -101,7 +101,7 @@ describe('SettingsPage', () => {
 
   it('hosts the concurrency panel, between connected repos and lesson memory', async () => {
     installBridge();
-    const { container } = render(<SettingsPage />);
+    const { container } = renderSettingsPage();
     await screen.findByText('octocat/hello-world');
 
     expect(await screen.findByText('Concurrency')).toBeInTheDocument();
