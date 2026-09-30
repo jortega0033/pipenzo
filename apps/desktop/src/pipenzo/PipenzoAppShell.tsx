@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
 import type { PipenzoImplementResultV1, PipenzoTicketViewV1 } from '@agent-dock/shared';
 import {
   AppShell,
@@ -18,10 +18,15 @@ import { Chip } from '../components/primitives/Chip.js';
 import { LoadLine } from '../components/primitives/LoadLine.js';
 import { SyncStatusPill, type SyncStatus } from '../components/primitives/SyncStatusPill.js';
 import { WorkspaceSwitcher } from '../components/primitives/WorkspaceSwitcher.js';
+import { ActivityFilterBar } from './ActivityFilterBar.js';
+import { ActivityRow } from './ActivityRow.js';
+import { ActivityScreen } from './ActivityScreen.js';
 import { BoardCommandPalette } from './BoardCommandPalette.js';
 import { BoardImplementDialog } from './BoardImplementDialog.js';
 import { BoardScreen } from './BoardScreen.js';
 import { SettingsPage } from './SettingsPage.js';
+import { TicketDetailContainer } from './TicketDetailContainer.js';
+import { useActivityFilter } from './use-activity-filter.js';
 import { useConnectedRepoList } from './use-connected-repo-list.js';
 import { usePipenzoTickets } from './use-pipenzo-tickets.js';
 import {
@@ -38,14 +43,31 @@ import {
  * `demo-bridge.ts`'s Pipenzo methods (`pipenzoListTickets` included) throw rather than answer, and
  * this shell has nothing else to show.
  *
- * ## Why the nav is exactly two items
+ * ## Why the nav has exactly these items (issue #341)
  *
- * `Main.dc.html`'s own sidebar also carries "Needs me", "Activity", "Open PRs" and "Models & gates"
- * -- none of which have a screen behind them yet. A nav item that leads nowhere is worse than one
- * that does not exist: it is a control a person can click, in an app whose whole premise is "every
- * action is real or absent, never decorative". Board and Settings are the two screens #274 was
- * actually asked to mount (`BoardScreen`, `SettingsPage`); the rest are their own future tickets,
- * each free to add its own row when it lands.
+ * `Main.dc.html`'s own sidebar also carries "Needs me", "Open PRs" and "Models & gates" -- none of
+ * which have a screen behind them yet. A nav item that leads nowhere is worse than one that does
+ * not exist: it is a control a person can click, in an app whose whole premise is "every action is
+ * real or absent, never decorative". Board, Activity and Settings are the three top-level screens
+ * with a real, tested container behind them today (`BoardScreen`, `ActivityScreen`,
+ * `SettingsPage`); the rest are their own future tickets, each free to add its own row when it
+ * lands. TicketDetail is deliberately not a nav item -- it is a drill-down into one ticket, reached
+ * from a board card or an activity row, never a standing destination of its own (see "Reaching
+ * TicketDetail" below).
+ *
+ * ## Reaching TicketDetail (issue #341)
+ *
+ * `TicketDetailScreen.tsx`'s own doc comment named this file as the one that owes it real
+ * composition and routing -- `TicketDetailContainer.tsx` is that composition (issue #91/#92/#95/#96/
+ * #93's panels, wired to one real ticket), and `view`/`selectedTicketId` here are the routing.
+ * `goToTicketDetail` is reached from two real, already-built "reporting, not deciding" callbacks
+ * that had nowhere to report to until now: `ActivityRow.tsx`'s `onOpenTicket` (below, in the
+ * Activity screen) and `TicketSwitcherPanel.tsx`'s `onSwitch` (inside `TicketDetailContainer`
+ * itself, for switching between Needs-human tickets without leaving the screen). Board cards get
+ * the same reachability below, next to the Queued-only Implement dialog this file already wires.
+ * The crumb trail's leading "Board" item becomes a real click target only while on TicketDetail --
+ * see `CrumbLink` below -- since that is the one screen this shell can reach that is not one prefix
+ * away from the sidebar itself.
  *
  * ## Where the tickets come from
  *
@@ -91,14 +113,19 @@ import {
  * inert -- there is no real "run this anyway, bypassing the hold" capability behind it yet, and a
  * clickable button promising one would be a lie the canvas itself does not tell.
  *
- * ## Queued cards open the Implement dialog (issue #342)
+ * ## Queued cards open the Implement dialog (issue #342); every other lane opens TicketDetail (#341)
  *
- * A Queued card is the one card this shell makes clickable: `Card`'s own `onClick` (which also
- * makes it a keyboard-reachable `button`) opens `BoardImplementDialog` for that ticket, which
- * resolves the repo's local checkout (#344) and then mounts the real `ImplementDialog`. Only
- * Queued, because README's Implement is the action a Queued ticket is waiting for -- a Working,
- * Ready-for-review or Needs-human card has a different next action, owned by #85/#86/#87, and making
- * those clickable here would be guessing at it.
+ * A Queued card's `onClick` (via `Card`'s own, which also makes it a keyboard-reachable `button`)
+ * opens `BoardImplementDialog` for that ticket, which resolves the repo's local checkout (#344) and
+ * then mounts the real `ImplementDialog` -- unchanged from #342. README's Implement is the action a
+ * Queued ticket is waiting for; a Working, Ready-for-review or Needs-human card's own *lane-specific*
+ * next action (a held card's real "run anyway", Needs-human's seven reason variants, Ready-for-
+ * review's ci-failed card) is still owned by #85/#86/#87 and not guessed at here. But every card
+ * already carries the one action every lane shares regardless of what its own ticket eventually
+ * adds: viewing the ticket's detail. That is what a click on any non-Queued card does now --
+ * `goToTicketDetail`, the same navigation `ActivityRow`'s `onOpenTicket` reports to below -- so a
+ * person can actually reach the phase stepper, rail blocks and activity stream #341 was asked to
+ * make reachable, for a real ticket, from a real screen.
  *
  * `onImplementStarted` reports a successful dispatch upward rather than toasting here, because the
  * toast stack lives in `AppRoot` alongside the sync pill's own failure toast. The dialog closes
@@ -139,10 +166,14 @@ export function PipenzoAppShell({
    * `AppRoot`, same as the success case above. */
   onImplementFailed?: (ticket: PipenzoTicketViewV1, message: string, retry: () => void) => void;
 }) {
-  const [view, setView] = useState<'board' | 'settings'>('board');
+  const [view, setView] = useState<'board' | 'settings' | 'activity' | 'ticket-detail'>('board');
   const { ticketList, refresh } = usePipenzoTickets();
   const { repoList, refresh: refreshRepoList } = useConnectedRepoList();
   const [implementing, setImplementing] = useState<PipenzoTicketViewV1>();
+  // The ticket TicketDetail is currently open on -- a ticket id, not the ticket object itself, so
+  // switching lanes/lists under it (a live board sync) is picked up on the next render rather than
+  // pinning a stale snapshot (issue #341).
+  const [selectedTicketId, setSelectedTicketId] = useState<string | undefined>(undefined);
   // The user's own pick, when they have made one -- resolved against the live connected list by
   // `resolveActiveRepoId` below rather than trusted on its own, since a repo it names can stop being
   // connected (removed from Settings) out from under this state.
@@ -151,6 +182,14 @@ export function PipenzoAppShell({
   // Incremented once per "Manage repos…" click, `undefined` otherwise (see `ConnectedReposPanel.tsx`'s
   // own doc comment on why a token rather than a boolean).
   const [openRepoPickerToken, setOpenRepoPickerToken] = useState<number | undefined>(undefined);
+
+  // Issue #341: the one navigation every "reporting, not deciding" callback built ahead of this
+  // shell (`ActivityRow.tsx`'s `onOpenTicket`, `TicketSwitcherPanel.tsx`'s `onSwitch`, and this
+  // shell's own board cards below) resolves to.
+  const goToTicketDetail = useCallback((ticketId: string) => {
+    setSelectedTicketId(ticketId);
+    setView('ticket-detail');
+  }, []);
 
   const renderTicket = useCallback(
     (ticket: PipenzoTicketViewV1) => {
@@ -162,7 +201,11 @@ export function PipenzoAppShell({
           title={ticket.title ?? `Issue #${ticket.issueNumber}`}
           chip={laneChip(ticket)}
           held={held !== undefined}
-          {...(ticket.lane === 'queued' ? { onClick: () => setImplementing(ticket) } : {})}
+          onClick={
+            ticket.lane === 'queued'
+              ? () => setImplementing(ticket)
+              : () => goToTicketDetail(ticket.ticketId)
+          }
         >
           {held && (
             <>
@@ -187,7 +230,7 @@ export function PipenzoAppShell({
         </Card>
       );
     },
-    [],
+    [goToTicketDetail],
   );
 
   // Best-effort, and shared by the load-line's own wording and the workspace switcher below -- see
@@ -201,6 +244,19 @@ export function PipenzoAppShell({
     () => (ticketList.status === 'ready' ? ticketList.tickets : []),
     [ticketList],
   );
+  // Issue #341: the Activity screen's own filter state, over the same unfiltered `tickets` this
+  // shell already reads for the board -- never a second, separate ticket read (see
+  // `use-activity-filter.ts`'s own doc comment).
+  const { active: activityFilter, setActive: setActivityFilter, filteredTickets: activityTickets } =
+    useActivityFilter(tickets);
+  // Issue #341: the ticket TicketDetail is open on, resolved against the same live list every
+  // render -- `undefined` both before anything is selected and once a selected ticket genuinely
+  // stops being in the list (merged, or a stale id), so the "not found" fallback below is never
+  // guessed at from a snapshot that might already be stale.
+  const selectedTicket = useMemo(
+    () => tickets.find((ticket) => ticket.ticketId === selectedTicketId),
+    [tickets, selectedTicketId],
+  );
   // Built from the same two real reads the rest of this shell already makes -- the connected-repos
   // list and the board's own ticket list -- never a mocked or hardcoded count (issue #89).
   const workspaceRepos = useMemo(
@@ -210,6 +266,8 @@ export function PipenzoAppShell({
   const activeRepoId = resolveActiveRepoId(connectedRepoNames, requestedActiveRepoId);
 
   const goToBoard = useCallback(() => setView('board'), []);
+
+  const goToActivity = useCallback(() => setView('activity'), []);
 
   const goToSettings = useCallback(() => {
     // A plain nav click must never reopen a picker left over from an earlier "Manage repos…" click,
@@ -246,6 +304,9 @@ export function PipenzoAppShell({
             <NavItem icon="board" active={view === 'board'} onClick={goToBoard}>
               Board
             </NavItem>
+            <NavItem icon="activity" active={view === 'activity'} onClick={goToActivity}>
+              Activity
+            </NavItem>
           </NavGroup>
           <NavGroup title="Repo">
             <NavItem icon="settings" active={view === 'settings'} onClick={goToSettings}>
@@ -256,7 +317,7 @@ export function PipenzoAppShell({
       }
     >
       <MainHead>
-        <Crumbs items={[view === 'board' ? 'Board' : 'Settings']} />
+        <Crumbs items={crumbItems(view, selectedTicket, goToBoard)} />
         <MainHeadRight>
           <SyncStatusPill status={sync.status} label={sync.label} onRefresh={onRefreshSync} />
           <BoardCommandPalette
@@ -268,7 +329,7 @@ export function PipenzoAppShell({
           />
         </MainHeadRight>
       </MainHead>
-      {view === 'board' ? (
+      {view === 'board' && (
         <>
           {ticketList.status === 'error' && (
             <Banner
@@ -299,12 +360,34 @@ export function PipenzoAppShell({
             renderTicket={renderTicket}
           />
         </>
-      ) : (
+      )}
+      {view === 'settings' && (
         <SettingsPage
           openRepoPickerToken={openRepoPickerToken}
           onConnectedReposChange={() => refreshRepoList()}
         />
       )}
+      {view === 'activity' && (
+        <ActivityScreen
+          tickets={activityTickets}
+          filterBar={
+            <ActivityFilterBar tickets={tickets} active={activityFilter} onChange={setActivityFilter} />
+          }
+          renderEntry={(entry) => (
+            <ActivityRow entry={entry} onOpenTicket={(ticket) => goToTicketDetail(ticket.ticketId)} />
+          )}
+        />
+      )}
+      {view === 'ticket-detail' &&
+        (selectedTicket ? (
+          <TicketDetailContainer ticket={selectedTicket} onSwitchTicket={goToTicketDetail} />
+        ) : (
+          <Banner icon="warning" tone="warn" action={<Button size="sm" variant="ghost" onClick={goToBoard}>Back to Board</Button>}>
+            {ticketList.status === 'loading'
+              ? "Reading this ticket's real state from the local daemon…"
+              : "This ticket isn't in the board's current list anymore -- it may have merged or closed."}
+          </Banner>
+        ))}
       {implementing && (
         <BoardImplementDialog
           // Keyed by ticket so opening a different card never inherits the last one's checkout,
@@ -321,6 +404,54 @@ export function PipenzoAppShell({
         />
       )}
     </AppShell>
+  );
+}
+
+/**
+ * The crumb trail for each of this shell's four screens (issue #341), matching each artboard's own
+ * `.crumbs` markup: a single current-page item for Board/Settings/Activity, and a real "Board" ->
+ * `#<issueNumber>` trail for TicketDetail -- `TicketDetail.dc.html`'s own two-item crumb, with the
+ * leading "Board" made a genuine click target via `CrumbLink` rather than the inert `<span>` the
+ * static canvas mock uses, since this is the one screen in this shell actually reached by drilling
+ * down rather than by a sidebar click. A `selectedTicket` that is not (yet, or no longer) resolved
+ * falls back to a plain "Ticket" crumb rather than a guessed number.
+ */
+function crumbItems(
+  view: 'board' | 'settings' | 'activity' | 'ticket-detail',
+  selectedTicket: PipenzoTicketViewV1 | undefined,
+  goToBoard: () => void,
+): ReactNode[] {
+  switch (view) {
+    case 'board':
+      return ['Board'];
+    case 'settings':
+      return ['Settings'];
+    case 'activity':
+      return ['Activity'];
+    case 'ticket-detail':
+      return [
+        <CrumbLink key="board" onClick={goToBoard}>
+          Board
+        </CrumbLink>,
+        selectedTicket ? `#${selectedTicket.issueNumber}` : 'Ticket',
+      ];
+  }
+}
+
+/** A crumb item a person can actually click back through, the same "canvas markup made real"
+ *  treatment `Card`/`NavItem` already give their own inert-looking canvas elements: `tabIndex`,
+ *  `role="button"` and an Enter/Space handler alongside the click, not just an `onClick`. */
+function CrumbLink({ onClick, children }: { onClick: () => void; children: ReactNode }) {
+  const onKeyDown = (event: KeyboardEvent<HTMLSpanElement>) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      onClick();
+    }
+  };
+  return (
+    <span tabIndex={0} role="button" onClick={onClick} onKeyDown={onKeyDown}>
+      {children}
+    </span>
   );
 }
 

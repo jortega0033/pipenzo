@@ -31,7 +31,15 @@ function makeTicket(overrides: Partial<PipenzoTicketViewV1> = {}): PipenzoTicket
  * `SettingsPage`'s panels reach for on mount, and nothing else -- the same shape
  * `SettingsPage.test.tsx`'s own `installBridge` uses, extended with the board's own ticket-list
  * methods. `connectedRepos` defaults to a single repo so every test written before #89 keeps seeing
- * exactly the workspace it always did. */
+ * exactly the workspace it always did.
+ *
+ * Issue #341 adds `pipenzoTicketRead` and `pipenzoRecordRiskActivityOpened` unconditionally, not
+ * only for the tests that exercise Activity/TicketDetail: every test here renders the full shell,
+ * and both routes are now real, reachable screens rather than something a caller opts into.
+ * `pipenzoTicketRead` echoes back whichever `tickets` entry matches the requested id -- the same
+ * reconciliation shape `PhaseStepperPanel.test.tsx`'s own `reconciliation()` helper builds -- so
+ * `PhaseStepperPanel`/`ActivityStreamPanel`'s live per-ticket read agrees with the board's own list
+ * instead of racing it. */
 function installBridge(
   options: {
     tickets?: readonly PipenzoTicketViewV1[];
@@ -39,9 +47,21 @@ function installBridge(
   } = {},
 ) {
   const { tickets = [], connectedRepos = ['octocat/hello-world'] } = options;
+  const pipenzoListTickets = vi.fn().mockResolvedValue({ tickets });
+  // More than one subscriber is real: `usePipenzoTickets` (this shell), and, once TicketDetail is
+  // open, `useTicketPhaseStepper` for both `PhaseStepperPanel` and `ActivityStreamPanel`, each via
+  // its own `onPipenzoPhaseEvent` call -- a single stored callback would drop every subscriber but
+  // the last.
+  const phaseListeners: Array<(event: { ticketId: string }) => void> = [];
   setBridgeOverride({
-    pipenzoListTickets: vi.fn().mockResolvedValue({ tickets }),
-    onPipenzoPhaseEvent: () => () => {},
+    pipenzoListTickets,
+    onPipenzoPhaseEvent: (callback: (event: { ticketId: string }) => void) => {
+      phaseListeners.push(callback);
+      return () => {
+        const index = phaseListeners.indexOf(callback);
+        if (index >= 0) phaseListeners.splice(index, 1);
+      };
+    },
     getDaemonStatus: vi.fn().mockResolvedValue({ state: 'ready' }),
     onDaemonStatus: () => () => {},
     pipenzoConnectedRepos: vi.fn().mockResolvedValue({ repositories: connectedRepos }),
@@ -55,7 +75,41 @@ function installBridge(
       .mockResolvedValue({ state: 'connected', login: 'octocat', source: 'vault' }),
     listProvidersV2: vi.fn().mockResolvedValue([]),
     disconnectGitHub: vi.fn(),
+    pipenzoTicketRead: vi.fn(({ ticketId }: { ticketId: string }) => {
+      const ticket = tickets.find((candidate) => candidate.ticketId === ticketId);
+      return ticket
+        ? Promise.resolve({
+            ticket,
+            divergence: 'none',
+            previousLane: ticket.lane,
+            observedLabels: [],
+            changed: false,
+          })
+        : Promise.reject(new Error(`no such ticket: ${ticketId}`));
+    }),
+    pipenzoRecordRiskActivityOpened: vi.fn().mockResolvedValue({
+      risk: { score: 0, lastResetAt: '2026-01-01T00:00:00.000Z' },
+    }),
   } as never);
+  return {
+    pipenzoListTickets,
+    /** Fires the same live phase-change event `usePipenzoTickets` debounces into a refetch -- lets
+     *  a test simulate the board's list changing under an open screen without waiting on a real
+     *  poll interval (issue #341's "ticket no longer in the list" fallback). `usePipenzoTickets`'s
+     *  own listener ignores the event's shape entirely and refetches regardless; the per-ticket
+     *  `ticketId` here is deliberately one no open panel is subscribed to, so this triggers exactly
+     *  the board-wide refetch and nothing else. */
+    emitPhaseEvent: () =>
+      phaseListeners.forEach((listener) => listener({ ticketId: '__test-board-refetch__' })),
+  };
+}
+
+/** The sidebar's own "Board" nav item, scoped away from `.sidebar` -- since issue #341, TicketDetail's
+ *  crumb trail also carries a "Board" link (`CrumbLink`), and both are real, accessibly-named
+ *  buttons at once while on that screen, so an unscoped `getByRole('button', { name: 'Board' })`
+ *  is ambiguous the moment TicketDetail is open. */
+function sidebarBoardButton(): HTMLElement {
+  return within(document.querySelector('.sidebar')!).getByRole('button', { name: 'Board' });
 }
 
 const SYNC = { status: 'synced' as const, label: 'Synced 12s ago' };
@@ -338,7 +392,10 @@ describe('PipenzoAppShell', () => {
     sessionId: 'implement-1',
   };
 
-  /** The board's own methods plus everything the Implement path reaches for. */
+  /** The board's own methods plus everything the Implement path reaches for -- plus, since issue
+   * #341, everything a non-Queued card's own Ticket Detail destination reaches for too
+   * (`pipenzoTicketRead` for `PhaseStepperPanel`/`ActivityStreamPanel`'s live per-ticket read,
+   * `pipenzoRecordRiskActivityOpened`, which `ActivityScreen` fires on mount). */
   function installImplementBridge(tickets: readonly PipenzoTicketViewV1[]) {
     const bridge = {
       pipenzoListTickets: vi.fn().mockResolvedValue({ tickets }),
@@ -346,6 +403,21 @@ describe('PipenzoAppShell', () => {
       getDaemonStatus: vi.fn().mockResolvedValue({ state: 'ready' }),
       onDaemonStatus: () => () => {},
       pipenzoConnectedRepos: vi.fn().mockResolvedValue({ repositories: [REPO] }),
+      pipenzoTicketRead: vi.fn(({ ticketId }: { ticketId: string }) => {
+        const ticket = tickets.find((candidate) => candidate.ticketId === ticketId);
+        return ticket
+          ? Promise.resolve({
+              ticket,
+              divergence: 'none',
+              previousLane: ticket.lane,
+              observedLabels: [],
+              changed: false,
+            })
+          : Promise.reject(new Error(`no such ticket: ${ticketId}`));
+      }),
+      pipenzoRecordRiskActivityOpened: vi.fn().mockResolvedValue({
+        risk: { score: 0, lastResetAt: '2026-01-01T00:00:00.000Z' },
+      }),
       resolvePipenzoCheckout: vi.fn().mockResolvedValue({ repo: REPO, repositoryPath: CHECKOUT }),
       inspectWorkspace: vi.fn().mockResolvedValue(TRUSTED),
       setWorkspaceTrust: vi.fn(),
@@ -402,7 +474,7 @@ describe('PipenzoAppShell', () => {
     expect(screen.getByRole('dialog', { name: 'Implement #42 — Fix the thing' })).toBeInTheDocument();
   });
 
-  it('leaves cards in every other lane inert -- their next action is not Implement', async () => {
+  it('opens Ticket Detail, not Implement, from every other lane (issue #341)', async () => {
     const bridge = installImplementBridge([
       makeTicket({ ticketId: 'b', issueNumber: 43, lane: 'working', title: 'Already running' }),
       makeTicket({ ticketId: 'c', issueNumber: 44, lane: 'needs-human', title: 'Parked' }),
@@ -411,11 +483,22 @@ describe('PipenzoAppShell', () => {
     render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
 
     fireEvent.click(await screen.findByText('Already running'));
-    fireEvent.click(screen.getByText('Parked'));
-    fireEvent.click(screen.getByText('Done'));
 
-    expect(screen.queryByRole('button', { name: /Already running|Parked|Done/ })).not.toBeInTheDocument();
+    // Ticket Detail, not the Implement dialog -- its own crumb names the real issue number.
+    expect(document.querySelector('.crumbs .cur')?.textContent).toBe('#43');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(bridge.resolvePipenzoCheckout).not.toHaveBeenCalled();
+
+    fireEvent.click(sidebarBoardButton());
+    await screen.findByText('Parked');
+    fireEvent.click(screen.getByText('Parked'));
+    expect(document.querySelector('.crumbs .cur')?.textContent).toBe('#44');
+
+    fireEvent.click(sidebarBoardButton());
+    await screen.findByText('Done');
+    fireEvent.click(screen.getByText('Done'));
+    expect(document.querySelector('.crumbs .cur')?.textContent).toBe('#45');
+
     expect(bridge.resolvePipenzoCheckout).not.toHaveBeenCalled();
   });
 
@@ -632,6 +715,155 @@ describe('PipenzoAppShell', () => {
       expect(await screen.findByRole('button', { name: new RegExp(PZ) })).toBeInTheDocument();
       expect(screen.getByText('Queued')).toBeInTheDocument();
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+  });
+
+  /**
+   * Issue #341: `ActivityScreen` (#116-119) is real, tested, and previously unmounted anywhere in
+   * the app -- these assert it is now a real nav destination, wired to the same `tickets` the board
+   * already reads, not a standalone harness.
+   */
+  describe('the Activity screen (issue #341)', () => {
+    it('navigates to Activity from the sidebar, rendering real tickets through ActivityRow and a working filter bar', async () => {
+      installBridge({
+        tickets: [
+          makeTicket({ ticketId: 'a', issueNumber: 42, lane: 'queued', title: 'Fix the thing' }),
+        ],
+      });
+      render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+      await screen.findByText('Queued');
+
+      const activity = screen.getByRole('button', { name: 'Activity' });
+      fireEvent.click(activity);
+
+      expect(await screen.findByText('Fix the thing')).toBeInTheDocument();
+      expect(document.querySelector('.crumbs .cur')?.textContent).toBe('Activity');
+      expect(activity.className).toBe('nav-item active');
+      expect(screen.getByRole('button', { name: 'Board' }).className).toBe('nav-item');
+      // The board itself is gone -- a different screen actually mounted, not just an overlay.
+      expect(screen.queryByText('Queued')).not.toBeInTheDocument();
+      // #117's filter tabs render for real, counting the one real ticket.
+      expect(screen.getByRole('button', { name: /All 1\/1/ })).toBeInTheDocument();
+    });
+
+    it("opens Ticket Detail from an activity row's onOpenTicket", async () => {
+      installBridge({
+        tickets: [
+          makeTicket({ ticketId: 'a', issueNumber: 42, lane: 'queued', title: 'Fix the thing' }),
+        ],
+      });
+      render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Activity' }));
+      await screen.findByText('Fix the thing');
+
+      fireEvent.click(screen.getByText('Fix the thing'));
+
+      expect(document.querySelector('.crumbs .cur')?.textContent).toBe('#42');
+      // Neither the Board nor the Activity nav item claims this screen -- it is its own drill-down.
+      expect(sidebarBoardButton().className).toBe('nav-item');
+      expect(screen.getByRole('button', { name: 'Activity' }).className).toBe('nav-item');
+    });
+  });
+
+  /**
+   * Issue #341: `TicketDetailScreen`'s own doc comment named this shell as the composition and
+   * routing it was missing -- `TicketDetailContainer` (#91/#92/#95/#96/#93's real panels) wired to
+   * one real ticket, reached from a real board card.
+   */
+  describe('TicketDetail (issue #341)', () => {
+    it('opens from a Working card with real rail blocks -- not mocked, not faked', async () => {
+      installBridge({
+        tickets: [
+          makeTicket({
+            ticketId: 'a',
+            issueNumber: 94,
+            lane: 'working',
+            phase: 'implement',
+            title: 'Wire the shell',
+            risk: { score: 4, lastResetAt: '2026-01-01T00:00:00.000Z' },
+          }),
+        ],
+      });
+      render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+
+      fireEvent.click(await screen.findByText('Wire the shell'));
+
+      expect(document.querySelector('.crumbs .cur')?.textContent).toBe('#94');
+      expect(document.querySelector('.h-id')?.textContent).toBe('#94');
+      expect(screen.getByText('Wire the shell')).toBeInTheDocument();
+      // The rail's real blocks (#95/#96), reading the ticket's own risk/attempts/budget fields.
+      expect(screen.getByText('Cumulative risk')).toBeInTheDocument();
+      expect(screen.getByText('Moderate')).toBeInTheDocument();
+      expect(screen.getByText('Model routing')).toBeInTheDocument();
+      expect(screen.getByText('No session has run against this ticket yet.')).toBeInTheDocument();
+      expect(screen.getByText('Subscription headroom')).toBeInTheDocument();
+      // The phase stepper (#91) resolves its own live read rather than staying on skeleton forever.
+      await waitFor(() =>
+        expect(screen.queryByTestId('phase-stepper-loading')).not.toBeInTheDocument(),
+      );
+      // The activity stream (#93) resolves too, off the same live read.
+      await waitFor(() =>
+        expect(screen.queryByTestId('activity-stream-loading')).not.toBeInTheDocument(),
+      );
+    });
+
+    it('goes back to Board from the crumb trail\'s "Board" link', async () => {
+      installBridge({
+        tickets: [makeTicket({ ticketId: 'a', issueNumber: 94, lane: 'working' })],
+      });
+      render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+      fireEvent.click(await screen.findByText('#94'));
+      await screen.findByText('Cumulative risk');
+
+      const crumbBoardLink = within(document.querySelector('.crumbs')!).getByRole('button', {
+        name: 'Board',
+      });
+      fireEvent.click(crumbBoardLink);
+
+      expect(await screen.findByText('Queued')).toBeInTheDocument();
+      expect(document.querySelector('.crumbs .cur')?.textContent).toBe('Board');
+    });
+
+    it("switches which ticket is open via the ticket switcher's onSwitch, without leaving the screen", async () => {
+      installBridge({
+        tickets: [
+          makeTicket({ ticketId: 'a', issueNumber: 50, lane: 'needs-human', title: 'First' }),
+          makeTicket({ ticketId: 'b', issueNumber: 51, lane: 'needs-human', title: 'Second' }),
+        ],
+      });
+      render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+      fireEvent.click(await screen.findByText('First'));
+      await screen.findByText('Cumulative risk');
+      expect(document.querySelector('.crumbs .cur')?.textContent).toBe('#50');
+
+      fireEvent.click(screen.getByRole('button', { name: '#51' }));
+
+      expect(document.querySelector('.crumbs .cur')?.textContent).toBe('#51');
+    });
+
+    it('shows a real fallback, not a crash or fabricated data, for a ticket id no longer in the list', async () => {
+      const tickets = [
+        makeTicket({ ticketId: 'a', issueNumber: 60, lane: 'needs-human', title: 'Here now' }),
+      ];
+      const bridge = installBridge({ tickets });
+      render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+      fireEvent.click(await screen.findByText('Here now'));
+      await screen.findByText('Cumulative risk');
+
+      // The ticket the screen is open on merges and leaves the next poll -- the same live
+      // phase-event-triggered refetch `use-pipenzo-tickets.ts` debounces in response to a real lane
+      // move, not a manual re-render.
+      bridge.pipenzoListTickets.mockResolvedValue({ tickets: [] });
+      bridge.emitPhaseEvent();
+
+      expect(
+        await screen.findByText(/isn't in the board's current list anymore/),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('Cumulative risk')).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Back to Board' }));
+      expect(await screen.findByText('Queued')).toBeInTheDocument();
+      expect(document.querySelector('.crumbs .cur')?.textContent).toBe('Board');
     });
   });
 });
