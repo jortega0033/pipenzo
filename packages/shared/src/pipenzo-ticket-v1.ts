@@ -393,6 +393,14 @@ export const pipenzoTicketRecordV1Schema = z
     risk: pipenzoTicketRiskV1Schema,
     precommits: z.array(pipenzoTicketPrecommitV1Schema).max(200),
     etags: pipenzoTicketEtagsV1Schema,
+    /**
+     * When the phase machine last wrote a real change to this record — a label/lane reconciliation
+     * or a transition, never a poll that found nothing to reconcile (Pipenzo issue #116, the
+     * Activity feed's day-grouping needs *some* real "when" to sort and bucket by). Optional because
+     * a record persisted before this field existed, or one that has never been reconciled or moved,
+     * has no value to backfill it with; `apps/daemon/src/pipenzo-phase-machine.ts` is the only writer.
+     */
+    updatedAt: z.string().min(1).max(64).optional(),
   })
   .strict();
 

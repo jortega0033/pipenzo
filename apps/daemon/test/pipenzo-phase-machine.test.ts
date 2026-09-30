@@ -201,6 +201,16 @@ describe('PipenzoPhaseMachine.transition divergence', () => {
     expect(result.divergence).toBe('none');
   });
 
+  it('stamps updatedAt on a real transition -- the Activity feed (#116) sorts and groups by it', async () => {
+    const { machine } = harness({ ticket: { updatedAt: '2020-01-01T00:00:00.000Z' } });
+
+    const result = await machine.transition(TICKET_ID, 'pipenzo:working');
+
+    expect(result.ticket.updatedAt).toBeDefined();
+    expect(result.ticket.updatedAt).not.toBe('2020-01-01T00:00:00.000Z');
+    expect(new Date(result.ticket.updatedAt as string).toString()).not.toBe('Invalid Date');
+  });
+
   it("reports no divergence when ci-failed rides along into Ready-for-review, README's row", async () => {
     const { machine } = harness({
       ticket: { lane: 'needs-human', labels: ['pipenzo:ci-failed'] },
@@ -570,6 +580,31 @@ describe('PipenzoPhaseMachine.read title caching (issue #255)', () => {
 
     expect(result.changed).toBe(false);
     expect(tickets.get(TICKET_ID)).toBe(before);
+  });
+
+  it('does not bump updatedAt on a no-op poll -- only a real change should move a ticket in Activity (#116)', async () => {
+    const { machine } = harness({
+      ticket: { updatedAt: '2020-01-01T00:00:00.000Z', title: 'Same title throughout' },
+      issueLabels: ['pipenzo:queued'],
+      issueTitle: 'Same title throughout',
+    });
+
+    const result = await machine.read(TICKET_ID);
+
+    expect(result.changed).toBe(false);
+    expect(result.ticket.updatedAt).toBe('2020-01-01T00:00:00.000Z');
+  });
+
+  it('bumps updatedAt when a reconciling read finds a real lane/label change', async () => {
+    const { machine } = harness({
+      ticket: { lane: 'working', labels: ['pipenzo:working'], updatedAt: '2020-01-01T00:00:00.000Z' },
+      issueLabels: ['pipenzo:needs-human'],
+    });
+
+    const result = await machine.read(TICKET_ID);
+
+    expect(result.changed).toBe(true);
+    expect(result.ticket.updatedAt).not.toBe('2020-01-01T00:00:00.000Z');
   });
 
   it('still caches the title when the issue carries no lane-bearing label', async () => {
