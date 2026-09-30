@@ -58,6 +58,7 @@ import { evaluateDiffSizeGate } from './refine-gate.js';
 import { attachTicketWorktree } from './pipenzo-worktree-lifecycle.js';
 import type { PipenzoAuditStore } from './pipenzo-audit-store.js';
 import { materializeStack, type StackTicketStorePort } from './pipenzo-stack-materializer.js';
+import type { PipenzoExecutionLimiter } from './pipenzo-execution-limiter.js';
 
 /**
  * The one service the Refine / Implement / Review routes call (Pipenzo issue #184).
@@ -171,6 +172,13 @@ export interface PipenzoPhaseServiceOptions {
    * use for their own optional audit dependency.
    */
   audit?: Pick<PipenzoAuditStore, 'append'>;
+  /**
+   * Epic #5's execution limit (issue #126), passed straight through to the `ImplementOrchestrator`
+   * this service constructs. Optional so a service built without one (every test that predates this
+   * ticket) still implements exactly as before, gated only by agentdock's own generic session cap —
+   * see `pipenzo-execution-limiter.ts`'s module comment for why the two are separate.
+   */
+  executionLimiter?: PipenzoExecutionLimiter;
 }
 
 export class PipenzoPhaseService {
@@ -206,6 +214,7 @@ export class PipenzoPhaseService {
       worktrees: options.worktrees,
       sessions: options.implementSessions,
       ...(options.runGit ? { runGit: options.runGit } : {}),
+      ...(options.executionLimiter ? { executionLimiter: options.executionLimiter } : {}),
     });
     this.#review = new ReviewGatesRunner({
       commands: options.commands,
@@ -1081,6 +1090,7 @@ const IMPLEMENT_CODES: Record<ImplementOrchestratorError['code'], PipenzoPhaseEr
   session_failed: 'session_failed',
   implement_empty_diff: 'implement_empty_diff',
   diff_unavailable: 'diff_unavailable',
+  execution_limit_exceeded: 'execution_limit_exceeded',
 };
 
 const REVIEW_CODES: Record<ReviewGateError['code'], PipenzoPhaseErrorCodeV1> = {

@@ -31,6 +31,7 @@ import {
   type TerminalWorktreeCleanupPort,
   type TicketWorktreeStorePort,
 } from '../pipenzo-worktree-lifecycle.js';
+import type { PipenzoExecutionLimiter } from '../pipenzo-execution-limiter.js';
 
 /**
  * The phase-machine routes (Pipenzo issue #188).
@@ -179,6 +180,15 @@ export function registerPipenzoTicketRoutes(
    * exactly as before.
    */
   worktreeCleanup?: { tickets: TicketWorktreeStorePort; worktrees: TerminalWorktreeCleanupPort },
+  /**
+   * Epic #5's execution limit (issue #126), narrowed to just the getter this route reads. Optional
+   * so every test and caller that predates this ticket still reports the same
+   * `PIPENZO_DEFAULT_WORKING_CAPACITY` stand-in as before. When given, this is the *same* limiter
+   * `ImplementOrchestrator` enforces against, and the *same* value `PUT /v2/pipenzo/concurrency`
+   * updates live -- one source of truth, so the Working lane's capacity pill and Settings' own
+   * readout can never show two different ceilings.
+   */
+  executionLimiter?: Pick<PipenzoExecutionLimiter, 'limit'>,
 ): void {
   const limits = { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } };
 
@@ -210,7 +220,7 @@ export function registerPipenzoTicketRoutes(
             const state = concurrency.get(record.ticketId);
             return state ? { ...view, concurrency: state } : view;
           }),
-          workingLaneCapacity: PIPENZO_DEFAULT_WORKING_CAPACITY,
+          workingLaneCapacity: executionLimiter?.limit ?? PIPENZO_DEFAULT_WORKING_CAPACITY,
         }),
       );
     },

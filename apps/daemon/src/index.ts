@@ -19,6 +19,8 @@ import { FileTicketStore } from './pipenzo-ticket-store.js';
 import { PipenzoAuditStore } from './pipenzo-audit-store.js';
 import { ConnectedReposStore } from './connected-repos-store.js';
 import { LessonStore } from './pipenzo-lesson-store.js';
+import { PipenzoConcurrencyStore } from './pipenzo-concurrency-store.js';
+import { PipenzoExecutionLimiter } from './pipenzo-execution-limiter.js';
 import { RepoCheckouts, reposRoot } from './repo-checkout.js';
 import { ensureStateDirectory, stateDirectory } from './state-directory.js';
 import { SubagentGraphStore } from './subagent-graph-store.js';
@@ -176,6 +178,17 @@ async function main() {
   // `connectedRepos` above, beside the other durable stores — see the store's own module comment for
   // why a lesson does not belong inside `FileTicketStore`.
   const lessonStore = new LessonStore(join(durableStateDirectory, 'lessons-v1.json'));
+  // Bounded local concurrency's settings (issue #126): the execution-limit stepper and workspace
+  // default run budget a person sets in Settings. Same single-file layout as `lessonStore` above,
+  // read once at startup so the limiter below enforces whatever was last saved rather than always
+  // restarting at the product default.
+  const concurrencyStore = new PipenzoConcurrencyStore(join(durableStateDirectory, 'concurrency-v1.json'));
+  const concurrencySettings = await concurrencyStore.read();
+  // The real enforcement layer (issue #126): refuses a new Implement dispatch once this many
+  // tickets are already in flight, live-updated by `PUT /v2/pipenzo/concurrency` with no restart
+  // required. See `pipenzo-execution-limiter.ts` for why this is a second, Pipenzo-owned gate
+  // beside agentdock's own daemon-wide `SessionAdmissionController` above, not a replacement for it.
+  const executionLimiter = new PipenzoExecutionLimiter(concurrencySettings.executionLimit);
   // Where a connected repo's local checkout lives (issues #342/#344): cloned on first need into
   // `<state dir>/repos/<owner>/<repo>` (or under `PIPENZO_REPOS_DIR`), reused after. One instance,
   // because it is also what serializes concurrent requests for the same repository -- see
@@ -311,6 +324,9 @@ async function main() {
     logger,
     // Issue #160: every review-gate run that reaches an outcome gets an audit entry.
     audit: pipenzoAuditStore,
+    // Issue #126: refuses a new Implement dispatch once the workspace's configured execution limit
+    // is already at capacity.
+    executionLimiter,
   });
 
   // Pipenzo's polling reconciler (issue #231): the loop that makes the connected-repos list worth
@@ -398,6 +414,10 @@ async function main() {
     connectedRepos,
     repoCheckouts,
     lessonStore,
+    // Issue #126: Settings' Concurrency panel, and the same limiter `phaseService` above enforces
+    // against -- see `pipenzo-tickets.ts`'s own comment for why the ticket route reads it too.
+    concurrencyStore,
+    executionLimiter,
     // Issue #159: lets the ticket-transition route look up a ticket's recorded worktree and clean
     // it up on an abandonment (working/ready-for-review -> queued).
     ticketStore,

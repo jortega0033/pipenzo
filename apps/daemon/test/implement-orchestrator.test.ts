@@ -17,6 +17,7 @@ import {
 } from '../src/implement-orchestrator.js';
 import type { GitCommandResult, PipenzoGitRunner } from '../src/pipenzo-git.js';
 import { WorktreeManagerError } from '../src/worktree-manager.js';
+import { PipenzoExecutionLimiter } from '../src/pipenzo-execution-limiter.js';
 
 const WORKTREE_ID = '44444444-5555-4666-8777-888888888888';
 const SESSION_ID = '55555555-6666-4777-8888-999999999999';
@@ -671,5 +672,134 @@ describe('buildImplementPrompt', () => {
     const prompt = buildImplementPrompt(spec());
     expect(prompt).toContain('cannot push');
     expect(prompt).toContain('pull request');
+  });
+});
+
+describe('issue #126 -- the execution-limit lease', () => {
+  const POINTER = async (): Promise<string> => 'gitdir: /repos/pipenzo/.git/worktrees/issue-180';
+
+  function endedLater(): { ended: Promise<ImplementSessionEnd>; end: (e: ImplementSessionEnd) => void } {
+    let end!: (e: ImplementSessionEnd) => void;
+    const ended = new Promise<ImplementSessionEnd>((resolve) => {
+      end = resolve;
+    });
+    return { ended, end };
+  }
+
+  it('does not gate at all when built without an executionLimiter (every test above this block)', async () => {
+    const h = harness();
+    // `orchestrator(h)` never passes `executionLimiter` -- this is just restating, explicitly, that
+    // the whole suite above this block already proves the unconfigured case still dispatches.
+    const result = await orchestrator(h).implement({
+      spec: spec(),
+      repositoryPath: REPO_PATH,
+      provider: 'claude',
+    });
+    expect(result.sessionId).toBe(SESSION_ID);
+  });
+
+  it('refuses a second start() once the configured limit is already held by a still-running session', async () => {
+    const h = harness();
+    const { ended } = endedLater(); // deliberately never resolved: this session is still running
+    const sessions: ImplementSessionPort = { run: async () => ({ sessionId: SESSION_ID, ended }) };
+    const executionLimiter = new PipenzoExecutionLimiter(1);
+    const orch = new ImplementOrchestrator({
+      worktrees: h.worktrees,
+      sessions,
+      runGit: h.runGit,
+      readGitPointer: POINTER,
+      executionLimiter,
+    });
+
+    await orch.start({ spec: spec(), repositoryPath: REPO_PATH, provider: 'claude' });
+    expect(executionLimiter.running).toBe(1);
+
+    const error = await rejection(() =>
+      orch.start({ spec: spec({ issue: { ...spec().issue, number: 181 } }), repositoryPath: REPO_PATH, provider: 'claude' }),
+    );
+    expect(error.code).toBe('execution_limit_exceeded');
+    // Refused before any second worktree was ever created for the second ticket.
+    expect(h.worktreeCreates).toHaveLength(1);
+  });
+
+  it('frees the slot once the session ends, admitting a queued-out ticket without a daemon restart', async () => {
+    const h = harness();
+    const { ended, end } = endedLater();
+    const sessions: ImplementSessionPort = { run: async () => ({ sessionId: SESSION_ID, ended }) };
+    const executionLimiter = new PipenzoExecutionLimiter(1);
+    const orch = new ImplementOrchestrator({
+      worktrees: h.worktrees,
+      sessions,
+      runGit: h.runGit,
+      readGitPointer: POINTER,
+      executionLimiter,
+    });
+
+    await orch.start({ spec: spec(), repositoryPath: REPO_PATH, provider: 'claude' });
+    // Still at capacity: a second ticket's start() is refused while the first is still running.
+    await rejection(() =>
+      orch.start({ spec: spec({ issue: { ...spec().issue, number: 182 } }), repositoryPath: REPO_PATH, provider: 'claude' }),
+    );
+
+    end('completed');
+    // The lease releases off the same `ended` promise the daemon's own commit step awaits --
+    // give it a tick to actually settle before asserting the slot is free again.
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(executionLimiter.running).toBe(0);
+
+    const secondSession: ImplementSessionPort = {
+      run: async () => ({ sessionId: 'next-session', ended: Promise.resolve('completed' as const) }),
+    };
+    const secondOrch = new ImplementOrchestrator({
+      worktrees: h.worktrees,
+      sessions: secondSession,
+      runGit: h.runGit,
+      readGitPointer: POINTER,
+      executionLimiter,
+    });
+    const result = await secondOrch.start({
+      spec: spec({ issue: { ...spec().issue, number: 183 } }),
+      repositoryPath: REPO_PATH,
+      provider: 'claude',
+    });
+    expect(result.sessionId).toBe('next-session');
+  });
+
+  it('releases the slot without ever dispatching when a later step fails after the lease is taken', async () => {
+    const h = harness({ createError: new WorktreeManagerError('invalid_target', 'nope') });
+    const executionLimiter = new PipenzoExecutionLimiter(1);
+    const orch = new ImplementOrchestrator({
+      worktrees: h.worktrees,
+      sessions: h.sessions,
+      runGit: h.runGit,
+      executionLimiter,
+    });
+
+    await rejection(() =>
+      orch.start({ spec: spec(), repositoryPath: REPO_PATH, provider: 'claude' }),
+    );
+    // The failed attempt must not leak its slot -- a worktree_failed on attempt 1 must not also
+    // cost every future attempt its execution-limit budget.
+    expect(executionLimiter.running).toBe(0);
+    expect(h.sessionRequests).toHaveLength(0);
+  });
+
+  it('is refused up front, before any worktree is created, when the limit is already at capacity', async () => {
+    const executionLimiter = new PipenzoExecutionLimiter(1);
+    const held = executionLimiter.acquire();
+    const h = harness();
+    const orch = new ImplementOrchestrator({
+      worktrees: h.worktrees,
+      sessions: h.sessions,
+      runGit: h.runGit,
+      executionLimiter,
+    });
+
+    const error = await rejection(() =>
+      orch.start({ spec: spec(), repositoryPath: REPO_PATH, provider: 'claude' }),
+    );
+    expect(error.code).toBe('execution_limit_exceeded');
+    expect(h.worktreeCreates).toHaveLength(0);
+    held.release();
   });
 });
