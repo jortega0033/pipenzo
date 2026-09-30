@@ -5,6 +5,10 @@ import type { GitHubClient } from './github-client.js';
 import type { PipenzoAuditStore } from './pipenzo-audit-store.js';
 import { PipenzoPhaseMachineError, type PipenzoPhaseMachine } from './pipenzo-phase-machine.js';
 import type { FileTicketStore } from './pipenzo-ticket-store.js';
+import {
+  cleanupTerminalWorktree,
+  type TerminalWorktreeCleanupPort,
+} from './pipenzo-worktree-lifecycle.js';
 
 /**
  * The polling loop over the connected-repos list (issue #231).
@@ -119,6 +123,15 @@ export interface PipenzoReconcilerOptions {
    * calls GitHub through this.
    */
   github?: () => GitHubClient;
+  /**
+   * Terminal-state worktree cleanup (issue #159). Optional so a reconciler built without one (every
+   * test that predates this ticket) still polls exactly as before — it just never notices a closed
+   * issue's worktree needs cleaning up. When present, every `read()` that reports the issue closed
+   * — a PR merge or a manual close-without-merging read identically here, see
+   * `pipenzo-worktree-lifecycle.ts`'s module doc for why that distinction does not matter to this
+   * call — is followed by one best-effort `cleanupTerminalWorktree()` for that ticket.
+   */
+  worktrees?: TerminalWorktreeCleanupPort;
   logger?: Logger;
   scheduler?: PipenzoReconcilerScheduler;
   /** Injected so jitter is assertable. `Math.random` in production. */
@@ -140,6 +153,7 @@ export class PipenzoReconciler {
   readonly #machine: Pick<PipenzoPhaseMachine, 'read'>;
   readonly #audit: Pick<PipenzoAuditStore, 'append'> | undefined;
   readonly #github: (() => GitHubClient) | undefined;
+  readonly #worktrees: TerminalWorktreeCleanupPort | undefined;
   readonly #logger: Logger | undefined;
   readonly #scheduler: PipenzoReconcilerScheduler;
   readonly #random: () => number;
@@ -164,6 +178,7 @@ export class PipenzoReconciler {
     this.#machine = options.machine;
     this.#audit = options.audit;
     this.#github = options.github;
+    this.#worktrees = options.worktrees;
     this.#logger = options.logger;
     this.#scheduler = options.scheduler ?? systemScheduler;
     this.#random = options.random ?? Math.random;
@@ -315,6 +330,21 @@ export class PipenzoReconciler {
             reconciledLane: reconciliation.ticket.lane,
             observedLabels: [...reconciliation.observedLabels],
             outcome: 'reconciled_to_label',
+          });
+        }
+        // Issue #159: an issue that closed since the last poll — merged or closed unmerged, this
+        // call does not tell them apart, see `pipenzo-worktree-lifecycle.ts` for why — means the
+        // ticket's worktree is done being useful. Best-effort and never allowed to affect the tick's
+        // own outcome: a cleanup refusal or failure is surfaced by `cleanupTerminalWorktree()`
+        // itself (logged, and the ticket's `worktree` field is left in place for the next poll), not
+        // by this loop.
+        if (this.#worktrees && reconciliation.issueState === 'closed') {
+          await cleanupTerminalWorktree({
+            tickets: this.#tickets,
+            worktrees: this.#worktrees,
+            ticketId,
+            reason: 'issue_closed',
+            logger: this.#logger,
           });
         }
       } catch (error) {

@@ -22,6 +22,12 @@ import {
   computeWorkingLaneConcurrency,
   PIPENZO_DEFAULT_WORKING_CAPACITY,
 } from '../working-lane-concurrency.js';
+import {
+  cleanupTerminalWorktree,
+  isAbandonedToQueue,
+  type TerminalWorktreeCleanupPort,
+  type TicketWorktreeStorePort,
+} from '../pipenzo-worktree-lifecycle.js';
 
 /**
  * The phase-machine routes (Pipenzo issue #188).
@@ -160,6 +166,15 @@ export function registerPipenzoTicketRoutes(
   app: FastifyInstance,
   machine: PipenzoPhaseMachine,
   events?: PipenzoPhaseEventBus,
+  /**
+   * Terminal-state worktree cleanup (issue #159). Both optional, and only ever used together: a
+   * human-driven transition that abandons a ticket back to `pipenzo:queued` (the phase machine's own
+   * module doc names `working`/`ready-for-review` -> `queued` as exactly this) is followed by one
+   * best-effort `cleanupTerminalWorktree()` call, the same shape the reconciler already uses for an
+   * issue that closed. Omitted by every test that predates this ticket, which still transitions
+   * exactly as before.
+   */
+  worktreeCleanup?: { tickets: TicketWorktreeStorePort; worktrees: TerminalWorktreeCleanupPort },
 ): void {
   const limits = { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } };
 
@@ -224,6 +239,16 @@ export function registerPipenzoTicketRoutes(
     } catch (error) {
       if (error instanceof PipenzoPhaseMachineError) return fail(reply, error);
       return fail(reply, new PipenzoPhaseMachineError('github_failed', 'ticket transition failed'));
+    }
+    // Best-effort, outside the try above and never allowed to turn a written label into a failed
+    // response — same reasoning as the implement route's own comment. A cleanup refusal or failure
+    // is surfaced by `cleanupTerminalWorktree()` itself, not by this route.
+    if (worktreeCleanup && isAbandonedToQueue(result.previousLane, result.ticket.lane)) {
+      await cleanupTerminalWorktree({
+        ...worktreeCleanup,
+        ticketId: parsed.data.ticketId,
+        reason: 'abandoned',
+      });
     }
     // Outside the try, same reasoning as the implement route: the GitHub label is already written by
     // now, so a response-shape mismatch must not be reported as a failure to transition -- the

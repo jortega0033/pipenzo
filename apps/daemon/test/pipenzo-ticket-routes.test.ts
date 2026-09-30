@@ -1,3 +1,6 @@
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -11,6 +14,8 @@ import type { GitHubIssue } from '../src/github-client.js';
 import { FileTicketStore } from '../src/pipenzo-ticket-store.js';
 import { PipenzoPhaseMachine } from '../src/pipenzo-phase-machine.js';
 import { PipenzoPhaseEventBus } from '../src/pipenzo-phase-events.js';
+import { OwnedWorktreeManager } from '../src/worktree-manager.js';
+import { runGitCommand } from '../src/pipenzo-git.js';
 
 const TOKEN = 'test-token-pipenzo-tickets';
 const TICKET_ID = '00000000-0000-4000-8000-000000000001';
@@ -92,6 +97,8 @@ function buildApp(options: {
   issueLabels?: readonly string[];
   withGitHub?: boolean;
   withEvents?: boolean;
+  /** Issue #159: real when a test wants the abandonment-cleanup wiring exercised. */
+  worktreeManager?: OwnedWorktreeManager;
 } = {}) {
   const registry = new ProviderRegistry();
   const tickets = new FileTicketStore(storeDirectory());
@@ -116,6 +123,9 @@ function buildApp(options: {
       logger: noopLogger,
       phaseMachine,
       ...(phaseEvents ? { phaseEvents } : {}),
+      ...(options.worktreeManager
+        ? { ticketStore: tickets, worktreeManager: options.worktreeManager }
+        : {}),
     }),
   };
 }
@@ -431,6 +441,160 @@ describe('POST /v2/pipenzo/tickets/transition', () => {
 
     expect(response.statusCode).toBe(400);
   });
+});
+
+/**
+ * Real `git` subprocess spawns dominate this block's cost, matching `worktree-routes.test.ts`'s own
+ * measured budget for the same reason: a process spawn on Windows costs 100-300 ms before the
+ * command runs, and each body here drives a real `git init`, `git worktree add` and `git checkout`.
+ */
+const GIT_HEAVY_TIMEOUT_MS = 45_000;
+const run = promisify(execFile);
+
+describe('POST /v2/pipenzo/tickets/transition worktree cleanup (issue #159)', () => {
+  const gitTempDirectories: string[] = [];
+
+  afterEach(async () => {
+    await Promise.all(
+      gitTempDirectories
+        .splice(0)
+        .map((path) => rm(path, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })),
+    );
+  });
+
+  /** One real repo, one real owned worktree checked out onto a real branch. */
+  async function realWorktree(): Promise<{
+    repo: string;
+    branch: string;
+    worktreeManager: OwnedWorktreeManager;
+    worktreeId: string;
+    worktreePath: string;
+  }> {
+    const base = await mkdtemp(join(tmpdir(), 'pipenzo-ticket-routes-git-'));
+    gitTempDirectories.push(base);
+    const repo = join(base, 'repo');
+    await mkdir(repo, { recursive: true });
+    await run('git', ['init'], { cwd: repo });
+    await writeFile(join(repo, 'README.md'), 'fixture');
+    await run('git', ['add', 'README.md'], { cwd: repo });
+    await run(
+      'git',
+      ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', 'commit', '-m', 'fixture'],
+      { cwd: repo },
+    );
+    const worktreeManager = new OwnedWorktreeManager(join(base, 'owned'), join(base, 'worktrees.json'));
+    await worktreeManager.load();
+    const created = await worktreeManager.create({
+      cwd: repo,
+      name: 'ticket',
+      confirmIncludeCopy: true,
+    });
+    const location = worktreeManager.ownedLocation(created.id);
+    if (!location) throw new Error('expected the freshly created worktree to resolve');
+    const branch = `issue-${ISSUE_NUMBER}`;
+    await run('git', ['checkout', '-b', branch], { cwd: location.path });
+    return { repo, branch, worktreeManager, worktreeId: created.id, worktreePath: location.path };
+  }
+
+  it(
+    'cleans up the worktree and sweeps its branch on an abandonment (working -> queued)',
+    async () => {
+      const { repo, branch, worktreeManager, worktreeId, worktreePath } = await realWorktree();
+      const { app, tickets } = buildApp({
+        ticket: {
+          lane: 'working',
+          labels: ['pipenzo:working'],
+          worktree: { id: worktreeId, path: worktreePath, branch },
+        },
+        issueLabels: ['pipenzo:working'],
+        worktreeManager,
+      });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/tickets/transition',
+        headers: auth,
+        payload: { ticketId: TICKET_ID, label: 'pipenzo:queued' },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({ ticket: { lane: 'queued' } });
+      expect(tickets.get(TICKET_ID)?.worktree).toBeUndefined();
+
+      const owned = await worktreeManager.list();
+      expect(owned.find((entry) => entry.id === worktreeId)?.status ?? 'missing').toBe('missing');
+      const branches = await runGitCommand(['branch', '--list', branch], repo);
+      expect(branches.stdout.trim()).toBe('');
+    },
+    GIT_HEAVY_TIMEOUT_MS,
+  );
+
+  it(
+    'retains a dirty worktree instead of deleting it, and keeps the ticket’s record of it',
+    async () => {
+      const { repo, branch, worktreeManager, worktreeId, worktreePath } = await realWorktree();
+      await writeFile(join(worktreePath, 'README.md'), 'agent edit, never committed');
+      const { app, tickets } = buildApp({
+        ticket: {
+          lane: 'ready-for-review',
+          labels: ['pipenzo:ready-for-review'],
+          worktree: { id: worktreeId, path: worktreePath, branch },
+        },
+        issueLabels: ['pipenzo:ready-for-review'],
+        worktreeManager,
+      });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/tickets/transition',
+        headers: auth,
+        payload: { ticketId: TICKET_ID, label: 'pipenzo:queued' },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(tickets.get(TICKET_ID)?.worktree).toEqual({ id: worktreeId, path: worktreePath, branch });
+      const owned = await worktreeManager.list();
+      expect(owned.find((entry) => entry.id === worktreeId)?.status).toBe('dirty');
+      const branches = await runGitCommand(['branch', '--list', branch], repo);
+      expect(branches.stdout.trim()).not.toBe('');
+    },
+    GIT_HEAVY_TIMEOUT_MS,
+  );
+
+  it(
+    'does not clean up on a transition that is not an abandonment',
+    async () => {
+      const { worktreeManager, worktreeId, worktreePath } = await realWorktree();
+      const { app, tickets } = buildApp({
+        ticket: {
+          lane: 'working',
+          labels: ['pipenzo:working'],
+          worktree: { id: worktreeId, path: worktreePath, branch: `issue-${ISSUE_NUMBER}` },
+        },
+        issueLabels: ['pipenzo:working'],
+        worktreeManager,
+      });
+
+      // working -> ready-for-review is a real, legal transition, but not the abandonment pattern
+      // (`working`/`ready-for-review` landing on `queued`) this cleanup is scoped to.
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/tickets/transition',
+        headers: auth,
+        payload: { ticketId: TICKET_ID, label: 'pipenzo:ready-for-review' },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(tickets.get(TICKET_ID)?.worktree).toEqual({
+        id: worktreeId,
+        path: worktreePath,
+        branch: `issue-${ISSUE_NUMBER}`,
+      });
+      const owned = await worktreeManager.list();
+      expect(owned.find((entry) => entry.id === worktreeId)?.status).toBe('ready');
+    },
+    GIT_HEAVY_TIMEOUT_MS,
+  );
 });
 
 /**
