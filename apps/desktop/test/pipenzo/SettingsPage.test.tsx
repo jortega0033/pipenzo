@@ -15,6 +15,7 @@ function installBridge() {
     pipenzoListRepos: vi.fn().mockResolvedValue({ repositories: [], truncated: false }),
     pipenzoConnectRepos: vi.fn(),
     pipenzoLessons: vi.fn().mockResolvedValue({ lessons: [] }),
+    pipenzoCreateLesson: vi.fn(),
     pipenzoDeleteLesson: vi.fn(),
     pipenzoGitHubConnection: vi
       .fn()

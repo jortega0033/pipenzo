@@ -80,6 +80,7 @@ import {
   pipenzoRepoCheckoutRequestV1Schema,
   pipenzoRepoCheckoutResultV1Schema,
   pipenzoLessonListV1Schema,
+  pipenzoLessonCreateV1Schema,
   pipenzoLessonDeleteRequestV1Schema,
   pipenzoDeviceCodeV1Schema,
   pipenzoDeviceOutcomeV1Schema,
@@ -160,6 +161,7 @@ import {
   type PipenzoRepoCheckoutRequestV1,
   type PipenzoRepoCheckoutResultV1,
   type PipenzoLessonListV1,
+  type PipenzoLessonCreateV1,
   type PipenzoLessonDeleteRequestV1,
   type PipenzoDeviceCodeV1,
   type PipenzoDeviceOutcomeV1,
@@ -319,12 +321,14 @@ export interface AgentDockBridge {
    */
   resolvePipenzoCheckout(input: PipenzoRepoCheckoutRequestV1): Promise<PipenzoRepoCheckoutResultV1>;
   /**
-   * Local, human-gated lesson memory (issue #18): Settings' lesson-memory panel (issue #128).
-   * `pipenzoLessons` is a local daemon read, no GitHub cost. `pipenzoDeleteLesson` removes exactly
-   * the one lesson named and answers with the list afterward — never a filtered view this renderer
-   * assembled itself, the same reasoning `pipenzoConnectRepos` follows.
+   * Local, human-gated lesson memory (issue #18): Settings' lesson-memory panel (issue #128) and
+   * `LessonPrompt`'s "Save lesson" button (issue #104). `pipenzoLessons` is a local daemon read, no
+   * GitHub cost. `pipenzoCreateLesson`/`pipenzoDeleteLesson` each answer with the list afterward —
+   * never a filtered view this renderer assembled itself, the same reasoning `pipenzoConnectRepos`
+   * follows.
    */
   pipenzoLessons(): Promise<PipenzoLessonListV1>;
+  pipenzoCreateLesson(input: PipenzoLessonCreateV1): Promise<PipenzoLessonListV1>;
   pipenzoDeleteLesson(input: PipenzoLessonDeleteRequestV1): Promise<PipenzoLessonListV1>;
   selectAndUploadAttachments(sessionId?: string): Promise<AttachmentMetadataV2[]>;
   validateStructuredOutput(input: StructuredWorkflowRequestV2): Promise<StructuredWorkflowResultV2>;
@@ -1003,6 +1007,12 @@ const api: AgentDockBridge = {
   },
   async pipenzoLessons() {
     return pipenzoLessonListV1Schema.parse(await ipcRenderer.invoke('daemon:pipenzo-lessons'));
+  },
+  async pipenzoCreateLesson(input) {
+    const parsed = pipenzoLessonCreateV1Schema.parse(input);
+    return pipenzoLessonListV1Schema.parse(
+      await ipcRenderer.invoke('daemon:pipenzo-create-lesson', parsed),
+    );
   },
   async pipenzoDeleteLesson(input) {
     const parsed = pipenzoLessonDeleteRequestV1Schema.parse(input);

@@ -113,6 +113,7 @@ export function installAssetCaptureBridge(): void {
     pipenzoConnectRepos: async () => { throw new Error('connecting repositories is not available while capturing assets'); },
     resolvePipenzoCheckout: async () => { throw new Error('preparing a local checkout is not available while capturing assets'); },
     pipenzoLessons: async () => ({ lessons: [] }),
+    pipenzoCreateLesson: async () => { throw new Error('saving a lesson is not available while capturing assets'); },
     pipenzoDeleteLesson: async () => { throw new Error('deleting a lesson is not available while capturing assets'); },
     startGitHubDeviceFlow: async () => { throw new Error('signing in to GitHub is not available while capturing assets'); },
     openGitHubDeviceVerification: async () => { throw new Error('signing in to GitHub is not available while capturing assets'); },
