@@ -75,6 +75,20 @@ function installBridge(
       .fn()
       .mockResolvedValue({ schemaVersion: 1, executionLimit: 2, runBudget: 'unlimited' }),
     pipenzoUpdateConcurrencySettings: vi.fn(),
+    pipenzoCaptureSettings: vi
+      .fn()
+      .mockResolvedValue({ schemaVersion: 1, screenshotEnabled: true, escapeHatchEnabled: false }),
+    pipenzoUpdateCaptureSettings: vi.fn(),
+    resolvePipenzoCheckout: vi
+      .fn()
+      .mockResolvedValue({ repo: { owner: 'octocat', name: 'hello-world' }, repositoryPath: '/tmp/octocat-hello-world' }),
+    pipenzoCaptureCapabilities: vi.fn().mockResolvedValue({
+      schemaVersion: 1,
+      screenshot: { available: false, reason: 'capture-capability probe result, not asserted by this file' },
+      escapeHatch: { configured: false, reason: 'capture-capability probe result, not asserted by this file' },
+      activeTrustClass: null,
+    }),
+    listMcpServers: vi.fn().mockResolvedValue({ servers: [], revision: 'test-1' }),
     pipenzoGitHubConnection: vi
       .fn()
       .mockResolvedValue({ state: 'connected', login: 'octocat', source: 'vault' }),
@@ -246,6 +260,43 @@ describe('PipenzoAppShell', () => {
 
     expect(await screen.findByText('Queued')).toBeInTheDocument();
     expect(screen.queryByText('Connected repos')).not.toBeInTheDocument();
+  });
+
+  /** Issue #470: `DeterministicGatesPanel`/`AgentCapturedPanel` rendered real, tested content with
+   *  no route reaching them -- this is the same "mounts a different screen each time" nav-item
+   *  proof the Settings test above already makes, plus the one extra fact specific to this screen:
+   *  it resolves the active repo (the workspace switcher's own default, here the single connected
+   *  repo `installBridge` seeds) to a real local checkout for its capability probe. */
+  it('navigates to Models & gates, mounting the real deterministic-gates and agent-captured panels', async () => {
+    installBridge();
+    render(
+      <ThemeProvider>
+        <PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />
+      </ThemeProvider>,
+    );
+    await screen.findByText('Queued');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Models & gates' }));
+
+    expect(
+      await screen.findByText('Deterministic gates — the hard, non-negotiable set'),
+    ).toBeInTheDocument();
+    expect(await screen.findByText('Screenshot verification')).toBeInTheDocument();
+    expect(screen.queryByText('Queued')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Models & gates' }).className).toBe(
+      'nav-item active',
+    );
+    // Proves the checkout-resolve -> capability-probe chain actually ran for the active repo
+    // (rather than the panel sitting on its own "checking…" default): the mocked probe's own
+    // answer reached the screen.
+    expect(
+      await screen.findAllByText('capture-capability probe result, not asserted by this file'),
+    ).toHaveLength(2);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Board' }));
+
+    expect(await screen.findByText('Queued')).toBeInTheDocument();
+    expect(screen.queryByText('Deterministic gates — the hard, non-negotiable set')).not.toBeInTheDocument();
   });
 
   it('renders real tickets into their lanes through the base Card primitive', async () => {
@@ -658,6 +709,10 @@ describe('PipenzoAppShell', () => {
       .fn()
       .mockResolvedValue({ schemaVersion: 1, executionLimit: 2, runBudget: 'unlimited' }),
     pipenzoUpdateConcurrencySettings: vi.fn(),
+    pipenzoCaptureSettings: vi
+      .fn()
+      .mockResolvedValue({ schemaVersion: 1, screenshotEnabled: true, escapeHatchEnabled: false }),
+    pipenzoUpdateCaptureSettings: vi.fn(),
       pipenzoGitHubConnection: vi
         .fn()
         .mockResolvedValue({ state: 'connected', login: 'octocat', source: 'vault' }),
