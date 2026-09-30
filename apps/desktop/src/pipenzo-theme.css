@@ -2858,6 +2858,41 @@
     border-radius: var(--radius-pipenzo);
   }
 
+  /* One rail-block row: a label on the left, a right-aligned mono value on the right -- ported
+     verbatim from TicketDetail.dc.html's own `.kv`/`.k`/`.v` rule. Shared by every rail block that
+     renders this shape (Status #94, Model routing and Subscription headroom #96). See KvRow.tsx. */
+  .kv {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+    line-height: 1;
+    gap: 12px;
+  }
+
+  .kv .k {
+    color: var(--color-text-soft);
+    white-space: nowrap;
+  }
+
+  .kv .v {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    text-align: right;
+  }
+
+  .kv .v.warn {
+    color: var(--color-warn);
+  }
+
+  .kv .v.danger {
+    color: var(--color-danger-text);
+  }
+
+  .kv .v.faint {
+    color: var(--color-text-faint);
+  }
+
   /* Card .resume block — ported verbatim from Foundations.dc.html's "pipenzo:interrupted" sample
      (the daemon died mid-run). `.resume-kv` is the mono last-phase/worktree-path/session grid;
      `.resume-why` explains why nothing auto-resumed on its own. See Resume.tsx. */
