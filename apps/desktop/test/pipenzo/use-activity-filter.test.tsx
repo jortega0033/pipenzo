@@ -1,6 +1,7 @@
 import { act, fireEvent, render, renderHook, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PipenzoTicketViewV1 } from '@agent-dock/shared';
+import { clearBridgeOverride, setBridgeOverride } from '../../src/bridge.js';
 import { ActivityFilterBar } from '../../src/pipenzo/ActivityFilterBar.js';
 import { ActivityScreen } from '../../src/pipenzo/ActivityScreen.js';
 import { useActivityFilter } from '../../src/pipenzo/use-activity-filter.js';
@@ -87,6 +88,16 @@ function ActivityScreenWithFilters({ tickets }: { tickets: readonly PipenzoTicke
 }
 
 describe('ActivityScreen + ActivityFilterBar, wired through useActivityFilter', () => {
+  beforeEach(() => {
+    setBridgeOverride({
+      pipenzoRecordRiskActivityOpened: vi.fn().mockResolvedValue(undefined),
+    } as never);
+  });
+
+  afterEach(() => {
+    clearBridgeOverride();
+  });
+
   it('shows every ticket under "All", with a count equal to the true total', () => {
     const tickets = [
       makeTicket({ ticketId: 'a', issueNumber: 1, updatedAt: '2026-09-06T14:00:00.000Z' }),
