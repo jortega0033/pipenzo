@@ -3,6 +3,9 @@ import {
   pipenzoTicketListV1Schema,
   pipenzoTicketReadRequestV1Schema,
   pipenzoTicketReconciliationV1Schema,
+  pipenzoTicketRiskActivityOpenedRequestV1Schema,
+  pipenzoTicketRiskApprovalOutcomeRequestV1Schema,
+  pipenzoTicketRiskResponseV1Schema,
   pipenzoTicketTransitionRequestV1Schema,
   type PipenzoTicketErrorCodeV1,
   type PipenzoTicketViewV1,
@@ -255,6 +258,56 @@ export function registerPipenzoTicketRoutes(
     // now, so a response-shape mismatch must not be reported as a failure to transition -- the
     // operator's natural retry would be judged against a state that has already moved.
     reply.send(pipenzoTicketReconciliationV1Schema.parse(toReconciliationBody(result)));
+  });
+
+  /**
+   * Issue #119: opening the ticket's Activity view always resets the cumulative-risk score to
+   * zero. No renderer calls this yet -- the Activity view itself is issues #116-118, not yet
+   * built -- but the daemon-side half of that reset (issue #95, `risk-score.ts`'s pure engine
+   * from issue #158) is real today, and this is its one real entry point on the wire.
+   */
+  app.post('/v2/pipenzo/tickets/risk/activity-opened', limits, async (req, reply) => {
+    const parsed = pipenzoTicketRiskActivityOpenedRequestV1Schema.safeParse(req.body);
+    if (!parsed.success) return invalid(reply, 'risk activity-opened request');
+    try {
+      machine.recordRiskActivityOpened(parsed.data.ticketId);
+    } catch (error) {
+      if (error instanceof PipenzoPhaseMachineError) return fail(reply, error);
+      return fail(reply, new PipenzoPhaseMachineError('store_failed', 'risk reset failed'));
+    }
+    const risk = machine.peekRiskScore(parsed.data.ticketId);
+    if (!risk) {
+      return fail(
+        reply,
+        new PipenzoPhaseMachineError('ticket_not_found', `no such ticket: ${parsed.data.ticketId}`),
+      );
+    }
+    reply.send(pipenzoTicketRiskResponseV1Schema.parse({ risk }));
+  });
+
+  /**
+   * Issues #95/#97/#98: a human approved a MEDIUM- or HIGH-graded action. A HIGH approval resets
+   * the score; a MEDIUM approval deliberately does not (`risk-score.ts`'s own doc comment on
+   * `recordApprovalOutcome`). No renderer calls this yet -- `PublishActions.tsx`'s approval cards
+   * are keyed by `worktreeId`, not `ticketId` -- see this ticket's PR description.
+   */
+  app.post('/v2/pipenzo/tickets/risk/approval-outcome', limits, async (req, reply) => {
+    const parsed = pipenzoTicketRiskApprovalOutcomeRequestV1Schema.safeParse(req.body);
+    if (!parsed.success) return invalid(reply, 'risk approval-outcome request');
+    try {
+      machine.recordRiskApprovalOutcome(parsed.data.ticketId, parsed.data.effectiveGrade);
+    } catch (error) {
+      if (error instanceof PipenzoPhaseMachineError) return fail(reply, error);
+      return fail(reply, new PipenzoPhaseMachineError('store_failed', 'risk approval outcome failed'));
+    }
+    const risk = machine.peekRiskScore(parsed.data.ticketId);
+    if (!risk) {
+      return fail(
+        reply,
+        new PipenzoPhaseMachineError('ticket_not_found', `no such ticket: ${parsed.data.ticketId}`),
+      );
+    }
+    reply.send(pipenzoTicketRiskResponseV1Schema.parse({ risk }));
   });
 
   if (!events) return;

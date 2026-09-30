@@ -597,6 +597,115 @@ describe('POST /v2/pipenzo/tickets/transition worktree cleanup (issue #159)', ()
   );
 });
 
+describe('POST /v2/pipenzo/tickets/risk/activity-opened', () => {
+  it('resets the ticket’s cumulative risk score to zero and reports the reset record', async () => {
+    const { app, tickets } = buildApp({
+      ticket: { risk: { score: 7, lastResetAt: '2026-01-01T00:00:00.000Z', pendingPromotion: true } },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v2/pipenzo/tickets/risk/activity-opened',
+      headers: auth,
+      payload: { ticketId: TICKET_ID },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ risk: { score: 0, pendingPromotion: false } });
+    expect(tickets.get(TICKET_ID)?.risk.score).toBe(0);
+    expect(tickets.get(TICKET_ID)?.risk.lastResetAt).not.toBe('2026-01-01T00:00:00.000Z');
+  });
+
+  it('answers 404 for an unknown ticket', async () => {
+    const { app } = buildApp();
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v2/pipenzo/tickets/risk/activity-opened',
+      headers: auth,
+      payload: { ticketId: '00000000-0000-4000-8000-00000000ffff' },
+    });
+
+    expect(response.statusCode).toBe(404);
+  });
+
+  it('rejects a malformed body rather than echoing it back', async () => {
+    const { app } = buildApp();
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v2/pipenzo/tickets/risk/activity-opened',
+      headers: auth,
+      payload: { ticketId: 'not-a-uuid' },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.body).not.toContain('not-a-uuid');
+  });
+});
+
+describe('POST /v2/pipenzo/tickets/risk/approval-outcome', () => {
+  it('resets the score on a HIGH approval', async () => {
+    const { app, tickets } = buildApp({
+      ticket: { risk: { score: 8, lastResetAt: '2026-01-01T00:00:00.000Z', pendingPromotion: false } },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v2/pipenzo/tickets/risk/approval-outcome',
+      headers: auth,
+      payload: { ticketId: TICKET_ID, effectiveGrade: 'high' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ risk: { score: 0 } });
+    expect(tickets.get(TICKET_ID)?.risk.score).toBe(0);
+  });
+
+  it('deliberately does not reset the score on a MEDIUM approval', async () => {
+    const { app, tickets } = buildApp({
+      ticket: { risk: { score: 8, lastResetAt: '2026-01-01T00:00:00.000Z', pendingPromotion: false } },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v2/pipenzo/tickets/risk/approval-outcome',
+      headers: auth,
+      payload: { ticketId: TICKET_ID, effectiveGrade: 'medium' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ risk: { score: 8 } });
+    expect(tickets.get(TICKET_ID)?.risk.score).toBe(8);
+  });
+
+  it('rejects a grade outside the RiskGrade vocabulary', async () => {
+    const { app } = buildApp();
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v2/pipenzo/tickets/risk/approval-outcome',
+      headers: auth,
+      payload: { ticketId: TICKET_ID, effectiveGrade: 'bogus' },
+    });
+
+    expect(response.statusCode).toBe(400);
+  });
+
+  it('answers 404 for an unknown ticket', async () => {
+    const { app } = buildApp();
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v2/pipenzo/tickets/risk/approval-outcome',
+      headers: auth,
+      payload: { ticketId: '00000000-0000-4000-8000-00000000ffff', effectiveGrade: 'high' },
+    });
+
+    expect(response.statusCode).toBe(404);
+  });
+});
+
 /**
  * The phase stream (#189).
  *

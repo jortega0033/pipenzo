@@ -7,6 +7,8 @@ import {
   type PipenzoLaneV1,
   type PipenzoTicketAttemptV1,
   type PipenzoTicketRecordV1,
+  type PipenzoTicketRiskV1,
+  type RiskGrade,
 } from '@agent-dock/shared';
 import {
   GitHubClientError,
@@ -16,6 +18,15 @@ import {
 } from './github-client.js';
 import type { FileTicketStore } from './pipenzo-ticket-store.js';
 import type { PipenzoPhaseEventBus } from './pipenzo-phase-events.js';
+import {
+  RISK_SCORE_THRESHOLD,
+  gradeAction,
+  recordActivityOpened,
+  recordApprovalOutcome,
+  recordMismatch,
+  type GradeActionResult,
+  type RiskScoreState,
+} from './risk-score.js';
 
 /**
  * The phase machine (Pipenzo issue #188): the implementation of README's one precedence rule.
@@ -817,6 +828,142 @@ export class PipenzoPhaseMachine {
    */
   peekBudget(ticketId: string): PipenzoTicketRecordV1['budget'] | undefined {
     return this.#tickets.get(ticketId)?.budget;
+  }
+
+  /* ------------------------------------------------------------- cumulative risk (issue #95) */
+
+  /**
+   * Converts a ticket's persisted, wire-shaped `risk` into `risk-score.ts`'s own
+   * `RiskScoreState` shape. `pendingPromotion` defaults to `false` for the reason
+   * `pipenzoTicketRiskV1Schema`'s own doc comment gives: a ticket persisted before this field
+   * existed has no promotion armed, which `false` states honestly rather than guesses at.
+   */
+  #toRiskScoreState(risk: PipenzoTicketRiskV1): RiskScoreState {
+    return { score: risk.score, pendingPromotion: risk.pendingPromotion ?? false };
+  }
+
+  /**
+   * Converts a fresh `RiskScoreState` back into the persisted wire shape.
+   *
+   * `score` is clamped to `RISK_SCORE_THRESHOLD` on the way in, matching
+   * `pipenzoTicketRiskV1Schema.score`'s own bound (`[0, 10]`) and its doc comment ("a score above
+   * ten is not a bigger risk, it is a bug in whatever wrote it"): `risk-score.ts`'s pure engine
+   * itself never clamps (a mismatch recorded after the threshold still adds its full +3 to the
+   * internal fold), because clamping there would make its own arithmetic lossy for no reason: once
+   * `pendingPromotion` is armed, how far over the threshold the raw score sits changes nothing
+   * about gating. Clamping here, at the one place the score is written to disk, keeps that
+   * irrelevant precision from ever reaching persistence -- and reading a clamped value back through
+   * `#toRiskScoreState` above still round-trips correctly, since every call this module makes
+   * against an already-armed promotion behaves identically whether `state.score` reads back as the
+   * true sum or the clamped one.
+   *
+   * `lastResetAt` is carried over unchanged unless `resetAt` is given -- only the two real reset
+   * triggers (`recordRiskApprovalOutcome` on a HIGH approval, `recordRiskActivityOpened`) ever pass
+   * one, matching the field's own "records the one event that zeroes the counter" doc comment.
+   */
+  #toTicketRisk(state: RiskScoreState, previous: PipenzoTicketRiskV1, resetAt?: string): PipenzoTicketRiskV1 {
+    return {
+      score: Math.min(state.score, RISK_SCORE_THRESHOLD),
+      pendingPromotion: state.pendingPromotion,
+      lastResetAt: resetAt ?? previous.lastResetAt,
+    };
+  }
+
+  #requireTicket(ticketId: string): PipenzoTicketRecordV1 {
+    const ticket = this.#tickets.get(ticketId);
+    if (!ticket) {
+      throw new PipenzoPhaseMachineError('ticket_not_found', `no such ticket: ${ticketId}`);
+    }
+    return ticket;
+  }
+
+  /**
+   * Grades one classified action against a ticket's cumulative risk score (issue #95, wiring
+   * `risk-score.ts`'s pure engine from issue #158). The real call site is
+   * `PipenzoPhaseService.review()`, right after `ReviewGatesRunner.run()` returns a report with a
+   * `risk` grade (`review-gates.ts`'s `classifyReviewRisk()`).
+   *
+   * **Cannot weaken a real HIGH grade.** `gradeAction` itself guarantees `effectiveGrade` is
+   * `'high'` whenever `grade` is `'high'`, unconditionally on the running score (CLAUDE.md hard
+   * rule 3; see `risk-score.test.ts`'s "never bypassable" suite) -- this method only persists what
+   * that pure function already decided, it never adds a second opinion of its own.
+   */
+  gradeRiskAction(ticketId: string, grade: RiskGrade): GradeActionResult {
+    const ticket = this.#requireTicket(ticketId);
+    const result = gradeAction(this.#toRiskScoreState(ticket.risk), grade);
+    const risk = this.#toTicketRisk(result.state, ticket.risk);
+    persist(() => this.#tickets.update(ticketId, { ...ticket, risk }));
+    return result;
+  }
+
+  /**
+   * Records a pre-commitment prediction/outcome mismatch (+3; `risk-score.ts`'s `recordMismatch`).
+   *
+   * **No real call site exists yet.** `pipenzoTicketPrecommitV1Schema` (issue #187) gives
+   * pre-commitment records a wire shape, but nothing in this codebase yet posts one, runs it, and
+   * diffs the outcome against the prediction (research-report.html §11 decision 02) -- so there is
+   * no real "a prediction just proved wrong" event for this method to be called from today. It is
+   * wired and tested against the pure engine now (this ticket's own tests exercise it directly) so
+   * that whenever pre-commitment tracking lands, calling this from it is a one-line addition rather
+   * than a new method.
+   */
+  recordRiskMismatch(ticketId: string): RiskScoreState {
+    const ticket = this.#requireTicket(ticketId);
+    const state = recordMismatch(this.#toRiskScoreState(ticket.risk));
+    const risk = this.#toTicketRisk(state, ticket.risk);
+    persist(() => this.#tickets.update(ticketId, { ...ticket, risk }));
+    return state;
+  }
+
+  /**
+   * The asymmetric reset rule's first half (issue #95/#158): a HIGH approval resets the score to
+   * zero; a MEDIUM approval deliberately does not (`risk-score.ts`'s own doc comment explains why
+   * treating the two alike makes the threshold unreachable). Call with the *effective* grade the
+   * human actually approved -- for a promoted MEDIUM, that is `'high'` (the grade
+   * `gradeRiskAction`/`GradeActionResult.effectiveGrade` already reported for it), not `'medium'`.
+   *
+   * **No real call site exists yet either.** `PublishActions.tsx`'s `HighApprovalCard`/
+   * `MediumApprovalInline` `onApprove`/`onAllow` handlers (issues #97/#98) are the real moment a
+   * human approves a MEDIUM or HIGH action, but that component is keyed by `worktreeId`, not
+   * `ticketId` -- there is no `ticketId` in scope at either handler today, and threading one down
+   * through `DiffReviewScreen`/`PublishActions` is a change to components this ticket does not own.
+   * This method is the daemon-side half of that wiring, real and tested; the PR this ticket ships
+   * as calls that out as a tracked follow-up rather than inventing a `ticketId` prop those
+   * components don't otherwise need yet.
+   *
+   * A MEDIUM approval writes nothing -- same reasoning `recordTokenUsage()` uses to skip a write for
+   * a non-positive amount: nothing changed, so nothing needs to be persisted.
+   */
+  recordRiskApprovalOutcome(ticketId: string, approvedEffectiveGrade: RiskGrade): RiskScoreState {
+    const ticket = this.#requireTicket(ticketId);
+    const state = recordApprovalOutcome(this.#toRiskScoreState(ticket.risk), approvedEffectiveGrade);
+    if (approvedEffectiveGrade === 'high') {
+      const risk = this.#toTicketRisk(state, ticket.risk, new Date().toISOString());
+      persist(() => this.#tickets.update(ticketId, { ...ticket, risk }));
+    }
+    return state;
+  }
+
+  /**
+   * The reset rule's other half (issue #119): opening the ticket's Activity view always resets,
+   * unconditionally -- there is no "activity opened but doesn't count" case.
+   *
+   * **No real call site exists yet.** The Activity view itself is issues #116-118, not yet built in
+   * this codebase. This method is wired and tested against the pure engine now, ready for whichever
+   * of those lands to call it -- see this ticket's PR description for the same note.
+   */
+  recordRiskActivityOpened(ticketId: string): RiskScoreState {
+    const ticket = this.#requireTicket(ticketId);
+    const state = recordActivityOpened(this.#toRiskScoreState(ticket.risk));
+    const risk = this.#toTicketRisk(state, ticket.risk, new Date().toISOString());
+    persist(() => this.#tickets.update(ticketId, { ...ticket, risk }));
+    return state;
+  }
+
+  /** The current cumulative-risk record for a ticket the local store knows about, or `undefined`
+   * for an unknown ticket -- same best-effort shape as `peekBudget()`. */
+  peekRiskScore(ticketId: string): PipenzoTicketRiskV1 | undefined {
+    return this.#tickets.get(ticketId)?.risk;
   }
 
   #repoRef(ticket: PipenzoTicketRecordV1): RepoRef {

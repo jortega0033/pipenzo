@@ -948,3 +948,181 @@ describe('PipenzoPhaseMachine.peekBudget', () => {
     expect(machine.peekBudget('00000000-0000-4000-8000-00000000ffff')).toBeUndefined();
   });
 });
+
+/* -------------------------------------------------------- cumulative risk (issue #95, #158) */
+
+const ZERO_RISK = { score: 0, lastResetAt: '2026-01-01T00:00:00.000Z' };
+
+describe('PipenzoPhaseMachine.gradeRiskAction', () => {
+  it('adds a LOW grade’s weight (0.5) to a ticket with no risk history yet, without touching GitHub', () => {
+    const { machine, tickets, github } = harness({ ticket: { risk: ZERO_RISK } });
+
+    const result = machine.gradeRiskAction(TICKET_ID, 'low');
+
+    expect(result).toEqual({ state: { score: 0.5, pendingPromotion: false }, effectiveGrade: 'low', promoted: false });
+    expect(tickets.get(TICKET_ID)?.risk).toEqual({ ...ZERO_RISK, score: 0.5, pendingPromotion: false });
+    expect(github.calls).toEqual([]);
+  });
+
+  it('accumulates across calls the same way recordTokenUsage accumulates budget', () => {
+    const { machine, tickets } = harness({ ticket: { risk: ZERO_RISK } });
+
+    machine.gradeRiskAction(TICKET_ID, 'medium');
+    machine.gradeRiskAction(TICKET_ID, 'medium');
+
+    expect(tickets.get(TICKET_ID)?.risk.score).toBe(2);
+  });
+
+  it('never lets a real HIGH grade come back as anything other than effectiveGrade "high" (CLAUDE.md hard rule 3)', () => {
+    const { machine } = harness({
+      ticket: { risk: { score: 9.5, lastResetAt: ZERO_RISK.lastResetAt, pendingPromotion: false } },
+    });
+
+    const result = machine.gradeRiskAction(TICKET_ID, 'high');
+
+    expect(result.effectiveGrade).toBe('high');
+    expect(result.promoted).toBe(false);
+  });
+
+  it('promotes the next MEDIUM to HIGH-equivalent gating once the threshold is armed, and persists that', () => {
+    const { machine, tickets } = harness({
+      ticket: { risk: { score: 10, lastResetAt: ZERO_RISK.lastResetAt, pendingPromotion: true } },
+    });
+
+    const result = machine.gradeRiskAction(TICKET_ID, 'medium');
+
+    expect(result.effectiveGrade).toBe('high');
+    expect(result.promoted).toBe(true);
+    expect(tickets.get(TICKET_ID)?.risk.pendingPromotion).toBe(false);
+  });
+
+  it('clamps the persisted score to the threshold rather than letting it grow without bound', () => {
+    const { machine, tickets } = harness({
+      ticket: { risk: { score: 10, lastResetAt: ZERO_RISK.lastResetAt, pendingPromotion: true } },
+    });
+
+    // A LOW action does not consume the pending promotion, but still adds its own weight.
+    machine.gradeRiskAction(TICKET_ID, 'low');
+
+    expect(tickets.get(TICKET_ID)?.risk.score).toBe(10);
+  });
+
+  it('never writes lastResetAt -- grading is never a reset', () => {
+    const { machine, tickets } = harness({ ticket: { risk: ZERO_RISK } });
+
+    machine.gradeRiskAction(TICKET_ID, 'medium');
+
+    expect(tickets.get(TICKET_ID)?.risk.lastResetAt).toBe(ZERO_RISK.lastResetAt);
+  });
+
+  it('throws ticket_not_found for an unknown ticket', () => {
+    const { machine } = harness();
+
+    expect(() => machine.gradeRiskAction('00000000-0000-4000-8000-00000000ffff', 'low')).toThrow(
+      PipenzoPhaseMachineError,
+    );
+  });
+});
+
+describe('PipenzoPhaseMachine.recordRiskMismatch', () => {
+  it('adds the mismatch weight (3) and persists it', () => {
+    const { machine, tickets } = harness({ ticket: { risk: ZERO_RISK } });
+
+    const state = machine.recordRiskMismatch(TICKET_ID);
+
+    expect(state).toEqual({ score: 3, pendingPromotion: false });
+    expect(tickets.get(TICKET_ID)?.risk.score).toBe(3);
+  });
+});
+
+describe('PipenzoPhaseMachine.recordRiskApprovalOutcome', () => {
+  it('resets the score to zero on a HIGH approval, and records when', () => {
+    const { machine, tickets } = harness({
+      ticket: { risk: { score: 8, lastResetAt: ZERO_RISK.lastResetAt, pendingPromotion: false } },
+    });
+
+    const state = machine.recordRiskApprovalOutcome(TICKET_ID, 'high');
+
+    expect(state).toEqual({ score: 0, pendingPromotion: false });
+    const risk = tickets.get(TICKET_ID)?.risk;
+    expect(risk?.score).toBe(0);
+    expect(risk?.pendingPromotion).toBe(false);
+    expect(risk?.lastResetAt).not.toBe(ZERO_RISK.lastResetAt);
+  });
+
+  it('deliberately does not reset on a MEDIUM approval, and does not write anything', () => {
+    const { machine, tickets } = harness({
+      ticket: { risk: { score: 8, lastResetAt: ZERO_RISK.lastResetAt, pendingPromotion: false } },
+    });
+
+    const state = machine.recordRiskApprovalOutcome(TICKET_ID, 'medium');
+
+    expect(state).toEqual({ score: 8, pendingPromotion: false });
+    expect(tickets.get(TICKET_ID)?.risk).toEqual({
+      score: 8,
+      lastResetAt: ZERO_RISK.lastResetAt,
+      pendingPromotion: false,
+    });
+  });
+
+  it('resets a promoted MEDIUM approved through the HIGH-equivalent flow', () => {
+    const { machine } = harness({
+      ticket: { risk: { score: 10, lastResetAt: ZERO_RISK.lastResetAt, pendingPromotion: true } },
+    });
+
+    const graded = machine.gradeRiskAction(TICKET_ID, 'medium');
+    expect(graded.effectiveGrade).toBe('high');
+    const state = machine.recordRiskApprovalOutcome(TICKET_ID, graded.effectiveGrade);
+
+    expect(state).toEqual({ score: 0, pendingPromotion: false });
+  });
+});
+
+describe('PipenzoPhaseMachine.recordRiskActivityOpened', () => {
+  it('resets the score to zero unconditionally, regardless of current state', () => {
+    const { machine, tickets } = harness({
+      ticket: { risk: { score: 9, lastResetAt: ZERO_RISK.lastResetAt, pendingPromotion: true } },
+    });
+
+    const state = machine.recordRiskActivityOpened(TICKET_ID);
+
+    expect(state).toEqual({ score: 0, pendingPromotion: false });
+    const risk = tickets.get(TICKET_ID)?.risk;
+    expect(risk?.score).toBe(0);
+    expect(risk?.pendingPromotion).toBe(false);
+    expect(risk?.lastResetAt).not.toBe(ZERO_RISK.lastResetAt);
+  });
+
+  it('does not accumulate across repeated opens -- it is idempotent at zero', () => {
+    const { machine, tickets } = harness({ ticket: { risk: ZERO_RISK } });
+
+    machine.recordRiskActivityOpened(TICKET_ID);
+    machine.recordRiskActivityOpened(TICKET_ID);
+
+    expect(tickets.get(TICKET_ID)?.risk.score).toBe(0);
+  });
+});
+
+describe('PipenzoPhaseMachine.peekRiskScore', () => {
+  it('reads a ticket’s risk record locally, without a GitHub round trip', () => {
+    const { machine, github } = harness({ ticket: { risk: { ...ZERO_RISK, score: 4 } } });
+
+    expect(machine.peekRiskScore(TICKET_ID)).toEqual({ ...ZERO_RISK, score: 4 });
+    expect(github.calls).toEqual([]);
+  });
+
+  it('treats a ticket persisted before pendingPromotion existed as having none armed', () => {
+    const { machine } = harness({ ticket: { risk: ZERO_RISK } });
+
+    expect(machine.peekRiskScore(TICKET_ID)?.pendingPromotion).toBeUndefined();
+    // ...and gradeRiskAction reads that absence as `false`, the same as an explicit one.
+    const result = machine.gradeRiskAction(TICKET_ID, 'high');
+    expect(result.effectiveGrade).toBe('high');
+  });
+
+  it('returns undefined for an unknown ticket rather than throwing', () => {
+    const { machine } = harness();
+
+    expect(machine.peekRiskScore('00000000-0000-4000-8000-00000000ffff')).toBeUndefined();
+  });
+});

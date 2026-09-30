@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { pipenzoIssueNumberV1Schema, pipenzoRepoRefV1Schema } from './pipenzo-phase-v1.js';
+import { riskGradeV1Schema } from './pipenzo-review-v1.js';
 import {
   PIPENZO_LABELS,
   pipenzoLabelV1Schema,
@@ -210,6 +211,29 @@ export const pipenzoTicketTransitionRequestV1Schema = z
   })
   .strict();
 
+/** Issue #119: opening the ticket's Activity view. No other field -- the reset is unconditional. */
+export const pipenzoTicketRiskActivityOpenedRequestV1Schema = z
+  .object({ ticketId: pipenzoTicketIdV1Schema })
+  .strict();
+
+/**
+ * Issues #95/#97/#98: a human approved a MEDIUM- or HIGH-graded action. `effectiveGrade` is the
+ * grade actually approved -- for a promoted MEDIUM, that is `'high'`, matching
+ * `GradeActionResult.effectiveGrade` (`apps/daemon/src/risk-score.ts`), never the pre-promotion
+ * grade.
+ */
+export const pipenzoTicketRiskApprovalOutcomeRequestV1Schema = z
+  .object({
+    ticketId: pipenzoTicketIdV1Schema,
+    effectiveGrade: riskGradeV1Schema,
+  })
+  .strict();
+
+/** The response both risk-mutation routes share: the ticket's risk record after the write. */
+export const pipenzoTicketRiskResponseV1Schema = z
+  .object({ risk: pipenzoTicketRiskV1Schema })
+  .strict();
+
 /* -------------------------------------------------------------- error codes */
 
 /**
@@ -263,4 +287,11 @@ export type PipenzoTicketReadRequestV1 = z.infer<typeof pipenzoTicketReadRequest
 export type PipenzoTicketTransitionRequestV1 = z.infer<
   typeof pipenzoTicketTransitionRequestV1Schema
 >;
+export type PipenzoTicketRiskActivityOpenedRequestV1 = z.infer<
+  typeof pipenzoTicketRiskActivityOpenedRequestV1Schema
+>;
+export type PipenzoTicketRiskApprovalOutcomeRequestV1 = z.infer<
+  typeof pipenzoTicketRiskApprovalOutcomeRequestV1Schema
+>;
+export type PipenzoTicketRiskResponseV1 = z.infer<typeof pipenzoTicketRiskResponseV1Schema>;
 export type PipenzoTicketErrorCodeV1 = (typeof PIPENZO_TICKET_ERROR_CODES)[number];

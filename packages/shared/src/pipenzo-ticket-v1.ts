@@ -270,11 +270,21 @@ export const pipenzoTicketBudgetV1Schema = z
  * ten is not a bigger risk, it is a bug in whatever wrote it. `lastResetAt` records the one event
  * that zeroes the counter: "only a HIGH approval, or an explicit 'I've looked'… resets the score to
  * zero" — a MEDIUM approval deliberately does not touch this field.
+ *
+ * `pendingPromotion` (issue #95, wiring `apps/daemon/src/risk-score.ts`'s engine from issue #158)
+ * mirrors that module's own `RiskScoreState.pendingPromotion`: set once `score` reaches the
+ * threshold, consumed by the next action graded MEDIUM, which is then gated as HIGH instead. It is
+ * `.optional()`, unlike `score`/`lastResetAt`, for the same reason `title`/`worktree`/`spec` are
+ * optional above — a record persisted by a build before this field existed (or, before this ticket,
+ * every record ever written, since nothing wrote `risk` from the real engine yet) has no value to
+ * backfill it with. A reader treats an absent value as `false`: no engine has ever armed a
+ * promotion for a ticket that predates this field, so `false` is the true state, not a guess.
  */
 export const pipenzoTicketRiskV1Schema = z
   .object({
     score: z.number().min(0).max(10),
     lastResetAt: z.string().min(1).max(64),
+    pendingPromotion: z.boolean().optional(),
   })
   .strict();
 

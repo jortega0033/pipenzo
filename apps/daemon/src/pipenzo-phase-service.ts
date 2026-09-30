@@ -136,7 +136,12 @@ export interface PipenzoPhaseServiceOptions {
    */
   machine?: Pick<
     PipenzoPhaseMachine,
-    'read' | 'transition' | 'recordAttempt' | 'recordTokenUsage' | 'peekBudget'
+    | 'read'
+    | 'transition'
+    | 'recordAttempt'
+    | 'recordTokenUsage'
+    | 'peekBudget'
+    | 'gradeRiskAction'
   >;
   /**
    * Local-only ticket-record access (issue #159), narrower than `machine` on purpose: attaching a
@@ -163,7 +168,12 @@ export class PipenzoPhaseService {
   readonly #machine:
     | Pick<
         PipenzoPhaseMachine,
-        'read' | 'transition' | 'recordAttempt' | 'recordTokenUsage' | 'peekBudget'
+        | 'read'
+        | 'transition'
+        | 'recordAttempt'
+        | 'recordTokenUsage'
+        | 'peekBudget'
+        | 'gradeRiskAction'
       >
     | undefined;
   readonly #ticketWorktrees: TicketWorktreeStorePort | undefined;
@@ -618,7 +628,32 @@ export class PipenzoPhaseService {
       await this.#recordTokenUsage(request.ticketId, tokensUsed);
     }
 
+    // Issue #95: feed this run's real risk classification into the ticket's cumulative-risk
+    // score (issue #158's pure engine) -- the one real trigger point this ticket asks for
+    // ("tie into wherever classifyReviewRisk() from review-gates.ts already runs").
+    if (request.ticketId && report.risk) {
+      this.#recordRiskGrade(request.ticketId, report.risk);
+    }
+
     return report;
+  }
+
+  /**
+   * Issue #95's own half of `review()`'s side effects, split out for the same reason
+   * `#recordTokenUsage`/`#reportBlownEstimate` are: best-effort and logged, never thrown -- a
+   * successful review already happened and already is the thing `review()` promises to return, so
+   * a local scoring write failing must not turn that into an error the caller sees.
+   */
+  #recordRiskGrade(ticketId: string, grade: PipenzoReviewResultV1['risk']): void {
+    if (!this.#machine || !grade) return;
+    try {
+      this.#machine.gradeRiskAction(ticketId, grade);
+    } catch (error) {
+      this.#logger?.warn('could not grade this review against its ticket’s cumulative risk score', {
+        ticketId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   /**
