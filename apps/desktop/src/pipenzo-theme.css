@@ -1207,6 +1207,44 @@
     color: inherit;
   }
 
+  /* Settings' Concurrency panel (issue #126), not in `Settings.dc.html`'s own linked stylesheet --
+     `.set-sub`/`.form-panel`/`.fieldset` above were ported for #125/#128/#130, which none of them
+     needed a label-left/control-right row for. `.set-row` is that row: a setting's name and
+     one-line rationale on the left, its control flush right. `.set-stack` is the same shape for
+     the non-configurable serialisation row directly under it -- separated from `.set-row` above it
+     by spacing alone, matching this design system's own "stepped surfaces do all layering; no
+     border lines anywhere" rule (this file's own token comment), never a divider line.
+     `.set-text`/`.set-name`/`.set-ctl` are the row's own three parts, matching this file's existing
+     `.f-lbl`/`.f-help` naming rather than inventing a second vocabulary for the same idea. */
+  .set-row,
+  .set-stack {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  .set-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .set-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-text);
+  }
+
+  .set-ctl {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    padding-top: 2px;
+  }
+
   /* Dialog + scrim shell — ported verbatim from Foundations.dc.html's "Elevation" section and
      Main.dc.html/DiffReview.dc.html's shared .scrim rule (Foundations.dc.html shows .dialog
      itself but not .scrim -- the scrim only appears where a dialog is actually opened over a

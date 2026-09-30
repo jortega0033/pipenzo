@@ -125,6 +125,8 @@ export function installAssetCaptureBridge(): void {
     pipenzoLessons: async () => ({ lessons: [] }),
     pipenzoCreateLesson: async () => { throw new Error('saving a lesson is not available while capturing assets'); },
     pipenzoDeleteLesson: async () => { throw new Error('deleting a lesson is not available while capturing assets'); },
+    pipenzoConcurrencySettings: async () => ({ schemaVersion: 1, executionLimit: 2, runBudget: 'unlimited' }),
+    pipenzoUpdateConcurrencySettings: async () => { throw new Error('changing concurrency settings is not available while capturing assets'); },
     startGitHubDeviceFlow: async () => { throw new Error('signing in to GitHub is not available while capturing assets'); },
     openGitHubDeviceVerification: async () => { throw new Error('signing in to GitHub is not available while capturing assets'); },
     cancelGitHubDeviceFlow: async () => {},
