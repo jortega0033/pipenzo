@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ProviderRegistry, noopLogger } from '@agent-dock/agent-runtime';
-import type { CreateSessionV2Request, RefineSpecV1 } from '@agent-dock/shared';
+import type { CreateSessionV2Request, RefineSpecV1, RiskGrade } from '@agent-dock/shared';
+import type { GradeActionResult } from '../src/risk-score.js';
 import { buildServer } from '../src/server.js';
 import { SessionManager } from '../src/session-manager.js';
 import { PipenzoPhaseService } from '../src/pipenzo-phase-service.js';
@@ -143,7 +144,7 @@ interface Harness {
   onSession?: (request: CreateSessionV2Request) => void;
   machine?: Pick<
     PipenzoPhaseMachine,
-    'read' | 'transition' | 'recordAttempt' | 'recordTokenUsage' | 'peekBudget'
+    'read' | 'transition' | 'recordAttempt' | 'recordTokenUsage' | 'peekBudget' | 'gradeRiskAction'
   >;
   /** Issue #159: local ticket-store access, so `implement()` can attach the worktree it just cut. */
   tickets?: TicketWorktreeStorePort;
@@ -182,12 +183,13 @@ class FakeMachine
   implements
     Pick<
       PipenzoPhaseMachine,
-      'read' | 'transition' | 'recordAttempt' | 'recordTokenUsage' | 'peekBudget'
+      'read' | 'transition' | 'recordAttempt' | 'recordTokenUsage' | 'peekBudget' | 'gradeRiskAction'
     >
 {
   readonly calls: Array<{ method: 'read' | 'transition'; ticketId: string; label?: string }> = [];
   readonly attempts: Array<{ ticketId: string; attempt: PipenzoTicketAttemptV1 }> = [];
   readonly tokenUsage: Array<{ ticketId: string; tokens: number }> = [];
+  readonly riskGrades: Array<{ ticketId: string; grade: RiskGrade }> = [];
   #fail: unknown;
   #currentLabel: PipenzoLaneBearingLabelV1;
   #ticket: PipenzoTicketRecordV1;
@@ -220,6 +222,11 @@ class FakeMachine
 
   peekBudget(_ticketId: string): PipenzoTicketRecordV1['budget'] {
     return this.#ticket.budget;
+  }
+
+  gradeRiskAction(ticketId: string, grade: RiskGrade): GradeActionResult {
+    this.riskGrades.push({ ticketId, grade });
+    return { state: { score: 0.5, pendingPromotion: false }, effectiveGrade: grade, promoted: false };
   }
 
   async read(ticketId: string): Promise<PipenzoTicketReconciliation> {
@@ -787,6 +794,29 @@ describe('POST /v2/pipenzo/review', () => {
     expect(report.outcome).toBe('approved');
     expect(report.diffScope.implementation.changedLines).toBe(12);
     expect(response.body).not.toContain(WORKTREE_PATH);
+  });
+
+  it('grades the run’s real risk classification against the ticket’s cumulative risk score (issue #95)', async () => {
+    const machine = new FakeMachine();
+    const { app } = buildApp({ machine });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v2/pipenzo/review',
+      headers: auth,
+      payload: {
+        spec: spec(),
+        ticketId: TICKET_ID,
+        worktreeId: WORKTREE_ID,
+        baseCommit: BASE_SHA,
+        headCommit: HEAD_SHA,
+        implementerTier: 'mid',
+        reviewer: { provider: 'claude', model: 'reviewer-model', tier: 'mid' },
+        verifier: { provider: 'codex', model: 'verifier-model', tier: 'frontier' },
+      },
+    });
+    expect(response.statusCode).toBe(200);
+    const report = response.json();
+    expect(machine.riskGrades).toEqual([{ ticketId: TICKET_ID, grade: report.risk }]);
   });
 
   it('refuses a verifier weaker than the implementer before running anything', async () => {
