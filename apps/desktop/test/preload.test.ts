@@ -156,6 +156,11 @@ describe('electron/preload.ts — real bridge (AD-07)', () => {
         // daemon routes, same reasoning as the lesson/repo channels above.
         'pipenzoConcurrencySettings',
         'pipenzoUpdateConcurrencySettings',
+        // The Models & gates screen's agent-captured panel (issue #470): the
+        // `screenshotEnabled`/`escapeHatchEnabled` preference. Ordinary daemon routes, same
+        // reasoning as the lesson/repo/concurrency channels above.
+        'pipenzoCaptureSettings',
+        'pipenzoUpdateCaptureSettings',
         'selectAndUploadAttachments',
         'validateStructuredOutput',
         'createSession',

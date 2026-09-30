@@ -51,6 +51,8 @@ import type { TicketWorktreeStorePort } from './pipenzo-worktree-lifecycle.js';
 import { registerPipenzoConcurrencyRoutes } from './routes/pipenzo-concurrency.js';
 import type { PipenzoConcurrencyStore } from './pipenzo-concurrency-store.js';
 import type { PipenzoExecutionLimiter } from './pipenzo-execution-limiter.js';
+import { registerPipenzoCaptureSettingsRoutes } from './routes/pipenzo-capture-settings.js';
+import type { PipenzoCaptureSettingsStore } from './pipenzo-capture-settings-store.js';
 
 export interface BuildServerOptions {
   registry: ProviderRegistry;
@@ -170,6 +172,13 @@ export interface BuildServerOptions {
    */
   concurrencyStore?: PipenzoConcurrencyStore;
   executionLimiter?: PipenzoExecutionLimiter;
+  /**
+   * The Models & gates screen's agent-captured panel (issue #470): the
+   * `screenshotEnabled`/`escapeHatchEnabled` preference. Optional for the same reason every other
+   * store-backed Pipenzo route is: a daemon assembled without one has no capture-settings route at
+   * all, rather than one that fails at call time.
+   */
+  captureSettingsStore?: PipenzoCaptureSettingsStore;
 }
 
 /**
@@ -291,6 +300,8 @@ export function buildServer(opts: BuildServerOptions): FastifyInstance {
     if (opts.lessonStore) registerPipenzoLessonRoutes(app, opts.lessonStore);
     if (opts.concurrencyStore && opts.executionLimiter)
       registerPipenzoConcurrencyRoutes(app, opts.concurrencyStore, opts.executionLimiter);
+    if (opts.captureSettingsStore)
+      registerPipenzoCaptureSettingsRoutes(app, opts.captureSettingsStore);
     if (opts.attachmentStore)
       registerV2MultimodalRoutes(app, opts.attachmentStore, opts.sessionManager);
   });

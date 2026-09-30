@@ -131,6 +131,8 @@ import {
   pipenzoLessonDeleteRequestV1Schema,
   pipenzoConcurrencySettingsV1Schema,
   pipenzoConcurrencySettingsUpdateV1Schema,
+  pipenzoCaptureSettingsV1Schema,
+  pipenzoCaptureSettingsUpdateV1Schema,
   pipenzoTicketReadRequestV1Schema,
   pipenzoTicketTransitionRequestV1Schema,
   pipenzoTicketReconciliationV1Schema,
@@ -187,6 +189,8 @@ import {
   type PipenzoLessonDeleteRequestV1,
   type PipenzoConcurrencySettingsV1,
   type PipenzoConcurrencySettingsUpdateV1,
+  type PipenzoCaptureSettingsV1,
+  type PipenzoCaptureSettingsUpdateV1,
   type PipenzoTicketReadRequestV1,
   type PipenzoTicketTransitionRequestV1,
   type PipenzoTicketReconciliationV1,
@@ -526,6 +530,16 @@ export class AgentDockClient {
       updateConcurrencySettings: (
         input: PipenzoConcurrencySettingsUpdateV1,
       ): Promise<PipenzoConcurrencySettingsV1> => this.updatePipenzoConcurrencySettingsV1(input),
+      /**
+       * The Models & gates screen's agent-captured panel (issue #470): `captureSettings` reads the
+       * workspace's `screenshotEnabled`/`escapeHatchEnabled` preference;
+       * `updateCaptureSettings` changes one or both and answers with the daemon's own confirmed
+       * record, never an echo of the request.
+       */
+      captureSettings: (): Promise<PipenzoCaptureSettingsV1> => this.pipenzoCaptureSettingsV1(),
+      updateCaptureSettings: (
+        input: PipenzoCaptureSettingsUpdateV1,
+      ): Promise<PipenzoCaptureSettingsV1> => this.updatePipenzoCaptureSettingsV1(input),
       /**
        * The phase machine's ticket surface (issue #188). `readTicket` reconciles a ticket against
        * its issue's labels and returns the result; `transitionTicket` writes a new `pipenzo:` label
@@ -1285,6 +1299,37 @@ export class AgentDockClient {
       '/v2/pipenzo/concurrency',
       pipenzoConcurrencySettingsV1Schema,
       'pipenzo concurrency settings',
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(parsed),
+      },
+      { expectedStatus: 200 },
+    );
+  }
+
+  private async pipenzoCaptureSettingsV1(): Promise<PipenzoCaptureSettingsV1> {
+    return this.requestV2(
+      '/v2/pipenzo/capture-settings',
+      pipenzoCaptureSettingsV1Schema,
+      'pipenzo capture settings',
+      { method: 'GET' },
+      { expectedStatus: 200 },
+    );
+  }
+
+  private async updatePipenzoCaptureSettingsV1(
+    input: PipenzoCaptureSettingsUpdateV1,
+  ): Promise<PipenzoCaptureSettingsV1> {
+    const parsed = validateInput(
+      pipenzoCaptureSettingsUpdateV1Schema,
+      input,
+      'pipenzo capture settings update request',
+    );
+    return this.requestV2(
+      '/v2/pipenzo/capture-settings',
+      pipenzoCaptureSettingsV1Schema,
+      'pipenzo capture settings',
       {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },

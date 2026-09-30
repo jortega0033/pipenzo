@@ -2,6 +2,7 @@ import type {
   AgentEvent,
   AgentEventV2Envelope,
   AgentSession,
+  PipenzoCaptureSettingsV1,
   PipenzoConcurrencySettingsV1,
 } from '@agent-dock/shared';
 import type {
@@ -78,6 +79,14 @@ export function createDemoBridge(): AgentDockBridge {
     schemaVersion: 1,
     executionLimit: 2,
     runBudget: 'unlimited',
+  };
+  // The Models & gates screen's agent-captured panel (issue #470). Mutable for the same reason
+  // `demoConcurrencySettings` above is -- the two toggles should be something real to play with in
+  // demo mode, matching `Models.dc.html`'s own seeded state (screenshot on, escape hatch off).
+  let demoCaptureSettings: PipenzoCaptureSettingsV1 = {
+    schemaVersion: 1,
+    screenshotEnabled: true,
+    escapeHatchEnabled: false,
   };
 
   const interactiveSessionId = '123e4567-e89b-42d3-a456-426614174000';
@@ -297,6 +306,19 @@ export function createDemoBridge(): AgentDockBridge {
         ...(input.runBudget !== undefined ? { runBudget: input.runBudget } : {}),
       };
       return demoConcurrencySettings;
+    },
+    pipenzoCaptureSettings: async () => demoCaptureSettings,
+    pipenzoUpdateCaptureSettings: async (input) => {
+      demoCaptureSettings = {
+        ...demoCaptureSettings,
+        ...(input.screenshotEnabled !== undefined
+          ? { screenshotEnabled: input.screenshotEnabled }
+          : {}),
+        ...(input.escapeHatchEnabled !== undefined
+          ? { escapeHatchEnabled: input.escapeHatchEnabled }
+          : {}),
+      };
+      return demoCaptureSettings;
     },
     startGitHubDeviceFlow: async () => {
       throw new Error('signing in to GitHub is not available in demo mode');

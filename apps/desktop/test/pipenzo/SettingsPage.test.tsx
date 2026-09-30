@@ -33,6 +33,10 @@ function installBridge() {
       .fn()
       .mockResolvedValue({ schemaVersion: 1, executionLimit: 2, runBudget: 'unlimited' }),
     pipenzoUpdateConcurrencySettings: vi.fn(),
+    pipenzoCaptureSettings: vi
+      .fn()
+      .mockResolvedValue({ schemaVersion: 1, screenshotEnabled: true, escapeHatchEnabled: false }),
+    pipenzoUpdateCaptureSettings: vi.fn(),
     pipenzoListTickets: vi.fn().mockResolvedValue({ tickets: [], workingLaneCapacity: 2 }),
     onPipenzoPhaseEvent: () => () => {},
     pipenzoGitHubConnection: vi
