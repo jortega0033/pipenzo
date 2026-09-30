@@ -35,6 +35,8 @@ export function DiffReviewHead({
   branch,
   remote,
   pullRequest,
+  ticketId,
+  touchedPaths,
   onDiscardClick,
   discardDisabled,
   onPushed,
@@ -48,6 +50,10 @@ export function DiffReviewHead({
   branch: string;
   remote?: string;
   pullRequest?: PipenzoPullRequestInputV1;
+  /** Threaded straight through to `PublishActions` (issue #97) -- see its own module comment for
+   * why both are optional and what omitting them keeps unchanged. */
+  ticketId?: string;
+  touchedPaths?: readonly string[];
   onDiscardClick?: () => void;
   discardDisabled?: boolean;
   onPushed?: (result: PipenzoPublishResultV1) => void;
@@ -78,6 +84,8 @@ export function DiffReviewHead({
         remote={remote}
         pullRequest={pullRequest}
         risk={stat.risk}
+        ticketId={ticketId}
+        touchedPaths={touchedPaths}
         onDiscardClick={onDiscardClick}
         discardDisabled={discardDisabled}
         onPushed={onPushed}

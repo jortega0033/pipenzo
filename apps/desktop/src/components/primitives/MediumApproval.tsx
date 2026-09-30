@@ -107,3 +107,41 @@ export function MediumApprovalDone({
     </div>
   );
 }
+
+/**
+ * `.ai-done`'s other real rendering: the resolved MEDIUM line wired to issue #148's actual
+ * filesystem-only undo snapshot, whose expiry is "has a commit landed on this branch since
+ * capture" -- a fact, not a countdown. `MediumApprovalDone` above renders the Foundations.dc.html
+ * mock's own numeric-seconds example (and keeps doing so for whatever already calls it); this
+ * component exists so a *real* call site (`PublishActions.tsx`, issue #97) never has to invent a
+ * fake `undoSeconds` value to reuse that shape. `undo` is a discriminated union rather than a
+ * boolean-plus-optional-callback specifically so a caller cannot construct the nonsensical
+ * `{ available: true }` with no `onUndo`, or pass an `onUndo` alongside `available: false`.
+ */
+export function MediumApprovalResolved({
+  children,
+  undo,
+}: {
+  /** The `.ai-done` sentence, same contract as `MediumApprovalDone`'s own `children`. */
+  children: ReactNode;
+  undo: { available: true; onUndo: () => void } | { available: false; reason?: 'expired' };
+}) {
+  return (
+    <div className="ai-done">
+      <span className="d-ic">
+        <Icon name="check" size="xs" />
+      </span>
+      <span className="grow">{children}</span>
+      {undo.available ? (
+        <button type="button" className="ai-undo" onClick={undo.onUndo}>
+          <Icon name="undo" size="sm" />
+          Undo
+        </button>
+      ) : (
+        <span className="ai-undo" aria-disabled="true" style={{ cursor: 'default', opacity: 0.6 }}>
+          Undo unavailable — a new commit has landed
+        </span>
+      )}
+    </div>
+  );
+}
