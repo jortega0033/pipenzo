@@ -26,6 +26,8 @@ import type { PipenzoPhaseService } from './pipenzo-phase-service.js';
 import { registerPipenzoPhaseRoutes } from './routes/pipenzo-phases.js';
 import type { PipenzoPhaseMachine } from './pipenzo-phase-machine.js';
 import { registerPipenzoTicketRoutes } from './routes/pipenzo-tickets.js';
+import { registerPipenzoMediumApprovalRoutes } from './routes/pipenzo-medium-approval.js';
+import type { MediumApprovalStore } from './medium-approval-store.js';
 import type { PipenzoPhaseEventBus } from './pipenzo-phase-events.js';
 import type { PipenzoCrashRecovery } from './pipenzo-crash-recovery.js';
 import { registerPipenzoRecoveryRoutes } from './routes/pipenzo-recovery.js';
@@ -124,6 +126,13 @@ export interface BuildServerOptions {
    * has no lesson routes at all, rather than routes that fail at call time.
    */
   lessonStore?: LessonStore;
+  /**
+   * The MEDIUM inline approval flow's snapshot/decision store (issue #97). Optional for the same
+   * reason every other Pipenzo surface is -- a daemon assembled without one, or without the
+   * `phaseMachine`/`worktreeManager` it also needs, has no medium-approval routes at all, rather
+   * than routes that fail at call time.
+   */
+  mediumApprovalStore?: MediumApprovalStore;
 }
 
 /**
@@ -212,6 +221,13 @@ export function buildServer(opts: BuildServerOptions): FastifyInstance {
         opts.ticketStore && opts.worktreeManager
           ? { tickets: opts.ticketStore, worktrees: opts.worktreeManager }
           : undefined,
+      );
+    if (opts.phaseMachine && opts.worktreeManager && opts.mediumApprovalStore)
+      registerPipenzoMediumApprovalRoutes(
+        app,
+        opts.phaseMachine,
+        opts.worktreeManager,
+        opts.mediumApprovalStore,
       );
     if (opts.crashRecovery) registerPipenzoRecoveryRoutes(app, opts.crashRecovery);
     if (opts.connectedRepos && opts.pipenzoGitHubClient)

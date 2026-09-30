@@ -966,6 +966,24 @@ export class PipenzoPhaseMachine {
     return this.#tickets.get(ticketId)?.risk;
   }
 
+  /**
+   * The worktree a ticket the local store knows about is actually bound to, or `undefined` for an
+   * unknown ticket or one with no worktree recorded yet -- same synchronous, no-GitHub-call shape
+   * as `peekRiskScore()`.
+   *
+   * The MEDIUM-approval routes (issue #97, `routes/pipenzo-medium-approval.ts`) use this to check a
+   * capture request's `worktreeId` against the ticket it claims to belong to *before* resolving
+   * that id to a real path and reading any file through it -- a `ticketId`/`worktreeId` pair that
+   * does not match this record is refused as `ticket_not_found` rather than silently snapshotting
+   * or restoring whatever worktree the caller happened to name. Deliberately returns the id and
+   * branch only, never `path` -- the same "no worktree filesystem path, in either direction" rule
+   * `pipenzo-phase-machine-v1.ts` states for the ticket-view routes.
+   */
+  peekWorktree(ticketId: string): { id: string; branch: string } | undefined {
+    const worktree = this.#tickets.get(ticketId)?.worktree;
+    return worktree ? { id: worktree.id, branch: worktree.branch } : undefined;
+  }
+
   #repoRef(ticket: PipenzoTicketRecordV1): RepoRef {
     try {
       return parseRepoRef(ticket.repo);

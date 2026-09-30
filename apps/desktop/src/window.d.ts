@@ -78,6 +78,16 @@ import type {
   PipenzoDeviceCodeV1,
   PipenzoDeviceOutcomeV1,
   PipenzoGitHubConnectionV1,
+  PipenzoTicketRiskApprovalOutcomeRequestV1,
+  PipenzoTicketRiskResponseV1,
+  PipenzoMediumApprovalCaptureRequestV1,
+  PipenzoMediumApprovalCaptureResultV1,
+  PipenzoMediumApprovalDecideRequestV1,
+  PipenzoMediumApprovalDecideResultV1,
+  PipenzoMediumApprovalStatusRequestV1,
+  PipenzoMediumApprovalStatusResultV1,
+  PipenzoMediumApprovalUndoRequestV1,
+  PipenzoMediumApprovalUndoResultV1,
 } from '@agent-dock/shared';
 import type {
   RendererInteraction,
@@ -232,6 +242,40 @@ export interface AgentDockBridge {
    * now still wants `pipenzoTicketRead`.
    */
   pipenzoListTickets(): Promise<PipenzoTicketListV1>;
+  /**
+   * Records a human's Allow/Reject outcome for a MEDIUM- or HIGH-graded action against the
+   * cumulative risk score (issues #95/#97/#98). A HIGH approval resets the score; a MEDIUM approval
+   * deliberately does not — see `risk-score.ts`'s own doc comment on `recordApprovalOutcome`.
+   */
+  pipenzoRecordRiskApprovalOutcome(
+    input: PipenzoTicketRiskApprovalOutcomeRequestV1,
+  ): Promise<PipenzoTicketRiskResponseV1>;
+  /**
+   * The MEDIUM inline approval flow (issue #97), four calls for one gate's lifecycle:
+   *
+   * - `captureMediumApproval` snapshots the worktree's pre-action state for `touchedPaths` *before*
+   *   the gated action is dispatched — "block run" in practice means a caller must hold this call's
+   *   `snapshotId` before running the action at all.
+   * - `decideMediumApproval` records the human's Allow/Reject. An `'allow'` also records the risk
+   *   score outcome daemon-side (`pipenzoRecordRiskApprovalOutcome`'s own logic, applied
+   *   server-side so the two can never be called out of order) and returns the ticket's risk record;
+   *   a `'reject'` never touches the score.
+   * - `mediumApprovalStatus` is a live, read-only poll for the resolved-line UI: whether Undo is
+   *   still available, per issue #148's commit-based (not time-based) expiry.
+   * - `undoMediumApproval` performs the one-shot restore.
+   */
+  captureMediumApproval(
+    input: PipenzoMediumApprovalCaptureRequestV1,
+  ): Promise<PipenzoMediumApprovalCaptureResultV1>;
+  decideMediumApproval(
+    input: PipenzoMediumApprovalDecideRequestV1,
+  ): Promise<PipenzoMediumApprovalDecideResultV1>;
+  mediumApprovalStatus(
+    input: PipenzoMediumApprovalStatusRequestV1,
+  ): Promise<PipenzoMediumApprovalStatusResultV1>;
+  undoMediumApproval(
+    input: PipenzoMediumApprovalUndoRequestV1,
+  ): Promise<PipenzoMediumApprovalUndoResultV1>;
   /**
    * Subscribes to live phase changes (issue #189).
    *

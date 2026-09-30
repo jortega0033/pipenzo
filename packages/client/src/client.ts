@@ -133,6 +133,16 @@ import {
   pipenzoTicketTransitionRequestV1Schema,
   pipenzoTicketReconciliationV1Schema,
   pipenzoTicketListV1Schema,
+  pipenzoTicketRiskApprovalOutcomeRequestV1Schema,
+  pipenzoTicketRiskResponseV1Schema,
+  pipenzoMediumApprovalCaptureRequestV1Schema,
+  pipenzoMediumApprovalCaptureResultV1Schema,
+  pipenzoMediumApprovalDecideRequestV1Schema,
+  pipenzoMediumApprovalDecideResultV1Schema,
+  pipenzoMediumApprovalStatusRequestV1Schema,
+  pipenzoMediumApprovalStatusResultV1Schema,
+  pipenzoMediumApprovalUndoRequestV1Schema,
+  pipenzoMediumApprovalUndoResultV1Schema,
   pipenzoPhaseEventOrStreamErrorV1Schema,
   pipenzoGitHubHealthV1Schema,
   type PipenzoGitHubHealthV1,
@@ -168,6 +178,16 @@ import {
   type PipenzoTicketTransitionRequestV1,
   type PipenzoTicketReconciliationV1,
   type PipenzoTicketListV1,
+  type PipenzoTicketRiskApprovalOutcomeRequestV1,
+  type PipenzoTicketRiskResponseV1,
+  type PipenzoMediumApprovalCaptureRequestV1,
+  type PipenzoMediumApprovalCaptureResultV1,
+  type PipenzoMediumApprovalDecideRequestV1,
+  type PipenzoMediumApprovalDecideResultV1,
+  type PipenzoMediumApprovalStatusRequestV1,
+  type PipenzoMediumApprovalStatusResultV1,
+  type PipenzoMediumApprovalUndoRequestV1,
+  type PipenzoMediumApprovalUndoResultV1,
   type PipenzoPhaseEventV1,
 } from '@agent-dock/shared';
 import {
@@ -495,6 +515,31 @@ export class AgentDockClient {
        * reconciler existed.
        */
       listTickets: (): Promise<PipenzoTicketListV1> => this.listPipenzoTicketsV1(),
+      /**
+       * Records a human's Allow/Reject outcome for a MEDIUM- or HIGH-graded action against the
+       * cumulative risk score (issues #95/#97/#98). See `risk-score.ts`'s own doc comment for the
+       * asymmetric reset rule: HIGH resets, MEDIUM deliberately does not.
+       */
+      recordRiskApprovalOutcome: (
+        input: PipenzoTicketRiskApprovalOutcomeRequestV1,
+      ): Promise<PipenzoTicketRiskResponseV1> => this.recordPipenzoRiskApprovalOutcomeV1(input),
+      /**
+       * The MEDIUM inline approval flow (issue #97) -- see `pipenzo-medium-approval-v1.ts`'s module
+       * comment for why capture and decide are two separate calls, and `undo-snapshot.ts`'s for why
+       * expiry is commit-based rather than time-based.
+       */
+      captureMediumApproval: (
+        input: PipenzoMediumApprovalCaptureRequestV1,
+      ): Promise<PipenzoMediumApprovalCaptureResultV1> => this.captureMediumApprovalV1(input),
+      decideMediumApproval: (
+        input: PipenzoMediumApprovalDecideRequestV1,
+      ): Promise<PipenzoMediumApprovalDecideResultV1> => this.decideMediumApprovalV1(input),
+      mediumApprovalStatus: (
+        input: PipenzoMediumApprovalStatusRequestV1,
+      ): Promise<PipenzoMediumApprovalStatusResultV1> => this.mediumApprovalStatusV1(input),
+      undoMediumApproval: (
+        input: PipenzoMediumApprovalUndoRequestV1,
+      ): Promise<PipenzoMediumApprovalUndoResultV1> => this.undoMediumApprovalV1(input),
       /**
        * The phase-change stream (issue #189): one daemon-wide stream carrying every ticket's
        * transitions, so a board needs one connection rather than one per card.
@@ -1263,6 +1308,91 @@ export class AgentDockClient {
       pipenzoTicketListV1Schema,
       'pipenzo ticket list',
       { method: 'GET' },
+      { expectedStatus: 200 },
+    );
+  }
+
+  private async recordPipenzoRiskApprovalOutcomeV1(
+    input: PipenzoTicketRiskApprovalOutcomeRequestV1,
+  ): Promise<PipenzoTicketRiskResponseV1> {
+    const parsed = validateInput(
+      pipenzoTicketRiskApprovalOutcomeRequestV1Schema,
+      input,
+      'pipenzo risk approval outcome request',
+    );
+    return this.requestV2(
+      '/v2/pipenzo/tickets/risk/approval-outcome',
+      pipenzoTicketRiskResponseV1Schema,
+      'pipenzo ticket risk',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) },
+      { expectedStatus: 200 },
+    );
+  }
+
+  private async captureMediumApprovalV1(
+    input: PipenzoMediumApprovalCaptureRequestV1,
+  ): Promise<PipenzoMediumApprovalCaptureResultV1> {
+    const parsed = validateInput(
+      pipenzoMediumApprovalCaptureRequestV1Schema,
+      input,
+      'pipenzo medium-approval capture request',
+    );
+    return this.requestV2(
+      '/v2/pipenzo/tickets/risk/medium-approval/capture',
+      pipenzoMediumApprovalCaptureResultV1Schema,
+      'pipenzo medium-approval snapshot',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) },
+      { expectedStatus: 200 },
+    );
+  }
+
+  private async decideMediumApprovalV1(
+    input: PipenzoMediumApprovalDecideRequestV1,
+  ): Promise<PipenzoMediumApprovalDecideResultV1> {
+    const parsed = validateInput(
+      pipenzoMediumApprovalDecideRequestV1Schema,
+      input,
+      'pipenzo medium-approval decide request',
+    );
+    return this.requestV2(
+      '/v2/pipenzo/tickets/risk/medium-approval/decide',
+      pipenzoMediumApprovalDecideResultV1Schema,
+      'pipenzo medium-approval decision',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) },
+      { expectedStatus: 200 },
+    );
+  }
+
+  private async mediumApprovalStatusV1(
+    input: PipenzoMediumApprovalStatusRequestV1,
+  ): Promise<PipenzoMediumApprovalStatusResultV1> {
+    const parsed = validateInput(
+      pipenzoMediumApprovalStatusRequestV1Schema,
+      input,
+      'pipenzo medium-approval status request',
+    );
+    return this.requestV2(
+      '/v2/pipenzo/tickets/risk/medium-approval/status',
+      pipenzoMediumApprovalStatusResultV1Schema,
+      'pipenzo medium-approval status',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) },
+      { expectedStatus: 200 },
+    );
+  }
+
+  private async undoMediumApprovalV1(
+    input: PipenzoMediumApprovalUndoRequestV1,
+  ): Promise<PipenzoMediumApprovalUndoResultV1> {
+    const parsed = validateInput(
+      pipenzoMediumApprovalUndoRequestV1Schema,
+      input,
+      'pipenzo medium-approval undo request',
+    );
+    return this.requestV2(
+      '/v2/pipenzo/tickets/risk/medium-approval/undo',
+      pipenzoMediumApprovalUndoResultV1Schema,
+      'pipenzo medium-approval undo outcome',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) },
       { expectedStatus: 200 },
     );
   }

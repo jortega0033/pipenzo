@@ -1126,3 +1126,39 @@ describe('PipenzoPhaseMachine.peekRiskScore', () => {
     expect(machine.peekRiskScore('00000000-0000-4000-8000-00000000ffff')).toBeUndefined();
   });
 });
+
+describe('PipenzoPhaseMachine.peekWorktree', () => {
+  const WORKTREE_ID = '77777777-8888-4999-8aaa-bbbbbbbbbbbb';
+  const WORKTREE_PATH = process.platform === 'win32' ? 'C:\\owned\\issue-78' : '/owned/issue-78';
+
+  it('reads a ticket’s recorded worktree id/branch locally, without a GitHub round trip', () => {
+    const { machine, github } = harness({
+      ticket: { worktree: { id: WORKTREE_ID, path: WORKTREE_PATH, branch: 'issue-78' } },
+    });
+
+    expect(machine.peekWorktree(TICKET_ID)).toEqual({ id: WORKTREE_ID, branch: 'issue-78' });
+    expect(github.calls).toEqual([]);
+  });
+
+  it('never returns the worktree filesystem path -- id and branch only', () => {
+    const { machine } = harness({
+      ticket: { worktree: { id: WORKTREE_ID, path: WORKTREE_PATH, branch: 'issue-78' } },
+    });
+
+    const worktree = machine.peekWorktree(TICKET_ID);
+    expect(worktree).not.toHaveProperty('path');
+    expect(JSON.stringify(worktree)).not.toContain('owned');
+  });
+
+  it('returns undefined for a ticket with no worktree recorded yet', () => {
+    const { machine } = harness();
+
+    expect(machine.peekWorktree(TICKET_ID)).toBeUndefined();
+  });
+
+  it('returns undefined for an unknown ticket rather than throwing', () => {
+    const { machine } = harness();
+
+    expect(machine.peekWorktree('00000000-0000-4000-8000-00000000ffff')).toBeUndefined();
+  });
+});

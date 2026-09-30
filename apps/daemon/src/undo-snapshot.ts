@@ -226,6 +226,33 @@ export async function captureUndoSnapshot(input: CaptureUndoSnapshotInput): Prom
 }
 
 /**
+ * A read-only peek at whether `snapshot` is still restorable, without restoring anything --
+ * `restoreUndoSnapshot`'s own expiry check (`headSha` against `snapshot.headShaAtSnapshot`),
+ * factored out so a caller that only wants to render a live "Undo available" indicator (Pipenzo
+ * issue #97's resolved-line UI) never has to actually touch the filesystem to find out. Mirrors
+ * `restoreUndoSnapshot`'s own two refusal reasons exactly, so the two functions can never disagree
+ * about whether a given snapshot is still good: `'high_risk_blocked'` for a HIGH-graded snapshot
+ * (never produced by `captureUndoSnapshot`, but a snapshot is "plain data a caller could hold onto
+ * and replay" per that function's own doc comment, so this checks again rather than trusting the
+ * type), `'expired'` once a commit has landed on the branch since capture, and no reason at all
+ * when it is still good.
+ */
+export async function isUndoSnapshotExpired(
+  snapshot: UndoSnapshotV1,
+  options: { readonly gitRunner?: PipenzoGitRunner } = {},
+): Promise<{ readonly expired: boolean; readonly reason?: 'expired' | 'high_risk_blocked' }> {
+  if (!isUndoAvailable(snapshot.riskGrade)) {
+    return { expired: true, reason: 'high_risk_blocked' };
+  }
+  const gitRunner = options.gitRunner ?? runGitCommand;
+  const currentSha = await headSha(snapshot.worktreeRoot, gitRunner);
+  if (currentSha !== snapshot.headShaAtSnapshot) {
+    return { expired: true, reason: 'expired' };
+  }
+  return { expired: false };
+}
+
+/**
  * Restores `snapshot`'s touched paths to their pre-action content. Filesystem-only: no git command
  * this function runs (or calls out to) ever mutates history, the index, or refs.
  *

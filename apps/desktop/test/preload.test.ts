@@ -106,6 +106,13 @@ describe('electron/preload.ts — real bridge (AD-07)', () => {
         // The board's list route (issue #255): a local read of the reconciler's already-reconciled
         // state, no per-ticket GitHub call.
         'pipenzoListTickets',
+        // Issues #95/#97/#98: the risk-approval outcome, and the MEDIUM inline approval flow's own
+        // four calls.
+        'pipenzoRecordRiskApprovalOutcome',
+        'captureMediumApproval',
+        'decideMediumApproval',
+        'mediumApprovalStatus',
+        'undoMediumApproval',
         'onPipenzoPhaseEvent',
         // The GitHub connection-health stream (issue #257), plus its manual poll trigger (#70/#71/#75).
         'onPipenzoGitHubHealth',

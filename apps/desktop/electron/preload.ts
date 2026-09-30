@@ -72,6 +72,16 @@ import {
   pipenzoTicketTransitionRequestV1Schema,
   pipenzoTicketReconciliationV1Schema,
   pipenzoTicketListV1Schema,
+  pipenzoTicketRiskApprovalOutcomeRequestV1Schema,
+  pipenzoTicketRiskResponseV1Schema,
+  pipenzoMediumApprovalCaptureRequestV1Schema,
+  pipenzoMediumApprovalCaptureResultV1Schema,
+  pipenzoMediumApprovalDecideRequestV1Schema,
+  pipenzoMediumApprovalDecideResultV1Schema,
+  pipenzoMediumApprovalStatusRequestV1Schema,
+  pipenzoMediumApprovalStatusResultV1Schema,
+  pipenzoMediumApprovalUndoRequestV1Schema,
+  pipenzoMediumApprovalUndoResultV1Schema,
   pipenzoPhaseEventV1Schema,
   pipenzoGitHubHealthV1Schema,
   pipenzoConnectReposRequestV1Schema,
@@ -153,6 +163,16 @@ import {
   type PipenzoTicketTransitionRequestV1,
   type PipenzoTicketReconciliationV1,
   type PipenzoTicketListV1,
+  type PipenzoTicketRiskApprovalOutcomeRequestV1,
+  type PipenzoTicketRiskResponseV1,
+  type PipenzoMediumApprovalCaptureRequestV1,
+  type PipenzoMediumApprovalCaptureResultV1,
+  type PipenzoMediumApprovalDecideRequestV1,
+  type PipenzoMediumApprovalDecideResultV1,
+  type PipenzoMediumApprovalStatusRequestV1,
+  type PipenzoMediumApprovalStatusResultV1,
+  type PipenzoMediumApprovalUndoRequestV1,
+  type PipenzoMediumApprovalUndoResultV1,
   type PipenzoPhaseEventV1,
   type PipenzoGitHubHealthV1,
   type PipenzoConnectReposRequestV1,
@@ -258,6 +278,24 @@ export interface AgentDockBridge {
   pipenzoTicketTransition(input: PipenzoTicketTransitionRequestV1): Promise<PipenzoTicketReconciliationV1>;
   /** The board's list route (issue #255). Mirrors `window.d.ts`'s declaration of the same method. */
   pipenzoListTickets(): Promise<PipenzoTicketListV1>;
+  /** Issues #95/#97/#98. Mirrors `window.d.ts`'s declaration of the same method. */
+  pipenzoRecordRiskApprovalOutcome(
+    input: PipenzoTicketRiskApprovalOutcomeRequestV1,
+  ): Promise<PipenzoTicketRiskResponseV1>;
+  /** The MEDIUM inline approval flow (issue #97). Mirrors `window.d.ts`'s declaration of the same
+   * four methods. */
+  captureMediumApproval(
+    input: PipenzoMediumApprovalCaptureRequestV1,
+  ): Promise<PipenzoMediumApprovalCaptureResultV1>;
+  decideMediumApproval(
+    input: PipenzoMediumApprovalDecideRequestV1,
+  ): Promise<PipenzoMediumApprovalDecideResultV1>;
+  mediumApprovalStatus(
+    input: PipenzoMediumApprovalStatusRequestV1,
+  ): Promise<PipenzoMediumApprovalStatusResultV1>;
+  undoMediumApproval(
+    input: PipenzoMediumApprovalUndoRequestV1,
+  ): Promise<PipenzoMediumApprovalUndoResultV1>;
   /**
    * Live phase changes for every ticket (issue #189). One subscription serves the whole board;
    * filter on `ticketId` for a single card. Returns its own unsubscribe.
@@ -937,6 +975,36 @@ const api: AgentDockBridge = {
   },
   async pipenzoListTickets() {
     return pipenzoTicketListV1Schema.parse(await ipcRenderer.invoke('daemon:pipenzo-list-tickets'));
+  },
+  async pipenzoRecordRiskApprovalOutcome(input) {
+    const parsed = pipenzoTicketRiskApprovalOutcomeRequestV1Schema.parse(input);
+    return pipenzoTicketRiskResponseV1Schema.parse(
+      await ipcRenderer.invoke('daemon:pipenzo-risk-approval-outcome', parsed),
+    );
+  },
+  async captureMediumApproval(input) {
+    const parsed = pipenzoMediumApprovalCaptureRequestV1Schema.parse(input);
+    return pipenzoMediumApprovalCaptureResultV1Schema.parse(
+      await ipcRenderer.invoke('daemon:pipenzo-medium-approval-capture', parsed),
+    );
+  },
+  async decideMediumApproval(input) {
+    const parsed = pipenzoMediumApprovalDecideRequestV1Schema.parse(input);
+    return pipenzoMediumApprovalDecideResultV1Schema.parse(
+      await ipcRenderer.invoke('daemon:pipenzo-medium-approval-decide', parsed),
+    );
+  },
+  async mediumApprovalStatus(input) {
+    const parsed = pipenzoMediumApprovalStatusRequestV1Schema.parse(input);
+    return pipenzoMediumApprovalStatusResultV1Schema.parse(
+      await ipcRenderer.invoke('daemon:pipenzo-medium-approval-status', parsed),
+    );
+  },
+  async undoMediumApproval(input) {
+    const parsed = pipenzoMediumApprovalUndoRequestV1Schema.parse(input);
+    return pipenzoMediumApprovalUndoResultV1Schema.parse(
+      await ipcRenderer.invoke('daemon:pipenzo-medium-approval-undo', parsed),
+    );
   },
   async pipenzoGitHubConnection() {
     return pipenzoGitHubConnectionV1Schema.parse(
