@@ -116,11 +116,14 @@ const repoRelativePathSchema = z
   .refine((value) => !value.includes('\\'), 'must use POSIX separators');
 
 /**
- * One part of a decomposition offered when Refine declines a ticket outright (issue #271). README's
- * refusal bullet says the ticket is handed to a human "with the estimate and a proposed split," and
- * `apps/desktop/src/pipenzo/RefusalPanel.tsx` already renders exactly this shape in its optional
- * `proposedSplit` prop -- this schema is that shape's producer-side declaration, not a new one
- * invented to match it.
+ * One part of a decomposition offered when Refine either declines a ticket outright (issue #271) or
+ * finds it fits a dependency-ordered stack (issue #99). README's refusal bullet says the ticket is
+ * handed to a human "with the estimate and a proposed split," and the *stack* row of the same table
+ * says a legitimate over-budget-but-layered estimate is handed to a human "to accept, reorder, or
+ * reject" a proposed decomposition -- both are this one shape. `apps/desktop/src/pipenzo/
+ * RefusalPanel.tsx` renders it for the refusal case and `apps/desktop/src/pipenzo/StackApproval.tsx`
+ * renders it (reorderably) for the stack case -- this schema is that shape's producer-side
+ * declaration, not two schemas invented to match two renderers.
  */
 export const refineProposedSplitPartV1Schema = z
   .object({
@@ -160,15 +163,24 @@ export const refineSpecV1Schema = z
      */
     openQuestions: z.array(z.string().min(1).max(1_000)).max(20),
     /**
-     * A decomposition into independently-shippable, roughly-estimated parts, offered only when the
-     * ticket was too big for even a dependency-ordered stack (issue #271). Optional, and absent
-     * whenever the same Refine session either did not trip the diff-size gate or judged that it
-     * could not honestly produce a decomposition where every part is independently shippable in the
-     * order given -- `refine-subagent.ts`'s `buildRefinePrompt` asks for a real split only on a
-     * refusal, and explicitly tells the model that a bad split is worse than none, so an absent
-     * field here is a considered "no split was found," not an oversight. When it is present,
-     * `RefusalPanel.tsx`'s `Split` block renders it and `refusalCommentBody` includes the numbered
-     * list; when it is absent, both stay exactly as they were before this field existed.
+     * A decomposition into independently-shippable, roughly-estimated parts. Originally offered only
+     * when the ticket was too big for even a dependency-ordered stack (issue #271's refusal case).
+     * Issue #99 (the stack-approval panel) widens `refine-subagent.ts`'s `buildRefinePrompt` to also
+     * ask for this on the diff-size gate's other non-`single` verdict -- a `stack` estimate
+     * (`evaluateDiffSizeGate` in `apps/daemon/src/refine-gate.ts`) -- because the shape is identical
+     * either way: an ordered, independently-shippable decomposition a human reviews before anything
+     * is created. One field, two verdicts that can populate it, rather than a second copy of this
+     * schema for "the stack case's split" -- see `pipenzo-stack-approval-v1.ts`'s own module comment
+     * for how the stack-approval flow reads it back off the ticket record.
+     *
+     * Optional, and absent whenever the same Refine session either did not trip the diff-size gate at
+     * all, or judged that it could not honestly produce a decomposition where every part is
+     * independently shippable in the order given -- the prompt explicitly tells the model that a bad
+     * split is worse than none, so an absent field here is a considered "no split was found," not an
+     * oversight. When it is present on a `refuse` verdict, `RefusalPanel.tsx`'s `Split` block renders
+     * it and `refusalCommentBody` includes the numbered list; when it is present on a `stack` verdict,
+     * `StackApproval.tsx` renders it as reorderable rows; when it is absent, none of those render
+     * anything for it.
      */
     proposedSplit: z.array(refineProposedSplitPartV1Schema).min(1).max(20).optional(),
   })
@@ -253,10 +265,11 @@ export const REFINE_SPEC_V1_JSON_SCHEMA = Object.freeze({
       maxItems: 20,
       items: { type: 'string', minLength: 1, maxLength: 1000 },
     },
-    // Not in `required` above: optional on both sides. `refine-subagent.ts`'s prompt (issue #271)
-    // asks a provider to populate this only on a refusal, and only when it can honestly stand
-    // behind every part as independently shippable in the given order -- so it is still legitimately
-    // absent from many refusal specs, not just from every spec that predates this field.
+    // Not in `required` above: optional on both sides. `refine-subagent.ts`'s prompt (issues #271,
+    // #99) asks a provider to populate this on a `refuse` or `stack` verdict, and only when it can
+    // honestly stand behind every part as independently shippable in the given order -- so it is
+    // still legitimately absent from many refusal/stack specs, not just from every spec that
+    // predates this field.
     proposedSplit: {
       type: 'array',
       minItems: 1,

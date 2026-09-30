@@ -22,6 +22,7 @@ export * from './pipenzo-ticket-v1.js';
 export * from './pipenzo-phase-machine-v1.js';
 export * from './pipenzo-medium-approval-v1.js';
 export * from './pipenzo-high-approval-v1.js';
+export * from './pipenzo-stack-approval-v1.js';
 export * from './pipenzo-phase-events-v1.js';
 export * from './pipenzo-recovery-v1.js';
 export * from './pipenzo-credential-v1.js';

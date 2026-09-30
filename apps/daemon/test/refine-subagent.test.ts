@@ -304,8 +304,13 @@ describe('buildRefineSessionRequest', () => {
    * `refine-gate.ts`'s `evaluateDiffSizeGate` grades the estimate against -- not a second,
    * free-to-drift copy of README's thresholds -- and must tell the model that a bad split is worse
    * than none, matching the schema's own "no field, no section" doc comment.
+   *
+   * Issue #99 widens this from "only on a refusal" to "on a refusal or a stack" -- the stack
+   * approval panel needs the exact same ordered decomposition the refusal panel already gets, just
+   * for the `stack` verdict instead of `refuse`. Asserting the prompt now names *both* outcomes (and
+   * no longer says a stack is excluded) is the regression test for that widening.
    */
-  it('asks for a real, ordered proposedSplit only on a refusal, using the shared thresholds', () => {
+  it('asks for a real, ordered proposedSplit on a refusal or a stack, using the shared thresholds', () => {
     const { prompt } = buildRefineSessionRequest({ issue: ISSUE, cwd: process.cwd(), provider: 'claude' });
     expect(prompt).toContain('proposedSplit');
     expect(prompt).toContain(String(PIPENZO_DIFF_SIZE_THRESHOLDS.onePrMaxLines));
@@ -313,8 +318,10 @@ describe('buildRefineSessionRequest', () => {
     expect(prompt).toContain(String(PIPENZO_DIFF_SIZE_THRESHOLDS.stackMaxLines));
     expect(prompt).toContain(String(PIPENZO_DIFF_SIZE_THRESHOLDS.stackMaxFiles));
     expect(prompt).toContain('independently');
-    expect(prompt).toContain('order they must be built and reviewed');
+    expect(prompt).toContain('order they must be built and');
     expect(prompt).toContain('omit proposedSplit entirely');
+    expect(prompt).toContain('either the stack case or the refusal case');
+    expect(prompt).not.toContain('not a stack');
   });
 
   it('truncates an oversized issue body rather than blowing the prompt bound', () => {
