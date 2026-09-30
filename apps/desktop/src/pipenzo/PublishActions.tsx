@@ -1,12 +1,107 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { PipenzoPublishResultV1, PipenzoPullRequestInputV1 } from '@agent-dock/shared';
 import { getBridge } from '../bridge.js';
 import { Button } from '../components/primitives/Button.js';
 import type { RiskLevel } from '../components/primitives/Chip.js';
 import { HighApprovalCard } from '../components/primitives/HighApproval.js';
-import { MediumApprovalInline } from '../components/primitives/MediumApproval.js';
+import { MediumApprovalInline, MediumApprovalResolved } from '../components/primitives/MediumApproval.js';
 import { PreCommitment } from '../components/primitives/PreCommitment.js';
 import { useAsyncAction } from './use-async-action.js';
+
+/** How often the resolved-line UI re-checks whether Undo is still available (issue #97). Not a
+ * countdown -- see `MediumApprovalResolved`'s own doc comment -- just a live poll of a fact
+ * (`isUndoSnapshotExpired`'s real `git rev-parse HEAD` comparison) that can change at any moment a
+ * commit lands on the branch, so it is re-checked periodically rather than once. */
+const MEDIUM_UNDO_POLL_MS = 5_000;
+
+/**
+ * The resolved line for a MEDIUM action this screen actually gated end to end (issue #97): a real,
+ * live `mediumApprovalStatus` poll drives whether Undo is offered, and a click genuinely calls
+ * `undoMediumApproval` (issue #148's filesystem-only restore) rather than anything that pretends to
+ * un-push a commit already on the remote -- see this file's own module comment on what Undo
+ * honestly means for a push/PR-open action.
+ */
+function ResolvedMediumLine({
+  ticketId,
+  snapshotId,
+  children,
+}: {
+  ticketId: string;
+  snapshotId: string;
+  children: ReactNode;
+}) {
+  const [state, setState] = useState<'checking' | 'available' | 'unavailable' | 'restored'>(
+    'checking',
+  );
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const poll = () => {
+      void getBridge()
+        .mediumApprovalStatus({ ticketId, snapshotId })
+        .then((status) => {
+          if (cancelled) return;
+          setState(status.available ? 'available' : 'unavailable');
+        })
+        .catch(() => {
+          if (!cancelled) setState('unavailable');
+        });
+    };
+    poll();
+    const interval = setInterval(poll, MEDIUM_UNDO_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+    // `snapshotId` is stable for the lifetime of one resolved action -- a new one only ever arrives
+    // by this component remounting under a fresh `key`, never by this effect re-running mid-poll.
+  }, [ticketId, snapshotId]);
+
+  const onUndo = () => {
+    void getBridge()
+      .undoMediumApproval({ ticketId, snapshotId })
+      .then((outcome) => {
+        if (mountedRef.current) setState(outcome.restored ? 'restored' : 'unavailable');
+      })
+      .catch(() => {
+        if (mountedRef.current) setState('unavailable');
+      });
+  };
+
+  if (state === 'restored') {
+    return (
+      <div className="ai-done">
+        <span className="grow">
+          {children} <b>Restored</b> — the touched files are back to their pre-approval content.
+        </span>
+      </div>
+    );
+  }
+
+  // The first status round trip has not landed yet -- rendered as a plain, neutral line rather
+  // than routing through `MediumApprovalResolved`'s `available: false` branch, which would
+  // otherwise claim "a new commit has landed" before this has actually checked.
+  if (state === 'checking') {
+    return (
+      <div className="ai-done">
+        <span className="grow">{children}</span>
+      </div>
+    );
+  }
+
+  return (
+    <MediumApprovalResolved undo={state === 'available' ? { available: true, onUndo } : { available: false }}>
+      {children}
+    </MediumApprovalResolved>
+  );
+}
 
 /**
  * DiffReview's three head actions (issues #69, #106, #112): Discard branch / Push branch / Push &
@@ -34,6 +129,29 @@ import { useAsyncAction } from './use-async-action.js';
  * `DiffReviewStat.risk`'s own "nothing to report" convention) pushes directly, exactly as before
  * this ticket -- an approval step for a diff nothing has flagged would be friction this rule does
  * not ask for.
+ *
+ * ## The MEDIUM inline approval flow's real daemon wiring (issue #97)
+ *
+ * `ticketId` is optional and, when given, is what turns the MEDIUM card from a purely local
+ * `gating` toggle into the real thing: opening it captures a real pre-action undo snapshot
+ * (`captureMediumApproval`, issue #148) over `touchedPaths` *before* the card is even shown --
+ * "block run" in practice means the push/PR-open button stays hidden behind the card until a human
+ * answers it, and the snapshot this ticket's Undo relies on already exists by the time they do.
+ * Allow calls `decideMediumApproval('allow')`, which records the risk-score outcome daemon-side
+ * (`recordRiskApprovalOutcome`, deliberately *not* resetting the score for a MEDIUM approval --
+ * `risk-score.ts`'s own asymmetric reset rule) and then runs the real push/PR-open exactly as
+ * before. Reject calls `decideMediumApproval('reject')` and runs nothing -- the gated action never
+ * executes. A caller with no `ticketId` (every existing call site, and `DiffReviewScreen.tsx` until
+ * it is threaded one -- see #95's own PR description) gets exactly the pre-#97 behaviour: Allow
+ * proceeds, Reject aborts, neither call touches the daemon's risk store.
+ *
+ * A resolved MEDIUM push/PR-open renders `ResolvedMediumLine` instead of reverting to the plain
+ * button row, with a real, live `mediumApprovalStatus` poll driving whether Undo is offered --
+ * never a fake countdown (`undo-snapshot.ts`'s own doc comment: expiry is "has a commit landed on
+ * this branch", not a timer). What Undo actually restores for *this* call site is worth being
+ * honest about: a push does not itself rewrite any local file, so `touchedPaths` here is the
+ * diff's own already-committed files, and Undo restores their local content -- it does not, and
+ * cannot, un-push a commit already on the remote or close an opened pull request.
  */
 export function PublishActions({
   worktreeId,
@@ -41,6 +159,8 @@ export function PublishActions({
   remote,
   pullRequest,
   risk,
+  ticketId,
+  touchedPaths = [],
   onDiscardClick,
   discardDisabled = false,
   onPushed,
@@ -55,6 +175,13 @@ export function PublishActions({
   /** The diff's publish-gate risk grade (`DiffReviewStat.risk`). Absent has the same meaning it
    * has there: nothing has graded this diff, so neither action is gated. */
   risk?: RiskLevel;
+  /** The ticket this diff belongs to (issue #97's own daemon wiring -- see the module comment
+   * above). Optional: omitting it keeps the MEDIUM card's pre-#97 behaviour exactly, with no
+   * `captureMediumApproval`/`decideMediumApproval` calls at all. */
+  ticketId?: string;
+  /** The diff's own touched files, relative to the worktree root -- `captureMediumApproval`'s
+   * pre-action snapshot input. Ignored when `ticketId` is absent. */
+  touchedPaths?: readonly string[];
   /** Opens the discard confirmation (ticket #112 owns the confirm dialog + the actual cleanup
    * call). Omit to hide the button entirely. */
   onDiscardClick?: () => void;
@@ -67,6 +194,17 @@ export function PublishActions({
   // Which action's approval card is open, if any -- at most one at a time, matching the canvas's
   // own single-card approval flow. `null` is the ordinary, ungated button row.
   const [gating, setGating] = useState<'push' | 'open_pr' | null>(null);
+  // The in-flight (or already-settled) `captureMediumApproval` call per gated kind, resolving to
+  // `undefined` on failure or when `ticketId` is absent -- a `ref`, not state, specifically so
+  // `allowMedium`/`rejectMedium` can `await` it directly rather than racing a human's click against
+  // this component's own re-render. A snapshot id landing in state (for `ResolvedMediumLine`'s
+  // props) is a *consequence* of this promise settling, not the source of truth for it.
+  const captureRef = useRef<{ push?: Promise<string | undefined>; open_pr?: Promise<string | undefined> }>({});
+  const [reason, setReason] = useState<{ push?: string; open_pr?: string }>({});
+  // The snapshot id for an action this screen actually allowed and ran -- renders
+  // `ResolvedMediumLine` in place of the plain button row for that kind, for the rest of this
+  // component's life (there is no "un-resolve").
+  const [resolved, setResolved] = useState<{ push?: string; open_pr?: string }>({});
 
   const remoteName = remote ?? 'origin';
 
@@ -88,16 +226,77 @@ export function PublishActions({
       )
       .then((result) => result && onPullRequestOpened?.(result));
 
+  /**
+   * Opens the MEDIUM card for `kind` and, when `ticketId` is given, starts its real pre-action undo
+   * snapshot capture (issue #97/#148) -- the card renders immediately rather than waiting on that
+   * round trip, since the pre-commitment/reason UI does not depend on it. `allowMedium`/
+   * `rejectMedium` `await captureRef.current[kind]` themselves before deciding, so a human clicking
+   * Allow/Reject faster than one local `git rev-parse` round trip can never race ahead of it.
+   */
+  const openMediumGate = (kind: 'push' | 'open_pr') => {
+    setGating(kind);
+    captureRef.current[kind] = ticketId
+      ? getBridge()
+          .captureMediumApproval({ ticketId, worktreeId, branch, touchedPaths: [...touchedPaths] })
+          .then(({ snapshotId }) => snapshotId)
+          .catch(() => undefined)
+      : Promise.resolve(undefined);
+  };
+
   const clickPush = () => {
     if (push.status === 'error') return void push.retry();
-    if (risk === 'high' || risk === 'medium') return setGating('push');
+    if (risk === 'high') return setGating('push');
+    if (risk === 'medium') return openMediumGate('push');
     runPush();
   };
 
   const clickOpenPr = () => {
     if (openPr.status === 'error') return void openPr.retry();
-    if (risk === 'high' || risk === 'medium') return setGating('open_pr');
+    if (risk === 'high') return setGating('open_pr');
+    if (risk === 'medium') return openMediumGate('open_pr');
     runOpenPr();
+  };
+
+  /** A human clicked Allow on `kind`'s MEDIUM card. Awaits the real capture, records the real
+   * approval outcome (when one was really captured against a ticket), then runs the action
+   * regardless of whether that recording succeeded -- the human already made the one decision this
+   * gate exists for, and a risk-score bookkeeping failure is not a reason to silently swallow their
+   * Allow. */
+  const allowMedium = (kind: 'push' | 'open_pr') => {
+    const reasonText = reason[kind];
+    setGating(null);
+    setReason((s) => ({ ...s, [kind]: undefined }));
+    void (captureRef.current[kind] ?? Promise.resolve(undefined))
+      .then((id) => {
+        if (!ticketId || !id) return;
+        return getBridge()
+          .decideMediumApproval({ ticketId, snapshotId: id, decision: 'allow', reason: reasonText })
+          .then(
+            () => setResolved((s) => ({ ...s, [kind]: id })),
+            // Recording the outcome failed -- still resolve locally so `ResolvedMediumLine` offers
+            // Undo, which only needs the daemon's already-captured snapshot, not this call having
+            // succeeded.
+            () => setResolved((s) => ({ ...s, [kind]: id })),
+          );
+      })
+      .finally(() => (kind === 'push' ? runPush() : runOpenPr()));
+  };
+
+  /** A human clicked Reject on `kind`'s MEDIUM card. The gated action never runs -- there is no
+   * code path from here to `runPush`/`runOpenPr`. */
+  const rejectMedium = (kind: 'push' | 'open_pr') => {
+    const reasonText = reason[kind];
+    setGating(null);
+    setReason((s) => ({ ...s, [kind]: undefined }));
+    void (captureRef.current[kind] ?? Promise.resolve(undefined)).then((id) => {
+      if (!ticketId || !id) return;
+      void getBridge()
+        .decideMediumApproval({ ticketId, snapshotId: id, decision: 'reject', reason: reasonText })
+        .catch(() => {
+          // Nothing left to do -- the action already did not run, which is Reject's whole
+          // contract; a daemon-side bookkeeping failure here has no user-visible consequence.
+        });
+    });
   };
 
   // The pre-commitment record (issue #157's own approval cards both require one): what publishing
@@ -154,12 +353,15 @@ export function PublishActions({
             command={command('push')}
             precommit={precommit('push')}
             notificationNote="This diff is graded MEDIUM risk -- review the touched files before allowing."
-            onReject={() => setGating(null)}
-            onAllow={() => {
-              setGating(null);
-              runPush();
-            }}
+            reason={reason.push ?? ''}
+            onReasonChange={(value) => setReason((s) => ({ ...s, push: value }))}
+            onReject={() => rejectMedium('push')}
+            onAllow={() => allowMedium('push')}
           />
+        ) : resolved.push ? (
+          <ResolvedMediumLine ticketId={ticketId!} snapshotId={resolved.push}>
+            <b>Allowed</b> — pushed {branch} to {remoteName}.
+          </ResolvedMediumLine>
         ) : (
           <>
             <Button icon="git-branch" pending={push.pending} onClick={clickPush}>
@@ -193,12 +395,15 @@ export function PublishActions({
             command={command('open_pr')}
             precommit={precommit('open_pr')}
             notificationNote="This diff is graded MEDIUM risk -- review the touched files before allowing."
-            onReject={() => setGating(null)}
-            onAllow={() => {
-              setGating(null);
-              runOpenPr();
-            }}
+            reason={reason.open_pr ?? ''}
+            onReasonChange={(value) => setReason((s) => ({ ...s, open_pr: value }))}
+            onReject={() => rejectMedium('open_pr')}
+            onAllow={() => allowMedium('open_pr')}
           />
+        ) : resolved.open_pr ? (
+          <ResolvedMediumLine ticketId={ticketId!} snapshotId={resolved.open_pr}>
+            <b>Allowed</b> — pushed {branch} and opened a pull request.
+          </ResolvedMediumLine>
         ) : (
           <>
             <Button
