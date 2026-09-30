@@ -615,6 +615,15 @@ export const PIPENZO_PHASE_ERROR_CODES = [
    * dispatched anyway on a retried request would be exactly the retry that line refuses.
    */
   'budget_exhausted',
+  /**
+   * Issue #126: the workspace's configured execution limit (Settings, default 2, hard cap 4) is
+   * already at capacity when a new Implement dispatch is attempted. Refused outright, the same
+   * "never queue past the limit" shape `SessionCapacityError` already uses one layer down (see
+   * `pipenzo-execution-limiter.ts`) -- a ticket that hits this is left exactly where it was, free
+   * to be retried (by a human, or by whatever later build step adds automatic retry) once another
+   * ticket's session ends and frees a slot.
+   */
+  'execution_limit_exceeded',
   // github
   'token_missing',
   'repository_not_configured',

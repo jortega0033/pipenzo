@@ -150,10 +150,14 @@ export const pipenzoTicketListV1Schema = z
      * header's capacity pill denominator (issue #85). Optional, matching `title`'s own reasoning
      * just above: a caller (a hand-built test fixture, an older cached response) that predates this
      * field simply has not answered the question this asks, which is different from the daemon
-     * reporting a real cap of zero. Not yet operator-configurable — `NumberStepper.tsx`'s 1-4
-     * settings control isn't wired to anything real yet — so every real response carries the same
-     * fixed constant (`apps/daemon/src/working-lane-concurrency.ts`'s
-     * `PIPENZO_DEFAULT_WORKING_CAPACITY`) until a settings ticket makes it real per-repo state.
+     * reporting a real cap of zero.
+     *
+     * Operator-configurable as of issue #126: `routes/pipenzo-tickets.ts` sources this from the
+     * same `PipenzoExecutionLimiter` instance `ImplementOrchestrator` enforces dispatch against and
+     * `PUT /v2/pipenzo/concurrency` updates live, falling back to the fixed
+     * `PIPENZO_DEFAULT_WORKING_CAPACITY` constant only when no limiter was wired in (every test and
+     * caller that predates that ticket). One source of truth either way — this pill and Settings'
+     * own Concurrency panel can never disagree about the configured limit.
      */
     workingLaneCapacity: z.number().int().positive().max(4).optional(),
   })

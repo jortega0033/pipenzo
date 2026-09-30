@@ -30,3 +30,4 @@ export * from './pipenzo-health-v1.js';
 export * from './pipenzo-repos-v1.js';
 export * from './pipenzo-audit-v1.js';
 export * from './pipenzo-lesson-v1.js';
+export * from './pipenzo-concurrency-v1.js';
