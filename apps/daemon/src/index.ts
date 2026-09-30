@@ -233,6 +233,14 @@ async function main() {
     worktrees: worktreeManager,
     logger,
     resolveGitHubCredential: (env) => githubCredential.resolve(env),
+    // Issue #160: every real publish attempt gets an audit entry. `resolveTicketId` is the reverse
+    // of the direction `PublishService` is otherwise handed things in -- a worktree id, never a
+    // ticket id -- so it is a plain scan of the ticket store's own `worktree.id` field rather than
+    // a new index; that store is already read far more often (every phase-service call) than
+    // publish is ever invoked (a human-paced, rate-limited action).
+    audit: pipenzoAuditStore,
+    resolveTicketId: (worktreeId) =>
+      ticketStore.list().find((ticket) => ticket.worktree?.id === worktreeId)?.ticketId,
   });
 
   // Pipenzo's Refine/Implement/Review phases (issue #184). Same boundary as the publish gate: it
@@ -300,6 +308,8 @@ async function main() {
     // the ticket record, which terminal-state cleanup (below) later reads back.
     tickets: ticketStore,
     logger,
+    // Issue #160: every review-gate run that reaches an outcome gets an audit entry.
+    audit: pipenzoAuditStore,
   });
 
   // Pipenzo's polling reconciler (issue #231): the loop that makes the connected-repos list worth

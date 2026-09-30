@@ -1,4 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
 import type { PipenzoPublishRequestV1 } from '@agent-dock/shared';
 import {
   DEFAULT_BASE_BRANCH,
@@ -16,11 +19,28 @@ import {
   type PipenzoGitRunner,
 } from '../src/pipenzo-git.js';
 import { GitHubClientError } from '../src/github-client.js';
+import { PipenzoAuditStore } from '../src/pipenzo-audit-store.js';
 
 const WORKTREE_ID = '11111111-2222-4333-8444-555555555555';
+const TICKET_ID = '33333333-2222-4333-8444-555555555555';
 const HEAD_SHA = 'a'.repeat(40);
 const WORKTREE_PATH = process.platform === 'win32' ? 'C:\\owned\\issue-177' : '/owned/issue-177';
 const BRANCH = 'issue-177';
+
+const auditTempDirectories: string[] = [];
+afterEach(async () => {
+  await Promise.all(
+    auditTempDirectories.splice(0).map((path) => rm(path, { recursive: true, force: true })),
+  );
+});
+
+/** A real, file-backed `PipenzoAuditStore` (issue #160's own tests want real entries, not a mock
+ * that could pass while the schema/shape is wrong) rooted in a fresh temp directory per test. */
+async function newAuditStore(): Promise<PipenzoAuditStore> {
+  const directory = await mkdtemp(join(tmpdir(), 'pipenzo-publish-audit-'));
+  auditTempDirectories.push(directory);
+  return new PipenzoAuditStore(join(directory, 'pipenzo-audit-v1.jsonl'));
+}
 
 /**
  * Fixture credentials are assembled at runtime rather than written as literals, so no string in
@@ -619,5 +639,113 @@ describe('PublishService.publish — push and open pull request', () => {
     // source-level property, asserted in publish-token-boundary.test.ts — a runtime check cannot
     // see `#private` fields, so a runtime assertion here would pass vacuously.)
     expect(JSON.stringify(result)).not.toContain(token);
+  });
+});
+
+describe('PublishService.publish — audit entries (issue #160)', () => {
+  it('records a succeeded push against the real audit store', async () => {
+    const audit = await newAuditStore();
+    const { runGit } = scriptedGit();
+    const service = new PublishService({
+      worktrees: locator(),
+      runGit,
+      env: REPO_ENV,
+      audit,
+      resolveTicketId: (worktreeId) => (worktreeId === WORKTREE_ID ? TICKET_ID : undefined),
+    });
+
+    await service.publish(pushRequest());
+
+    const entries = await audit.list({ ticketId: TICKET_ID });
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      kind: 'publish_result',
+      ticketId: TICKET_ID,
+      outcome: 'succeeded',
+      operation: 'push',
+      worktreeId: WORKTREE_ID,
+      remote: 'origin',
+      branch: BRANCH,
+      headSha: HEAD_SHA,
+      updatedRemote: true,
+    });
+    expect(entries[0]).not.toHaveProperty('pullRequest');
+    expect(typeof entries[0]?.recordedAt).toBe('number');
+  });
+
+  it('records a succeeded push_and_open_pull_request with the opened pull request', async () => {
+    const audit = await newAuditStore();
+    const opener = recordingOpener();
+    const service = new PublishService({
+      worktrees: locator(),
+      runGit: scriptedGit().runGit,
+      env: { ...REPO_ENV, PIPENZO_GITHUB_TOKEN: fakeToken('auditPrTestToken000001') },
+      createPullRequestOpener: opener.opener,
+      audit,
+      resolveTicketId: () => TICKET_ID,
+    });
+
+    await service.publish(prRequest());
+
+    const [entry] = await audit.list({ ticketId: TICKET_ID });
+    expect(entry).toMatchObject({
+      outcome: 'succeeded',
+      operation: 'push_and_open_pull_request',
+      pullRequest: {
+        number: 42,
+        htmlUrl: 'https://github.com/o/r/pull/42',
+        baseRef: DEFAULT_BASE_BRANCH,
+        draft: false,
+      },
+    });
+  });
+
+  it('records a failed publish with the real error code and a redacted message', async () => {
+    const audit = await newAuditStore();
+    const leaked = `https://x-access-token:${fakeToken('auditFailureLeak0000001')}@github.com/o/r.git/`;
+    const service = new PublishService({
+      worktrees: locator(),
+      runGit: scriptedGit({ push: failed(`fatal: unable to access ${leaked}`, 128) }).runGit,
+      env: REPO_ENV,
+      audit,
+      resolveTicketId: () => TICKET_ID,
+    });
+
+    await expect(service.publish(pushRequest())).rejects.toBeInstanceOf(PublishServiceError);
+
+    const [entry] = await audit.list({ ticketId: TICKET_ID });
+    expect(entry).toMatchObject({ kind: 'publish_result', outcome: 'failed', errorCode: 'push_failed' });
+    expect(entry).not.toHaveProperty('headSha');
+    expect(entry).not.toHaveProperty('updatedRemote');
+    // The audit log gets the same redaction guarantee every other surface that reads this message
+    // does -- `PublishServiceError` redacts at construction, before this entry is ever assembled.
+    expect((entry as { error?: string }).error).not.toContain('auditFailureLeak0000001');
+  });
+
+  it('writes nothing when no ticket record claims this worktree', async () => {
+    const audit = await newAuditStore();
+    const service = new PublishService({
+      worktrees: locator(),
+      runGit: scriptedGit().runGit,
+      env: REPO_ENV,
+      audit,
+      resolveTicketId: () => undefined,
+    });
+
+    await service.publish(pushRequest());
+
+    await expect(audit.list()).resolves.toEqual([]);
+  });
+
+  it('writes nothing when no audit store was configured, and still publishes successfully', async () => {
+    const { runGit } = scriptedGit();
+    const service = new PublishService({
+      worktrees: locator(),
+      runGit,
+      env: REPO_ENV,
+      resolveTicketId: () => TICKET_ID,
+    });
+
+    await expect(service.publish(pushRequest())).resolves.toMatchObject({ branch: BRANCH });
   });
 });

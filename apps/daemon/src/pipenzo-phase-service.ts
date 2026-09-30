@@ -55,6 +55,7 @@ import { readPipenzoRepoConfig, type PipenzoCommandConfig } from './pipenzo-repo
 import { isBudgetExhausted, type PipenzoPhaseMachine } from './pipenzo-phase-machine.js';
 import { evaluateDiffSizeGate } from './refine-gate.js';
 import { attachTicketWorktree, type TicketWorktreeStorePort } from './pipenzo-worktree-lifecycle.js';
+import type { PipenzoAuditStore } from './pipenzo-audit-store.js';
 
 /**
  * The one service the Refine / Implement / Review routes call (Pipenzo issue #184).
@@ -155,6 +156,13 @@ export interface PipenzoPhaseServiceOptions {
   /** Logs a failed blown-estimate consequence without failing the review call that produced a
    * perfectly good report — see `review()`'s own comment for why. */
   logger?: Logger;
+  /**
+   * Where a review-gate result is recorded (issue #160). Optional so every existing test and caller
+   * that predates this issue reviews exactly as before, with no audit entry at all.
+   * `Pick<..., 'append'>` — the same narrowing `pipenzo-reconciler.ts` and `PublishService` already
+   * use for their own optional audit dependency.
+   */
+  audit?: Pick<PipenzoAuditStore, 'append'>;
 }
 
 export class PipenzoPhaseService {
@@ -178,6 +186,7 @@ export class PipenzoPhaseService {
     | undefined;
   readonly #ticketWorktrees: TicketWorktreeStorePort | undefined;
   readonly #logger: Logger | undefined;
+  readonly #audit: Pick<PipenzoAuditStore, 'append'> | undefined;
 
   constructor(options: PipenzoPhaseServiceOptions) {
     this.#refine = new RefineSubagent(options.refineSessions, options.runGit);
@@ -205,6 +214,7 @@ export class PipenzoPhaseService {
     this.#machine = options.machine;
     this.#ticketWorktrees = options.tickets;
     this.#logger = options.logger;
+    this.#audit = options.audit;
   }
 
   /* ---------------------------------------------------------------- refine */
@@ -635,7 +645,42 @@ export class PipenzoPhaseService {
       this.#recordRiskGrade(request.ticketId, report.risk);
     }
 
+    // Issue #160: every review-gate run that actually reaches an outcome gets an audit entry.
+    // `request.ticketId` is optional (every existing caller/test predates this field), and a run
+    // with none has no ticket to attribute an entry to -- the same "nothing to attribute this to,
+    // so nothing is written" rule `PublishService`'s own audit wiring follows. Deliberately after
+    // `#reportBlownEstimate`/`#recordTokenUsage`/`#recordRiskGrade`, not before: this record is a
+    // *read* of the already-final `report`, and ordering it last means a slow or failing audit
+    // write can never be mistaken for why one of those other, unrelated writes did not happen.
+    if (request.ticketId) {
+      await this.#recordReviewAudit(request.ticketId, report);
+    }
+
     return report;
+  }
+
+  /**
+   * Best-effort, logged, never thrown (issue #160) -- see `review()`'s own comment for why. Writes
+   * nothing when `audit` was never configured, the same already-documented "no store, no entry"
+   * state `PublishService`'s own audit wiring treats identically.
+   */
+  async #recordReviewAudit(ticketId: string, report: PipenzoReviewResultV1): Promise<void> {
+    if (!this.#audit) return;
+    try {
+      await this.#audit.append({
+        ticketId,
+        kind: 'review_gate_result',
+        outcome: report.outcome,
+        risk: report.risk,
+        baseCommit: report.baseCommit,
+        headCommit: report.headCommit,
+      });
+    } catch (error) {
+      this.#logger?.warn('could not record this review’s result to the pipenzo audit store', {
+        ticketId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   /**

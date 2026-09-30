@@ -22,6 +22,7 @@ import {
   type GitCommandResult,
   type PipenzoGitRunner,
 } from './pipenzo-git.js';
+import type { PipenzoAuditStore } from './pipenzo-audit-store.js';
 
 /**
  * The publish service (Pipenzo issue #178) — the module that owns every push and every PR-open,
@@ -91,7 +92,23 @@ import {
  *   `gh stack` work lands (README's near-term list); the `gh` binary appears nowhere here.
  * - No force-push of any kind, and no branch deletion. A rejected non-fast-forward push surfaces
  *   as `push_rejected` for a human, rather than being resolved automatically.
- * - No audit-store entry yet. README puts "an audit entry for every publish" in build step 6.
+ *
+ * ## The audit entry (issue #160)
+ *
+ * README's build step 6 asks for "an audit entry for every publish". `publish()` writes one for
+ * every attempt it can attribute to a ticket, success or failure, once the request is known-valid
+ * (`pipenzoPublishRequestV1Schema` parsed) -- a request that fails that parse never resolves to a
+ * `worktreeId` at all, so there is nothing a ticket could be attributed to and nothing is written.
+ * `resolveTicketId` is the one seam this needs: `PublishService` addresses a worktree by id, never
+ * by the ticket that owns it, and does not otherwise know a ticket exists. Both `resolveTicketId`
+ * and `audit` are optional, and a caller that omits either gets exactly today's behaviour -- a
+ * publish that pushes or fails with no audit entry at all, the same as before this issue.
+ *
+ * The write itself is best-effort: a storage failure is logged and never turned into the reason a
+ * caller sees a successful publish reported as failed, or a failed one double-reported — the same
+ * "the real outcome already happened, a secondary write failing must not relitigate it" discipline
+ * `pipenzo-phase-service.ts`'s `#reportBlownEstimate`/`#recordRiskGrade` already use for their own
+ * best-effort side effects.
  */
 
 const MAX_ERROR_DETAIL = 2_000;
@@ -166,6 +183,23 @@ export interface PublishServiceOptions {
   /** Built lazily, from a token read at call time, so no live authenticated client is retained. */
   createPullRequestOpener?: (token: string) => PullRequestOpener;
   logger?: Logger;
+  /**
+   * Where a publish result is recorded (issue #160). Optional so every existing test and caller
+   * that predates this issue publishes exactly as before -- with no audit entry at all -- rather
+   * than needing to thread a store they have no use for. `Pick<..., 'append'>`, the same narrowing
+   * `pipenzo-reconciler.ts` already uses for its own optional audit dependency, so a test can hand
+   * in a bare `{ append }` without constructing a real `PipenzoAuditStore`.
+   */
+  audit?: Pick<PipenzoAuditStore, 'append'>;
+  /**
+   * Resolves the ticket that owns a worktree, the reverse of the direction this service is handed
+   * things in (`PipenzoPublishRequestV1.worktreeId`, never a ticket id). Returns `undefined` for a
+   * worktree no ticket record currently claims -- never provisioned as a ticket's own worktree, or
+   * already cleaned up by `pipenzo-worktree-lifecycle.ts`'s terminal-state sweep -- and `publish()`
+   * treats that exactly like `audit` being absent: no ticket to attribute the entry to, so nothing
+   * is written, rather than writing one with a fabricated `ticketId`.
+   */
+  resolveTicketId?: (worktreeId: string) => string | undefined;
 }
 
 export const DEFAULT_REMOTE = 'origin';
@@ -290,6 +324,8 @@ export class PublishService {
   /** A *resolver*, never the credential: this field holds a function, and is called at use. */
   readonly #resolveCredential: (env: Readonly<Record<string, string | undefined>>) => string;
   readonly #logger: Logger | undefined;
+  readonly #audit: Pick<PipenzoAuditStore, 'append'> | undefined;
+  readonly #resolveTicketId: ((worktreeId: string) => string | undefined) | undefined;
   /** One publish at a time per worktree: two concurrent pushes of one branch is never intended. */
   readonly #inFlight = new Set<string>();
 
@@ -306,6 +342,8 @@ export class PublishService {
     this.#runGit = options.runGit ?? runGitCommand;
     this.#createOpener = options.createPullRequestOpener ?? octokitPullRequestOpener;
     this.#logger = options.logger;
+    this.#audit = options.audit;
+    this.#resolveTicketId = options.resolveTicketId;
   }
 
   /**
@@ -315,31 +353,98 @@ export class PublishService {
   async publish(request: PipenzoPublishRequestV1): Promise<PipenzoPublishResultV1> {
     const parsed = pipenzoPublishRequestV1Schema.safeParse(request);
     if (!parsed.success) {
+      // No `worktreeId` this service can trust exists yet -- nothing here could be attributed to a
+      // ticket, so this is the one failure `#recordAudit` never gets a chance to also not-write.
       throw new PublishServiceError('invalid_request', 'publish request is not valid');
     }
     const input = parsed.data;
     const remote = input.remote ?? DEFAULT_REMOTE;
-    assertSafeRefName(input.branch, 'branch');
-    assertSafeRemoteName(remote);
-
-    const location = this.#worktrees.ownedLocation(input.worktreeId);
-    if (!location) {
-      throw new PublishServiceError('worktree_not_found', 'no agentdock-owned worktree with that id');
-    }
-    if (!isAbsolute(location.path)) {
-      throw new PublishServiceError('worktree_not_found', 'owned worktree path is not absolute');
-    }
-    // Keyed on the destination as well as the worktree: two worktrees of one repository pushing
-    // the same branch at once is the same collision as one worktree doing it twice.
-    const leases = [input.worktreeId, `${remote} ${input.branch}`];
-    if (leases.some((lease) => this.#inFlight.has(lease))) {
-      throw new PublishServiceError('publish_busy', 'a publish is already running for this branch');
-    }
-    for (const lease of leases) this.#inFlight.add(lease);
     try {
-      return await this.#publishLocked(input, location, remote);
-    } finally {
-      for (const lease of leases) this.#inFlight.delete(lease);
+      assertSafeRefName(input.branch, 'branch');
+      assertSafeRemoteName(remote);
+
+      const location = this.#worktrees.ownedLocation(input.worktreeId);
+      if (!location) {
+        throw new PublishServiceError('worktree_not_found', 'no agentdock-owned worktree with that id');
+      }
+      if (!isAbsolute(location.path)) {
+        throw new PublishServiceError('worktree_not_found', 'owned worktree path is not absolute');
+      }
+      // Keyed on the destination as well as the worktree: two worktrees of one repository pushing
+      // the same branch at once is the same collision as one worktree doing it twice.
+      const leases = [input.worktreeId, `${remote} ${input.branch}`];
+      if (leases.some((lease) => this.#inFlight.has(lease))) {
+        throw new PublishServiceError('publish_busy', 'a publish is already running for this branch');
+      }
+      for (const lease of leases) this.#inFlight.add(lease);
+      let result: PipenzoPublishResultV1;
+      try {
+        result = await this.#publishLocked(input, location, remote);
+      } finally {
+        for (const lease of leases) this.#inFlight.delete(lease);
+      }
+      await this.#recordAudit(input, remote, { outcome: 'succeeded', result });
+      return result;
+    } catch (error) {
+      // Flattened to the same closed shape the route itself falls back to for anything unmapped
+      // (`pipenzo-publish.ts`): an audit entry is exactly the kind of surface an unredacted stack
+      // trace or error message must not reach, the same reasoning `PublishServiceError` itself is
+      // built on.
+      const code = error instanceof PublishServiceError ? error.code : 'push_failed';
+      const message = error instanceof PublishServiceError ? error.message : 'publish failed';
+      await this.#recordAudit(input, remote, { outcome: 'failed', errorCode: code, error: message });
+      throw error;
+    }
+  }
+
+  /**
+   * Best-effort, logged, never thrown (issue #160) -- see this class's own module comment for why.
+   * Writes nothing when `audit` was never configured, or when `resolveTicketId` cannot attribute
+   * this worktree to a real ticket; both are ordinary, already-documented states, not failures.
+   */
+  async #recordAudit(
+    input: PipenzoPublishRequestV1,
+    remote: string,
+    outcome:
+      | { outcome: 'succeeded'; result: PipenzoPublishResultV1 }
+      | { outcome: 'failed'; errorCode: PipenzoPublishErrorCodeV1; error: string },
+  ): Promise<void> {
+    if (!this.#audit) return;
+    const ticketId = this.#resolveTicketId?.(input.worktreeId);
+    if (!ticketId) return;
+    try {
+      await this.#audit.append(
+        outcome.outcome === 'succeeded'
+          ? {
+              ticketId,
+              kind: 'publish_result',
+              outcome: 'succeeded',
+              operation: input.operation,
+              worktreeId: input.worktreeId,
+              remote,
+              branch: input.branch,
+              headSha: outcome.result.headSha,
+              updatedRemote: outcome.result.updatedRemote,
+              ...(outcome.result.pullRequest ? { pullRequest: outcome.result.pullRequest } : {}),
+            }
+          : {
+              ticketId,
+              kind: 'publish_result',
+              outcome: 'failed',
+              operation: input.operation,
+              worktreeId: input.worktreeId,
+              remote,
+              branch: input.branch,
+              errorCode: outcome.errorCode,
+              error: outcome.error,
+            },
+      );
+    } catch (error) {
+      this.#logger?.warn('could not record this publish result to the pipenzo audit store', {
+        ticketId,
+        worktreeId: input.worktreeId,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
