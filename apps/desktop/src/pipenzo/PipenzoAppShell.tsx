@@ -17,6 +17,7 @@ import { Chip } from '../components/primitives/Chip.js';
 import { LoadLine } from '../components/primitives/LoadLine.js';
 import { SyncStatusPill, type SyncStatus } from '../components/primitives/SyncStatusPill.js';
 import { WorkspaceSwitcher } from '../components/primitives/WorkspaceSwitcher.js';
+import { BoardCommandPalette } from './BoardCommandPalette.js';
 import { BoardImplementDialog } from './BoardImplementDialog.js';
 import { BoardScreen } from './BoardScreen.js';
 import { SettingsPage } from './SettingsPage.js';
@@ -103,6 +104,14 @@ import {
  * longer exists. "Manage repos…" does not duplicate `ConnectedReposPanel`'s own picker dialog; it
  * routes to the Settings screen and hands it `openRepoPickerToken`, which opens that same dialog
  * there (see that panel's own doc comment for why a token, not a boolean).
+ *
+ * ## The command palette (issue #88)
+ *
+ * `BoardCommandPalette` wires `CommandPalette.tsx` (#33) up the same way: `tickets` and
+ * `connectedRepoNames` are the exact values already computed here for the board and the switcher,
+ * not a second read of either, and `onSelectRepo` is the switcher's own `setRequestedActiveRepoId`
+ * -- picking a repo in the palette is the same action as picking one in the switcher. See that
+ * component's own doc comment for why its Actions group has two rows rather than the canvas's four.
  */
 export function PipenzoAppShell({
   sync,
@@ -167,6 +176,8 @@ export function PipenzoAppShell({
   );
   const activeRepoId = resolveActiveRepoId(connectedRepoNames, requestedActiveRepoId);
 
+  const goToBoard = useCallback(() => setView('board'), []);
+
   const goToSettings = useCallback(() => {
     // A plain nav click must never reopen a picker left over from an earlier "Manage repos…" click,
     // so this always clears the token rather than leaving whatever it last was.
@@ -199,7 +210,7 @@ export function PipenzoAppShell({
             />
           )}
           <NavGroup title="Work">
-            <NavItem icon="board" active={view === 'board'} onClick={() => setView('board')}>
+            <NavItem icon="board" active={view === 'board'} onClick={goToBoard}>
               Board
             </NavItem>
           </NavGroup>
@@ -215,6 +226,13 @@ export function PipenzoAppShell({
         <Crumbs items={[view === 'board' ? 'Board' : 'Settings']} />
         <MainHeadRight>
           <SyncStatusPill status={sync.status} label={sync.label} onRefresh={onRefreshSync} />
+          <BoardCommandPalette
+            tickets={tickets}
+            repositories={connectedRepoNames}
+            onOpenBoard={goToBoard}
+            onOpenSettings={goToSettings}
+            onSelectRepo={setRequestedActiveRepoId}
+          />
         </MainHeadRight>
       </MainHead>
       {view === 'board' ? (

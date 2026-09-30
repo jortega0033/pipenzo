@@ -544,4 +544,50 @@ describe('PipenzoAppShell', () => {
       expect(screen.queryByRole('button', { name: /open ·/ })).not.toBeInTheDocument();
     });
   });
+
+  /**
+   * Issue #88: the command palette (`BoardCommandPalette`) is mounted for real in the header, wired
+   * to this shell's own ticket-store state, connected-repos list and Settings navigation -- not a
+   * standalone harness.
+   */
+  describe('the command palette', () => {
+    const AD = 'jortega0033/agentdock';
+    const PZ = 'jortega0033/pipenzo';
+
+    it('opens on Ctrl+K, shows a real ticket, and "Open Settings" navigates there', async () => {
+      installBridge({
+        tickets: [makeTicket({ ticketId: 'a', issueNumber: 42, lane: 'queued', title: 'Fix the thing' })],
+      });
+      render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+      await screen.findByText('Fix the thing');
+
+      fireEvent.keyDown(document, { key: 'k', ctrlKey: true });
+
+      const palette = screen.getByRole('dialog', { name: 'Command palette' });
+      expect(within(palette).getByText('#42')).toBeInTheDocument();
+
+      fireEvent.click(within(palette).getByRole('button', { name: /Open Settings/ }));
+
+      expect(await screen.findByText('Connected repos')).toBeInTheDocument();
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('lists the real connected repos, and selecting one switches the active repo and opens Board', async () => {
+      installBridge({ connectedRepos: [AD, PZ] });
+      render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+      // Land on Settings first, so selecting the repo in the palette is a real change of view too.
+      fireEvent.click(await screen.findByRole('button', { name: 'Settings' }));
+      await screen.findByText('Connected repos');
+
+      fireEvent.keyDown(document, { key: 'k', ctrlKey: true });
+      const palette = screen.getByRole('dialog', { name: 'Command palette' });
+      fireEvent.click(within(palette).getByRole('button', { name: PZ }));
+
+      // Same action the workspace switcher's own row performs -- the switcher trigger now names
+      // the repo just picked from the palette, not whichever connected repo sorts first.
+      expect(await screen.findByRole('button', { name: new RegExp(PZ) })).toBeInTheDocument();
+      expect(screen.getByText('Queued')).toBeInTheDocument();
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+  });
 });
