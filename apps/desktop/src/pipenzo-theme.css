@@ -50,6 +50,31 @@
      #f85149 fails AA as text on --surface-3/--surface-4, #ff7b72 passes everywhere. */
   --color-danger-text: #ff7b72;
 
+  /* Risk-grade chip fill/text pairs (issue #155) -- pulled out of `.chip-risk.low/.medium/.high`,
+     which previously baked these six values in as hand-tuned hex with no token backing them. A
+     light mode can only retheme a color that is a token, so this split is what makes those chips
+     themeable at all rather than a style preference. */
+  --color-risk-low-bg: #1d3320;
+  --color-risk-low-fg: #56d364;
+  --color-risk-medium-bg: #33280f;
+  --color-risk-medium-fg: #e3b341;
+  --color-risk-high-bg: #3a1e1d;
+  --color-risk-high-fg: #ff7b72;
+
+  /* The precommit dialog row (issue #155) -- previously `.dialog .pc-row`'s own comment said
+     "something strictly between surface-3/surface-4 (there is no token for that yet)" and inlined
+     the hex directly. There is one now. */
+  --color-pc-row-bg: #2e2e2e;
+
+  /* Diff add/remove row backgrounds and line-number text (issue #155) -- previously hardcoded hex
+     in `tr.add`/`tr.del`'s own rules further down this file. */
+  --color-diff-add-bg: #213224;
+  --color-diff-add-strong-bg: #294d2e;
+  --color-diff-add-line-fg: #b7e3bd;
+  --color-diff-del-bg: #402625;
+  --color-diff-del-strong-bg: #602e2c;
+  --color-diff-del-line-fg: #f1b7b3;
+
   /* Radii */
   --radius-pipenzo: 8px;
   --radius-pipenzo-sm: 6px;
@@ -126,6 +151,115 @@
   --text-mono-stat: 24px;
   --text-mono-stat--line-height: 1;
   --text-mono-stat--letter-spacing: -0.02em;
+}
+
+/*
+ * Light mode (issue #155) -- Foundations.dc.html's own primitives sample literally chips this as
+ * "dark only · light on roadmap"; this is that roadmap item. Every custom property below restates
+ * a `@theme` token above with a light-mode value, under the same name -- every `var(--color-*)`
+ * reference in this file, and every Tailwind utility the `@theme` block generated from it
+ * (bg-bg, text-text-soft, ...), repaints from these without changing, so nothing that already
+ * consumed a token needed to change for this ticket. What did need to change first (see the
+ * `@theme` block above) was pulling the handful of rules that had their own hardcoded hex --
+ * `.chip-risk`, `.dialog .pc-row`, the diff add/remove rows -- onto tokens of their own, since a
+ * light mode can't retheme a color that was never a token.
+ *
+ * Two selectors carry the same values on purpose -- CSS has no way to share one declaration block
+ * across a plain selector and an `@media`-guarded one. The `@media` block is the *system default*
+ * for a user who has never chosen explicitly, guarded by `:not([data-theme='dark'])` so an
+ * explicit dark choice still wins even when the OS prefers light. `:root[data-theme='light']` is
+ * the *explicit* choice, which wins regardless of what the OS prefers. There is no matching
+ * `[data-theme='dark']` block: the bare `:root` above already *is* the dark palette, so an
+ * explicit dark choice needs no override of its own -- it only needs the `@media` block above to
+ * back off, which the `:not()` guard does. `useTheme()` (`src/theme.tsx`) is what sets or removes
+ * the `data-theme` attribute this all keys off; see its own doc comment for the persistence side.
+ */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) {
+    color-scheme: light;
+
+    --color-bg: #eef1f6;
+    --color-surface: #f8fafc;
+    --color-surface-2: #eef2f6;
+    --color-surface-3: #e2e8f0;
+    --color-surface-4: #cbd5e1;
+
+    --color-text: #101828;
+    --color-text-soft: #475569;
+    --color-text-faint: #5b6b80;
+
+    --color-accent: #166b2e;
+    --color-accent-fg: #ffffff;
+    --color-ok: #166b2e;
+    --color-ok-fg: #ffffff;
+    --color-warn: #8a5c00;
+    --color-warn-fg: #ffffff;
+    --color-danger: #cf222e;
+    --color-danger-fg: #ffffff;
+    --color-danger-text: #b91c1c;
+
+    --color-risk-low-bg: #dcf5e0;
+    --color-risk-low-fg: #166b2e;
+    --color-risk-medium-bg: #faedcb;
+    --color-risk-medium-fg: #8a5c00;
+    --color-risk-high-bg: #fbdada;
+    --color-risk-high-fg: #b91c1c;
+
+    --color-pc-row-bg: #d8dfe8;
+
+    --color-diff-add-bg: #e6ffed;
+    --color-diff-add-strong-bg: #cdffd8;
+    --color-diff-add-line-fg: #1a7f37;
+    --color-diff-del-bg: #ffeef0;
+    --color-diff-del-strong-bg: #ffdce0;
+    --color-diff-del-line-fg: #b91c1c;
+
+    --shadow-pipenzo: 0 8px 24px rgba(15, 23, 42, 0.12);
+    --shadow-pipenzo-sm: 0 4px 12px rgba(15, 23, 42, 0.08);
+  }
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --color-bg: #eef1f6;
+  --color-surface: #f8fafc;
+  --color-surface-2: #eef2f6;
+  --color-surface-3: #e2e8f0;
+  --color-surface-4: #cbd5e1;
+
+  --color-text: #101828;
+  --color-text-soft: #475569;
+  --color-text-faint: #5b6b80;
+
+  --color-accent: #166b2e;
+  --color-accent-fg: #ffffff;
+  --color-ok: #166b2e;
+  --color-ok-fg: #ffffff;
+  --color-warn: #8a5c00;
+  --color-warn-fg: #ffffff;
+  --color-danger: #cf222e;
+  --color-danger-fg: #ffffff;
+  --color-danger-text: #b91c1c;
+
+  --color-risk-low-bg: #dcf5e0;
+  --color-risk-low-fg: #166b2e;
+  --color-risk-medium-bg: #faedcb;
+  --color-risk-medium-fg: #8a5c00;
+  --color-risk-high-bg: #fbdada;
+  --color-risk-high-fg: #b91c1c;
+
+  --color-pc-row-bg: #d8dfe8;
+
+  --color-diff-add-bg: #e6ffed;
+  --color-diff-add-strong-bg: #cdffd8;
+  --color-diff-add-line-fg: #1a7f37;
+  --color-diff-del-bg: #ffeef0;
+  --color-diff-del-strong-bg: #ffdce0;
+  --color-diff-del-line-fg: #b91c1c;
+
+  --shadow-pipenzo: 0 8px 24px rgba(15, 23, 42, 0.12);
+  --shadow-pipenzo-sm: 0 4px 12px rgba(15, 23, 42, 0.08);
 }
 
 @layer base {
@@ -550,18 +684,18 @@
   }
 
   .chip-risk.low {
-    background: #1d3320;
-    color: #56d364;
+    background: var(--color-risk-low-bg);
+    color: var(--color-risk-low-fg);
   }
 
   .chip-risk.medium {
-    background: #33280f;
-    color: #e3b341;
+    background: var(--color-risk-medium-bg);
+    color: var(--color-risk-medium-fg);
   }
 
   .chip-risk.high {
-    background: #3a1e1d;
-    color: #ff7b72;
+    background: var(--color-risk-high-bg);
+    color: var(--color-risk-high-fg);
   }
 
   .self-tag {
@@ -2552,14 +2686,15 @@
   }
 
   /* The dialog itself sits on --surface-3, so a nested .precommit needs to step up rather than
-     down -- surface-4 for the head, and something strictly between surface-3/surface-4 (there is
-     no token for that yet) for the rows so they don't disappear into the dialog background. */
+     down -- surface-4 for the head, and something strictly between surface-3/surface-4 for the
+     rows so they don't disappear into the dialog background (issue #155 gave that in-between
+     value its own token, --color-pc-row-bg, instead of the hex this comment used to note had none). */
   .dialog .pc-head {
     background: var(--color-surface-4);
   }
 
   .dialog .pc-row {
-    background: #2e2e2e;
+    background: var(--color-pc-row-bg);
   }
 
   /* One-off flex row utility used by a handful of button/chip rows in the canvas (e.g. the HIGH
@@ -5002,33 +5137,33 @@
   }
 
   tr.add td.code {
-    background: #213224;
+    background: var(--color-diff-add-bg);
     color: var(--color-text);
   }
 
   tr.add td.sign {
-    background: #213224;
+    background: var(--color-diff-add-bg);
     color: var(--color-ok);
   }
 
   tr.add td.ln {
-    background: #294d2e;
-    color: #b7e3bd;
+    background: var(--color-diff-add-strong-bg);
+    color: var(--color-diff-add-line-fg);
   }
 
   tr.del td.code {
-    background: #402625;
+    background: var(--color-diff-del-bg);
     color: var(--color-text);
   }
 
   tr.del td.sign {
-    background: #402625;
+    background: var(--color-diff-del-bg);
     color: var(--color-danger-text);
   }
 
   tr.del td.ln {
-    background: #602e2c;
-    color: #f1b7b3;
+    background: var(--color-diff-del-strong-bg);
+    color: var(--color-diff-del-line-fg);
   }
 
   /* A finding in the rail points at one line: selecting it marks the row's gutter rather than
