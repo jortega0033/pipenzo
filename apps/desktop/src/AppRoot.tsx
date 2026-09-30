@@ -202,6 +202,36 @@ function PipenzoStartup({
               action: { label: 'Retry', onClick: retry },
             })
           }
+          // Issue #341 PR 2: `DiffReviewScreen` itself has no header of its own to show a success
+          // state in -- pushing or opening a PR returns straight to the board (see
+          // `PipenzoAppShell.tsx`'s own "Reaching DiffReviewScreen" doc section), so this toast is
+          // what confirms the real result actually happened, the same "the screen that did it isn't
+          // there to say so any more" reasoning `onImplementStarted` above already uses.
+          onPushed={(ticket, result) =>
+            toast.push({
+              tone: 'ok',
+              icon: 'git-branch',
+              title: `Pushed #${ticket.issueNumber}`,
+              description: `${ticket.repo} · ${result.branch}`,
+            })
+          }
+          onPullRequestOpened={(ticket, result) =>
+            toast.push({
+              tone: 'ok',
+              icon: 'git-pull-request',
+              title: `Opened a pull request for #${ticket.issueNumber}`,
+              description: result.pullRequest ? `#${result.pullRequest.number} · ${ticket.repo}` : ticket.repo,
+              // Real per-PR data or nothing -- never a guessed URL when the route did not return one.
+              ...(result.pullRequest
+                ? {
+                    action: {
+                      label: 'View PR',
+                      onClick: () => window.open(result.pullRequest!.htmlUrl, '_blank', 'noreferrer'),
+                    },
+                  }
+                : {}),
+            })
+          }
         />
       )}
       <ToastStack toasts={toast.visible} onDismiss={toast.dismiss} />

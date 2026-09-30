@@ -1,5 +1,10 @@
 import { useCallback, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
-import type { PipenzoImplementResultV1, PipenzoTicketViewV1 } from '@agent-dock/shared';
+import type {
+  PipenzoImplementResultV1,
+  PipenzoPublishResultV1,
+  PipenzoTicketViewV1,
+  RefineSpecV1,
+} from '@agent-dock/shared';
 import {
   AppShell,
   Crumbs,
@@ -24,6 +29,8 @@ import { ActivityScreen } from './ActivityScreen.js';
 import { BoardCommandPalette } from './BoardCommandPalette.js';
 import { BoardImplementDialog } from './BoardImplementDialog.js';
 import { BoardScreen } from './BoardScreen.js';
+import { DiffReviewScreen } from './DiffReviewScreen.js';
+import { DiscardBranchDialog } from './DiscardBranchDialog.js';
 import { SettingsPage } from './SettingsPage.js';
 import { TicketDetailContainer } from './TicketDetailContainer.js';
 import { useActivityFilter } from './use-activity-filter.js';
@@ -68,6 +75,44 @@ import {
  * The crumb trail's leading "Board" item becomes a real click target only while on TicketDetail --
  * see `CrumbLink` below -- since that is the one screen this shell can reach that is not one prefix
  * away from the sidebar itself.
+ *
+ * ## Reaching DiffReviewScreen (issue #341 PR 2)
+ *
+ * `DiffReviewScreen.tsx`'s own module comment said exactly what it needed and did not have: "this
+ * screen is not mounted anywhere in the app today... `ticket`/`spec`/`started` come from the same
+ * `ImplementDialog` flow that already produced them." That flow already runs inside this shell's own
+ * `BoardImplementDialog` (issue #342) -- `ImplementDialog`'s `onStarted` always had the real
+ * `RefineSpecV1` it just dispatched to `implementPipenzo` in scope, it simply had no caller asking
+ * for it. Both `ImplementDialog.tsx` and `BoardImplementDialog.tsx` now pass `spec` through
+ * `onStarted` by identity (never re-derived), which is what lets `reviewing` below hold the exact
+ * three-piece state `DiffReviewScreen` was built to take: the ticket (for `ticket.num`/`title`/
+ * `repo`, plus its real `ticketId` for `PublishActions`'s MEDIUM-approval card, issue #97), `spec`
+ * and `started`.
+ *
+ * `reviewing` is set the moment Start dispatches, alongside closing `BoardImplementDialog` and
+ * switching `view` to `'diff-review'` -- the same "the dialog closes itself on success" rule
+ * `onImplementStarted` above already documents, just also landing on the screen that dialog's own
+ * dispatch was always meant to lead to instead of the board. There is deliberately no second way
+ * back into an in-progress review once a person navigates away from it (via the Board nav item or
+ * the crumb trail) -- `reviewing` stays in memory so returning via `TicketDetail`'s own switcher
+ * does not lose it, but nothing here builds a "resume review" entry point, because inventing one
+ * without a design for it would be exactly the kind of guessed affordance this shell's own "Queued
+ * cards" section above refuses to build.
+ *
+ * `onPushed`/`onPullRequestOpened` mirror `DiffReviewScreen`'s own prop names one level up, the same
+ * way `onImplementStarted` mirrors `ImplementDialog`'s -- each fires once, reports the real
+ * `PipenzoPublishResultV1` upward for `AppRoot`'s own toast, then this shell clears `reviewing`,
+ * refreshes the board (the ticket's lane just changed) and returns to it, since there is nothing
+ * left on the review screen once its one run has resolved.
+ *
+ * ## Discard branch (issue #112), wired alongside it
+ *
+ * `DiscardBranchDialog.tsx` was real, tested and already backed by a real daemon route
+ * (`cleanupWorktree`) but had no caller either -- `PublishActions`'s own Discard button only renders
+ * when handed `onDiscardClick` at all, so without this it would have stayed invisible on the one
+ * screen that could finally show it. `discarding` needs nothing this shell does not already have in
+ * `reviewing.started` (`worktreeId`, `branch`), so this wires it rather than leaving a second real,
+ * tested primitive dark next to the one #341 was actually asked to reach.
  *
  * ## Where the tickets come from
  *
@@ -158,6 +203,8 @@ export function PipenzoAppShell({
   onRefreshSync,
   onImplementStarted,
   onImplementFailed,
+  onPushed,
+  onPullRequestOpened,
 }: {
   sync: { status: SyncStatus; label: string };
   onRefreshSync: () => void;
@@ -165,11 +212,29 @@ export function PipenzoAppShell({
   /** Issue #77: a real Start failure, named by the ticket it failed for -- the toast stack lives in
    * `AppRoot`, same as the success case above. */
   onImplementFailed?: (ticket: PipenzoTicketViewV1, message: string, retry: () => void) => void;
+  /** Issue #341 PR 2: mirrors `DiffReviewScreen`'s own `onPushed`/`onPullRequestOpened`, named for
+   *  the ticket the same way every other report-upward callback here is -- see "Reaching
+   *  DiffReviewScreen" above. */
+  onPushed?: (ticket: PipenzoTicketViewV1, result: PipenzoPublishResultV1) => void;
+  onPullRequestOpened?: (ticket: PipenzoTicketViewV1, result: PipenzoPublishResultV1) => void;
 }) {
-  const [view, setView] = useState<'board' | 'settings' | 'activity' | 'ticket-detail'>('board');
+  const [view, setView] = useState<
+    'board' | 'settings' | 'activity' | 'ticket-detail' | 'diff-review'
+  >('board');
   const { ticketList, refresh } = usePipenzoTickets();
   const { repoList, refresh: refreshRepoList } = useConnectedRepoList();
   const [implementing, setImplementing] = useState<PipenzoTicketViewV1>();
+  // The one dispatched Implement run `DiffReviewScreen` is open on (issue #341 PR 2) -- see
+  // "Reaching DiffReviewScreen" above for where each piece comes from and why this holds all three
+  // rather than re-deriving any of them.
+  const [reviewing, setReviewing] = useState<{
+    ticket: PipenzoTicketViewV1;
+    spec: RefineSpecV1;
+    started: PipenzoImplementResultV1;
+  }>();
+  // `DiscardBranchDialog`'s own open state, keyed off `reviewing.started` when it is opened -- see
+  // "Discard branch" above.
+  const [discarding, setDiscarding] = useState<{ worktreeId: string; branch: string }>();
   // The ticket TicketDetail is currently open on -- a ticket id, not the ticket object itself, so
   // switching lanes/lists under it (a live board sync) is picked up on the next render rather than
   // pinning a stale snapshot (issue #341).
@@ -317,7 +382,9 @@ export function PipenzoAppShell({
       }
     >
       <MainHead>
-        <Crumbs items={crumbItems(view, selectedTicket, goToBoard)} />
+        <Crumbs
+          items={crumbItems(view, selectedTicket, reviewing?.ticket, goToBoard, goToTicketDetail)}
+        />
         <MainHeadRight>
           <SyncStatusPill status={sync.status} label={sync.label} onRefresh={onRefreshSync} />
           <BoardCommandPalette
@@ -388,6 +455,45 @@ export function PipenzoAppShell({
               : "This ticket isn't in the board's current list anymore -- it may have merged or closed."}
           </Banner>
         ))}
+      {view === 'diff-review' &&
+        (reviewing ? (
+          <DiffReviewScreen
+            key={reviewing.ticket.ticketId}
+            ticket={{
+              num: reviewing.ticket.issueNumber,
+              title: reviewing.ticket.title ?? `Issue #${reviewing.ticket.issueNumber}`,
+              repo: reviewing.ticket.repo,
+            }}
+            spec={reviewing.spec}
+            started={reviewing.started}
+            ticketId={reviewing.ticket.ticketId}
+            onDiscardClick={() =>
+              setDiscarding({
+                worktreeId: reviewing.started.worktreeId,
+                branch: reviewing.started.branch,
+              })
+            }
+            onPushed={(result) => {
+              refresh();
+              setReviewing(undefined);
+              setView('board');
+              onPushed?.(reviewing.ticket, result);
+            }}
+            onPullRequestOpened={(result) => {
+              refresh();
+              setReviewing(undefined);
+              setView('board');
+              onPullRequestOpened?.(reviewing.ticket, result);
+            }}
+          />
+        ) : (
+          // Defensive, not reachable through this shell's own navigation today (`reviewing` is set
+          // in the same call that sets `view` to `'diff-review'`) -- kept honest rather than assumed,
+          // the same discipline TicketDetail's own not-found fallback above already applies.
+          <Banner icon="warning" tone="warn" action={<Button size="sm" variant="ghost" onClick={goToBoard}>Back to Board</Button>}>
+            There is no dispatched Implement run to review right now.
+          </Banner>
+        ))}
       {implementing && (
         <BoardImplementDialog
           // Keyed by ticket so opening a different card never inherits the last one's checkout,
@@ -395,12 +501,31 @@ export function PipenzoAppShell({
           key={implementing.ticketId}
           ticket={implementing}
           onClose={() => setImplementing(undefined)}
-          onStarted={(started) => {
+          onStarted={(started, spec) => {
             setImplementing(undefined);
             refresh();
             onImplementStarted?.(implementing, started);
+            // Issue #341 PR 2: the dispatch this dialog exists to make is also the one
+            // `DiffReviewScreen` has been waiting for a caller to produce -- see "Reaching
+            // DiffReviewScreen" above.
+            setReviewing({ ticket: implementing, spec, started });
+            setView('diff-review');
           }}
           onFailed={(message, retry) => onImplementFailed?.(implementing, message, retry)}
+        />
+      )}
+      {discarding && (
+        <DiscardBranchDialog
+          open
+          worktreeId={discarding.worktreeId}
+          branch={discarding.branch}
+          onClose={() => setDiscarding(undefined)}
+          onDiscarded={() => {
+            setDiscarding(undefined);
+            setReviewing(undefined);
+            setView('board');
+            refresh();
+          }}
         />
       )}
     </AppShell>
@@ -408,18 +533,22 @@ export function PipenzoAppShell({
 }
 
 /**
- * The crumb trail for each of this shell's four screens (issue #341), matching each artboard's own
- * `.crumbs` markup: a single current-page item for Board/Settings/Activity, and a real "Board" ->
- * `#<issueNumber>` trail for TicketDetail -- `TicketDetail.dc.html`'s own two-item crumb, with the
- * leading "Board" made a genuine click target via `CrumbLink` rather than the inert `<span>` the
- * static canvas mock uses, since this is the one screen in this shell actually reached by drilling
- * down rather than by a sidebar click. A `selectedTicket` that is not (yet, or no longer) resolved
- * falls back to a plain "Ticket" crumb rather than a guessed number.
+ * The crumb trail for each of this shell's five screens (issue #341), matching each artboard's own
+ * `.crumbs` markup: a single current-page item for Board/Settings/Activity, a real "Board" ->
+ * `#<issueNumber>` trail for TicketDetail (`TicketDetail.dc.html`'s own two-item crumb), and a real
+ * "Board" -> `#<issueNumber>` -> "Review diff" trail for DiffReview (`DiffReview.dc.html`'s own
+ * three-item one) -- with every non-current item a genuine click target via `CrumbLink` rather than
+ * the inert `<span>` the static canvas mocks use, since these are the two screens this shell
+ * actually reaches by drilling down rather than by a sidebar click. A `selectedTicket`/`reviewingTicket`
+ * that is not (yet, or no longer) resolved falls back to a plain "Ticket" crumb rather than a
+ * guessed number.
  */
 function crumbItems(
-  view: 'board' | 'settings' | 'activity' | 'ticket-detail',
+  view: 'board' | 'settings' | 'activity' | 'ticket-detail' | 'diff-review',
   selectedTicket: PipenzoTicketViewV1 | undefined,
+  reviewingTicket: PipenzoTicketViewV1 | undefined,
   goToBoard: () => void,
+  goToTicketDetail: (ticketId: string) => void,
 ): ReactNode[] {
   switch (view) {
     case 'board':
@@ -434,6 +563,20 @@ function crumbItems(
           Board
         </CrumbLink>,
         selectedTicket ? `#${selectedTicket.issueNumber}` : 'Ticket',
+      ];
+    case 'diff-review':
+      return [
+        <CrumbLink key="board" onClick={goToBoard}>
+          Board
+        </CrumbLink>,
+        reviewingTicket ? (
+          <CrumbLink key="ticket" onClick={() => goToTicketDetail(reviewingTicket.ticketId)}>
+            #{reviewingTicket.issueNumber}
+          </CrumbLink>
+        ) : (
+          'Ticket'
+        ),
+        'Review diff',
       ];
   }
 }

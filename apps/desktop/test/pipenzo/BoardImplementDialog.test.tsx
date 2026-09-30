@@ -136,7 +136,7 @@ describe('BoardImplementDialog', () => {
     expect(bridge.inspectWorkspace).toHaveBeenCalledWith(CHECKOUT);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Start' }));
-    await waitFor(() => expect(onStarted).toHaveBeenCalledWith(IMPLEMENTED));
+    await waitFor(() => expect(onStarted).toHaveBeenCalledWith(IMPLEMENTED, SPEC));
     expect(bridge.previewWorktree).toHaveBeenCalledWith({ cwd: CHECKOUT, name: 'issue-42' });
     expect(bridge.implementPipenzo).toHaveBeenCalledWith({
       spec: SPEC,
