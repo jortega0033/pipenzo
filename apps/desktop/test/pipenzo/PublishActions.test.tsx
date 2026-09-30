@@ -274,3 +274,176 @@ describe('PublishActions — risk-graded approval', () => {
     await waitFor(() => expect(publishPipenzo).toHaveBeenCalledTimes(1));
   });
 });
+
+/**
+ * The real daemon wiring behind the MEDIUM card, once a `ticketId` is given (issue #97): capture
+ * before the card blocks the run, Allow records the real approval outcome and then proceeds,
+ * Reject aborts without ever calling the bridge's publish method, and the resolved line reflects a
+ * real, live undo-availability poll -- never a fake timer.
+ */
+describe('PublishActions — the MEDIUM inline approval flow\'s real daemon wiring (issue #97)', () => {
+  const TICKET_ID = '11111111-2222-4333-8444-555555555555';
+  const SNAPSHOT_ID = '66666666-7777-4888-8999-aaaaaaaaaaaa';
+
+  function installMediumBridge(overrides: Partial<AgentDockBridge> = {}) {
+    const publishPipenzo = vi.fn().mockResolvedValue(PUSH_RESULT);
+    const captureMediumApproval = vi.fn().mockResolvedValue({ snapshotId: SNAPSHOT_ID });
+    const decideMediumApproval = vi.fn().mockResolvedValue({ decision: 'allow', risk: { score: 8 } });
+    const mediumApprovalStatus = vi.fn().mockResolvedValue({ available: true });
+    const undoMediumApproval = vi.fn().mockResolvedValue({ restored: true });
+    (window as unknown as { agentDock: Partial<AgentDockBridge> }).agentDock = {
+      publishPipenzo,
+      captureMediumApproval,
+      decideMediumApproval,
+      mediumApprovalStatus,
+      undoMediumApproval,
+      ...overrides,
+    };
+    return { publishPipenzo, captureMediumApproval, decideMediumApproval, mediumApprovalStatus, undoMediumApproval };
+  }
+
+  it('captures a real snapshot as soon as the MEDIUM card opens, before any decision is made', async () => {
+    const { captureMediumApproval, publishPipenzo } = installMediumBridge();
+    render(
+      <PublishActions
+        worktreeId={WORKTREE_ID}
+        branch="issue-94"
+        risk="medium"
+        ticketId={TICKET_ID}
+        touchedPaths={['src/a.ts']}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Push branch' }));
+
+    await waitFor(() =>
+      expect(captureMediumApproval).toHaveBeenCalledWith({
+        ticketId: TICKET_ID,
+        worktreeId: WORKTREE_ID,
+        branch: 'issue-94',
+        touchedPaths: ['src/a.ts'],
+      }),
+    );
+    expect(publishPipenzo).not.toHaveBeenCalled();
+  });
+
+  it('Allow decides real, records the outcome, then proceeds with the real push', async () => {
+    const { decideMediumApproval, publishPipenzo } = installMediumBridge();
+    render(
+      <PublishActions worktreeId={WORKTREE_ID} branch="issue-94" risk="medium" ticketId={TICKET_ID} />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Push branch' }));
+    await screen.findByText('MEDIUM');
+    fireEvent.click(screen.getByRole('button', { name: 'Allow' }));
+
+    await waitFor(() =>
+      expect(decideMediumApproval).toHaveBeenCalledWith({
+        ticketId: TICKET_ID,
+        snapshotId: SNAPSHOT_ID,
+        decision: 'allow',
+        reason: undefined,
+      }),
+    );
+    await waitFor(() =>
+      expect(publishPipenzo).toHaveBeenCalledWith({
+        worktreeId: WORKTREE_ID,
+        branch: 'issue-94',
+        remote: undefined,
+        operation: 'push',
+      }),
+    );
+  });
+
+  it('sends a typed-in reason on Allow, but the field is genuinely optional', async () => {
+    const { decideMediumApproval } = installMediumBridge();
+    render(
+      <PublishActions worktreeId={WORKTREE_ID} branch="issue-94" risk="medium" ticketId={TICKET_ID} />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Push branch' }));
+    await screen.findByText('MEDIUM');
+    fireEvent.change(screen.getByPlaceholderText(/Reason, if rejecting/), {
+      target: { value: 'reviewed the touched files' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Allow' }));
+
+    await waitFor(() =>
+      expect(decideMediumApproval).toHaveBeenCalledWith(
+        expect.objectContaining({ reason: 'reviewed the touched files' }),
+      ),
+    );
+  });
+
+  it('Reject decides real and never calls publishPipenzo -- the action genuinely never runs', async () => {
+    const { decideMediumApproval, publishPipenzo } = installMediumBridge();
+    render(
+      <PublishActions worktreeId={WORKTREE_ID} branch="issue-94" risk="medium" ticketId={TICKET_ID} />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Push branch' }));
+    await screen.findByText('MEDIUM');
+    fireEvent.click(screen.getByRole('button', { name: 'Reject' }));
+
+    await waitFor(() =>
+      expect(decideMediumApproval).toHaveBeenCalledWith(
+        expect.objectContaining({ ticketId: TICKET_ID, snapshotId: SNAPSHOT_ID, decision: 'reject' }),
+      ),
+    );
+    expect(publishPipenzo).not.toHaveBeenCalled();
+    // Back to the plain, ungated button row -- not stuck on the card, not resolved.
+    expect(screen.getByRole('button', { name: 'Push branch' })).toBeInTheDocument();
+  });
+
+  it('without a ticketId, Allow still proceeds but never calls the medium-approval bridge at all (pre-#97 behaviour preserved)', async () => {
+    const { captureMediumApproval, decideMediumApproval, publishPipenzo } = installMediumBridge();
+    render(<PublishActions worktreeId={WORKTREE_ID} branch="issue-94" risk="medium" />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Push branch' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Allow' }));
+
+    await waitFor(() => expect(publishPipenzo).toHaveBeenCalledTimes(1));
+    expect(captureMediumApproval).not.toHaveBeenCalled();
+    expect(decideMediumApproval).not.toHaveBeenCalled();
+  });
+
+  it('renders a real resolved line with a live, polled Undo after Allow, and Undo calls the real restore', async () => {
+    const { mediumApprovalStatus, undoMediumApproval } = installMediumBridge();
+    render(
+      <PublishActions worktreeId={WORKTREE_ID} branch="issue-94" risk="medium" ticketId={TICKET_ID} />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Push branch' }));
+    await screen.findByText('MEDIUM');
+    fireEvent.click(screen.getByRole('button', { name: 'Allow' }));
+
+    await waitFor(() =>
+      expect(mediumApprovalStatus).toHaveBeenCalledWith({ ticketId: TICKET_ID, snapshotId: SNAPSHOT_ID }),
+    );
+    const undoButton = await screen.findByRole('button', { name: /Undo/ });
+    // Never a fake countdown next to it.
+    expect(screen.queryByText(/\d+ s/)).not.toBeInTheDocument();
+
+    fireEvent.click(undoButton);
+    await waitFor(() =>
+      expect(undoMediumApproval).toHaveBeenCalledWith({ ticketId: TICKET_ID, snapshotId: SNAPSHOT_ID }),
+    );
+    await screen.findByText('Restored');
+  });
+
+  it('renders the honest unavailable state, not a button, once the poll reports undo has expired', async () => {
+    installMediumBridge({
+      mediumApprovalStatus: vi.fn().mockResolvedValue({ available: false, reason: 'expired' }),
+    });
+    render(
+      <PublishActions worktreeId={WORKTREE_ID} branch="issue-94" risk="medium" ticketId={TICKET_ID} />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Push branch' }));
+    await screen.findByText('MEDIUM');
+    fireEvent.click(screen.getByRole('button', { name: 'Allow' }));
+
+    await screen.findByText(/Undo unavailable/);
+    expect(screen.queryByRole('button', { name: /Undo/ })).not.toBeInTheDocument();
+  });
+});

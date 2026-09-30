@@ -1,6 +1,10 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { MediumApprovalDone, MediumApprovalInline } from '../../src/components/primitives/MediumApproval.js';
+import {
+  MediumApprovalDone,
+  MediumApprovalInline,
+  MediumApprovalResolved,
+} from '../../src/components/primitives/MediumApproval.js';
 import { PreCommitment } from '../../src/components/primitives/PreCommitment.js';
 
 describe('MediumApprovalInline', () => {
@@ -103,5 +107,36 @@ describe('MediumApprovalDone', () => {
     expect(screen.getByText('57 s')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Undo/ }));
     expect(onUndo).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * `MediumApprovalResolved` (issue #97): the real, commit-based-expiry resolved line -- see its own
+ * doc comment for why it exists alongside `MediumApprovalDone` rather than replacing it.
+ */
+describe('MediumApprovalResolved', () => {
+  it('renders an enabled Undo button and calls onUndo when available', () => {
+    const onUndo = vi.fn();
+    render(
+      <MediumApprovalResolved undo={{ available: true, onUndo }}>
+        <b>Allowed</b> — pushed issue-97 to origin.
+      </MediumApprovalResolved>,
+    );
+    expect(screen.getByText('Allowed')).toBeInTheDocument();
+    const button = screen.getByRole('button', { name: /Undo/ });
+    fireEvent.click(button);
+    expect(onUndo).toHaveBeenCalledTimes(1);
+    // No fake countdown -- this is the whole point of this component existing.
+    expect(screen.queryByText(/\d+ s/)).not.toBeInTheDocument();
+  });
+
+  it('renders a disabled, honest state instead of a button when undo is unavailable', () => {
+    render(
+      <MediumApprovalResolved undo={{ available: false, reason: 'expired' }}>
+        <b>Allowed</b> — pushed issue-97 to origin.
+      </MediumApprovalResolved>,
+    );
+    expect(screen.queryByRole('button', { name: /Undo/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/Undo unavailable/)).toBeInTheDocument();
   });
 });

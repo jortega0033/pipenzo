@@ -16,6 +16,7 @@ import { Notice } from '../components/primitives/Notice.js';
 import { Select } from '../components/primitives/Select.js';
 import { TextField } from '../components/primitives/TextField.js';
 import { buildCommitMessage, buildConfidenceLine, buildPullRequestInput } from './pr-assembly.js';
+import { parseUnifiedDiff } from './diff-parser.js';
 import { DiffFileList } from './DiffFileList.js';
 import { DiffReviewHead, type DiffReviewStat } from './DiffReviewHead.js';
 import { deriveLessonPrefill } from './lesson-prompt.js';
@@ -56,6 +57,7 @@ export function DiffReviewScreen({
   ticket,
   spec,
   started,
+  ticketId,
   onDiscardClick,
   discardDisabled,
   onPushed,
@@ -64,6 +66,14 @@ export function DiffReviewScreen({
   ticket: { readonly num: number; readonly title: string; readonly repo: string };
   spec: RefineSpecV1;
   started: PipenzoImplementResultV1;
+  /** The phase machine's own ticket id (issue #97's own daemon wiring for `PublishActions`'s MEDIUM
+   * card) -- distinct from `ticket.num`, the issue number, which is what the rest of this screen's
+   * props are keyed by. Optional, and omitting it is a real, supported degraded mode: see
+   * `PublishActions.tsx`'s module comment for exactly what that keeps working versus what it gives
+   * up. No caller threads a real one through yet -- this screen is not mounted anywhere in the app
+   * today (see its own module comment's "Mounted for one dispatched Implement run at a time"), so
+   * there is no live ticket id to thread until whatever mounts it exists. */
+  ticketId?: string;
   onDiscardClick?: () => void;
   discardDisabled?: boolean;
   onPushed?: (result: PipenzoPublishResultV1) => void;
@@ -129,6 +139,9 @@ export function DiffReviewScreen({
   }
 
   const { result } = diff;
+  // `captureMediumApproval`'s pre-action snapshot input (issue #97) -- the diff's own touched files,
+  // parsed once here rather than a second, driftable pass over `diffText` inside `PublishActions`.
+  const diffTouchedPaths = parseUnifiedDiff(result.diffText).map((file) => file.path);
   const totalLines = result.additions + result.deletions;
   const { onePrMaxLines, onePrMaxFiles } = PIPENZO_DIFF_SIZE_THRESHOLDS;
   const withinBudget = totalLines <= onePrMaxLines && result.filesChanged <= onePrMaxFiles;
@@ -160,6 +173,8 @@ export function DiffReviewScreen({
         worktreeId={started.worktreeId}
         branch={started.branch}
         pullRequest={pullRequest}
+        ticketId={ticketId}
+        touchedPaths={diffTouchedPaths}
         onDiscardClick={onDiscardClick}
         discardDisabled={discardDisabled}
         onPushed={handlePushed}
