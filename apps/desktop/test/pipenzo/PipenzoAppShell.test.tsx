@@ -450,10 +450,18 @@ describe('PipenzoAppShell', () => {
   };
 
   /** The board's own methods plus everything the Implement path reaches for -- plus, since issue
-   * #341, everything a non-Queued card's own Ticket Detail destination reaches for too
+   * #341 PR 1, everything a non-Queued card's own Ticket Detail destination reaches for too
    * (`pipenzoTicketRead` for `PhaseStepperPanel`/`ActivityStreamPanel`'s live per-ticket read,
-   * `pipenzoRecordRiskActivityOpened`, which `ActivityScreen` fires on mount). */
-  function installImplementBridge(tickets: readonly PipenzoTicketViewV1[]) {
+   * `pipenzoRecordRiskActivityOpened`, which `ActivityScreen` fires on mount), and, since PR 2, a
+   * successful dispatch now lands on `DiffReviewScreen` for real rather than closing back to the
+   * board -- `implementResultPipenzo` is what its own `useImplementPoll` calls immediately on
+   * mount. Left `sessionState` undefined (=='running', per that hook) so it stays on the honest
+   * "Watching the implement session…" state rather than this file having to fabricate a finished
+   * one; `DiffReviewScreen.test.tsx` owns testing what a `'ready'` poll renders. */
+  function installImplementBridge(
+    tickets: readonly PipenzoTicketViewV1[],
+    overrides: Record<string, unknown> = {},
+  ) {
     const bridge = {
       pipenzoListTickets: vi.fn().mockResolvedValue({ tickets }),
       onPipenzoPhaseEvent: () => () => {},
@@ -499,6 +507,14 @@ describe('PipenzoAppShell', () => {
         requiresConfirmation: false,
       }),
       implementPipenzo: vi.fn().mockResolvedValue(IMPLEMENTED),
+      implementResultPipenzo: vi.fn().mockResolvedValue({
+        worktreeId: IMPLEMENTED.worktreeId,
+        branch: IMPLEMENTED.branch,
+        baseCommit: IMPLEMENTED.baseCommit,
+        headCommit: IMPLEMENTED.baseCommit,
+        commits: [],
+      }),
+      ...overrides,
     };
     setBridgeOverride(bridge as never);
     return bridge;
@@ -973,6 +989,225 @@ describe('PipenzoAppShell', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Back to Board' }));
       expect(await screen.findByText('Queued')).toBeInTheDocument();
       expect(document.querySelector('.crumbs .cur')?.textContent).toBe('Board');
+    });
+  });
+
+  /**
+   * Issue #341 PR 2: `DiffReviewScreen.tsx`'s own module comment said this screen "is not mounted
+   * anywhere in the app today" and named exactly what it was waiting for -- `ticket`/`spec`/`started`
+   * from the same `ImplementDialog` flow that already produces them. These prove that flow now
+   * reaches it for real, through the identical Queued-card-click path #342 already wired, rather
+   * than re-testing `DiffReviewScreen`'s own poll/diff/review/push behavior -- `DiffReviewScreen.
+   * test.tsx` already owns that.
+   */
+  describe('DiffReviewScreen (issue #341 PR 2)', () => {
+    const READY_DIFF = {
+      worktreeId: IMPLEMENTED.worktreeId,
+      baseCommit: IMPLEMENTED.baseCommit,
+      headCommit: 'c'.repeat(40),
+      diffText: 'diff --git a/src/a.ts b/src/a.ts\n@@ -1,2 +1,3 @@\n context\n+added line\n context\n',
+      truncated: false,
+      additions: 8,
+      deletions: 0,
+      filesChanged: 1,
+    };
+    const READY_COMMITS = {
+      worktreeId: IMPLEMENTED.worktreeId,
+      branch: IMPLEMENTED.branch,
+      baseCommit: IMPLEMENTED.baseCommit,
+      headCommit: READY_DIFF.headCommit,
+      commits: [READY_DIFF.headCommit],
+      sessionState: 'completed',
+    };
+
+    /** Drives a Queued card all the way through Refine -> Start, landing wherever that lands --
+     *  Board before this PR, DiffReviewScreen after it. */
+    async function dispatchImplement() {
+      fireEvent.click(await screen.findByRole('button', { name: /Fix the thing/ }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Refine ticket' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Start' }));
+    }
+
+    it('lands on DiffReviewScreen after Start, not back on the board, with the real ticket/spec/started data', async () => {
+      installImplementBridge(
+        [makeTicket({ ticketId: 'a', issueNumber: 42, lane: 'queued', title: 'Fix the thing' })],
+        {
+          implementResultPipenzo: vi.fn().mockResolvedValue(READY_COMMITS),
+          implementDiffPipenzo: vi.fn().mockResolvedValue(READY_DIFF),
+        },
+      );
+      render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+
+      await dispatchImplement();
+
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      expect(document.querySelector('.crumbs .cur')?.textContent).toBe('Review diff');
+      // DiffReviewHead's own id line, built from the real ticket (#42) and the real dispatched
+      // branch (issue-42) -- proof `spec`/`started` reached the screen, not a guess.
+      expect(
+        await screen.findByText('#42 · issue-42 → committed locally, nothing pushed'),
+      ).toBeInTheDocument();
+      // The real diff, through DiffFileList.
+      expect(screen.getByText('added line')).toBeInTheDocument();
+      expect(screen.queryByText('Queued')).not.toBeInTheDocument();
+    });
+
+    it("crumbs to Board -> #42 -> Review diff, and both earlier crumbs are real navigation", async () => {
+      installImplementBridge(
+        [makeTicket({ ticketId: 'a', issueNumber: 42, lane: 'queued', title: 'Fix the thing' })],
+        {
+          implementResultPipenzo: vi.fn().mockResolvedValue(READY_COMMITS),
+          implementDiffPipenzo: vi.fn().mockResolvedValue(READY_DIFF),
+        },
+      );
+      render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+      await dispatchImplement();
+      await screen.findByText('added line');
+
+      // The ticket crumb opens TicketDetail for the real ticket this review is for.
+      fireEvent.click(screen.getByRole('button', { name: '#42' }));
+      expect(document.querySelector('.crumbs .cur')?.textContent).toBe('#42');
+      expect(screen.getByText('Cumulative risk')).toBeInTheDocument();
+    });
+
+    it('a real Discard branch calls the real cleanupWorktree route for this dispatch and returns to Board on success', async () => {
+      const cleanupWorktree = vi.fn().mockResolvedValue(undefined);
+      installImplementBridge(
+        [makeTicket({ ticketId: 'a', issueNumber: 42, lane: 'queued', title: 'Fix the thing' })],
+        {
+          implementResultPipenzo: vi.fn().mockResolvedValue(READY_COMMITS),
+          implementDiffPipenzo: vi.fn().mockResolvedValue(READY_DIFF),
+          cleanupWorktree,
+        },
+      );
+      render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+      await dispatchImplement();
+      await screen.findByText('added line');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Discard branch' }));
+      const dialog = screen.getByRole('dialog', { name: 'Discard branch' });
+      // The real dispatched branch, off `reviewing.started` -- not a guess.
+      expect(dialog.querySelector('.dialog-sub')).toHaveTextContent(IMPLEMENTED.branch);
+
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Discard branch' }));
+
+      await waitFor(() =>
+        expect(cleanupWorktree).toHaveBeenCalledWith(IMPLEMENTED.worktreeId, {
+          deleteUntracked: false,
+          deleteBranch: true,
+        }),
+      );
+      expect(await screen.findByText('Queued')).toBeInTheDocument();
+      expect(document.querySelector('.crumbs .cur')?.textContent).toBe('Board');
+    });
+
+    it('Push branch returns to Board, refreshes the list, and reports the real ticket + publish result upward', async () => {
+      const publishResult = {
+        worktreeId: IMPLEMENTED.worktreeId,
+        remote: 'origin',
+        branch: IMPLEMENTED.branch,
+        headSha: READY_DIFF.headCommit,
+        updatedRemote: true,
+      };
+      const publishPipenzo = vi.fn().mockResolvedValue(publishResult);
+      const bridge = installImplementBridge(
+        [makeTicket({ ticketId: 'a', issueNumber: 42, lane: 'queued', title: 'Fix the thing' })],
+        {
+          implementResultPipenzo: vi.fn().mockResolvedValue(READY_COMMITS),
+          implementDiffPipenzo: vi.fn().mockResolvedValue(READY_DIFF),
+          publishPipenzo,
+        },
+      );
+      const onPushed = vi.fn();
+      render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} onPushed={onPushed} />);
+      await dispatchImplement();
+      await screen.findByText('added line');
+
+      fireEvent.click(screen.getByRole('button', { name: /push branch/i }));
+
+      await waitFor(() =>
+        expect(onPushed).toHaveBeenCalledWith(
+          expect.objectContaining({ issueNumber: 42, repo: REPO }),
+          publishResult,
+        ),
+      );
+      expect(await screen.findByText('Queued')).toBeInTheDocument();
+      expect(document.querySelector('.crumbs .cur')?.textContent).toBe('Board');
+      // Initial load + the post-dispatch refresh (#342) + this push's own refresh.
+      await waitFor(() => expect(bridge.pipenzoListTickets).toHaveBeenCalledTimes(3));
+    });
+
+    /** Code-review follow-up on PR 2: the push path above was covered, the PR-open path was not --
+     *  this drives a full Run-review -> Push & open PR cycle, the same real flow
+     *  `DiffReviewScreen.test.tsx`'s own "Run review" test exercises, to prove `onPullRequestOpened`
+     *  reaches this shell's own callers too, not just `onPushed`. */
+    it('Push & open PR (after a real review) returns to Board, refreshes, and reports the real ticket + pull request upward', async () => {
+      const report = {
+        schemaVersion: 1 as const,
+        outcome: 'approved' as const,
+        baseCommit: IMPLEMENTED.baseCommit,
+        headCommit: READY_DIFF.headCommit,
+        implementerTier: 'mid' as const,
+        risk: 'low' as const,
+        deterministic: [
+          { id: 'build', status: 'passed' as const, summary: 'Build and typecheck passed', durationMs: 900 },
+        ],
+      };
+      const reviewPipenzo = vi.fn().mockResolvedValue(report);
+      const publishResult = {
+        worktreeId: IMPLEMENTED.worktreeId,
+        remote: 'origin',
+        branch: IMPLEMENTED.branch,
+        headSha: READY_DIFF.headCommit,
+        updatedRemote: true,
+        pullRequest: {
+          number: 7,
+          htmlUrl: `https://github.com/${REPO}/pull/7`,
+          baseRef: 'main',
+          draft: false,
+        },
+      };
+      const publishPipenzo = vi.fn().mockResolvedValue(publishResult);
+      const bridge = installImplementBridge(
+        [makeTicket({ ticketId: 'a', issueNumber: 42, lane: 'queued', title: 'Fix the thing' })],
+        {
+          implementResultPipenzo: vi.fn().mockResolvedValue(READY_COMMITS),
+          implementDiffPipenzo: vi.fn().mockResolvedValue(READY_DIFF),
+          reviewPipenzo,
+          publishPipenzo,
+        },
+      );
+      const onPullRequestOpened = vi.fn();
+      render(
+        <PipenzoAppShell
+          sync={SYNC}
+          onRefreshSync={vi.fn()}
+          onPullRequestOpened={onPullRequestOpened}
+        />,
+      );
+      await dispatchImplement();
+      await screen.findByText('added line');
+
+      fireEvent.change(screen.getByLabelText('Reviewer model'), {
+        target: { value: 'claude-sonnet-4-5' },
+      });
+      fireEvent.change(screen.getByLabelText('Verifier model'), {
+        target: { value: 'claude-opus-4-1' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: /run review/i }));
+      await waitFor(() => expect(screen.getByRole('button', { name: /push & open pr/i })).toBeEnabled());
+
+      fireEvent.click(screen.getByRole('button', { name: /push & open pr/i }));
+
+      await waitFor(() =>
+        expect(onPullRequestOpened).toHaveBeenCalledWith(
+          expect.objectContaining({ issueNumber: 42, repo: REPO }),
+          publishResult,
+        ),
+      );
+      expect(await screen.findByText('Queued')).toBeInTheDocument();
+      expect(document.querySelector('.crumbs .cur')?.textContent).toBe('Board');
+      await waitFor(() => expect(bridge.pipenzoListTickets).toHaveBeenCalledTimes(3));
     });
   });
 });

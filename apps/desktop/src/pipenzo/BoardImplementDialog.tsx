@@ -3,6 +3,7 @@ import type {
   PipenzoImplementResultV1,
   PipenzoTicketViewV1,
   ProviderId,
+  RefineSpecV1,
   WorkspaceTrustViewV2,
 } from '@agent-dock/shared';
 import { getBridge } from '../bridge.js';
@@ -64,7 +65,9 @@ export function BoardImplementDialog({
 }: {
   ticket: PipenzoTicketViewV1;
   onClose: () => void;
-  onStarted?: (started: PipenzoImplementResultV1) => void;
+  /** `spec` alongside `started` (issue #341's PR 2) -- straight through from `ImplementDialog`'s own
+   *  `onStarted`, by identity, for a caller that needs to hand both to `DiffReviewScreen`. */
+  onStarted?: (started: PipenzoImplementResultV1, spec: RefineSpecV1) => void;
   /** Passed straight through to `ImplementDialog`'s own `onFailed` (issue #77) -- this component
    * mediates reaching that dialog but doesn't add a Start failure surface of its own. */
   onFailed?: (message: string, retry: () => void) => void;
@@ -94,7 +97,7 @@ export function BoardImplementDialog({
         ticket={{ num: ticket.issueNumber, title, repo: ticket.repo }}
         cwd={prepared.repositoryPath}
         provider={provider}
-        onStarted={(started) => onStarted?.(started)}
+        onStarted={(started, spec) => onStarted?.(started, spec)}
         onFailed={onFailed}
       />
     );

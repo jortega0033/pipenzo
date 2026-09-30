@@ -223,7 +223,7 @@ describe('ImplementDialog', () => {
     await screen.findByRole('button', { name: 'Starting…' });
 
     await waitFor(() =>
-      expect(onStarted).toHaveBeenCalledWith(IMPLEMENTED, {
+      expect(onStarted).toHaveBeenCalledWith(IMPLEMENTED, SPEC, {
         worktreeName: 'issue-94',
         extraInstructions: '',
         runBudget: 'unlimited',
@@ -274,7 +274,7 @@ describe('ImplementDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Start' }));
 
     await waitFor(() =>
-      expect(onStarted).toHaveBeenCalledWith(IMPLEMENTED, {
+      expect(onStarted).toHaveBeenCalledWith(IMPLEMENTED, SPEC, {
         worktreeName: 'issue-94',
         extraInstructions: '',
         runBudget: '3',

@@ -389,6 +389,18 @@ describe('AppRoot pre-app gate (issue #113)', () => {
       baseCommit: 'b'.repeat(40),
       sessionId: 'implement-1',
     });
+    // Issue #341 PR 2: Start now lands on `DiffReviewScreen`, not back on the board -- its own
+    // `useImplementPoll` calls this immediately on mount. `sessionState` omitted (== `'running'`,
+    // per that hook) keeps it on the honest "Watching the implement session…" state, since this
+    // test's own concern is the toast, not what a finished review renders (`DiffReviewScreen.
+    // test.tsx` and `PipenzoAppShell.test.tsx`'s own "DiffReviewScreen" describe block own that).
+    bridge.implementResultPipenzo = vi.fn().mockResolvedValue({
+      worktreeId: '123e4567-e89b-42d3-a456-426614174000',
+      branch: 'issue-42',
+      baseCommit: 'b'.repeat(40),
+      headCommit: 'b'.repeat(40),
+      commits: [],
+    });
     (window as unknown as { agentDock: AgentDockBridge }).agentDock = bridge;
     render(<AppRoot />);
 
@@ -404,6 +416,138 @@ describe('AppRoot pre-app gate (issue #113)', () => {
       provider: 'claude',
     });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    // The dialog closing is not "back to the board" any more -- it is the real DiffReviewScreen
+    // this dispatch was always meant to lead to.
+    expect(
+      screen.getByRole('status', { name: /waiting for the implement session on #42/i }),
+    ).toBeInTheDocument();
+  });
+
+  /**
+   * Issue #341 PR 2, end to end through the real root: the dispatch above lands on
+   * `DiffReviewScreen`, which has no header of its own to confirm a push in -- this is what proves
+   * `onPushed` actually reaches `AppRoot`'s own toast, not just `PipenzoAppShell`'s internal state
+   * (a code-review follow-up: the callback existed and was documented before this test did).
+   */
+  it('pushes from DiffReviewScreen and confirms it with a toast naming the branch', async () => {
+    const bridge = realBridge();
+    const checkout = '/state/repos/octocat/hello-world';
+    const spec = {
+      schemaVersion: 1 as const,
+      issue: { repo: 'octocat/hello-world', number: 42, title: 'Fix the thing' },
+      summary: 'Fix the thing.',
+      acceptanceCriteria: [{ id: 'AC-1', kind: 'event' as const, text: 'When X, the system shall Y' }],
+      outOfScope: [],
+      filesLikelyTouched: [],
+      estimate: { changedLines: 12, filesTouched: 1, layered: false },
+      openQuestions: [],
+    };
+    bridge.pipenzoListTickets = vi.fn().mockResolvedValue({
+      tickets: [
+        {
+          schemaVersion: 1,
+          ticketId: '00000000-0000-4000-8000-000000000042',
+          repo: 'octocat/hello-world',
+          issueNumber: 42,
+          title: 'Fix the thing',
+          lane: 'queued',
+          phase: 'refine',
+          labels: ['pipenzo:queued'],
+          estimate: { lines: 0, files: 0, layered: false },
+          taskType: 'chore',
+          stack: { parentId: null, childIds: [], index: null },
+          attempts: [],
+          budget: { tokensUsed: 0, limit: 0 },
+          risk: { score: 0, lastResetAt: '2026-01-01T00:00:00.000Z' },
+          precommits: [],
+          etags: {},
+        },
+      ],
+    });
+    bridge.resolvePipenzoCheckout = vi
+      .fn()
+      .mockResolvedValue({ repo: 'octocat/hello-world', repositoryPath: checkout });
+    bridge.inspectWorkspace = vi.fn().mockResolvedValue({
+      schemaVersion: 1,
+      workspaceId: 'c'.repeat(64),
+      incarnation: 'd'.repeat(64),
+      displayName: 'hello-world',
+      reusable: true,
+      state: 'trusted',
+    });
+    bridge.refinePipenzo = vi
+      .fn()
+      .mockResolvedValue({ sessionId: 'r', spec, toolsUsed: [], gateVerdict: 'single' });
+    bridge.claimPipenzoIssue = vi.fn().mockResolvedValue({
+      repo: 'octocat/hello-world',
+      issueNumber: 42,
+      outcome: 'claimed',
+      assignees: ['octocat'],
+      title: 'Fix the thing',
+      htmlUrl: 'https://github.com/octocat/hello-world/issues/42',
+    });
+    bridge.previewWorktree = vi.fn().mockResolvedValue({
+      workspaceId: 'c'.repeat(64),
+      name: 'issue-42',
+      displayTarget: 'issue-42',
+      includeFiles: [],
+      ignoredFiles: [],
+      secretRisk: false,
+      requiresConfirmation: false,
+    });
+    const started = {
+      worktreeId: '123e4567-e89b-42d3-a456-426614174000',
+      branch: 'issue-42',
+      baseCommit: 'b'.repeat(40),
+      sessionId: 'implement-1',
+    };
+    bridge.implementPipenzo = vi.fn().mockResolvedValue(started);
+    bridge.implementResultPipenzo = vi.fn().mockResolvedValue({
+      worktreeId: started.worktreeId,
+      branch: started.branch,
+      baseCommit: started.baseCommit,
+      headCommit: 'c'.repeat(40),
+      commits: ['c'.repeat(40)],
+      sessionState: 'completed',
+    });
+    bridge.implementDiffPipenzo = vi.fn().mockResolvedValue({
+      worktreeId: started.worktreeId,
+      baseCommit: started.baseCommit,
+      headCommit: 'c'.repeat(40),
+      diffText: 'diff --git a/src/a.ts b/src/a.ts\n@@ -1,2 +1,3 @@\n context\n+added line\n context\n',
+      truncated: false,
+      additions: 8,
+      deletions: 0,
+      filesChanged: 1,
+    });
+    const publishResult = {
+      worktreeId: started.worktreeId,
+      remote: 'origin',
+      branch: started.branch,
+      headSha: 'c'.repeat(40),
+      updatedRemote: true,
+    };
+    bridge.publishPipenzo = vi.fn().mockResolvedValue(publishResult);
+    (window as unknown as { agentDock: AgentDockBridge }).agentDock = bridge;
+    render(<AppRoot />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Fix the thing/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Refine ticket' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Start' }));
+    await screen.findByText('added line');
+
+    fireEvent.click(screen.getByRole('button', { name: /push branch/i }));
+
+    // Scoped to the push toast itself -- the earlier "Implement started" toast (still visible,
+    // toasts stack rather than replace) carries the identical description text.
+    const pushToast = (await screen.findByText('Pushed #42')).closest('.toast');
+    expect(pushToast).toHaveTextContent('octocat/hello-world · issue-42');
+    expect(bridge.publishPipenzo).toHaveBeenCalledWith({
+      worktreeId: started.worktreeId,
+      branch: started.branch,
+      remote: undefined,
+      operation: 'push',
+    });
   });
 
   /**

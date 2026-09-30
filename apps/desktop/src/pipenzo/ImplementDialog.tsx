@@ -171,7 +171,18 @@ export function ImplementDialog({
    * `claimIssueForTicket`, which speaks to the daemon. There is no way to switch the check *off*.
    */
   claimPreflight?: () => Promise<ClaimPreflightResult>;
-  onStarted?: (started: PipenzoImplementResultV1, input: ImplementStartInput) => void;
+  /**
+   * `spec` alongside `started` (issue #341's PR 2) -- the review screen the coordinating session's
+   * ticket needs is `DiffReviewScreen`'s own documented shape: `RefineSpecV1` plus
+   * `PipenzoImplementResultV1`, not just the latter. `spec` here is exactly the object `runStart`
+   * dispatched to `implementPipenzo` above -- never re-derived -- so a caller building a review
+   * screen from this callback gets the same real spec the implementer actually saw, by identity.
+   */
+  onStarted?: (
+    started: PipenzoImplementResultV1,
+    spec: RefineSpecV1,
+    input: ImplementStartInput,
+  ) => void;
   /**
    * A real Start failure (issue #77) -- everything that throws inside `runStart` below *except* a
    * claim conflict, which already has its own persistent, non-retryable Notice and is not a
@@ -266,7 +277,7 @@ export function ImplementDialog({
         }),
       )
       .then((started) => {
-        if (started) onStarted?.(started, { worktreeName, extraInstructions, runBudget });
+        if (started) onStarted?.(started, spec, { worktreeName, extraInstructions, runBudget });
       });
   };
 
