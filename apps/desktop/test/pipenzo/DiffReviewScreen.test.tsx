@@ -212,4 +212,112 @@ describe('DiffReviewScreen', () => {
     }));
     expect(onPushed).toHaveBeenCalledWith(publishResult);
   });
+
+  /** Issue #104: `LessonPrompt` at a ticket's real resolution. */
+  it('offers LessonPrompt only once a push has resolved, pre-filled from this run\'s own review finding, and Skip leaves nothing saved', async () => {
+    const implementResultPipenzo = vi.fn().mockResolvedValue(commits());
+    const implementDiffPipenzo = vi.fn().mockResolvedValue(diffResult());
+    const report = reviewReport();
+    const reviewPipenzo = vi.fn().mockResolvedValue({
+      ...report,
+      verifier: {
+        ...report.verifier!,
+        findings: [
+          { severity: 'medium', message: 'On Windows the host sets Path, not PATH.' },
+        ],
+      },
+    });
+    const publishResult: PipenzoPublishResultV1 = {
+      worktreeId: STARTED.worktreeId,
+      remote: 'origin',
+      branch: STARTED.branch,
+      headSha: 'b'.repeat(40),
+      updatedRemote: true,
+    };
+    const publishPipenzo = vi.fn().mockResolvedValue(publishResult);
+    const pipenzoCreateLesson = vi.fn();
+    setBridgeOverride({
+      implementResultPipenzo,
+      implementDiffPipenzo,
+      reviewPipenzo,
+      publishPipenzo,
+      pipenzoCreateLesson,
+    } as never);
+
+    render(<DiffReviewScreen ticket={TICKET} spec={SPEC} started={STARTED} />);
+    await waitFor(() => expect(screen.getByText(TICKET.title)).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText('Reviewer model'), { target: { value: 'claude-sonnet-4-5' } });
+    fireEvent.change(screen.getByLabelText('Verifier model'), { target: { value: 'claude-opus-4-1' } });
+    fireEvent.click(screen.getByRole('button', { name: /run review/i }));
+    await waitFor(() => expect(reviewPipenzo).toHaveBeenCalledTimes(1));
+
+    // Not resolved yet -- a completed review alone is not a resolution.
+    expect(screen.queryByLabelText('Lesson text')).not.toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /push branch/i }));
+    });
+    await waitFor(() => expect(publishPipenzo).toHaveBeenCalled());
+
+    // Offered exactly once, pre-filled from the real finding above -- never an invented string.
+    const field = (await screen.findByLabelText('Lesson text')) as HTMLInputElement;
+    expect(field.value).toBe('On Windows the host sets Path, not PATH.');
+
+    fireEvent.click(screen.getByRole('button', { name: /^skip$/i }));
+    expect(screen.queryByLabelText('Lesson text')).not.toBeInTheDocument();
+    expect(pipenzoCreateLesson).not.toHaveBeenCalled();
+  });
+
+  it('Save lesson persists via the real pipenzoCreateLesson route once resolved', async () => {
+    const implementResultPipenzo = vi.fn().mockResolvedValue(commits());
+    const implementDiffPipenzo = vi.fn().mockResolvedValue(diffResult());
+    const publishResult: PipenzoPublishResultV1 = {
+      worktreeId: STARTED.worktreeId,
+      remote: 'origin',
+      branch: STARTED.branch,
+      headSha: 'b'.repeat(40),
+      updatedRemote: true,
+    };
+    const publishPipenzo = vi.fn().mockResolvedValue(publishResult);
+    const pipenzoCreateLesson = vi.fn().mockResolvedValue({
+      lessons: [
+        {
+          schemaVersion: 1 as const,
+          id: 'lesson-1',
+          repo: TICKET.repo,
+          issueNumber: TICKET.num,
+          text: 'Worth remembering',
+          savedAt: '2026-09-06T14:14:00.000Z',
+        },
+      ],
+    });
+    setBridgeOverride({ implementResultPipenzo, implementDiffPipenzo, publishPipenzo, pipenzoCreateLesson } as never);
+
+    render(<DiffReviewScreen ticket={TICKET} spec={SPEC} started={STARTED} />);
+    await waitFor(() => expect(screen.getByText(TICKET.title)).toBeInTheDocument());
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /push branch/i }));
+    });
+
+    // No review ran, so this run genuinely hit nothing to pre-fill from -- an empty, editable
+    // field, never a fabricated one.
+    const field = await screen.findByLabelText('Lesson text');
+    expect(field).toHaveValue('');
+    fireEvent.change(field, { target: { value: 'Worth remembering' } });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /save lesson/i }));
+    });
+
+    expect(pipenzoCreateLesson).toHaveBeenCalledWith({
+      repo: TICKET.repo,
+      issueNumber: TICKET.num,
+      text: 'Worth remembering',
+    });
+    await waitFor(() =>
+      expect(screen.getByText(`Saved locally — 1 lesson on ${TICKET.repo}`)).toBeInTheDocument(),
+    );
+  });
 });
