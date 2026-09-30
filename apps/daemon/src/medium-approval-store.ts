@@ -65,9 +65,19 @@ export interface CaptureMediumApprovalInput {
 export class MediumApprovalStore {
   // Pending (not yet decided) and resolved-but-not-yet-undone entries share one map: a `decide()`
   // that already ran leaves its entry in place (with `decision`/`decidedAt` set) exactly until
-  // `undo()` consumes it or `discard()` drops it, since the resolved-line UI (`MediumApprovalDone`)
-  // still needs to poll its status and potentially restore it after `decide()` has already
-  // returned. "Pending" below means "no `decision` set yet", not "present in this map".
+  // `undo()` consumes it, since the resolved-line UI (`ResolvedMediumLine`) still needs to poll its
+  // status and potentially restore it after `decide()` has already returned. "Pending" below means
+  // "no `decision` set yet", not "present in this map".
+  //
+  // **Known gap, not yet closed by this ticket:** an *allowed* entry nobody ever undoes -- the
+  // common case, since most approvals are never undone -- has no other removal path and holds real
+  // file content (`UndoSnapshotV1.entries[].content`) for the rest of this daemon process's
+  // lifetime. A `reject`ed entry is deleted immediately (`decide()` below), so the unbounded-growth
+  // exposure here is specifically "allowed and never undone," not every decided snapshot. This is a
+  // real reliability gap on a long-running daemon, not a security one (this store sits behind the
+  // same bearer-token-authenticated local surface as the rest of `/v2/pipenzo/*`, so the only party
+  // that can grow it is the daemon's own already-trusted caller) -- a size cap or age-based sweep is
+  // tracked as a follow-up rather than built speculatively here.
   readonly #entries = new Map<string, MediumApprovalEntry>();
 
   /**

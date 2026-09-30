@@ -41,7 +41,6 @@ const MEDIUM_APPROVAL_ERROR_STATUS: Record<PipenzoMediumApprovalErrorCodeV1, num
   ticket_not_found: 404,
   worktree_not_found: 404,
   snapshot_not_found: 404,
-  already_decided: 409,
   git_unavailable: 502,
   store_failed: 500,
 };

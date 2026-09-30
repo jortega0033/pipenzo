@@ -120,12 +120,21 @@ export const pipenzoMediumApprovalUndoResultV1Schema = z
   })
   .strict();
 
+/**
+ * A closed union of what these four routes can actually answer with -- deliberately not including
+ * a separate `already_decided`: `MediumApprovalStore.decide()` (`apps/daemon/src/medium-
+ * approval-store.ts`) reports an unknown id, a wrong ticket, and an already-decided snapshot
+ * identically (`undefined`), all three of which the route maps to `snapshot_not_found`. That is a
+ * deliberate refusal to distinguish "already decided" from "never existed" on the wire -- the same
+ * reasoning `worktree_not_found` vs `ticket_not_found` does *not* apply here on purpose, since a
+ * caller cannot legitimately need to tell "this decision was already made" apart from "this id was
+ * never real" to do the right thing next (in both cases: stop, do not retry).
+ */
 export const PIPENZO_MEDIUM_APPROVAL_ERROR_CODES = [
   'invalid_request',
   'ticket_not_found',
   'worktree_not_found',
   'snapshot_not_found',
-  'already_decided',
   'git_unavailable',
   'store_failed',
 ] as const;
