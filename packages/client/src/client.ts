@@ -144,6 +144,10 @@ import {
   pipenzoMediumApprovalStatusResultV1Schema,
   pipenzoMediumApprovalUndoRequestV1Schema,
   pipenzoMediumApprovalUndoResultV1Schema,
+  pipenzoHighApprovalCaptureRequestV1Schema,
+  pipenzoHighApprovalCaptureResultV1Schema,
+  pipenzoHighApprovalDecideRequestV1Schema,
+  pipenzoHighApprovalDecideResultV1Schema,
   pipenzoPhaseEventOrStreamErrorV1Schema,
   pipenzoGitHubHealthV1Schema,
   type PipenzoGitHubHealthV1,
@@ -190,6 +194,10 @@ import {
   type PipenzoMediumApprovalStatusResultV1,
   type PipenzoMediumApprovalUndoRequestV1,
   type PipenzoMediumApprovalUndoResultV1,
+  type PipenzoHighApprovalCaptureRequestV1,
+  type PipenzoHighApprovalCaptureResultV1,
+  type PipenzoHighApprovalDecideRequestV1,
+  type PipenzoHighApprovalDecideResultV1,
   type PipenzoPhaseEventV1,
 } from '@agent-dock/shared';
 import {
@@ -550,6 +558,17 @@ export class AgentDockClient {
       undoMediumApproval: (
         input: PipenzoMediumApprovalUndoRequestV1,
       ): Promise<PipenzoMediumApprovalUndoResultV1> => this.undoMediumApprovalV1(input),
+      /**
+       * The HIGH full publish-gate card (issue #98), the HIGH-risk sibling of the MEDIUM calls
+       * above -- see `pipenzo-high-approval-v1.ts`'s module comment for why there is no
+       * status/undo pair here (HIGH never offers Undo, full stop).
+       */
+      captureHighApproval: (
+        input: PipenzoHighApprovalCaptureRequestV1,
+      ): Promise<PipenzoHighApprovalCaptureResultV1> => this.captureHighApprovalV1(input),
+      decideHighApproval: (
+        input: PipenzoHighApprovalDecideRequestV1,
+      ): Promise<PipenzoHighApprovalDecideResultV1> => this.decideHighApprovalV1(input),
       /**
        * The phase-change stream (issue #189): one daemon-wide stream carrying every ticket's
        * transitions, so a board needs one connection rather than one per card.
@@ -1419,6 +1438,40 @@ export class AgentDockClient {
       '/v2/pipenzo/tickets/risk/medium-approval/undo',
       pipenzoMediumApprovalUndoResultV1Schema,
       'pipenzo medium-approval undo outcome',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) },
+      { expectedStatus: 200 },
+    );
+  }
+
+  private async captureHighApprovalV1(
+    input: PipenzoHighApprovalCaptureRequestV1,
+  ): Promise<PipenzoHighApprovalCaptureResultV1> {
+    const parsed = validateInput(
+      pipenzoHighApprovalCaptureRequestV1Schema,
+      input,
+      'pipenzo high-approval capture request',
+    );
+    return this.requestV2(
+      '/v2/pipenzo/tickets/risk/high-approval/capture',
+      pipenzoHighApprovalCaptureResultV1Schema,
+      'pipenzo high-approval pending record',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) },
+      { expectedStatus: 200 },
+    );
+  }
+
+  private async decideHighApprovalV1(
+    input: PipenzoHighApprovalDecideRequestV1,
+  ): Promise<PipenzoHighApprovalDecideResultV1> {
+    const parsed = validateInput(
+      pipenzoHighApprovalDecideRequestV1Schema,
+      input,
+      'pipenzo high-approval decide request',
+    );
+    return this.requestV2(
+      '/v2/pipenzo/tickets/risk/high-approval/decide',
+      pipenzoHighApprovalDecideResultV1Schema,
+      'pipenzo high-approval decision',
       { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) },
       { expectedStatus: 200 },
     );

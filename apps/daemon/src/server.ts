@@ -28,6 +28,8 @@ import type { PipenzoPhaseMachine } from './pipenzo-phase-machine.js';
 import { registerPipenzoTicketRoutes } from './routes/pipenzo-tickets.js';
 import { registerPipenzoMediumApprovalRoutes } from './routes/pipenzo-medium-approval.js';
 import type { MediumApprovalStore } from './medium-approval-store.js';
+import { registerPipenzoHighApprovalRoutes } from './routes/pipenzo-high-approval.js';
+import type { HighApprovalStore } from './high-approval-store.js';
 import type { PipenzoPhaseEventBus } from './pipenzo-phase-events.js';
 import type { PipenzoCrashRecovery } from './pipenzo-crash-recovery.js';
 import { registerPipenzoRecoveryRoutes } from './routes/pipenzo-recovery.js';
@@ -133,6 +135,12 @@ export interface BuildServerOptions {
    * than routes that fail at call time.
    */
   mediumApprovalStore?: MediumApprovalStore;
+  /**
+   * The HIGH full publish-gate card's own approval store (issue #98), the HIGH-risk sibling of
+   * `mediumApprovalStore` above. Optional for the same reason: a daemon assembled without one, or
+   * without the `phaseMachine`/`worktreeManager` it also needs, has no high-approval routes at all.
+   */
+  highApprovalStore?: HighApprovalStore;
 }
 
 /**
@@ -228,6 +236,13 @@ export function buildServer(opts: BuildServerOptions): FastifyInstance {
         opts.phaseMachine,
         opts.worktreeManager,
         opts.mediumApprovalStore,
+      );
+    if (opts.phaseMachine && opts.worktreeManager && opts.highApprovalStore)
+      registerPipenzoHighApprovalRoutes(
+        app,
+        opts.phaseMachine,
+        opts.worktreeManager,
+        opts.highApprovalStore,
       );
     if (opts.crashRecovery) registerPipenzoRecoveryRoutes(app, opts.crashRecovery);
     if (opts.connectedRepos && opts.pipenzoGitHubClient)

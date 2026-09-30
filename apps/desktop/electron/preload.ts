@@ -83,6 +83,10 @@ import {
   pipenzoMediumApprovalStatusResultV1Schema,
   pipenzoMediumApprovalUndoRequestV1Schema,
   pipenzoMediumApprovalUndoResultV1Schema,
+  pipenzoHighApprovalCaptureRequestV1Schema,
+  pipenzoHighApprovalCaptureResultV1Schema,
+  pipenzoHighApprovalDecideRequestV1Schema,
+  pipenzoHighApprovalDecideResultV1Schema,
   pipenzoPhaseEventV1Schema,
   pipenzoGitHubHealthV1Schema,
   pipenzoConnectReposRequestV1Schema,
@@ -175,6 +179,10 @@ import {
   type PipenzoMediumApprovalStatusResultV1,
   type PipenzoMediumApprovalUndoRequestV1,
   type PipenzoMediumApprovalUndoResultV1,
+  type PipenzoHighApprovalCaptureRequestV1,
+  type PipenzoHighApprovalCaptureResultV1,
+  type PipenzoHighApprovalDecideRequestV1,
+  type PipenzoHighApprovalDecideResultV1,
   type PipenzoPhaseEventV1,
   type PipenzoGitHubHealthV1,
   type PipenzoConnectReposRequestV1,
@@ -302,6 +310,14 @@ export interface AgentDockBridge {
   undoMediumApproval(
     input: PipenzoMediumApprovalUndoRequestV1,
   ): Promise<PipenzoMediumApprovalUndoResultV1>;
+  /** The HIGH full publish-gate card (issue #98). Mirrors `window.d.ts`'s declaration of the same
+   * two methods. */
+  captureHighApproval(
+    input: PipenzoHighApprovalCaptureRequestV1,
+  ): Promise<PipenzoHighApprovalCaptureResultV1>;
+  decideHighApproval(
+    input: PipenzoHighApprovalDecideRequestV1,
+  ): Promise<PipenzoHighApprovalDecideResultV1>;
   /**
    * Live phase changes for every ticket (issue #189). One subscription serves the whole board;
    * filter on `ticketId` for a single card. Returns its own unsubscribe.
@@ -1016,6 +1032,18 @@ const api: AgentDockBridge = {
     const parsed = pipenzoMediumApprovalUndoRequestV1Schema.parse(input);
     return pipenzoMediumApprovalUndoResultV1Schema.parse(
       await ipcRenderer.invoke('daemon:pipenzo-medium-approval-undo', parsed),
+    );
+  },
+  async captureHighApproval(input) {
+    const parsed = pipenzoHighApprovalCaptureRequestV1Schema.parse(input);
+    return pipenzoHighApprovalCaptureResultV1Schema.parse(
+      await ipcRenderer.invoke('daemon:pipenzo-high-approval-capture', parsed),
+    );
+  },
+  async decideHighApproval(input) {
+    const parsed = pipenzoHighApprovalDecideRequestV1Schema.parse(input);
+    return pipenzoHighApprovalDecideResultV1Schema.parse(
+      await ipcRenderer.invoke('daemon:pipenzo-high-approval-decide', parsed),
     );
   },
   async pipenzoGitHubConnection() {
