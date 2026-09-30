@@ -9,11 +9,13 @@ import { ConnectionHealthBanner } from './pipenzo/ConnectionHealthBanner.js';
 import { ConnectScreen } from './pipenzo/ConnectScreen.js';
 import { EnvironmentCredentialBanner } from './pipenzo/EnvironmentCredentialBanner.js';
 import { PipenzoAppShell } from './pipenzo/PipenzoAppShell.js';
+import { SimpleModeShell } from './pipenzo/SimpleModeShell.js';
 import { deriveSyncStatus } from './pipenzo/sync-status.js';
 import { routePipenzoStartup } from './pipenzo/startup-route.js';
 import { useConnectedRepos } from './pipenzo/use-connected-repos.js';
 import { useGitHubConnection } from './pipenzo/use-github-connection.js';
 import { usePipenzoGitHubHealth } from './pipenzo/use-pipenzo-github-health.js';
+import { UiModeProvider, useUiMode } from './ui-mode.js';
 
 /** Owns the demo-mode lifecycle so it stays isolated from `App`'s own logic: swaps the active
  * bridge (via bridge.ts's override -- `window.agentDock` itself is frozen by Electron's
@@ -44,10 +46,12 @@ export function AppRoot() {
 
   // Outside the `key`-remounted subtree so a demo-mode toggle can't reset or flicker the applied
   // theme -- ThemeProvider reads its persisted preference once, at this outer mount, not once per
-  // bridge swap.
+  // bridge swap. UiModeProvider (issue #133) sits alongside it for the identical reason.
   return (
     <ThemeProvider>
-      <PipenzoStartup key={instanceKey} {...{ demoMode, enterDemoMode, exitDemoMode }} />
+      <UiModeProvider>
+        <PipenzoStartup key={instanceKey} {...{ demoMode, enterDemoMode, exitDemoMode }} />
+      </UiModeProvider>
     </ThemeProvider>
   );
 }
@@ -77,6 +81,15 @@ function PipenzoStartup({
   // Same rule: called here rather than after the early returns below so a screen transition never
   // changes this render's hook count.
   const toast = useToastStack();
+  // Issue #133: which top-level shell to mount past the gate -- see "Simple mode (issue #133)"
+  // below, next to where `mode` is actually read.
+  const { mode, setMode } = useUiMode();
+  // The ticket "See the technical details" (SimpleModeShell.tsx) asked to open in Expert mode, and
+  // a token that forces PipenzoAppShell to remount even if the same ticket is opened twice in a
+  // row -- the same "identity changes, so state resets" rule this shell's own `key={implementing.
+  // ticketId}`/`key={reviewing.ticket.ticketId}` already apply one level down.
+  const [expertEntryTicketId, setExpertEntryTicketId] = useState<string>();
+  const [expertEntryToken, setExpertEntryToken] = useState(0);
   // #113 shipped this router with `connectedRepos` defaulting to `'not-tracked'`, because nothing
   // recorded a list. #115 is what makes it real -- and the hook keeps answering `'not-tracked'`
   // whenever the count is genuinely unknown, so a daemon that has not finished starting never gets
@@ -175,8 +188,24 @@ function PipenzoStartup({
        */}
       {demoMode ? (
         <App demoMode={demoMode} onEnterDemo={enterDemoMode} onExitDemo={exitDemoMode} />
+      ) : mode === 'simple' ? (
+        // Issue #133: no ticket is ever routed into `activeTicket` today -- #151 (tray badge) and
+        // #129 (notifications), the two real entry points, are both still open, unscoped tickets.
+        // Rather than guess that wiring, this renders `SimpleModeShell`'s own honest empty state
+        // until one of them exists to call `onOpenTechnicalDetails`'s counterpart with a real
+        // ticket. `onOpenTechnicalDetails` itself is real: it is what a future call *would* reach.
+        <SimpleModeShell
+          activeTicket={undefined}
+          onOpenTechnicalDetails={(ticketId) => {
+            setExpertEntryTicketId(ticketId);
+            setExpertEntryToken((token) => token + 1);
+            setMode('expert');
+          }}
+        />
       ) : (
         <PipenzoAppShell
+          key={expertEntryToken}
+          initialTicketId={expertEntryTicketId}
           sync={sync}
           onRefreshSync={onRefreshSync}
           // Issue #342: the dialog closes itself once Implement has dispatched, so this toast is

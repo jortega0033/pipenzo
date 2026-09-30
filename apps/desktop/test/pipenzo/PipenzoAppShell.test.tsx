@@ -1457,6 +1457,36 @@ describe('PipenzoAppShell', () => {
   });
 
   /**
+   * Issue #133: `SimpleModeShell`'s "See the technical details" crossover link reports a ticket id
+   * upward to `AppRoot.tsx`, which is what actually hands this shell `initialTicketId` -- this
+   * proves the receiving end of that wiring, the same way #341's own tests above prove reaching
+   * TicketDetail from a board card.
+   */
+  describe('initialTicketId (issue #133)', () => {
+    it('opens straight on the given ticket, without visiting the board first', async () => {
+      installBridge({
+        tickets: [
+          makeTicket({ ticketId: 'a', issueNumber: 94, lane: 'working', title: 'Wire the shell' }),
+        ],
+      });
+      render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} initialTicketId="a" />);
+
+      expect(await screen.findByText('Wire the shell')).toBeInTheDocument();
+      expect(document.querySelector('.crumbs .cur')?.textContent).toBe('#94');
+    });
+
+    it('still starts on the board when omitted -- unchanged from before this ticket', async () => {
+      installBridge({
+        tickets: [makeTicket({ ticketId: 'a', issueNumber: 94, title: 'Wire the shell' })],
+      });
+      render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+
+      await screen.findByText('Wire the shell');
+      expect(document.querySelector('.crumbs .cur')?.textContent).toBe('Board');
+    });
+  });
+
+  /**
    * Issue #341 PR 2: `DiffReviewScreen.tsx`'s own module comment said this screen "is not mounted
    * anywhere in the app today" and named exactly what it was waiting for -- `ticket`/`spec`/`started`
    * from the same `ImplementDialog` flow that already produces them. These prove that flow now

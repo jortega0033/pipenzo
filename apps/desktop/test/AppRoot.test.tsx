@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PipenzoGitHubConnectionV1 } from '@agent-dock/shared';
 import { AppRoot } from '../src/AppRoot.js';
 import { getBridge } from '../src/bridge.js';
+import { UI_MODE_STORAGE_KEY } from '../src/ui-mode.js';
 import type { AgentDockBridge, DaemonStatus } from '../src/window.js';
 
 const CONNECTED: PipenzoGitHubConnectionV1 = {
@@ -768,5 +769,29 @@ describe('AppRoot manual-refresh failure toast (issue #77)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     await waitFor(() => expect(bridge.pollGitHubHealthNow).toHaveBeenCalledTimes(2));
     expect(screen.queryByText("Couldn't refresh — GitHub is unreachable.")).not.toBeInTheDocument();
+  });
+});
+
+describe('AppRoot Simple mode (issue #133)', () => {
+  /**
+   * `pipenzo:ui-mode` stored as `'simple'` is the one real way to reach `SimpleModeShell` through
+   * this root today -- there is no tray-badge or notification click to drive it yet (#151, #129,
+   * both still open), so this seeds the same persisted preference `UiModeProvider` reads on mount
+   * rather than fabricating an in-app entry point the canvas never draws. `PipenzoAppShell`'s own
+   * "Board" nav item is the proof the Expert switch genuinely lands back in Expert mode, not just
+   * that the Simple shell disappeared.
+   */
+  it('renders the Simple-mode shell with no sidebar from the stored preference, and the Expert switch returns to the real board', async () => {
+    window.localStorage.setItem(UI_MODE_STORAGE_KEY, 'simple');
+    render(<AppRoot />);
+
+    expect(await screen.findByText('Nothing to show in Simple mode yet')).toBeInTheDocument();
+    expect(document.querySelector('.sidebar')).not.toBeInTheDocument();
+    expect(document.querySelector('.simple-shell')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Expert' }));
+
+    expect(await screen.findByRole('button', { name: 'Board' })).toBeInTheDocument();
+    expect(document.querySelector('.simple-shell')).not.toBeInTheDocument();
   });
 });
