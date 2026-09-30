@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { pipenzoIssueNumberV1Schema, pipenzoRepoRefV1Schema } from './pipenzo-phase-v1.js';
+import { refineEstimateV1Schema, refineProposedSplitPartV1Schema } from './pipenzo-refine-v1.js';
 import { riskGradeV1Schema } from './pipenzo-review-v1.js';
 import {
   PIPENZO_LABELS,
@@ -85,6 +86,34 @@ export const pipenzoTicketConcurrencyV1Schema = z.discriminatedUnion('state', [
 export type PipenzoTicketConcurrencyV1 = z.infer<typeof pipenzoTicketConcurrencyV1Schema>;
 
 /**
+ * The refusal outcome a `pipenzo:needs-pre-scoping` ticket carries onto the wire (issue #469).
+ *
+ * `RefusalPanel.tsx` (issue #100) has always taken `estimate`/`proposedSplit` as props — what was
+ * missing was a way for real values to reach them on anything but the original Refine
+ * request/response cycle. `#reportRefusal` (`pipenzo-phase-service.ts`) now caches the whole
+ * `RefineSpecV1` onto the ticket record the moment a `refuse` verdict fires, the same early write
+ * `#reportStackVerdict` already made for issue #99's `stack` verdict — this schema is the narrow
+ * slice of that cached spec (its `estimate` and, when one exists, its `proposedSplit`) that
+ * actually crosses the renderer boundary, not the whole spec: `summary`/`acceptanceCriteria`/
+ * `outOfScope` are Refine's business, not a "why was this declined" report's.
+ *
+ * Present on `pipenzoTicketViewV1Schema` only when both are true: the ticket's label really is
+ * `pipenzo:needs-pre-scoping`, and its cached `spec` survived — a ticket refused before this field
+ * existed, or one whose best-effort cache write failed, has neither. `toTicketView()` in
+ * `routes/pipenzo-tickets.ts` is where that gate is enforced; `TicketDetailContainer.tsx` renders
+ * `RefusalPanel` only when this is present and treats its absence as "not available after reload",
+ * never as a reason to invent a value.
+ */
+export const pipenzoTicketRefusalV1Schema = z
+  .object({
+    estimate: refineEstimateV1Schema,
+    proposedSplit: z.array(refineProposedSplitPartV1Schema).min(1).max(20).optional(),
+  })
+  .strict();
+
+export type PipenzoTicketRefusalV1 = z.infer<typeof pipenzoTicketRefusalV1Schema>;
+
+/**
  * The ticket as it crosses the wire: `pipenzoTicketRecordV1Schema` with `worktree.path` removed.
  *
  * Spelled out field by field rather than derived with `.omit()` on a nested object, because a
@@ -116,6 +145,8 @@ export const pipenzoTicketViewV1Schema = z
     stack: pipenzoTicketStackV1Schema,
     worktree: pipenzoTicketWorktreeViewV1Schema.optional(),
     concurrency: pipenzoTicketConcurrencyV1Schema.optional(),
+    /** See `pipenzoTicketRefusalV1Schema`'s own doc comment (issue #469). */
+    refusal: pipenzoTicketRefusalV1Schema.optional(),
     attempts: z.array(pipenzoTicketAttemptV1Schema).max(50),
     budget: pipenzoTicketBudgetV1Schema,
     risk: pipenzoTicketRiskV1Schema,
