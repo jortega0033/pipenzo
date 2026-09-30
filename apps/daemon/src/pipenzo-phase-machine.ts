@@ -347,6 +347,20 @@ function persist(write: () => void): void {
   }
 }
 
+/**
+ * Stamps the moment this machine last wrote a *real* change to a ticket record — the one signal
+ * the Activity screen's day-grouped feed (issue #116) has to sort and bucket by, since nothing else
+ * on `PipenzoTicketRecordV1` carries a "when" today.
+ *
+ * Called only from the three call sites below that were already about to persist a changed record,
+ * never from a poll that found nothing to reconcile — bumping it on every no-op `read()` would make
+ * "last activity" mean "last time the reconciler happened to look," which defeats day-grouping
+ * entirely (every ticket would land in "Today" forever).
+ */
+function withUpdatedAt(ticket: PipenzoTicketRecordV1): PipenzoTicketRecordV1 {
+  return { ...ticket, updatedAt: new Date().toISOString() };
+}
+
 function toMachineError(error: unknown): PipenzoPhaseMachineError {
   if (error instanceof PipenzoPhaseMachineError) return error;
   if (error instanceof GitHubClientError) {
@@ -561,11 +575,11 @@ export class PipenzoPhaseMachine {
     // intent.
     const observedLabels = laneBearingLabelsOf(resulting);
     const reconciledLane = laneFromObserved(observedLabels) ?? target;
-    const next: PipenzoTicketRecordV1 = {
+    const next: PipenzoTicketRecordV1 = withUpdatedAt({
       ...current.ticket,
       lane: reconciledLane,
       labels: pipenzoLabelsOf(resulting),
-    };
+    });
     persist(() => this.#tickets.update(ticketId, next));
     // Unconditional: a transition always rewrote both sides, and a move between two Needs-human
     // labels keeps the lane while changing which card the board draws (#80), so gating this on a
@@ -634,8 +648,11 @@ export class PipenzoPhaseMachine {
     }
 
     const titleChanged = issueTitle !== ticket.title;
+    // A title sync is a real change too (see this method's own doc comment), so it earns a fresh
+    // `updatedAt` the same as a lane/label reconciliation does -- not just the two branches below
+    // that already know they are persisting a lane/label change.
     const applyTitle = (base: PipenzoTicketRecordV1): PipenzoTicketRecordV1 =>
-      titleChanged ? { ...base, title: issueTitle } : base;
+      titleChanged ? withUpdatedAt({ ...base, title: issueTitle }) : base;
 
     const observedLabels = laneBearingLabelsOf(issueLabels);
     const authoritativeLane = laneFromObserved(observedLabels);
@@ -676,11 +693,13 @@ export class PipenzoPhaseMachine {
       };
     }
 
-    const reconciled: PipenzoTicketRecordV1 = applyTitle({
-      ...ticket,
-      lane: authoritativeLane,
-      labels: storedLabels,
-    });
+    const reconciled: PipenzoTicketRecordV1 = withUpdatedAt(
+      applyTitle({
+        ...ticket,
+        lane: authoritativeLane,
+        labels: storedLabels,
+      }),
+    );
     persist(() => this.#tickets.update(ticketId, reconciled));
     // A reconciliation is a real change to announce, not just a transition: this is the path a
     // label edited by a human on GitHub travels, and it is the whole point of "the label wins" that

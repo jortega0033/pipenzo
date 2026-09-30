@@ -126,6 +126,7 @@ function toTicketView(ticket: PipenzoTicketRecordV1): PipenzoTicketViewV1 {
     risk: ticket.risk,
     precommits: ticket.precommits,
     etags: ticket.etags,
+    ...(ticket.updatedAt ? { updatedAt: ticket.updatedAt } : {}),
   };
 }
 

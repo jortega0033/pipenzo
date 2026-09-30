@@ -120,6 +120,9 @@ export const pipenzoTicketViewV1Schema = z
     risk: pipenzoTicketRiskV1Schema,
     precommits: z.array(pipenzoTicketPrecommitV1Schema).max(200),
     etags: pipenzoTicketEtagsV1Schema,
+    /** See `pipenzoTicketRecordV1Schema.updatedAt` (issue #116) — crosses this boundary unchanged,
+     *  it is not a filesystem path and carries no worktree-boundary concern. */
+    updatedAt: z.string().min(1).max(64).optional(),
   })
   .strict();
 
