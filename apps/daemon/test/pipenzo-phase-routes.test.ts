@@ -1,12 +1,14 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ProviderRegistry, noopLogger } from '@agent-dock/agent-runtime';
 import type { CreateSessionV2Request, RefineSpecV1 } from '@agent-dock/shared';
 import { buildServer } from '../src/server.js';
 import { SessionManager } from '../src/session-manager.js';
 import { PipenzoPhaseService } from '../src/pipenzo-phase-service.js';
+import { FileTicketStore } from '../src/pipenzo-ticket-store.js';
 import { FakeGitHubClient } from '../src/github-client-fake.js';
 import { GitHubClientError, type GitHubIssue } from '../src/github-client.js';
 import type { CommandResult, GateCommandRunner } from '../src/review-gates.js';
@@ -17,6 +19,7 @@ import type {
   PipenzoPhaseMachine,
   PipenzoTicketReconciliation,
 } from '../src/pipenzo-phase-machine.js';
+import type { TicketWorktreeStorePort } from '../src/pipenzo-worktree-lifecycle.js';
 import type { PipenzoTicketAttemptV1, PipenzoTicketRecordV1 } from '@agent-dock/shared';
 
 const TOKEN = 'test-token-pipenzo-phases';
@@ -33,6 +36,17 @@ const scratch: string[] = [];
 afterAll(async () => {
   for (const directory of scratch) await rm(directory, { recursive: true, force: true });
 });
+
+const ticketStoreDirectories: string[] = [];
+afterEach(() => {
+  for (const path of ticketStoreDirectories.splice(0)) rmSync(path, { force: true, recursive: true });
+});
+
+function newTicketStore(): FileTicketStore {
+  const directory = mkdtempSync(join(tmpdir(), 'pipenzo-phase-routes-tickets-'));
+  ticketStoreDirectories.push(directory);
+  return new FileTicketStore(directory);
+}
 
 function spec(overrides: Partial<RefineSpecV1> = {}): RefineSpecV1 {
   return {
@@ -131,6 +145,8 @@ interface Harness {
     PipenzoPhaseMachine,
     'read' | 'transition' | 'recordAttempt' | 'recordTokenUsage' | 'peekBudget'
   >;
+  /** Issue #159: local ticket-store access, so `implement()` can attach the worktree it just cut. */
+  tickets?: TicketWorktreeStorePort;
 }
 
 const TICKET_ID = '00000000-0000-4000-8000-0000000000aa';
@@ -233,6 +249,7 @@ class FakeMachine
       // this fake ever hands out is a lane-bearing transition target.
       observedLabels: [label],
       changed: true,
+      issueState: 'open',
     };
   }
 }
@@ -276,6 +293,7 @@ function buildApp(harness: Harness = {}) {
     runGit,
     env: harness.env ?? REPO_ENV,
     ...(harness.machine ? { machine: harness.machine } : {}),
+    ...(harness.tickets ? { tickets: harness.tickets } : {}),
   });
   return {
     github,
@@ -630,6 +648,68 @@ describe('POST /v2/pipenzo/implement', () => {
     });
     expect(response.statusCode).toBe(404);
     expect(response.json()).toMatchObject({ code: 'worktree_not_found' });
+  });
+
+  describe('attaching the worktree to a ticket (issue #159)', () => {
+    it('records the worktree id/path/branch onto the named ticket', async () => {
+      const tickets = newTicketStore();
+      tickets.create(ticketRecord({ lane: 'working', labels: ['pipenzo:working'] }));
+      const { app } = buildApp({ tickets });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/implement',
+        headers: auth,
+        payload: { spec: spec(), repositoryPath: REPO_PATH, provider: 'claude', ticketId: TICKET_ID },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(tickets.get(TICKET_ID)?.worktree).toEqual({
+        id: WORKTREE_ID,
+        path: WORKTREE_PATH,
+        branch: 'issue-184',
+      });
+    });
+
+    it('does not attach anything when the request carries no ticketId', async () => {
+      const tickets = newTicketStore();
+      tickets.create(ticketRecord({ lane: 'working', labels: ['pipenzo:working'] }));
+      const { app } = buildApp({ tickets });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/implement',
+        headers: auth,
+        payload: { spec: spec(), repositoryPath: REPO_PATH, provider: 'claude' },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(tickets.get(TICKET_ID)?.worktree).toBeUndefined();
+    });
+
+    it('never fails the dispatch when no ticket store was configured at all', async () => {
+      // Every test above this block omits `tickets` and must keep working exactly as before.
+      const { app } = buildApp();
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/implement',
+        headers: auth,
+        payload: { spec: spec(), repositoryPath: REPO_PATH, provider: 'claude', ticketId: TICKET_ID },
+      });
+      expect(response.statusCode).toBe(200);
+    });
+
+    it('never fails the dispatch when the named ticket does not exist', async () => {
+      const tickets = newTicketStore();
+      const { app } = buildApp({ tickets });
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/implement',
+        headers: auth,
+        payload: { spec: spec(), repositoryPath: REPO_PATH, provider: 'claude', ticketId: TICKET_ID },
+      });
+      expect(response.statusCode).toBe(200);
+    });
   });
 });
 
