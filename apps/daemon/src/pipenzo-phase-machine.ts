@@ -295,18 +295,34 @@ export class PipenzoPhaseMachineError extends Error {
    * `MAX_RATE_LIMIT_SLEEP_SECONDS` in `github-client.ts` for where this value comes from.
    */
   readonly retryAfterMs: number | undefined;
+  /**
+   * Set only on `illegal_transition` (issue #82's drag-and-drop divergence audit), and only when
+   * the internal `read()` `transition()` judges legality against actually rewrote the local
+   * record to a lane the caller's optimistic UI did not expect (`changed` true, `divergence` not
+   * `'none'`) -- see that call site's own comment. Every other thrower leaves this `undefined`; a
+   * route has no business inventing one.
+   *
+   * This is what lets the transition route distinguish *why* a drag was refused: a board dragged a
+   * card onto a lane transition that is simply illegal from the ticket's real (possibly just-
+   * reconciled) lane needs no audit entry, but a drag judged illegal only because the label had
+   * already moved out from under the local record concurrently -- a real divergence between what
+   * the optimistic UI assumed and what GitHub actually holds -- is exactly the case README's
+   * precedence rule promises an audit trail for.
+   */
+  readonly reconciliation: PipenzoTicketReconciliation | undefined;
 
   constructor(
     code: PipenzoPhaseMachineErrorCode,
     message: string,
     details: readonly string[] = [],
-    options?: { retryAfterMs?: number },
+    options?: { retryAfterMs?: number; reconciliation?: PipenzoTicketReconciliation },
   ) {
     super(message);
     this.name = 'PipenzoPhaseMachineError';
     this.code = code;
     this.details = details.slice(0, 20).map((detail) => detail.slice(0, 500));
     this.retryAfterMs = options?.retryAfterMs;
+    this.reconciliation = options?.reconciliation;
   }
 }
 
@@ -536,9 +552,15 @@ export class PipenzoPhaseMachine {
     // Reconcile before deciding, so the transition is judged against the authoritative lane.
     const current = await this.read(ticketId);
     if (!isLegalLaneTransition(current.ticket.lane, target)) {
+      // Issue #82: `current` carries whatever this `read()` found -- a rejection is only a
+      // divergence worth auditing when the read actually rewrote the local record (`changed`) to a
+      // lane the caller did not expect (`divergence !== 'none'`); the route decides that, this just
+      // hands over what it already computed rather than making the route re-fetch it.
       throw new PipenzoPhaseMachineError(
         'illegal_transition',
         `cannot move a ticket from ${current.ticket.lane} to ${target}`,
+        [],
+        { reconciliation: current },
       );
     }
 

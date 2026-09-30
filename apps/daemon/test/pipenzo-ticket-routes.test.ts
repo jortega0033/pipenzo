@@ -6,11 +6,16 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ProviderRegistry, noopLogger } from '@agent-dock/agent-runtime';
-import type { PipenzoTicketRecordV1, RefineSpecV1 } from '@agent-dock/shared';
+import type {
+  NewPipenzoAuditEntryV1,
+  PipenzoAuditEntryV1,
+  PipenzoTicketRecordV1,
+  RefineSpecV1,
+} from '@agent-dock/shared';
 import { buildServer } from '../src/server.js';
 import { SessionManager } from '../src/session-manager.js';
 import { FakeGitHubClient } from '../src/github-client-fake.js';
-import type { GitHubIssue } from '../src/github-client.js';
+import type { GitHubClient, GitHubIssue } from '../src/github-client.js';
 import { FileTicketStore } from '../src/pipenzo-ticket-store.js';
 import { PipenzoPhaseMachine } from '../src/pipenzo-phase-machine.js';
 import { PipenzoPhaseEventBus } from '../src/pipenzo-phase-events.js';
@@ -92,6 +97,54 @@ function makeIssue(labels: readonly string[]): GitHubIssue {
   };
 }
 
+/** A minimal `Pick<PipenzoAuditStore, 'append'>` fake -- the same shape
+ * `pipenzo-reconciler.test.ts`'s own `fakeAuditStore` uses, for the identical reason: exercising a
+ * route's own audit call site does not need `PipenzoAuditStore`'s real filesystem persistence,
+ * which `pipenzo-audit-store.test.ts` already covers. */
+interface FakeAuditStore {
+  readonly entries: NewPipenzoAuditEntryV1[];
+  append(entry: NewPipenzoAuditEntryV1): Promise<PipenzoAuditEntryV1>;
+}
+
+function fakeAuditStore(): FakeAuditStore {
+  const entries: NewPipenzoAuditEntryV1[] = [];
+  return {
+    entries,
+    async append(entry: NewPipenzoAuditEntryV1) {
+      entries.push(entry);
+      return entry as unknown as PipenzoAuditEntryV1;
+    },
+  };
+}
+
+/**
+ * Issue #82: wraps a real `FakeGitHubClient` so `setIssueLabels` performs the real write (foreign-
+ * label preservation and all) but *reports back* a caller-chosen label set instead of the one it
+ * actually wrote -- simulating the one race `transitionDivergenceFor` exists to catch: a second
+ * writer's response interleaving with this one's. A `Proxy` rather than a subclass because
+ * `FakeGitHubClient` holds its state in private (`#`) fields a subclass cannot see; delegating
+ * through `Reflect` with `target` as the receiver keeps every other method's `this` intact.
+ */
+function racyGitHubClient(base: FakeGitHubClient, reportedLabels: readonly string[]): GitHubClient {
+  return new Proxy(base, {
+    get(target, prop, receiver) {
+      const value = Reflect.get(target, prop, receiver) as unknown;
+      if (typeof value !== 'function') return value;
+      const fn = value as (...callArgs: unknown[]) => Promise<unknown>;
+      if (prop === 'setIssueLabels') {
+        return async (...args: unknown[]) => {
+          await fn.apply(target, args);
+          return reportedLabels;
+        };
+      }
+      // Bound to `target`, not left to ordinary method-call `this` binding: called as
+      // `proxy.getIssue(...)`, `this` would otherwise be the Proxy itself, and `FakeGitHubClient`'s
+      // `#` private fields throw on any receiver that is not the exact original instance.
+      return fn.bind(target);
+    },
+  }) as unknown as GitHubClient;
+}
+
 function buildApp(options: {
   ticket?: Partial<PipenzoTicketRecordV1>;
   issueLabels?: readonly string[];
@@ -99,6 +152,11 @@ function buildApp(options: {
   withEvents?: boolean;
   /** Issue #159: real when a test wants the abandonment-cleanup wiring exercised. */
   worktreeManager?: OwnedWorktreeManager;
+  /** Issue #82: real when a test wants the transition route's own divergence-audit call exercised. */
+  audit?: FakeAuditStore;
+  /** Issue #82: substitutes `github` below when a test needs `setIssueLabels` to report something
+   * other than what this route actually wrote (see `racyGitHubClient`). */
+  githubClient?: GitHubClient;
 } = {}) {
   const registry = new ProviderRegistry();
   const tickets = new FileTicketStore(storeDirectory());
@@ -109,7 +167,7 @@ function buildApp(options: {
   const phaseEvents = options.withEvents === false ? undefined : new PipenzoPhaseEventBus();
   const phaseMachine = new PipenzoPhaseMachine({
     tickets,
-    ...(options.withGitHub === false ? {} : { github: () => github }),
+    ...(options.withGitHub === false ? {} : { github: () => options.githubClient ?? github }),
     ...(phaseEvents ? { events: phaseEvents } : {}),
   });
   return {
@@ -126,6 +184,7 @@ function buildApp(options: {
       ...(options.worktreeManager
         ? { ticketStore: tickets, worktreeManager: options.worktreeManager }
         : {}),
+      ...(options.audit ? { pipenzoAuditStore: options.audit } : {}),
     }),
   };
 }
@@ -489,6 +548,114 @@ describe('POST /v2/pipenzo/tickets/transition', () => {
     expect(response.statusCode).toBe(409);
     expect(response.json()).toMatchObject({ code: 'illegal_transition' });
     expect(github.calls.filter((call) => call.method === 'setIssueLabels')).toHaveLength(0);
+  });
+
+  describe('board drag-and-drop divergence audit (issue #82)', () => {
+    it('does not audit a plain illegal transition -- nothing diverged, the drag just asked for an impossible move', async () => {
+      const audit = fakeAuditStore();
+      const { app } = buildApp({ audit });
+
+      // The local record and the issue agree on `queued` throughout; `queued -> ready-for-review`
+      // is simply not a legal move from there, with no concurrent label change involved.
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/tickets/transition',
+        headers: auth,
+        payload: { ticketId: TICKET_ID, label: 'pipenzo:ready-for-review' },
+      });
+
+      expect(response.statusCode).toBe(409);
+      expect(audit.entries).toHaveLength(0);
+    });
+
+    it('audits a rejected drag whose own reconciling read found the label had already moved out from under it', async () => {
+      const audit = fakeAuditStore();
+      // The local record still says `working` (that is what the board's optimistic drag saw), but
+      // the real issue has already moved to `pipenzo:queued` -- a teammate requeued it on
+      // github.com between the board's last poll and this drag. `transition()`'s own internal
+      // `read()` reconciles the local record to `queued` before judging legality, and
+      // `queued -> ready-for-review` is not a legal move -- a refusal caused by exactly the
+      // divergence issue #82 asks to be audited.
+      const { app, tickets } = buildApp({
+        ticket: { lane: 'working', labels: ['pipenzo:working'] },
+        issueLabels: ['pipenzo:queued'],
+        audit,
+      });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/tickets/transition',
+        headers: auth,
+        payload: { ticketId: TICKET_ID, label: 'pipenzo:ready-for-review' },
+      });
+
+      expect(response.statusCode).toBe(409);
+      expect(response.json()).toMatchObject({ code: 'illegal_transition' });
+      // The refusal's own reconciling read already moved the local record -- label wins, even on a
+      // request this route ultimately declines.
+      expect(tickets.get(TICKET_ID)?.lane).toBe('queued');
+      expect(audit.entries).toEqual([
+        expect.objectContaining({
+          ticketId: TICKET_ID,
+          kind: 'ticket_divergence',
+          divergence: 'lane_reconciled',
+          previousLane: 'working',
+          reconciledLane: 'queued',
+          observedLabels: ['pipenzo:queued'],
+          outcome: 'reconciled_to_label',
+        }),
+      ]);
+    });
+
+    it('audits a written transition whose own response reported a different lane than the one asked for', async () => {
+      const audit = fakeAuditStore();
+      const base = new FakeGitHubClient().seedIssue(makeIssue(['pipenzo:queued']));
+      // Simulates a second writer's label change landing between this request's own write and the
+      // response it reads back -- `setIssueLabels` performs the real write (`pipenzo:working` +
+      // the schema marker) but GitHub's own response is made to report `needs-human` instead, the
+      // one shape of race `transitionDivergenceFor` exists to catch.
+      const github = racyGitHubClient(base, ['pipenzo:needs-human', 'pipenzo:schema-v1']);
+      const { app, tickets } = buildApp({ audit, githubClient: github });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/tickets/transition',
+        headers: auth,
+        payload: { ticketId: TICKET_ID, label: 'pipenzo:working' },
+      });
+
+      expect(response.statusCode).toBe(200);
+      // The precedence rule in miniature: the response answers with what GitHub actually reported,
+      // not what this request asked to write.
+      expect(response.json()).toMatchObject({ ticket: { lane: 'needs-human' } });
+      expect(tickets.get(TICKET_ID)?.lane).toBe('needs-human');
+      expect(audit.entries).toEqual([
+        expect.objectContaining({
+          ticketId: TICKET_ID,
+          kind: 'ticket_divergence',
+          divergence: 'lane_reconciled',
+          previousLane: 'queued',
+          reconciledLane: 'needs-human',
+          observedLabels: ['pipenzo:needs-human'],
+          outcome: 'reconciled_to_label',
+        }),
+      ]);
+    });
+
+    it('writes no audit entry at all when a transition lands exactly where it was asked to', async () => {
+      const audit = fakeAuditStore();
+      const { app } = buildApp({ audit });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/tickets/transition',
+        headers: auth,
+        payload: { ticketId: TICKET_ID, label: 'pipenzo:working' },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(audit.entries).toHaveLength(0);
+    });
   });
 
   it('rejects the schema marker as a transition target', async () => {

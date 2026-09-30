@@ -421,6 +421,10 @@ async function main() {
     // Issue #159: lets the ticket-transition route look up a ticket's recorded worktree and clean
     // it up on an abandonment (working/ready-for-review -> queued).
     ticketStore,
+    // Issue #82: the same audit log `pipenzoReconciler` above already writes a poll-found
+    // divergence to, so a divergence the transition route finds (a board drag) lands in the one
+    // audit trail rather than a second one this file would have to invent.
+    pipenzoAuditStore,
     // The same lazy, per-call client boundary as the phase service and phase machine above: built
     // from a token read at call time, never retained between requests.
     pipenzoGitHubClient: () =>
