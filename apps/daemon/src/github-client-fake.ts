@@ -185,6 +185,45 @@ export class FakeGitHubClient implements GitHubClient {
   }
 
   /**
+   * Renames a label in place, matching the real client's `PATCH` semantics: the label object
+   * (same position, same "id" for this fake's purposes) keeps existing, only its `name` changes.
+   * There is deliberately no code path anywhere in this fake that deletes a repository label and
+   * re-adds one with the new name — a test asserting "rename, not delete+create" is asserting
+   * something this fake cannot fake around, because the capability to delete one was never built.
+   */
+  async renameLabel(ref: RepoRef, currentName: string, newName: string): Promise<GitHubLabel> {
+    const key = `${ref.owner}/${ref.repo}`;
+    this.#enter('renameLabel', `${key}:${currentName}->${newName}`);
+    for (const name of [currentName, newName]) {
+      if (!isPipenzoLabel(name)) {
+        throw new GitHubClientError(
+          'invalid_request',
+          `renameLabel ${key}: ${name} is outside the ${PIPENZO_LABEL_NAMESPACE} namespace`,
+        );
+      }
+    }
+    const existing = this.#labels.get(key) ?? [];
+    const current = existing.find((label) => label.name === currentName);
+    if (!current) {
+      throw new GitHubClientError('not_found', `renameLabel ${key}: no label named ${currentName}`);
+    }
+    // Matches GitHub's own 422: a distinct label already sitting on the target name blocks the
+    // rename rather than being silently merged into or overwritten by it.
+    if (existing.some((label) => label.name === newName && label !== current)) {
+      throw new GitHubClientError(
+        'invalid_request',
+        `renameLabel ${key}: ${newName} already exists`,
+      );
+    }
+    const renamed: GitHubLabel = { ...current, name: newName };
+    this.#labels.set(
+      key,
+      existing.map((label) => (label === current ? renamed : label)),
+    );
+    return renamed;
+  }
+
+  /**
    * Adds an assignee, exactly as GitHub's `POST .../assignees` does: additively, and without
    * refusing when somebody else is already there.
    *
