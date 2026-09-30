@@ -21,6 +21,7 @@ import type {
   PipenzoRefineResultV1,
   PipenzoReviewRequestV1,
   PipenzoReviewResultV1,
+  PipenzoStackApprovalDecideChildV1,
   PipenzoTicketRecordV1,
   RefineEstimateV1,
   RefineProposedSplitPartV1,
@@ -56,6 +57,7 @@ import { isBudgetExhausted, type PipenzoPhaseMachine } from './pipenzo-phase-mac
 import { evaluateDiffSizeGate } from './refine-gate.js';
 import { attachTicketWorktree, type TicketWorktreeStorePort } from './pipenzo-worktree-lifecycle.js';
 import type { PipenzoAuditStore } from './pipenzo-audit-store.js';
+import { materializeStack, type StackTicketStorePort } from './pipenzo-stack-materializer.js';
 
 /**
  * The one service the Refine / Implement / Review routes call (Pipenzo issue #184).
@@ -151,8 +153,14 @@ export interface PipenzoPhaseServiceOptions {
    * without one (every test that predates this ticket) still implements exactly as before — it just
    * has nowhere to record the worktree it cut, the same "best-effort, logged, never thrown" shape
    * `#reportRefusal`/`#reportBlownEstimate` already use for their own secondary writes.
+   *
+   * Widened to include `create` (issue #99): `acceptStack()` needs to persist one new ticket record
+   * per approved stack entry, via the exact same direct-store-write pattern `attachTicketWorktree`
+   * already established for `update` alone -- `StackTicketStorePort` is a strict superset of the
+   * narrower port every pre-#99 caller already satisfies (any `FileTicketStore` trivially has all
+   * three methods), so this widening is source-compatible with every existing caller.
    */
-  tickets?: TicketWorktreeStorePort;
+  tickets?: StackTicketStorePort;
   /** Logs a failed blown-estimate consequence without failing the review call that produced a
    * perfectly good report — see `review()`'s own comment for why. */
   logger?: Logger;
@@ -184,7 +192,7 @@ export class PipenzoPhaseService {
         | 'gradeRiskAction'
       >
     | undefined;
-  readonly #ticketWorktrees: TicketWorktreeStorePort | undefined;
+  readonly #ticketWorktrees: StackTicketStorePort | undefined;
   readonly #logger: Logger | undefined;
   readonly #audit: Pick<PipenzoAuditStore, 'append'> | undefined;
 
@@ -265,6 +273,13 @@ export class PipenzoPhaseService {
       await this.#reportRefusal(request.ticketId, result.spec);
     }
 
+    // Issue #99's own consequence of a `stack` verdict -- `refine-gate.ts`'s own doc comment names
+    // this exact gap ("not built by this ticket [#270]; #100's panel and whatever builds the
+    // stack-approval flow own it"). Same best-effort shape as the refusal branch above.
+    if (gateVerdict === 'stack' && request.ticketId) {
+      await this.#reportStackVerdict(request.ticketId, result.spec);
+    }
+
     // Issue #143: Refine is one of the three phases that spends a ticket's budget (slice 1), and
     // the one that can also park it (slice 2) -- awaited, unlike `implement()`'s own version of
     // this below, because refine() is still in its own request/response cycle when this runs.
@@ -329,6 +344,136 @@ export class PipenzoPhaseService {
         error: error instanceof Error ? error.message : String(error),
       });
     }
+  }
+
+  /**
+   * The actual consequence of a diff-size-gate `stack` verdict (issue #99): transitions the ticket
+   * to `pipenzo:awaiting-stack-approval` -- the same label #144's blown-estimate path also reaches,
+   * from a different trigger -- then posts the estimate and, when one was produced, the proposed
+   * split as a comment. Guarded against a retried `refine()` double-posting the same way
+   * `#reportRefusal`/`#reportBlownEstimate` are: `read()` first, skip every write if the ticket is
+   * already parked there.
+   *
+   * Also caches the whole `spec` onto the ticket record when a ticket store is configured -- the
+   * one write that makes `captureStack()` possible later. Nothing before this ticket ever wrote
+   * `ticket.spec` this early (the schema's own doc comment says it is otherwise "cached once
+   * Implement is dispatched from it"); a `stack` verdict is parked for a human decision that can
+   * come well after this request/response cycle ends, so the parts a human eventually reorders and
+   * accepts have to already be durable, not something only the original caller's in-memory response
+   * still holds.
+   */
+  async #reportStackVerdict(ticketId: string, spec: PipenzoRefineResultV1['spec']): Promise<void> {
+    if (!this.#machine) return;
+    try {
+      const current = await this.#machine.read(ticketId);
+      if (current.ticket.labels.includes('pipenzo:awaiting-stack-approval')) return;
+      const result = await this.#machine.transition(ticketId, 'pipenzo:awaiting-stack-approval');
+
+      if (this.#ticketWorktrees) {
+        const stored = this.#ticketWorktrees.get(ticketId);
+        if (stored) {
+          try {
+            this.#ticketWorktrees.update(ticketId, { ...stored, spec });
+          } catch (error) {
+            this.#logger?.warn('pipenzo: could not cache the proposed stack split onto its ticket', {
+              ticketId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }
+      }
+
+      const github = this.#requireGitHub();
+      const ref = parseRepoRef(result.ticket.repo);
+      await github.createIssueComment(
+        ref,
+        result.ticket.issueNumber,
+        stackProposedCommentBody(spec.estimate, spec.proposedSplit),
+      );
+    } catch (error) {
+      this.#logger?.warn('could not record a diff-size stack verdict against its ticket', {
+        ticketId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /* -------------------------------------------------------------- stack approval (issue #99) */
+
+  /**
+   * The accept half of the stack approval panel. Real materialization
+   * (`pipenzo-stack-materializer.ts`'s `materializeStack`) followed by two secondary writes --
+   * recording the new children onto the parent's own `stack.childIds`, and a best-effort acceptance
+   * comment -- neither of which un-does or hides the real GitHub issues and worktrees already
+   * created if either one fails. See `materializeStack`'s own doc comment for the partial-failure
+   * contract this method's caller (the stack-approval route) reports on `StackMaterializationError`.
+   */
+  async acceptStack(
+    ticketId: string,
+    orderedParts: readonly RefineProposedSplitPartV1[],
+    repositoryPath: string,
+  ): Promise<PipenzoStackApprovalDecideChildV1[]> {
+    if (!this.#machine || !this.#ticketWorktrees) {
+      throw new Error('accepting a stack requires both a phase machine and a ticket store to be configured');
+    }
+    const current = await this.#machine.read(ticketId);
+    const parentTicket = current.ticket;
+    const github = this.#requireGitHub();
+    const ref = parseRepoRef(parentTicket.repo);
+
+    const children = await materializeStack({
+      parentTicket,
+      repositoryPath,
+      orderedParts,
+      github,
+      repoRef: ref,
+      worktrees: this.#worktrees,
+      tickets: this.#ticketWorktrees,
+    });
+
+    try {
+      this.#ticketWorktrees.update(ticketId, {
+        ...parentTicket,
+        stack: { ...parentTicket.stack, childIds: children.map((child) => child.ticketId) },
+      });
+    } catch (error) {
+      this.#logger?.warn(
+        'pipenzo: stack materialized but the parent ticket could not be recorded as a container',
+        { ticketId, error: error instanceof Error ? error.message : String(error) },
+      );
+    }
+
+    try {
+      await github.createIssueComment(ref, parentTicket.issueNumber, stackAcceptedCommentBody(children));
+    } catch (error) {
+      this.#logger?.warn('pipenzo: stack materialized but the acceptance comment could not be posted', {
+        ticketId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    return children;
+  }
+
+  /**
+   * The reject half. Unlike `#reportRefusal`/`#reportBlownEstimate`/`acceptStack`'s own trailing
+   * comment, this comment is **not** swallowed on failure: it is not a secondary bookkeeping write
+   * alongside an already-complete action, it is the entire visible content of a reject decision --
+   * the issue's own text requires "Reject with reason posted to issue," and a reject whose comment
+   * silently failed to post would leave a human's stated reason nowhere a repository maintainer
+   * could ever see it. The ticket stays on `pipenzo:awaiting-stack-approval` either way (there is no
+   * lane to move it to on a reject -- see `pipenzo-stack-materializer.ts`'s own module comment on why
+   * no new label exists for this), so a caller whose comment post threw can simply tell the human it
+   * failed and let them retry: nothing here has moved the ticket anywhere a retry would double up.
+   */
+  async rejectStack(ticketId: string, reason: string): Promise<void> {
+    if (!this.#machine) {
+      throw new Error('rejecting a stack requires a phase machine to be configured');
+    }
+    const current = await this.#machine.read(ticketId);
+    const github = this.#requireGitHub();
+    const ref = parseRepoRef(current.ticket.repo);
+    await github.createIssueComment(ref, current.ticket.issueNumber, stackRejectedCommentBody(reason));
   }
 
   /* ------------------------------------------------------------- implement */
@@ -1063,6 +1208,69 @@ export function refusalCommentBody(
     'Parked in `pipenzo:needs-pre-scoping`. Nothing was written and no runs will be spent until a person re-scopes it.',
   );
   return lines.join('\n');
+}
+
+/** Posted when `#reportStackVerdict` first parks a ticket on `pipenzo:awaiting-stack-approval` from
+ * a Refine-time `stack` verdict (issue #99) -- the sibling of `refusalCommentBody` above and
+ * `blownEstimateCommentBody` below, for the third trigger of that same label. */
+export function stackProposedCommentBody(
+  estimate: RefineEstimateV1,
+  proposedSplit?: readonly RefineProposedSplitPartV1[],
+): string {
+  const lines = [
+    `This ticket's diff is estimated at **${estimate.changedLines}** changed lines across **${estimate.filesTouched}** files -- over the one-PR budget, but it layers cleanly into a dependency-ordered stack.`,
+  ];
+  if (proposedSplit && proposedSplit.length > 0) {
+    lines.push(
+      '',
+      `Proposed split · ${proposedSplit.length} ${proposedSplit.length === 1 ? 'ticket' : 'tickets'}, in this order:`,
+    );
+    proposedSplit.forEach((part, index) => {
+      lines.push(
+        `${index + 1}. ${part.summary} (≈${part.changedLines} lines, ${part.filesTouched} files)`,
+      );
+    });
+    lines.push(
+      '',
+      'Parked in `pipenzo:awaiting-stack-approval` for a human to accept, reorder, or reject this split.',
+    );
+  } else {
+    lines.push(
+      '',
+      'Parked in `pipenzo:awaiting-stack-approval` -- no proposed split was generated for it yet.',
+    );
+  }
+  return lines.join('\n');
+}
+
+/** Posted by `acceptStack()` once every child ticket in the approved order has been materialized. */
+export function stackAcceptedCommentBody(
+  children: readonly { readonly issueNumber: number; readonly title: string }[],
+): string {
+  const lines = [
+    `Stack accepted -- ${children.length} child ${children.length === 1 ? 'ticket' : 'tickets'} created, in dependency order:`,
+    '',
+  ];
+  children.forEach((child, index) => {
+    lines.push(`${index + 1}. #${child.issueNumber} -- ${child.title}`);
+  });
+  lines.push(
+    '',
+    'This ticket is now a container; restacking after a merge is GitHub’s own job (`gh stack`).',
+  );
+  return lines.join('\n');
+}
+
+/** Posted by `rejectStack()`, mandatory reason inline -- see that method's own doc comment for why
+ * this particular comment is never best-effort. */
+export function stackRejectedCommentBody(reason: string): string {
+  return [
+    'Stack proposal rejected.',
+    '',
+    reason,
+    '',
+    'The ticket stays in `pipenzo:awaiting-stack-approval` -- no worktree was created and nothing retries on its own.',
+  ].join('\n');
 }
 
 /**

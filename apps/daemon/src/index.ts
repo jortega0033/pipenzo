@@ -40,6 +40,7 @@ import { PublishNonceGate } from './publish-nonce-gate.js';
 import { PipenzoPhaseMachine } from './pipenzo-phase-machine.js';
 import { MediumApprovalStore } from './medium-approval-store.js';
 import { HighApprovalStore } from './high-approval-store.js';
+import { StackApprovalStore } from './stack-approval-store.js';
 import { PipenzoPhaseEventBus } from './pipenzo-phase-events.js';
 import { PipenzoCrashRecovery } from './pipenzo-crash-recovery.js';
 import { PipenzoReconciler } from './pipenzo-reconciler.js';
@@ -368,6 +369,13 @@ async function main() {
   // restart even in principle -- a HIGH decision is never revisited once made.
   const highApprovalStore = new HighApprovalStore();
 
+  // The stack approval panel's own approval store (issue #99). In-process and per-daemon-lifetime
+  // like `highApprovalStore` above -- a pending stack proposal that outlives a daemon restart is
+  // recoverable from the ticket's own `pipenzo:awaiting-stack-approval` label and cached `spec
+  // .proposedSplit` (a fresh `captureStack` call re-reads both), so there is nothing this in-memory
+  // store needs to persist across a restart either.
+  const stackApprovalStore = new StackApprovalStore();
+
   const app = buildServer({
     registry,
     sessionManager,
@@ -385,6 +393,7 @@ async function main() {
     phaseEvents,
     mediumApprovalStore,
     highApprovalStore,
+    stackApprovalStore,
     crashRecovery,
     connectedRepos,
     repoCheckouts,
