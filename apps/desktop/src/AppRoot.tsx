@@ -4,6 +4,7 @@ import { createDemoBridge } from './demo-bridge.js';
 import { clearBridgeOverride, getBridge, setBridgeOverride } from './bridge.js';
 import { SyncStatusPill } from './components/primitives/SyncStatusPill.js';
 import { ToastStack, useToastStack } from './components/primitives/Toast.js';
+import { ThemeProvider } from './theme.js';
 import { ConnectionHealthBanner } from './pipenzo/ConnectionHealthBanner.js';
 import { ConnectScreen } from './pipenzo/ConnectScreen.js';
 import { EnvironmentCredentialBanner } from './pipenzo/EnvironmentCredentialBanner.js';
@@ -41,7 +42,14 @@ export function AppRoot() {
     setInstanceKey((key) => key + 1);
   }, []);
 
-  return <PipenzoStartup key={instanceKey} {...{ demoMode, enterDemoMode, exitDemoMode }} />;
+  // Outside the `key`-remounted subtree so a demo-mode toggle can't reset or flicker the applied
+  // theme -- ThemeProvider reads its persisted preference once, at this outer mount, not once per
+  // bridge swap.
+  return (
+    <ThemeProvider>
+      <PipenzoStartup key={instanceKey} {...{ demoMode, enterDemoMode, exitDemoMode }} />
+    </ThemeProvider>
+  );
 }
 
 /**

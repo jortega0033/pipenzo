@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PipenzoTicketViewV1 } from '@agent-dock/shared';
 import { clearBridgeOverride, setBridgeOverride } from '../../src/bridge.js';
 import { PipenzoAppShell } from '../../src/pipenzo/PipenzoAppShell.js';
+import { ThemeProvider } from '../../src/theme.js';
 
 const REPO = 'jortega0033/pipenzo';
 
@@ -144,7 +145,11 @@ describe('PipenzoAppShell', () => {
       listProvidersV2: vi.fn().mockResolvedValue([]),
       disconnectGitHub: vi.fn(),
     } as never);
-    const { container } = render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+    const { container } = render(
+      <ThemeProvider>
+        <PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />
+      </ThemeProvider>,
+    );
 
     expect(
       await screen.findByText(/Reading open issues from/),
@@ -187,7 +192,11 @@ describe('PipenzoAppShell', () => {
       listProvidersV2: vi.fn().mockResolvedValue([]),
       disconnectGitHub: vi.fn(),
     } as never);
-    const { container } = render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+    const { container } = render(
+      <ThemeProvider>
+        <PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />
+      </ThemeProvider>,
+    );
 
     await waitFor(() => expect(container.querySelector('.load-line')).toBeInTheDocument());
     expect(container.querySelector('.load-line')).toHaveTextContent('your connected repos');
@@ -199,7 +208,11 @@ describe('PipenzoAppShell', () => {
 
   it('renders the board by default, with Board active in the sidebar', async () => {
     installBridge();
-    render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+    render(
+      <ThemeProvider>
+        <PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />
+      </ThemeProvider>,
+    );
 
     const board = await screen.findByRole('button', { name: 'Board' });
     expect(board.className).toBe('nav-item active');
@@ -211,7 +224,11 @@ describe('PipenzoAppShell', () => {
 
   it('navigates to Settings and back on nav-item clicks, mounting a different screen each time', async () => {
     installBridge();
-    render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+    render(
+      <ThemeProvider>
+        <PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />
+      </ThemeProvider>,
+    );
     await screen.findByText('Queued');
 
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
@@ -234,7 +251,11 @@ describe('PipenzoAppShell', () => {
         makeTicket({ ticketId: 'b', issueNumber: 43, lane: 'working' }),
       ],
     });
-    const { container } = render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+    const { container } = render(
+      <ThemeProvider>
+        <PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />
+      </ThemeProvider>,
+    );
 
     expect(await screen.findByText('Fix the thing')).toBeInTheDocument();
     expect(screen.getByText('#42')).toBeInTheDocument();
@@ -251,7 +272,11 @@ describe('PipenzoAppShell', () => {
         makeTicket({ ticketId: 'c', issueNumber: 44, lane: 'working', phase: 'refine' }),
       ],
     });
-    render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+    render(
+      <ThemeProvider>
+        <PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />
+      </ThemeProvider>,
+    );
 
     expect(await screen.findByText('implementing')).toBeInTheDocument();
     expect(screen.getByText('reviewing')).toBeInTheDocument();
@@ -274,7 +299,11 @@ describe('PipenzoAppShell', () => {
         }),
       ],
     });
-    const { container } = render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+    const { container } = render(
+      <ThemeProvider>
+        <PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />
+      </ThemeProvider>,
+    );
 
     expect(await screen.findByText(/Waiting — file overlap with #94\./)).toBeInTheDocument();
     expect(screen.getByText('stdio-mcp-connection.ts')).toBeInTheDocument();
@@ -293,7 +322,11 @@ describe('PipenzoAppShell', () => {
         makeTicket({ ticketId: 'a', issueNumber: 94, lane: 'working', concurrency: { state: 'running' } }),
       ],
     });
-    const { container } = render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+    const { container } = render(
+      <ThemeProvider>
+        <PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />
+      </ThemeProvider>,
+    );
 
     await screen.findByText('#94');
     expect(container.querySelector('.card.held')).not.toBeInTheDocument();
@@ -311,7 +344,11 @@ describe('PipenzoAppShell', () => {
         }),
       ],
     });
-    render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+    render(
+      <ThemeProvider>
+        <PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />
+      </ThemeProvider>,
+    );
 
     expect(await screen.findByText('ready for review')).toBeInTheDocument();
     expect(screen.getByText('issue-42')).toBeInTheDocument();
@@ -324,7 +361,11 @@ describe('PipenzoAppShell', () => {
         makeTicket({ ticketId: 'b', issueNumber: 43, lane: 'needs-human' }),
       ],
     });
-    const { container } = render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+    const { container } = render(
+      <ThemeProvider>
+        <PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />
+      </ThemeProvider>,
+    );
 
     await screen.findByText('#42');
     expect(container.querySelectorAll('.chip')).toHaveLength(0);
@@ -333,7 +374,11 @@ describe('PipenzoAppShell', () => {
 
   it('shows the current page as the crumb trail', async () => {
     installBridge();
-    render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+    render(
+      <ThemeProvider>
+        <PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />
+      </ThemeProvider>,
+    );
     await screen.findByText('Queued');
 
     expect(document.querySelector('.crumbs .cur')?.textContent).toBe('Board');
@@ -347,7 +392,11 @@ describe('PipenzoAppShell', () => {
   it('renders the sync pill in the header and wires its refresh to the caller', async () => {
     installBridge();
     const onRefreshSync = vi.fn();
-    render(<PipenzoAppShell sync={SYNC} onRefreshSync={onRefreshSync} />);
+    render(
+      <ThemeProvider>
+        <PipenzoAppShell sync={SYNC} onRefreshSync={onRefreshSync} />
+      </ThemeProvider>,
+    );
     await screen.findByText('Queued');
 
     expect(screen.getByText('Synced 12s ago')).toBeInTheDocument();
@@ -357,7 +406,11 @@ describe('PipenzoAppShell', () => {
 
   it('does not flash the demo AgentDock shell -- nothing here ever renders `<App>`', async () => {
     installBridge();
-    render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+    render(
+      <ThemeProvider>
+        <PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />
+      </ThemeProvider>,
+    );
     await waitFor(() => expect(screen.getByRole('button', { name: 'Board' })).toBeInTheDocument());
 
     expect(screen.queryByRole('heading', { name: 'AgentDock' })).not.toBeInTheDocument();
@@ -451,7 +504,11 @@ describe('PipenzoAppShell', () => {
     const bridge = installImplementBridge([
       makeTicket({ ticketId: 'a', issueNumber: 42, lane: 'queued', title: 'Fix the thing' }),
     ]);
-    render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+    render(
+      <ThemeProvider>
+        <PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />
+      </ThemeProvider>,
+    );
 
     fireEvent.click(await screen.findByRole('button', { name: /Fix the thing/ }));
 
@@ -466,7 +523,11 @@ describe('PipenzoAppShell', () => {
     installImplementBridge([
       makeTicket({ ticketId: 'a', issueNumber: 42, lane: 'queued', title: 'Fix the thing' }),
     ]);
-    render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+    render(
+      <ThemeProvider>
+        <PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />
+      </ThemeProvider>,
+    );
 
     fireEvent.keyDown(await screen.findByRole('button', { name: /Fix the thing/ }), { key: 'Enter' });
 
@@ -480,7 +541,11 @@ describe('PipenzoAppShell', () => {
       makeTicket({ ticketId: 'c', issueNumber: 44, lane: 'needs-human', title: 'Parked' }),
       makeTicket({ ticketId: 'd', issueNumber: 45, lane: 'ready-for-review', title: 'Done' }),
     ]);
-    render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+    render(
+      <ThemeProvider>
+        <PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />
+      </ThemeProvider>,
+    );
 
     fireEvent.click(await screen.findByText('Already running'));
 
@@ -506,7 +571,11 @@ describe('PipenzoAppShell', () => {
     const bridge = installImplementBridge([
       makeTicket({ ticketId: 'a', issueNumber: 42, lane: 'queued', title: 'Fix the thing' }),
     ]);
-    render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+    render(
+      <ThemeProvider>
+        <PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />
+      </ThemeProvider>,
+    );
 
     fireEvent.click(await screen.findByRole('button', { name: /Fix the thing/ }));
     await screen.findByRole('button', { name: 'Refine ticket' });
@@ -571,7 +640,11 @@ describe('PipenzoAppShell', () => {
       listProvidersV2: vi.fn().mockResolvedValue([]),
       disconnectGitHub: vi.fn(),
     } as never);
-    render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+    render(
+      <ThemeProvider>
+        <PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />
+      </ThemeProvider>,
+    );
 
     expect(
       await screen.findByText(/Couldn.t read the ticket list from the local daemon/),
@@ -605,7 +678,11 @@ describe('PipenzoAppShell', () => {
           makeTicket({ ticketId: 'c', repo: PZ, lane: 'needs-human' }),
         ],
       });
-      render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+      render(
+      <ThemeProvider>
+        <PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />
+      </ThemeProvider>,
+    );
 
       const trigger = await screen.findByRole('button', { name: new RegExp(AD) });
       expect(trigger).toHaveTextContent('2 open · 2 running');
@@ -621,7 +698,11 @@ describe('PipenzoAppShell', () => {
         connectedRepos: [AD, PZ],
         tickets: [makeTicket({ ticketId: 'a', repo: PZ, lane: 'queued' })],
       });
-      render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+      render(
+      <ThemeProvider>
+        <PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />
+      </ThemeProvider>,
+    );
 
       fireEvent.click(await screen.findByRole('button', { name: new RegExp(AD) }));
       fireEvent.click(screen.getByRole('button', { name: new RegExp(PZ) }));
@@ -632,7 +713,11 @@ describe('PipenzoAppShell', () => {
 
     it('"Manage repos…" routes to Settings and opens the same picker as first-run', async () => {
       installBridge({ connectedRepos: [AD, PZ] });
-      render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+      render(
+      <ThemeProvider>
+        <PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />
+      </ThemeProvider>,
+    );
 
       fireEvent.click(await screen.findByRole('button', { name: new RegExp(AD) }));
       fireEvent.click(screen.getByRole('button', { name: /Manage repos/ }));
@@ -647,7 +732,11 @@ describe('PipenzoAppShell', () => {
     /** A plain "Settings" nav click must never inherit an earlier "Manage repos…" click's open picker. */
     it('does not reopen the picker on an ordinary Settings nav click', async () => {
       installBridge({ connectedRepos: [AD, PZ] });
-      render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+      render(
+      <ThemeProvider>
+        <PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />
+      </ThemeProvider>,
+    );
 
       fireEvent.click(await screen.findByRole('button', { name: new RegExp(AD) }));
       fireEvent.click(screen.getByRole('button', { name: /Manage repos/ }));
@@ -665,7 +754,11 @@ describe('PipenzoAppShell', () => {
 
     it('does not render a switcher trigger while nothing is connected', async () => {
       installBridge({ connectedRepos: [] });
-      render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+      render(
+      <ThemeProvider>
+        <PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />
+      </ThemeProvider>,
+    );
       await screen.findByText('Queued');
 
       expect(screen.queryByRole('button', { name: /open ·/ })).not.toBeInTheDocument();
@@ -685,7 +778,11 @@ describe('PipenzoAppShell', () => {
       installBridge({
         tickets: [makeTicket({ ticketId: 'a', issueNumber: 42, lane: 'queued', title: 'Fix the thing' })],
       });
-      render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+      render(
+      <ThemeProvider>
+        <PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />
+      </ThemeProvider>,
+    );
       await screen.findByText('Fix the thing');
 
       fireEvent.keyDown(document, { key: 'k', ctrlKey: true });
@@ -701,7 +798,11 @@ describe('PipenzoAppShell', () => {
 
     it('lists the real connected repos, and selecting one switches the active repo and opens Board', async () => {
       installBridge({ connectedRepos: [AD, PZ] });
-      render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+      render(
+      <ThemeProvider>
+        <PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />
+      </ThemeProvider>,
+    );
       // Land on Settings first, so selecting the repo in the palette is a real change of view too.
       fireEvent.click(await screen.findByRole('button', { name: 'Settings' }));
       await screen.findByText('Connected repos');

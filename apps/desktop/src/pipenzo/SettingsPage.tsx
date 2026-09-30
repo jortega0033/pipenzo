@@ -1,4 +1,5 @@
 import { AccountPanel } from './AccountPanel.js';
+import { AppearancePanel } from './AppearancePanel.js';
 import { ConnectedReposPanel } from './ConnectedReposPanel.js';
 import { LessonsPanel } from './LessonsPanel.js';
 
@@ -64,6 +65,7 @@ export function SettingsPage({
         </div>
         <div className="col">
           <AccountPanel />
+          <AppearancePanel />
         </div>
       </div>
     </div>

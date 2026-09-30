@@ -2,11 +2,23 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { clearBridgeOverride, setBridgeOverride } from '../../src/bridge.js';
 import { SettingsPage } from '../../src/pipenzo/SettingsPage.js';
+import { ThemeProvider } from '../../src/theme.js';
 
 afterEach(() => {
   cleanup();
   clearBridgeOverride();
 });
+
+// Issue #155: SettingsPage now hosts AppearancePanel, which reads the shared ThemeProvider
+// context -- every render here needs one, the same way App-level rendering gets it from
+// AppRoot.tsx.
+function renderSettingsPage() {
+  return render(
+    <ThemeProvider>
+      <SettingsPage />
+    </ThemeProvider>,
+  );
+}
 
 /** Every method the panels this page hosts reach for on mount, and nothing else. */
 function installBridge() {
@@ -30,7 +42,7 @@ function installBridge() {
 describe('SettingsPage', () => {
   it('opens with the per-machine framing note, above everything else', async () => {
     installBridge();
-    const { container } = render(<SettingsPage />);
+    const { container } = renderSettingsPage();
     await screen.findByText('octocat/hello-world');
 
     const note = container.querySelector('.sec-note');
@@ -42,7 +54,7 @@ describe('SettingsPage', () => {
 
   it('lays the panels out in the two-column grid', async () => {
     installBridge();
-    const { container } = render(<SettingsPage />);
+    const { container } = renderSettingsPage();
     await screen.findByText('octocat/hello-world');
 
     // Both columns are occupied now that #130's Account panel has landed beside #125's repo list.
@@ -56,7 +68,7 @@ describe('SettingsPage', () => {
 
   it('hosts the connected-repos panel', async () => {
     installBridge();
-    render(<SettingsPage />);
+    renderSettingsPage();
 
     expect(await screen.findByText('Connected repos')).toBeInTheDocument();
     expect(await screen.findByText('octocat/hello-world')).toBeInTheDocument();
@@ -64,7 +76,7 @@ describe('SettingsPage', () => {
 
   it('hosts the account panel', async () => {
     installBridge();
-    render(<SettingsPage />);
+    renderSettingsPage();
 
     expect(await screen.findByText('Account')).toBeInTheDocument();
     expect(await screen.findByRole('button', { name: /disconnect github/i })).toBeInTheDocument();
@@ -72,7 +84,7 @@ describe('SettingsPage', () => {
 
   it('hosts the lesson-memory panel, stacked below connected repos in the same column', async () => {
     installBridge();
-    const { container } = render(<SettingsPage />);
+    const { container } = renderSettingsPage();
     await screen.findByText('octocat/hello-world');
 
     expect(await screen.findByText('Lesson memory')).toBeInTheDocument();
