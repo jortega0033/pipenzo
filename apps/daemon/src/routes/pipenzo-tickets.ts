@@ -108,6 +108,11 @@ function invalid(reply: FastifyReply, what: string): void {
  * path can only reach the wire if somebody adds it here on purpose. `pipenzoTicketViewV1Schema` is
  * `.strict()` and would reject the extra key as a second line of defence, but a route that
  * 500s on a leak is a worse outcome than one that never assembles it — this is the first line.
+ *
+ * Also the one place `refusal` (issue #469) is derived, rather than copied off the record: the
+ * record's `spec` gets cached early for a `stack` verdict too (`#reportStackVerdict`), and that is
+ * not a refusal — so `refusal` is only assembled when the label itself says
+ * `pipenzo:needs-pre-scoping` *and* a cached `spec` actually exists, never from `spec` alone.
  */
 function toTicketView(ticket: PipenzoTicketRecordV1): PipenzoTicketViewV1 {
   return {
@@ -124,6 +129,14 @@ function toTicketView(ticket: PipenzoTicketRecordV1): PipenzoTicketViewV1 {
     stack: ticket.stack,
     ...(ticket.worktree
       ? { worktree: { id: ticket.worktree.id, branch: ticket.worktree.branch } }
+      : {}),
+    ...(ticket.labels.includes('pipenzo:needs-pre-scoping') && ticket.spec
+      ? {
+          refusal: {
+            estimate: ticket.spec.estimate,
+            ...(ticket.spec.proposedSplit ? { proposedSplit: ticket.spec.proposedSplit } : {}),
+          },
+        }
       : {}),
     attempts: ticket.attempts,
     budget: ticket.budget,

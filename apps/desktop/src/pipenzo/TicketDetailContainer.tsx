@@ -3,6 +3,7 @@ import { ActivityStreamPanel } from './ActivityStreamPanel.js';
 import { CumulativeRiskStrip } from './CumulativeRiskStrip.js';
 import { ModelRoutingBlock } from './ModelRoutingBlock.js';
 import { PhaseStepperPanel } from './PhaseStepperPanel.js';
+import { RefusalPanel } from './RefusalPanel.js';
 import { SubscriptionHeadroomBlock } from './SubscriptionHeadroomBlock.js';
 import { TicketDetailScreen } from './TicketDetailScreen.js';
 import { TicketSwitcherPanel } from './TicketSwitcherPanel.js';
@@ -47,6 +48,31 @@ import { TicketSwitcherPanel } from './TicketSwitcherPanel.js';
  *   comment: resolving a step click into an actual scroll/highlight in the stream below needs a
  *   real anchor this screen does not build yet, so the callback is left unset rather than wired to
  *   a no-op that would look like it did something.
+ *
+ * ## `RefusalPanel` (issue #469), and what its absence means here
+ *
+ * Renders at the top of the stream, ahead of the activity feed, for any ticket whose `labels`
+ * carry `pipenzo:needs-pre-scoping` *and* whose view carries a `refusal` block
+ * (`pipenzoTicketRefusalV1Schema`, `@agent-dock/shared`) -- both real, wire-persisted fields, never
+ * a guess. Investigating this ticket found that nothing before it ever let a refusal's
+ * estimate/tripped-threshold/proposedSplit survive past the original Refine request/response
+ * cycle: `#reportRefusal` (`pipenzo-phase-service.ts`) now caches the spec onto the ticket record
+ * the moment the diff-size gate refuses it (the same early write issue #99's `stack` verdict
+ * already made), and `toTicketView()` (`routes/pipenzo-tickets.ts`) surfaces just its
+ * `estimate`/`proposedSplit` as `refusal`.
+ *
+ * A `needs-pre-scoping` ticket with no `refusal` block is not a bug to paper over -- it is a
+ * ticket refused before this caching existed, or one whose best-effort cache write failed the same
+ * way `#reportStackVerdict`'s already can. Nothing renders in its place, the same "absent, not
+ * faked" convention every other unavailable slot on this screen already follows, rather than a
+ * placeholder that would assert a number this screen does not actually have.
+ *
+ * `onRetryRefine` is left unset, same reasoning as `runControls` above: retrying Refine needs a
+ * repository checkout, a provider and a model, none of which this container is given -- the same
+ * inputs `ImplementDialog.tsx`'s own "Refine ticket" step already asks the operator for. Omitting
+ * the callback is exactly what `RefusalPanel`'s own doc comment already sanctions for a caller
+ * without a real retry to offer; inventing one with nothing behind it would be worse than the
+ * button not existing at all.
  */
 export function TicketDetailContainer({
   ticket,
@@ -69,6 +95,14 @@ export function TicketDetailContainer({
         <SubscriptionHeadroomBlock attempts={ticket.attempts} budget={ticket.budget} />
       }
     >
+      {ticket.labels.includes('pipenzo:needs-pre-scoping') && ticket.refusal && (
+        <RefusalPanel
+          repo={ticket.repo}
+          issueNumber={ticket.issueNumber}
+          estimate={ticket.refusal.estimate}
+          proposedSplit={ticket.refusal.proposedSplit}
+        />
+      )}
       <ActivityStreamPanel ticketId={ticket.ticketId} />
     </TicketDetailScreen>
   );

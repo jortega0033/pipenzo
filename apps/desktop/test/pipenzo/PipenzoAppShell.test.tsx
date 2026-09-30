@@ -932,6 +932,62 @@ describe('PipenzoAppShell', () => {
       );
     });
 
+    /**
+     * Issue #469: `RefusalPanel.tsx` (#100) had no caller anywhere in the live app before this.
+     * `refusal` is `PipenzoTicketViewV1`'s own real, wire-persisted field
+     * (`pipenzoTicketRefusalV1Schema`) -- not data this test invents, the same shape
+     * `pipenzoListTickets`/`pipenzoTicketRead` would really carry once `#reportRefusal` has cached
+     * a ticket's declined spec onto its record.
+     */
+    it('renders RefusalPanel with real data for a needs-pre-scoping ticket that carries a cached refusal', async () => {
+      installBridge({
+        tickets: [
+          makeTicket({
+            ticketId: 'a',
+            issueNumber: 113,
+            lane: 'needs-human',
+            title: 'Replace the JSON file store with SQLite',
+            labels: ['pipenzo:needs-pre-scoping'],
+            refusal: {
+              estimate: { changedLines: 1750, filesTouched: 31, layered: false },
+              proposedSplit: [
+                { summary: 'Introduce a storage interface', changedLines: 90, filesTouched: 4 },
+              ],
+            },
+          }),
+        ],
+      });
+      render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+
+      fireEvent.click(await screen.findByText('Replace the JSON file store with SQLite'));
+
+      expect(await screen.findByText('Declined at Refine — needs pre-scoping')).toBeInTheDocument();
+      expect(screen.getByText('1,750 lines')).toBeInTheDocument();
+      expect(screen.getByText('Introduce a storage interface')).toBeInTheDocument();
+      const link = screen.getByRole('link', { name: 'Open on GitHub' });
+      expect(link).toHaveAttribute('href', `https://github.com/${REPO}/issues/113`);
+    });
+
+    it('renders no RefusalPanel for a needs-pre-scoping ticket with no cached refusal -- not available after reload, never invented', async () => {
+      installBridge({
+        tickets: [
+          makeTicket({
+            ticketId: 'a',
+            issueNumber: 114,
+            lane: 'needs-human',
+            title: 'Refused before this ticket shipped',
+            labels: ['pipenzo:needs-pre-scoping'],
+          }),
+        ],
+      });
+      render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+
+      fireEvent.click(await screen.findByText('Refused before this ticket shipped'));
+
+      await screen.findByText('Cumulative risk');
+      expect(screen.queryByText('Declined at Refine — needs pre-scoping')).not.toBeInTheDocument();
+    });
+
     it('goes back to Board from the crumb trail\'s "Board" link', async () => {
       installBridge({
         tickets: [makeTicket({ ticketId: 'a', issueNumber: 94, lane: 'working' })],

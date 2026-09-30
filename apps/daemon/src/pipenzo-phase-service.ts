@@ -312,6 +312,14 @@ export class PipenzoPhaseService {
    * issue. Guarded against a retried `refine()` double-posting the same way
    * `#reportBlownEstimate` is (#266) -- `read()` first, skip both writes if the ticket is already
    * on `pipenzo:needs-pre-scoping`.
+   *
+   * Also caches the whole `spec` onto the ticket record when a ticket store is configured (issue
+   * #469) -- the same early write `#reportStackVerdict` below already makes for a `stack` verdict,
+   * applied here for the same reason: a refusal is reported once, at Refine time, and a human may
+   * reopen this ticket's detail view long after that request/response cycle ends. Without this,
+   * `RefusalPanel.tsx` has no real data to render on anything but the original response -- see
+   * `pipenzoTicketRefusalV1Schema`'s own doc comment (`@agent-dock/shared`) for how this crosses
+   * the wire, narrowed to just `estimate`/`proposedSplit`.
    */
   /**
    * Repo-wide conventions (issue #284), read from the trusted *source* repository -- never a
@@ -340,6 +348,21 @@ export class PipenzoPhaseService {
       const current = await this.#machine.read(ticketId);
       if (current.ticket.labels.includes('pipenzo:needs-pre-scoping')) return;
       const result = await this.#machine.transition(ticketId, 'pipenzo:needs-pre-scoping');
+
+      if (this.#ticketWorktrees) {
+        const stored = this.#ticketWorktrees.get(ticketId);
+        if (stored) {
+          try {
+            this.#ticketWorktrees.update(ticketId, { ...stored, spec });
+          } catch (error) {
+            this.#logger?.warn('pipenzo: could not cache the refusal outcome onto its ticket', {
+              ticketId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }
+      }
+
       const github = this.#requireGitHub();
       const ref = parseRepoRef(result.ticket.repo);
       await github.createIssueComment(

@@ -191,6 +191,82 @@ describe('GET /v2/pipenzo/tickets', () => {
   });
 });
 
+describe('GET /v2/pipenzo/tickets — refusal outcome (issue #469)', () => {
+  it('reports refusal.estimate and refusal.proposedSplit for a needs-pre-scoping ticket with a cached spec', async () => {
+    const { app } = buildApp({
+      ticket: {
+        labels: ['pipenzo:needs-pre-scoping'],
+        spec: spec({
+          estimate: { changedLines: 1750, filesTouched: 31, layered: false },
+          proposedSplit: [{ summary: 'One part', changedLines: 90, filesTouched: 4 }],
+        }),
+      },
+      issueLabels: ['pipenzo:needs-pre-scoping'],
+    });
+
+    const response = await app.inject({ method: 'GET', url: '/v2/pipenzo/tickets', headers: auth });
+
+    expect(response.json()).toMatchObject({
+      tickets: [
+        {
+          refusal: {
+            estimate: { changedLines: 1750, filesTouched: 31, layered: false },
+            proposedSplit: [{ summary: 'One part', changedLines: 90, filesTouched: 4 }],
+          },
+        },
+      ],
+    });
+  });
+
+  it('omits refusal.proposedSplit when the cached spec never got one', async () => {
+    const { app } = buildApp({
+      ticket: {
+        labels: ['pipenzo:needs-pre-scoping'],
+        spec: spec({ estimate: { changedLines: 900, filesTouched: 40, layered: false } }),
+      },
+      issueLabels: ['pipenzo:needs-pre-scoping'],
+    });
+
+    const response = await app.inject({ method: 'GET', url: '/v2/pipenzo/tickets', headers: auth });
+
+    const body = response.json() as { tickets: Array<{ refusal?: Record<string, unknown> }> };
+    expect(body.tickets[0]?.refusal).toEqual({
+      estimate: { changedLines: 900, filesTouched: 40, layered: false },
+    });
+    expect(body.tickets[0]?.refusal).not.toHaveProperty('proposedSplit');
+  });
+
+  it('omits refusal entirely for a needs-pre-scoping ticket that predates the cache (no spec)', async () => {
+    const { app } = buildApp({
+      ticket: { labels: ['pipenzo:needs-pre-scoping'] },
+      issueLabels: ['pipenzo:needs-pre-scoping'],
+    });
+
+    const response = await app.inject({ method: 'GET', url: '/v2/pipenzo/tickets', headers: auth });
+
+    const body = response.json() as { tickets: Array<Record<string, unknown>> };
+    expect(body.tickets[0]).not.toHaveProperty('refusal');
+  });
+
+  it('never reports refusal for a cached spec that belongs to a stack verdict, not a refusal', async () => {
+    const { app } = buildApp({
+      ticket: {
+        labels: ['pipenzo:awaiting-stack-approval'],
+        spec: spec({
+          estimate: { changedLines: 300, filesTouched: 15, layered: true },
+          proposedSplit: [{ summary: 'One part', changedLines: 150, filesTouched: 7 }],
+        }),
+      },
+      issueLabels: ['pipenzo:awaiting-stack-approval'],
+    });
+
+    const response = await app.inject({ method: 'GET', url: '/v2/pipenzo/tickets', headers: auth });
+
+    const body = response.json() as { tickets: Array<Record<string, unknown>> };
+    expect(body.tickets[0]).not.toHaveProperty('refusal');
+  });
+});
+
 describe('GET /v2/pipenzo/tickets — Working lane concurrency (issue #85)', () => {
   it('reports the fixed capacity default alongside the ticket list', async () => {
     const { app } = buildApp();
