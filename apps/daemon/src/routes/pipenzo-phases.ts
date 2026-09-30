@@ -73,6 +73,10 @@ const PHASE_ERROR_STATUS: Record<PipenzoPhaseErrorCodeV1, number> = {
   // Issue #143, slice 2: the ticket's own current state (its budget is spent) preventing the
   // operation, same 409 family as workspace_untrusted/branch_failed/claimed_elsewhere above.
   budget_exhausted: 409,
+  // Issue #126: the same 429 `SessionCapacityError` already gets one layer down
+  // (`routes/sessions.ts`/`routes/v2-sessions.ts`) for the same "at capacity, try again shortly"
+  // shape -- a client's `retry` treatment of a 429 is already the right one here.
+  execution_limit_exceeded: 429,
   token_missing: 412,
   repository_not_configured: 412,
   issue_not_found: 404,
