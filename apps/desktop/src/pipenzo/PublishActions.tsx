@@ -3,7 +3,7 @@ import type { PipenzoPublishResultV1, PipenzoPullRequestInputV1 } from '@agent-d
 import { getBridge } from '../bridge.js';
 import { Button } from '../components/primitives/Button.js';
 import type { RiskLevel } from '../components/primitives/Chip.js';
-import { HighApprovalCard } from '../components/primitives/HighApproval.js';
+import { HighApprovalResolved, HighApprovalStreamCard } from '../components/primitives/HighApproval.js';
 import { MediumApprovalInline, MediumApprovalResolved } from '../components/primitives/MediumApproval.js';
 import { PreCommitment } from '../components/primitives/PreCommitment.js';
 import { useAsyncAction } from './use-async-action.js';
@@ -123,12 +123,32 @@ function ResolvedMediumLine({
  *
  * `risk` is `ReviewReportV1.risk` (`review-gates.ts`'s real classification of the diff's own
  * touched-file paths -- see that module's doc comment), threaded down through `DiffReviewHead`'s
- * `stat.risk`. HIGH never auto-allows: a HIGH-graded push or PR-open renders `HighApprovalCard`
- * first and only calls the real `publishPipenzo` bridge call from that card's own `onApprove`.
- * MEDIUM renders the lighter `MediumApprovalInline` the same way. LOW (or `risk` absent, matching
- * `DiffReviewStat.risk`'s own "nothing to report" convention) pushes directly, exactly as before
- * this ticket -- an approval step for a diff nothing has flagged would be friction this rule does
- * not ask for.
+ * `stat.risk`. HIGH never auto-allows: a HIGH-graded push or PR-open renders `HighApprovalStreamCard`
+ * (issue #98, `TicketDetail.dc.html`'s own "inline at the end of the stream" HIGH card) first and
+ * only calls the real `publishPipenzo` bridge call from that card's own `onApprove` -- and its
+ * Reject stays disabled until a human has typed a non-empty reason, never a placeholder attribute
+ * alone (see `HighApprovalStreamCard`'s own doc comment). MEDIUM renders the lighter
+ * `MediumApprovalInline` the same way. LOW (or `risk` absent, matching `DiffReviewStat.risk`'s own
+ * "nothing to report" convention) pushes directly, exactly as before this ticket -- an approval
+ * step for a diff nothing has flagged would be friction this rule does not ask for.
+ *
+ * ## The HIGH full publish-gate card's real daemon wiring (issue #98)
+ *
+ * Mirrors #97's own MEDIUM wiring below, minus anything Undo-shaped (HIGH never offers one, full
+ * stop): opening the card captures a real pending record (`captureHighApproval`) over
+ * `ticketId`/`branch` *before* the card is even shown, the same "block run" property MEDIUM's own
+ * capture buys. Approve calls `decideHighApproval('approve')`, which resets the cumulative-risk
+ * strip to zero daemon-side (the asymmetric reset rule's HIGH half), and then runs the real
+ * push/PR-open exactly as before. Reject calls `decideHighApproval('reject', reason)` with the
+ * card's own guaranteed-non-empty reason and runs nothing -- the gated action never executes. Unlike
+ * MEDIUM, a HIGH decision (approve *or* reject) always renders its own resolved
+ * `HighApprovalResolved` card in place of the plain button row for the rest of this component's
+ * life -- issue #98's own "both resolved states" -- rather than reverting to the ordinary button on
+ * reject the way MEDIUM does; matches `TicketDetail.dc.html`'s `showApprovalAllowed`/
+ * `showApprovalRejected` blocks, which are terminal states, not a return to the pending card. A
+ * caller with no `ticketId` still gets the full card, the mandatory-reason enforcement, and both
+ * resolved states -- only the two real bridge calls are skipped, exactly like MEDIUM's own
+ * no-`ticketId` fallback.
  *
  * ## The MEDIUM inline approval flow's real daemon wiring (issue #97)
  *
@@ -205,6 +225,17 @@ export function PublishActions({
   // `ResolvedMediumLine` in place of the plain button row for that kind, for the rest of this
   // component's life (there is no "un-resolve").
   const [resolved, setResolved] = useState<{ push?: string; open_pr?: string }>({});
+  // The HIGH gate's own pending-record ref (issue #98), the same call-order-blocking shape as
+  // `captureRef` above -- a separate ref, not a shared one, since a HIGH `approvalId` and a MEDIUM
+  // `snapshotId` are never interchangeable (see `pipenzo-high-approval-v1.ts`'s own doc comment).
+  const highCaptureRef = useRef<{ push?: Promise<string | undefined>; open_pr?: Promise<string | undefined> }>({});
+  // Which outcome a HIGH-gated action resolved to, per kind -- renders `HighApprovalResolved` in
+  // place of the plain button row for the rest of this component's life, for *either* outcome
+  // (issue #98's own "both resolved states"; MEDIUM only ever does this for an allow).
+  const [resolvedHigh, setResolvedHigh] = useState<{
+    push?: 'approved' | 'rejected';
+    open_pr?: 'approved' | 'rejected';
+  }>({});
 
   const remoteName = remote ?? 'origin';
 
@@ -243,16 +274,29 @@ export function PublishActions({
       : Promise.resolve(undefined);
   };
 
+  /** Opens the HIGH card for `kind` and, when `ticketId` is given, starts its real pending-record
+   * capture (issue #98) -- same reasoning as `openMediumGate` above: the card renders immediately,
+   * and `approveHigh`/`rejectHigh` `await highCaptureRef.current[kind]` themselves before deciding. */
+  const openHighGate = (kind: 'push' | 'open_pr') => {
+    setGating(kind);
+    highCaptureRef.current[kind] = ticketId
+      ? getBridge()
+          .captureHighApproval({ ticketId, worktreeId, branch })
+          .then(({ approvalId }) => approvalId)
+          .catch(() => undefined)
+      : Promise.resolve(undefined);
+  };
+
   const clickPush = () => {
     if (push.status === 'error') return void push.retry();
-    if (risk === 'high') return setGating('push');
+    if (risk === 'high') return openHighGate('push');
     if (risk === 'medium') return openMediumGate('push');
     runPush();
   };
 
   const clickOpenPr = () => {
     if (openPr.status === 'error') return void openPr.retry();
-    if (risk === 'high') return setGating('open_pr');
+    if (risk === 'high') return openHighGate('open_pr');
     if (risk === 'medium') return openMediumGate('open_pr');
     runOpenPr();
   };
@@ -299,6 +343,49 @@ export function PublishActions({
     });
   };
 
+  /** A human clicked Approve on `kind`'s HIGH card (issue #98). Awaits the real capture, records
+   * the real approval outcome (when one was really captured against a ticket -- this also resets
+   * the cumulative-risk strip to zero daemon-side), then runs the action regardless of whether that
+   * recording succeeded, same reasoning `allowMedium` gives. Always renders the resolved "Approved"
+   * card afterward, with or without a `ticketId` -- only the two real bridge calls are conditional
+   * on one. */
+  const approveHigh = (kind: 'push' | 'open_pr') => {
+    setGating(null);
+    setResolvedHigh((s) => ({ ...s, [kind]: 'approved' }));
+    void (highCaptureRef.current[kind] ?? Promise.resolve(undefined))
+      .then((id) => {
+        if (!ticketId || !id) return;
+        return getBridge()
+          .decideHighApproval({ ticketId, approvalId: id, decision: 'approve' })
+          .catch(() => {
+            // Recording the outcome failed -- the human already approved, and there is nothing a
+            // failed risk-score write should block; the push/PR-open below still runs.
+          });
+      })
+      .finally(() => (kind === 'push' ? runPush() : runOpenPr()));
+  };
+
+  /** A human clicked Reject on `kind`'s HIGH card, with a reason `HighApprovalStreamCard` itself
+   * already guarantees is non-empty (its Reject button is disabled until then). The gated action
+   * never runs -- there is no code path from here to `runPush`/`runOpenPr`, matching
+   * `rejectMedium`'s own contract. Always renders the resolved "Rejected" card afterward (issue
+   * #98's own "both resolved states"), unlike MEDIUM's reject, which reverts to the plain button
+   * row -- HIGH's reject is a terminal outcome the human should keep seeing, not something to
+   * silently forget happened. */
+  const rejectHigh = (kind: 'push' | 'open_pr', reasonText: string) => {
+    setGating(null);
+    setResolvedHigh((s) => ({ ...s, [kind]: 'rejected' }));
+    void (highCaptureRef.current[kind] ?? Promise.resolve(undefined)).then((id) => {
+      if (!ticketId || !id) return;
+      void getBridge()
+        .decideHighApproval({ ticketId, approvalId: id, decision: 'reject', reason: reasonText })
+        .catch(() => {
+          // Nothing left to do -- the action already did not run, which is Reject's whole
+          // contract; a daemon-side bookkeeping failure here has no user-visible consequence.
+        });
+    });
+  };
+
   // The pre-commitment record (issue #157's own approval cards both require one): what publishing
   // actually promises, in terms `publish-service.ts` genuinely holds -- no force-push, no branch
   // deletion, a rejected non-fast-forward changes nothing (see that module's own `#push` doc
@@ -335,16 +422,13 @@ export function PublishActions({
       )}
       <div className="stack">
         {gating === 'push' && risk === 'high' ? (
-          <HighApprovalCard
-            kindLine={`push · publish gate · ${branch} → ${remoteName}`}
+          <HighApprovalStreamCard
+            sub={`external_side_effect · publish gate · ${branch} → ${remoteName}`}
             description="This diff touches a security-, auth-, or migration-sensitive path (the risk grade on the diff stat row above). Approving pushes the commit exactly as reviewed -- nothing here re-runs the diff or lets you edit it first."
             command={command('push')}
             precommit={precommit('push')}
-            onReject={() => setGating(null)}
-            onApprove={() => {
-              setGating(null);
-              runPush();
-            }}
+            onReject={(reasonText) => rejectHigh('push', reasonText)}
+            onApprove={() => approveHigh('push')}
             footNote="No Undo at HIGH · no auto-allow, ever (CLAUDE.md hard rule #3)."
           />
         ) : gating === 'push' && risk === 'medium' ? (
@@ -358,6 +442,23 @@ export function PublishActions({
             onReject={() => rejectMedium('push')}
             onAllow={() => allowMedium('push')}
           />
+        ) : resolvedHigh.push ? (
+          <HighApprovalResolved
+            outcome={resolvedHigh.push}
+            sub={`external_side_effect · publish gate · ${branch} → ${remoteName}`}
+          >
+            {resolvedHigh.push === 'approved' ? (
+              <>
+                <b>Approved</b> — {command('push')} runs now. There is no Undo at HIGH; the outcome
+                is appended to the pre-commitment when it lands.
+              </>
+            ) : (
+              <>
+                <b>Rejected</b> — nothing pushed. Your reason is fed to the next attempt; a rejected
+                HIGH action is never retried on its own.
+              </>
+            )}
+          </HighApprovalResolved>
         ) : resolved.push ? (
           <ResolvedMediumLine ticketId={ticketId!} snapshotId={resolved.push}>
             <b>Allowed</b> — pushed {branch} to {remoteName}.
@@ -377,16 +478,13 @@ export function PublishActions({
       </div>
       <div className="stack">
         {gating === 'open_pr' && risk === 'high' ? (
-          <HighApprovalCard
-            kindLine={`push & open PR · publish gate · ${branch} → ${pullRequest?.base ?? 'the default branch'}`}
+          <HighApprovalStreamCard
+            sub={`external_side_effect · publish gate · ${branch} → ${pullRequest?.base ?? 'the default branch'}`}
             description="This diff touches a security-, auth-, or migration-sensitive path (the risk grade on the diff stat row above). Approving pushes the commit and opens the pull request exactly as reviewed -- nothing here re-runs the diff or lets you edit it first."
             command={command('open_pr')}
             precommit={precommit('open_pr')}
-            onReject={() => setGating(null)}
-            onApprove={() => {
-              setGating(null);
-              runOpenPr();
-            }}
+            onReject={(reasonText) => rejectHigh('open_pr', reasonText)}
+            onApprove={() => approveHigh('open_pr')}
             footNote="No Undo at HIGH · no auto-allow, ever (CLAUDE.md hard rule #3)."
           />
         ) : gating === 'open_pr' && risk === 'medium' ? (
@@ -400,6 +498,23 @@ export function PublishActions({
             onReject={() => rejectMedium('open_pr')}
             onAllow={() => allowMedium('open_pr')}
           />
+        ) : resolvedHigh.open_pr ? (
+          <HighApprovalResolved
+            outcome={resolvedHigh.open_pr}
+            sub={`external_side_effect · publish gate · ${branch} → ${pullRequest?.base ?? 'the default branch'}`}
+          >
+            {resolvedHigh.open_pr === 'approved' ? (
+              <>
+                <b>Approved</b> — {command('open_pr')} runs now. There is no Undo at HIGH; the
+                outcome is appended to the pre-commitment when it lands.
+              </>
+            ) : (
+              <>
+                <b>Rejected</b> — nothing pushed. Your reason is fed to the next attempt; a rejected
+                HIGH action is never retried on its own.
+              </>
+            )}
+          </HighApprovalResolved>
         ) : resolved.open_pr ? (
           <ResolvedMediumLine ticketId={ticketId!} snapshotId={resolved.open_pr}>
             <b>Allowed</b> — pushed {branch} and opened a pull request.

@@ -199,15 +199,80 @@ describe('PublishActions — risk-graded approval', () => {
     );
   });
 
-  it('Reject on the HIGH card closes it without ever calling the bridge', () => {
+  it('Approve needs no reason -- the button is never disabled while the reason field is empty', async () => {
     const { publishPipenzo } = installBridge();
     render(<PublishActions worktreeId={WORKTREE_ID} branch="issue-94" risk="high" />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Push branch' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Reject' }));
+    expect(screen.getByRole('button', { name: 'Approve' })).not.toBeDisabled();
 
-    expect(publishPipenzo).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: 'Push branch' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    await waitFor(() => expect(publishPipenzo).toHaveBeenCalledTimes(1));
+  });
+
+  it(
+    'Reject is disabled until a non-empty reason is entered -- clicking it while empty proceeds nowhere',
+    () => {
+      const { publishPipenzo } = installBridge();
+      render(<PublishActions worktreeId={WORKTREE_ID} branch="issue-94" risk="high" />);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Push branch' }));
+      const rejectButton = screen.getByRole('button', { name: 'Reject' });
+      expect(rejectButton).toBeDisabled();
+
+      fireEvent.click(rejectButton);
+      expect(publishPipenzo).not.toHaveBeenCalled();
+      // Still on the pending card -- a disabled button's click does nothing, it does not silently
+      // resolve as though rejected.
+      expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument();
+
+      // A whitespace-only reason does not count as "entered" either.
+      fireEvent.change(screen.getByPlaceholderText(/Fed back to the next attempt/), {
+        target: { value: '   ' },
+      });
+      expect(screen.getByRole('button', { name: 'Reject' })).toBeDisabled();
+
+      fireEvent.change(screen.getByPlaceholderText(/Fed back to the next attempt/), {
+        target: { value: 'touches the token vault' },
+      });
+      expect(screen.getByRole('button', { name: 'Reject' })).not.toBeDisabled();
+    },
+  );
+
+  it(
+    'Reject renders the resolved Rejected card once a reason is entered, and never calls the bridge',
+    () => {
+      const { publishPipenzo } = installBridge();
+      render(<PublishActions worktreeId={WORKTREE_ID} branch="issue-94" risk="high" />);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Push branch' }));
+      fireEvent.change(screen.getByPlaceholderText(/Fed back to the next attempt/), {
+        target: { value: 'touches the token vault' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Reject' }));
+
+      expect(publishPipenzo).not.toHaveBeenCalled();
+      expect(screen.getByText('Rejected')).toBeInTheDocument();
+      expect(screen.getByText(/nothing pushed/)).toBeInTheDocument();
+      // Unlike MEDIUM, HIGH's reject is a terminal outcome -- it does not revert to the plain
+      // button row, and there is no Undo affordance anywhere in this outcome.
+      expect(screen.queryByRole('button', { name: 'Push branch' })).not.toBeInTheDocument();
+      expect(screen.queryByText(/Undo/)).not.toBeInTheDocument();
+    },
+  );
+
+  it('Approve renders the resolved Approved card, with no Undo affordance', async () => {
+    const { publishPipenzo } = installBridge();
+    render(<PublishActions worktreeId={WORKTREE_ID} branch="issue-94" risk="high" />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Push branch' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+
+    await waitFor(() => expect(publishPipenzo).toHaveBeenCalledTimes(1));
+    expect(screen.getByText('Approved')).toBeInTheDocument();
+    expect(screen.getByText(/runs now/)).toBeInTheDocument();
+    expect(screen.getByText(/no Undo at HIGH/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Undo/ })).not.toBeInTheDocument();
   });
 
   it('gates Push & open PR behind the HIGH card too, keyed independently of Push branch', async () => {
@@ -445,5 +510,191 @@ describe('PublishActions — the MEDIUM inline approval flow\'s real daemon wiri
 
     await screen.findByText(/Undo unavailable/);
     expect(screen.queryByRole('button', { name: /Undo/ })).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * The real daemon wiring behind the HIGH card, once a `ticketId` is given (issue #98): capture
+ * before the card blocks the run, Approve records the real approval outcome and then proceeds,
+ * Reject decides real and never calls the bridge's publish method -- and, the property this whole
+ * ticket exists for, there is no code path anywhere in this component that reaches a HIGH decide
+ * call with an empty reason.
+ */
+describe("PublishActions — the HIGH full publish-gate card's real daemon wiring (issue #98)", () => {
+  const TICKET_ID = '11111111-2222-4333-8444-555555555555';
+  const APPROVAL_ID = '77777777-8888-4999-8aaa-bbbbbbbbbbbb';
+
+  function installHighBridge(overrides: Partial<AgentDockBridge> = {}) {
+    const publishPipenzo = vi.fn().mockResolvedValue(PUSH_RESULT);
+    const captureHighApproval = vi.fn().mockResolvedValue({ approvalId: APPROVAL_ID });
+    const decideHighApproval = vi.fn().mockResolvedValue({ decision: 'approve', risk: { score: 0 } });
+    (window as unknown as { agentDock: Partial<AgentDockBridge> }).agentDock = {
+      publishPipenzo,
+      captureHighApproval,
+      decideHighApproval,
+      ...overrides,
+    };
+    return { publishPipenzo, captureHighApproval, decideHighApproval };
+  }
+
+  it('captures a real pending record as soon as the HIGH card opens, before any decision is made', async () => {
+    const { captureHighApproval, publishPipenzo } = installHighBridge();
+    render(
+      <PublishActions worktreeId={WORKTREE_ID} branch="issue-94" risk="high" ticketId={TICKET_ID} />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Push branch' }));
+
+    await waitFor(() =>
+      expect(captureHighApproval).toHaveBeenCalledWith({
+        ticketId: TICKET_ID,
+        worktreeId: WORKTREE_ID,
+        branch: 'issue-94',
+      }),
+    );
+    expect(publishPipenzo).not.toHaveBeenCalled();
+  });
+
+  it('Approve decides real, resets the risk score, then proceeds with the real push', async () => {
+    const { decideHighApproval, publishPipenzo } = installHighBridge();
+    render(
+      <PublishActions worktreeId={WORKTREE_ID} branch="issue-94" risk="high" ticketId={TICKET_ID} />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Push branch' }));
+    await screen.findByText('HIGH');
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+
+    await waitFor(() =>
+      expect(decideHighApproval).toHaveBeenCalledWith({
+        ticketId: TICKET_ID,
+        approvalId: APPROVAL_ID,
+        decision: 'approve',
+      }),
+    );
+    await waitFor(() =>
+      expect(publishPipenzo).toHaveBeenCalledWith({
+        worktreeId: WORKTREE_ID,
+        branch: 'issue-94',
+        remote: undefined,
+        operation: 'push',
+      }),
+    );
+    expect(screen.getByText('Approved')).toBeInTheDocument();
+  });
+
+  it('Reject decides real with the typed reason and never calls publishPipenzo -- the action genuinely never runs', async () => {
+    const { decideHighApproval, publishPipenzo } = installHighBridge();
+    render(
+      <PublishActions worktreeId={WORKTREE_ID} branch="issue-94" risk="high" ticketId={TICKET_ID} />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Push branch' }));
+    await screen.findByText('HIGH');
+    fireEvent.change(screen.getByPlaceholderText(/Fed back to the next attempt/), {
+      target: { value: 'touches the auth migration path' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Reject' }));
+
+    await waitFor(() =>
+      expect(decideHighApproval).toHaveBeenCalledWith({
+        ticketId: TICKET_ID,
+        approvalId: APPROVAL_ID,
+        decision: 'reject',
+        reason: 'touches the auth migration path',
+      }),
+    );
+    expect(publishPipenzo).not.toHaveBeenCalled();
+    expect(screen.getByText('Rejected')).toBeInTheDocument();
+  });
+
+  it(
+    'there is no code path from this component to decideHighApproval with an empty reason -- Reject is unreachable until one is typed',
+    async () => {
+      const { decideHighApproval, publishPipenzo } = installHighBridge();
+      render(
+        <PublishActions worktreeId={WORKTREE_ID} branch="issue-94" risk="high" ticketId={TICKET_ID} />,
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'Push branch' }));
+      await screen.findByText('HIGH');
+
+      // Clicking a disabled button fires no click handler in the DOM -- this asserts the observable
+      // consequence (no call, ever) rather than trusting the `disabled` attribute alone.
+      fireEvent.click(screen.getByRole('button', { name: 'Reject' }));
+      expect(decideHighApproval).not.toHaveBeenCalled();
+      expect(publishPipenzo).not.toHaveBeenCalled();
+
+      fireEvent.change(screen.getByPlaceholderText(/Fed back to the next attempt/), {
+        target: { value: '   ' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Reject' }));
+      expect(decideHighApproval).not.toHaveBeenCalled();
+
+      fireEvent.change(screen.getByPlaceholderText(/Fed back to the next attempt/), {
+        target: { value: 'a real reason' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Reject' }));
+      await waitFor(() =>
+        expect(decideHighApproval).toHaveBeenCalledWith(
+          expect.objectContaining({ decision: 'reject', reason: 'a real reason' }),
+        ),
+      );
+    },
+  );
+
+  it('without a ticketId, Approve still proceeds but never calls the high-approval bridge at all (matches MEDIUM\'s own no-ticketId fallback)', async () => {
+    const { captureHighApproval, decideHighApproval, publishPipenzo } = installHighBridge();
+    render(<PublishActions worktreeId={WORKTREE_ID} branch="issue-94" risk="high" />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Push branch' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+
+    await waitFor(() => expect(publishPipenzo).toHaveBeenCalledTimes(1));
+    expect(captureHighApproval).not.toHaveBeenCalled();
+    expect(decideHighApproval).not.toHaveBeenCalled();
+    // The resolved card still renders -- the mandatory-reason/no-auto-allow UI contract does not
+    // depend on a ticketId being threaded in.
+    expect(screen.getByText('Approved')).toBeInTheDocument();
+  });
+
+  it('gates Push & open PR behind the real HIGH daemon wiring too, keyed independently of Push branch', async () => {
+    const { captureHighApproval, decideHighApproval, publishPipenzo } = installHighBridge();
+    render(
+      <PublishActions
+        worktreeId={WORKTREE_ID}
+        branch="issue-94"
+        risk="high"
+        ticketId={TICKET_ID}
+        pullRequest={{ title: 'fix: sanitize env', body: 'Closes #94.' }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Push & open PR' }));
+    await waitFor(() =>
+      expect(captureHighApproval).toHaveBeenCalledWith({
+        ticketId: TICKET_ID,
+        worktreeId: WORKTREE_ID,
+        branch: 'issue-94',
+      }),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    await waitFor(() =>
+      expect(decideHighApproval).toHaveBeenCalledWith({
+        ticketId: TICKET_ID,
+        approvalId: APPROVAL_ID,
+        decision: 'approve',
+      }),
+    );
+    await waitFor(() =>
+      expect(publishPipenzo).toHaveBeenCalledWith({
+        worktreeId: WORKTREE_ID,
+        branch: 'issue-94',
+        remote: undefined,
+        operation: 'push_and_open_pull_request',
+        pullRequest: { title: 'fix: sanitize env', body: 'Closes #94.' },
+      }),
+    );
   });
 });

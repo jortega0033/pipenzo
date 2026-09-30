@@ -3387,6 +3387,23 @@
     line-height: 1.45;
   }
 
+  /* `.approval-cmd` -- the command block inside an `.approval-card`, ported verbatim from
+     TicketDetail.dc.html's HIGH card (issue #98). Distinct from `.codeblock` (that one is the
+     generic fenced-command-block treatment used elsewhere, e.g. HighApprovalCard's `.dialog`
+     shell): the canvas gives this one its own padding/wrap rules, so it is its own rule rather
+     than an alias. */
+  .approval-cmd {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 20px;
+    background: var(--color-surface-3);
+    padding: 8px 12px;
+    border-radius: var(--radius-pipenzo-sm);
+    color: var(--color-text-soft);
+    white-space: pre-wrap;
+    margin: 0;
+  }
+
   .approval-card .pc-head {
     background: var(--color-surface-4);
   }

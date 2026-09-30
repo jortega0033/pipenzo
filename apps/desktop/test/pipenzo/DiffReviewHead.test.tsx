@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DiffReviewHead, type DiffReviewStat } from '../../src/pipenzo/DiffReviewHead.js';
 import type { AgentDockBridge } from '../../src/window.js';
@@ -103,8 +103,9 @@ describe('DiffReviewHead', () => {
   it('wires Push branch through to the real publish call for this worktree and branch', async () => {
     // STAT is risk: 'low' here specifically to exercise the ungated path -- STAT's own HIGH grade
     // is what PublishActions.test.tsx's approval-card tests exercise instead (CLAUDE.md hard rule
-    // #3: a HIGH-graded push must never auto-allow, so clicking Push branch there opens
-    // HighApprovalCard rather than calling the bridge directly).
+    // #3: a HIGH-graded push must never auto-allow, so clicking Push branch there opens the full
+    // HIGH approval card, issue #98's `HighApprovalStreamCard`, rather than calling the bridge
+    // directly).
     installBridge();
     render(
       <DiffReviewHead
@@ -126,7 +127,7 @@ describe('DiffReviewHead', () => {
     });
   });
 
-  it('gates a HIGH-graded push behind HighApprovalCard instead of publishing on the first click', async () => {
+  it('gates a HIGH-graded push behind the full HIGH approval card instead of publishing on the first click', async () => {
     installBridge();
     render(
       <DiffReviewHead
@@ -144,12 +145,14 @@ describe('DiffReviewHead', () => {
     expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
-    expect(bridge.publishPipenzo).toHaveBeenCalledWith({
-      worktreeId: WORKTREE_ID,
-      branch: 'issue-94',
-      remote: 'origin',
-      operation: 'push',
-    });
+    await waitFor(() =>
+      expect(bridge.publishPipenzo).toHaveBeenCalledWith({
+        worktreeId: WORKTREE_ID,
+        branch: 'issue-94',
+        remote: 'origin',
+        operation: 'push',
+      }),
+    );
   });
 
   it('renders Discard branch only when a handler is supplied, matching the actions row', () => {
