@@ -75,6 +75,8 @@ function realBridge(
     undoMediumApproval: vi.fn(),
     captureHighApproval: vi.fn(),
     decideHighApproval: vi.fn(),
+    captureStackApproval: vi.fn(),
+    decideStackApproval: vi.fn(),
     onPipenzoPhaseEvent: vi.fn(() => () => {}),
     onPipenzoGitHubHealth: vi.fn(() => () => {}),
     pollGitHubHealthNow: vi.fn(async () => {}),

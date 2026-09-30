@@ -87,6 +87,10 @@ import {
   pipenzoHighApprovalCaptureResultV1Schema,
   pipenzoHighApprovalDecideRequestV1Schema,
   pipenzoHighApprovalDecideResultV1Schema,
+  pipenzoStackApprovalCaptureRequestV1Schema,
+  pipenzoStackApprovalCaptureResultV1Schema,
+  pipenzoStackApprovalDecideRequestV1Schema,
+  pipenzoStackApprovalDecideResultV1Schema,
   pipenzoPhaseEventV1Schema,
   pipenzoGitHubHealthV1Schema,
   pipenzoConnectReposRequestV1Schema,
@@ -183,6 +187,10 @@ import {
   type PipenzoHighApprovalCaptureResultV1,
   type PipenzoHighApprovalDecideRequestV1,
   type PipenzoHighApprovalDecideResultV1,
+  type PipenzoStackApprovalCaptureRequestV1,
+  type PipenzoStackApprovalCaptureResultV1,
+  type PipenzoStackApprovalDecideRequestV1,
+  type PipenzoStackApprovalDecideResultV1,
   type PipenzoPhaseEventV1,
   type PipenzoGitHubHealthV1,
   type PipenzoConnectReposRequestV1,
@@ -318,6 +326,14 @@ export interface AgentDockBridge {
   decideHighApproval(
     input: PipenzoHighApprovalDecideRequestV1,
   ): Promise<PipenzoHighApprovalDecideResultV1>;
+  /** The stack approval panel (issue #99). Mirrors `window.d.ts`'s declaration of the same two
+   * methods. */
+  captureStackApproval(
+    input: PipenzoStackApprovalCaptureRequestV1,
+  ): Promise<PipenzoStackApprovalCaptureResultV1>;
+  decideStackApproval(
+    input: PipenzoStackApprovalDecideRequestV1,
+  ): Promise<PipenzoStackApprovalDecideResultV1>;
   /**
    * Live phase changes for every ticket (issue #189). One subscription serves the whole board;
    * filter on `ticketId` for a single card. Returns its own unsubscribe.
@@ -1044,6 +1060,18 @@ const api: AgentDockBridge = {
     const parsed = pipenzoHighApprovalDecideRequestV1Schema.parse(input);
     return pipenzoHighApprovalDecideResultV1Schema.parse(
       await ipcRenderer.invoke('daemon:pipenzo-high-approval-decide', parsed),
+    );
+  },
+  async captureStackApproval(input) {
+    const parsed = pipenzoStackApprovalCaptureRequestV1Schema.parse(input);
+    return pipenzoStackApprovalCaptureResultV1Schema.parse(
+      await ipcRenderer.invoke('daemon:pipenzo-stack-approval-capture', parsed),
+    );
+  },
+  async decideStackApproval(input) {
+    const parsed = pipenzoStackApprovalDecideRequestV1Schema.parse(input);
+    return pipenzoStackApprovalDecideResultV1Schema.parse(
+      await ipcRenderer.invoke('daemon:pipenzo-stack-approval-decide', parsed),
     );
   },
   async pipenzoGitHubConnection() {
