@@ -220,6 +220,22 @@ export function createDemoBridge(): AgentDockBridge {
       throw new Error('preparing a local checkout is not available in demo mode');
     },
     pipenzoLessons: async () => ({ lessons: demoLessons }),
+    // A real mutation, like `pipenzoDeleteLesson` below -- `LessonPrompt`'s "Save lesson" (issue
+    // #104) should not be the one dead end on an otherwise fully interactive demo screen. `savedAt`
+    // stays fixed so two demo runs never render differently; only the id varies, and even that is a
+    // deterministic, obviously-fake pattern rather than a real `randomUUID()`.
+    pipenzoCreateLesson: async (input) => {
+      const lesson = {
+        schemaVersion: 1 as const,
+        id: `12345678-1234-4234-8234-${String(demoLessons.length + 1).padStart(12, '0')}`,
+        repo: input.repo,
+        issueNumber: input.issueNumber,
+        text: input.text,
+        savedAt: DEMO_CREDENTIAL_STORED_AT,
+      };
+      demoLessons = [lesson, ...demoLessons];
+      return { lessons: demoLessons };
+    },
     pipenzoDeleteLesson: async (input) => {
       demoLessons = demoLessons.filter((lesson) => lesson.id !== input.id);
       return { lessons: demoLessons };

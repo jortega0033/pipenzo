@@ -134,6 +134,7 @@ describe('electron/preload.ts — real bridge (AD-07)', () => {
         // Local, human-gated lesson memory (issue #18): Settings' lesson-memory panel (issue
         // #128). Ordinary daemon routes, same reasoning as the repo picker above.
         'pipenzoLessons',
+        'pipenzoCreateLesson',
         'pipenzoDeleteLesson',
         'selectAndUploadAttachments',
         'validateStructuredOutput',
