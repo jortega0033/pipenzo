@@ -45,6 +45,11 @@ import {
   pipenzoLessonDeleteRequestV1Schema,
   pipenzoTicketReadRequestV1Schema,
   pipenzoTicketTransitionRequestV1Schema,
+  pipenzoTicketRiskApprovalOutcomeRequestV1Schema,
+  pipenzoMediumApprovalCaptureRequestV1Schema,
+  pipenzoMediumApprovalDecideRequestV1Schema,
+  pipenzoMediumApprovalStatusRequestV1Schema,
+  pipenzoMediumApprovalUndoRequestV1Schema,
   structuredWorkflowRequestV2Schema,
   providerIdSchema,
   type AgentCommandV2,
@@ -1527,6 +1532,38 @@ handle('daemon:pipenzo-ticket-transition', async (_event, input: unknown) => {
 handle('daemon:pipenzo-list-tickets', async () => {
   if (!client) throw new Error('daemon is not ready yet');
   return client.v2.pipenzo.listTickets();
+});
+// The MEDIUM/HIGH risk-approval outcome and the MEDIUM inline approval flow's own four calls
+// (issues #95/#97/#98). Same boundary as the ticket-read/transition handlers above -- main-process
+// only, invoked by a renderer click on `PublishActions.tsx`'s approval cards -- and the same
+// reasoning for addressing everything by ticket/worktree id rather than a filesystem path.
+handle('daemon:pipenzo-risk-approval-outcome', async (_event, input: unknown) => {
+  if (!client) throw new Error('daemon is not ready yet');
+  return client.v2.pipenzo.recordRiskApprovalOutcome(
+    pipenzoTicketRiskApprovalOutcomeRequestV1Schema.parse(input),
+  );
+});
+handle('daemon:pipenzo-medium-approval-capture', async (_event, input: unknown) => {
+  if (!client) throw new Error('daemon is not ready yet');
+  return client.v2.pipenzo.captureMediumApproval(
+    pipenzoMediumApprovalCaptureRequestV1Schema.parse(input),
+  );
+});
+handle('daemon:pipenzo-medium-approval-decide', async (_event, input: unknown) => {
+  if (!client) throw new Error('daemon is not ready yet');
+  return client.v2.pipenzo.decideMediumApproval(
+    pipenzoMediumApprovalDecideRequestV1Schema.parse(input),
+  );
+});
+handle('daemon:pipenzo-medium-approval-status', async (_event, input: unknown) => {
+  if (!client) throw new Error('daemon is not ready yet');
+  return client.v2.pipenzo.mediumApprovalStatus(
+    pipenzoMediumApprovalStatusRequestV1Schema.parse(input),
+  );
+});
+handle('daemon:pipenzo-medium-approval-undo', async (_event, input: unknown) => {
+  if (!client) throw new Error('daemon is not ready yet');
+  return client.v2.pipenzo.undoMediumApproval(pipenzoMediumApprovalUndoRequestV1Schema.parse(input));
 });
 /**
  * "Retry now" / "Poll now" (#70/#71/#75): forces the reconciler's next tick to run immediately.

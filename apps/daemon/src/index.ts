@@ -38,6 +38,7 @@ import { GitHubRateLimitTracker } from './github-rate-limit.js';
 import { DaemonGitHubCredential, readDaemonStartupMessage } from './github-credential.js';
 import { PublishNonceGate } from './publish-nonce-gate.js';
 import { PipenzoPhaseMachine } from './pipenzo-phase-machine.js';
+import { MediumApprovalStore } from './medium-approval-store.js';
 import { PipenzoPhaseEventBus } from './pipenzo-phase-events.js';
 import { PipenzoCrashRecovery } from './pipenzo-crash-recovery.js';
 import { PipenzoReconciler } from './pipenzo-reconciler.js';
@@ -345,6 +346,12 @@ async function main() {
     quarantinedTicketRecordCount: ticketRecovery.quarantinedFiles.length,
   });
 
+  // The MEDIUM inline approval flow's snapshot/decision store (issue #97). In-process and
+  // per-daemon-lifetime, same as `publishNonceGate` above -- a pending or resolved-but-not-yet-undone
+  // snapshot does not need to survive a daemon restart, since restarting mid-approval already means
+  // whatever renderer state was waiting on it is gone too.
+  const mediumApprovalStore = new MediumApprovalStore();
+
   const app = buildServer({
     registry,
     sessionManager,
@@ -360,6 +367,7 @@ async function main() {
     phaseService,
     phaseMachine,
     phaseEvents,
+    mediumApprovalStore,
     crashRecovery,
     connectedRepos,
     repoCheckouts,

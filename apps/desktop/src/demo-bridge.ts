@@ -183,6 +183,24 @@ export function createDemoBridge(): AgentDockBridge {
     pipenzoListTickets: async () => {
       throw new Error('ticket list is not available in demo mode');
     },
+    // The MEDIUM/HIGH risk-approval outcome and the MEDIUM inline approval flow (issues #95/#97):
+    // same reasoning -- demo mode has no real ticket store to record a risk outcome against and no
+    // real worktree to snapshot.
+    pipenzoRecordRiskApprovalOutcome: async () => {
+      throw new Error('recording a risk approval outcome is not available in demo mode');
+    },
+    captureMediumApproval: async () => {
+      throw new Error('the medium-approval flow is not available in demo mode');
+    },
+    decideMediumApproval: async () => {
+      throw new Error('the medium-approval flow is not available in demo mode');
+    },
+    mediumApprovalStatus: async () => {
+      throw new Error('the medium-approval flow is not available in demo mode');
+    },
+    undoMediumApproval: async () => {
+      throw new Error('the medium-approval flow is not available in demo mode');
+    },
     // Demo mode has no daemon to stream from; subscribing is inert rather than an error.
     onPipenzoPhaseEvent: () => () => {},
     onPipenzoGitHubHealth: () => () => {},

@@ -3,12 +3,13 @@ import { existsSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs';
 import { mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { RiskGrade } from '../src/risk-classifier.js';
 import {
   UndoSnapshotError,
   captureUndoSnapshot,
   isUndoAvailable,
+  isUndoSnapshotExpired,
   restoreUndoSnapshot,
   touchedPathsFromNumstat,
   type UndoSnapshotV1,
@@ -448,6 +449,69 @@ describe('captureUndoSnapshot / restoreUndoSnapshot', () => {
     },
     GIT_HEAVY_TIMEOUT_MS,
   );
+});
+
+describe('isUndoSnapshotExpired', () => {
+  it(
+    'reports not expired right after capture, with no filesystem write',
+    async () => {
+      const root = initRepo();
+      const filePath = join(root, 'file.txt');
+      await writeFile(filePath, 'original\n');
+      commitAll(root, 'seed');
+      const snapshot = await captureUndoSnapshot({
+        worktreeRoot: root,
+        branch: 'main',
+        touchedPaths: [filePath],
+        riskGrade: 'medium',
+      });
+
+      expect(await isUndoSnapshotExpired(snapshot)).toEqual({ expired: false });
+      // Never restored -- the real content on disk is untouched.
+      expect(await readFile(filePath, 'utf8')).toBe('original\n');
+    },
+    GIT_HEAVY_TIMEOUT_MS,
+  );
+
+  it(
+    'reports expired once a commit lands on the branch, agreeing with restoreUndoSnapshot',
+    async () => {
+      const root = initRepo();
+      const filePath = join(root, 'file.txt');
+      await writeFile(filePath, 'original\n');
+      commitAll(root, 'seed');
+      const snapshot = await captureUndoSnapshot({
+        worktreeRoot: root,
+        branch: 'main',
+        touchedPaths: [filePath],
+        riskGrade: 'medium',
+      });
+
+      commitAll(root, 'a real commit lands on this branch after the snapshot');
+
+      expect(await isUndoSnapshotExpired(snapshot)).toEqual({ expired: true, reason: 'expired' });
+      expect(await restoreUndoSnapshot(snapshot)).toEqual({ restored: false, reason: 'expired' });
+    },
+    GIT_HEAVY_TIMEOUT_MS,
+  );
+
+  it('reports high_risk_blocked for a HIGH-graded snapshot, without reading git at all', async () => {
+    const snapshot: UndoSnapshotV1 = {
+      worktreeRoot: '/does/not/matter',
+      branch: 'main',
+      headShaAtSnapshot: 'a'.repeat(40),
+      riskGrade: 'high' as RiskGrade,
+      capturedAt: '2026-01-01T00:00:00.000Z',
+      entries: [],
+    };
+    const gitRunner = vi.fn();
+
+    expect(await isUndoSnapshotExpired(snapshot, { gitRunner })).toEqual({
+      expired: true,
+      reason: 'high_risk_blocked',
+    });
+    expect(gitRunner).not.toHaveBeenCalled();
+  });
 });
 
 describe('touchedPathsFromNumstat', () => {
