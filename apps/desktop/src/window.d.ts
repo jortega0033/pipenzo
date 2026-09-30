@@ -93,6 +93,10 @@ import type {
   PipenzoHighApprovalCaptureResultV1,
   PipenzoHighApprovalDecideRequestV1,
   PipenzoHighApprovalDecideResultV1,
+  PipenzoStackApprovalCaptureRequestV1,
+  PipenzoStackApprovalCaptureResultV1,
+  PipenzoStackApprovalDecideRequestV1,
+  PipenzoStackApprovalDecideResultV1,
 } from '@agent-dock/shared';
 import type {
   RendererInteraction,
@@ -308,6 +312,25 @@ export interface AgentDockBridge {
   decideHighApproval(
     input: PipenzoHighApprovalDecideRequestV1,
   ): Promise<PipenzoHighApprovalDecideResultV1>;
+  /**
+   * The stack approval panel (issue #99), for a ticket the diff-size gate parked on
+   * `pipenzo:awaiting-stack-approval` from a Refine-time `stack` verdict -- same two-call,
+   * capture-then-decide shape as HIGH above:
+   *
+   * - `captureStackApproval` freezes the ticket's currently-proposed split (`RefineSpecV1
+   *   .proposedSplit`, cached on the ticket record) and returns it alongside a fresh `approvalId`.
+   * - `decideStackApproval` records the human's Accept/Reject. An `'accept'` needs the
+   *   human-approved `order` (a permutation of the captured parts' indices) and a
+   *   `repositoryPath` to provision each child's worktree in, and returns the real child tickets
+   *   created; a `'reject'` requires a non-empty `reason` (enforced on the wire, not just by a
+   *   disabled button) and posts it as a comment on the original issue.
+   */
+  captureStackApproval(
+    input: PipenzoStackApprovalCaptureRequestV1,
+  ): Promise<PipenzoStackApprovalCaptureResultV1>;
+  decideStackApproval(
+    input: PipenzoStackApprovalDecideRequestV1,
+  ): Promise<PipenzoStackApprovalDecideResultV1>;
   /**
    * Subscribes to live phase changes (issue #189).
    *

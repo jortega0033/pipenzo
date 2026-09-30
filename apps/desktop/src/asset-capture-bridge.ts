@@ -84,6 +84,8 @@ export function installAssetCaptureBridge(): void {
     undoMediumApproval: async () => { throw new Error('the medium-approval flow is not available while capturing assets'); },
     captureHighApproval: async () => { throw new Error('the high-approval flow is not available while capturing assets'); },
     decideHighApproval: async () => { throw new Error('the high-approval flow is not available while capturing assets'); },
+    captureStackApproval: async () => { throw new Error('the stack-approval flow is not available while capturing assets'); },
+    decideStackApproval: async () => { throw new Error('the stack-approval flow is not available while capturing assets'); },
     // No daemon and no phase stream while capturing assets: a no-op unsubscribe, not a throw,
     // because a component that subscribes on mount should still render.
     onPipenzoPhaseEvent: () => () => {},
