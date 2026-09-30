@@ -401,6 +401,91 @@ describe('OctokitGitHubClient', () => {
     expect(calls).toHaveLength(0);
   });
 
+  describe('renameLabel', () => {
+    it('sends a single PATCH on the current name, never a DELETE followed by a POST', async () => {
+      const { octokit, calls } = stubOctokit({
+        request: async () => ({
+          headers: {},
+          data: { name: 'pipenzo:schema-v2', color: '0052cc', description: 'Marker' },
+        }),
+      });
+      const label = await OctokitGitHubClient.withOctokit(octokit).renameLabel(
+        REF,
+        'pipenzo:schema-v1',
+        'pipenzo:schema-v2',
+      );
+      expect(label).toEqual({ name: 'pipenzo:schema-v2', color: '0052cc', description: 'Marker' });
+      expect(calls).toHaveLength(1);
+      expect(calls[0]?.route).toBe('PATCH /repos/{owner}/{repo}/labels/{name}');
+      expect(calls[0]?.params).toMatchObject({
+        owner: REF.owner,
+        repo: REF.repo,
+        name: 'pipenzo:schema-v1',
+        new_name: 'pipenzo:schema-v2',
+      });
+      // No delete-style verb was ever sent — the whole rename is the one PATCH above.
+      expect(calls.map((call) => call.route)).not.toEqual(
+        expect.arrayContaining([expect.stringMatching(/^DELETE/)]),
+      );
+    });
+
+    it('refuses a current or new name outside the pipenzo: namespace, without a request', async () => {
+      const { octokit, calls } = stubOctokit({});
+      const client = OctokitGitHubClient.withOctokit(octokit);
+      const fromForeign = await catchAsync(() =>
+        client.renameLabel(REF, 'bug', 'pipenzo:queued'),
+      );
+      const toForeign = await catchAsync(() =>
+        client.renameLabel(REF, 'pipenzo:queued', 'working'),
+      );
+      expect((fromForeign as GitHubClientError).code).toBe('invalid_request');
+      expect((toForeign as GitHubClientError).code).toBe('invalid_request');
+      expect(calls).toHaveLength(0);
+    });
+
+    it('surfaces "no such label" as not_found', async () => {
+      const { octokit } = stubOctokit({
+        request: async () => {
+          throw httpError(404, 'Not Found');
+        },
+      });
+      const error = await catchAsync(() =>
+        OctokitGitHubClient.withOctokit(octokit).renameLabel(REF, 'pipenzo:queued', 'pipenzo:working'),
+      );
+      expect((error as GitHubClientError).code).toBe('not_found');
+    });
+
+    it('surfaces a colliding target name as invalid_request, unmerged and undeleted', async () => {
+      const { octokit } = stubOctokit({
+        request: async () => {
+          throw httpError(422, 'already_exists');
+        },
+      });
+      const error = await catchAsync(() =>
+        OctokitGitHubClient.withOctokit(octokit).renameLabel(REF, 'pipenzo:queued', 'pipenzo:working'),
+      );
+      expect((error as GitHubClientError).code).toBe('invalid_request');
+    });
+
+    it('invalidates the repository label list on both success and failure', async () => {
+      for (const outcome of ['ok', 'throws'] as const) {
+        const cache = new ConditionalRequestCache();
+        cache.set(REF, 'labels', 'W/"stale"', []);
+        const { octokit } = stubOctokit({
+          request: async () => {
+            if (outcome === 'throws') throw httpError(500, 'Internal Server Error');
+            return { headers: {}, data: { name: 'pipenzo:working', color: 'ededed', description: '' } };
+          },
+        });
+        const client = OctokitGitHubClient.withOctokit(octokit, { cache });
+        const call = (): Promise<unknown> => client.renameLabel(REF, 'pipenzo:queued', 'pipenzo:working');
+        if (outcome === 'throws') await catchAsync(call);
+        else await call();
+        expect(cache.get(REF, 'labels')).toBeUndefined();
+      }
+    });
+  });
+
   it('reads a pull request as a real unified diff plus its numbers', async () => {
     const unified = 'diff --git a/x.ts b/x.ts\n--- a/x.ts\n+++ b/x.ts\n@@ -1 +1 @@\n-a\n+b\n';
     const { octokit } = stubOctokit({
@@ -503,6 +588,52 @@ describe('FakeGitHubClient', () => {
     const missing = await catchAsync(() => fake.getIssue(REF, 1));
     expect((missing as GitHubClientError).code).toBe('not_found');
     expect(fake.calls.map((call) => call.method)).toEqual(['getIssue', 'getIssue']);
+  });
+
+  describe('renameLabel', () => {
+    it('renames in place, keeping the label object rather than deleting and re-adding it', async () => {
+      const fake = new FakeGitHubClient().seedLabels(REF, [
+        { name: 'pipenzo:schema-v1', color: '0052cc', description: 'Marker' },
+        { name: 'pipenzo:queued', color: 'c5c5c5', description: 'Accepted, not started' },
+      ]);
+      const renamed = await fake.renameLabel(REF, 'pipenzo:schema-v1', 'pipenzo:schema-v2');
+      expect(renamed).toEqual({ name: 'pipenzo:schema-v2', color: '0052cc', description: 'Marker' });
+      const labels = await fake.listLabels(REF);
+      expect(labels.map((label) => label.name)).toEqual(['pipenzo:schema-v2', 'pipenzo:queued']);
+      expect(fake.calls.map((call) => call.method)).toEqual(['renameLabel', 'listLabels']);
+    });
+
+    it('refuses to rename onto a name a distinct label already holds', async () => {
+      const fake = new FakeGitHubClient().seedLabels(REF, [
+        { name: 'pipenzo:queued', color: 'c5c5c5', description: '' },
+        { name: 'pipenzo:working', color: '1d76db', description: '' },
+      ]);
+      const error = await catchAsync(() => fake.renameLabel(REF, 'pipenzo:queued', 'pipenzo:working'));
+      expect((error as GitHubClientError).code).toBe('invalid_request');
+      // Untouched: no merge, no deletion of either label.
+      expect((await fake.listLabels(REF)).map((label) => label.name)).toEqual([
+        'pipenzo:queued',
+        'pipenzo:working',
+      ]);
+    });
+
+    it('answers not_found for a label that was never seeded', async () => {
+      const fake = new FakeGitHubClient();
+      const error = await catchAsync(() => fake.renameLabel(REF, 'pipenzo:queued', 'pipenzo:working'));
+      expect((error as GitHubClientError).code).toBe('not_found');
+    });
+
+    it('refuses a name outside the pipenzo: namespace on either side', async () => {
+      const fake = new FakeGitHubClient().seedLabels(REF, [
+        { name: 'pipenzo:queued', color: 'c5c5c5', description: '' },
+      ]);
+      expect((await catchAsync(() => fake.renameLabel(REF, 'bug', 'pipenzo:queued'))) as GitHubClientError).toMatchObject(
+        { code: 'invalid_request' },
+      );
+      expect(
+        (await catchAsync(() => fake.renameLabel(REF, 'pipenzo:queued', 'queued'))) as GitHubClientError,
+      ).toMatchObject({ code: 'invalid_request' });
+    });
   });
 });
 

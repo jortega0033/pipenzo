@@ -403,6 +403,24 @@ export interface GitHubClient {
   /** Idempotent: an existing label with the same name is returned rather than re-created. */
   createLabel(ref: RepoRef, label: GitHubLabel): Promise<GitHubLabel>;
   /**
+   * Renames a repository label in place, via GitHub's `PATCH .../labels/{name}` — never a
+   * `DELETE` followed by a `POST`. This is the one property issue #162's schema-version bump
+   * depends on: a label is what GitHub attaches an issue's *label association* to, and a
+   * delete+recreate makes a new label object with a new id, silently detaching it from every
+   * issue that carried the old one. A rename keeps the id, so every issue's history survives.
+   *
+   * Both names must already be in the `pipenzo:` namespace — this is a namespace-internal
+   * operation, not a general label-editing capability, so a caller cannot use it to reach into
+   * (or claim) a name outside the one namespace Pipenzo owns.
+   *
+   * Does not itself decide what to do when `newName` already exists as a distinct label: GitHub
+   * answers that with a 422, surfaced here as `invalid_request` like every other write. Callers
+   * that must migrate a whole schema version (`pipenzo-label-schema.ts`) read the repo's label
+   * list first and make that call themselves, because only a caller with both schema versions in
+   * hand can tell "already migrated" apart from "a real collision".
+   */
+  renameLabel(ref: RepoRef, currentName: string, newName: string): Promise<GitHubLabel>;
+  /**
    * Replaces the `pipenzo:` labels on one issue, and returns the issue's resulting label set.
    *
    * Replace, not add: a lane transition that left the previous lane's label in place would put the
@@ -1480,6 +1498,43 @@ export class OctokitGitHubClient implements GitHubClient {
     } finally {
       // The repository label list this may have just changed. Invalidated whatever the outcome, for
       // the same reason `assignIssue` does: a failed write is not proof of an unchanged resource.
+      this.#cache?.invalidate(ref, 'labels');
+    }
+  }
+
+  /**
+   * Renames a label by `PATCH`ing the existing object identified by its *current* name — see the
+   * interface doc for why this, and not delete+create, is the only acceptable shape for a
+   * schema-version bump. Both names are required to already be `pipenzo:`-namespaced: this call
+   * moves a label within the one namespace Pipenzo owns, not a general rename of anything on the
+   * repository.
+   */
+  async renameLabel(ref: RepoRef, currentName: string, newName: string): Promise<GitHubLabel> {
+    const operation = `renameLabel ${ref.owner}/${ref.repo}:${currentName}->${newName}`;
+    assertLabelName(currentName, operation);
+    assertLabelName(newName, operation);
+    for (const name of [currentName, newName]) {
+      if (!isPipenzoLabel(name)) {
+        throw new GitHubClientError(
+          'invalid_request',
+          `${operation}: ${name} is outside the ${PIPENZO_LABEL_NAMESPACE} namespace`,
+        );
+      }
+    }
+    try {
+      const response = await this.#octokit.request('PATCH /repos/{owner}/{repo}/labels/{name}', {
+        owner: ref.owner,
+        repo: ref.repo,
+        name: currentName,
+        new_name: newName,
+      });
+      return normalizeLabel(response.data as Record<string, unknown>, operation);
+    } catch (error) {
+      throw toGitHubClientError(error, operation);
+    } finally {
+      // The label list changed shape (or the attempt may have partially landed on GitHub's side
+      // even though the response was lost) either way, same reasoning as `createLabel`'s own
+      // `finally`.
       this.#cache?.invalidate(ref, 'labels');
     }
   }
