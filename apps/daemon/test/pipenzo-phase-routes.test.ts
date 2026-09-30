@@ -22,6 +22,7 @@ import type {
 } from '../src/pipenzo-phase-machine.js';
 import type { TicketWorktreeStorePort } from '../src/pipenzo-worktree-lifecycle.js';
 import type { PipenzoTicketAttemptV1, PipenzoTicketRecordV1 } from '@agent-dock/shared';
+import { PipenzoAuditStore } from '../src/pipenzo-audit-store.js';
 
 const TOKEN = 'test-token-pipenzo-phases';
 const WORKTREE_ID = '77777777-8888-4999-8aaa-bbbbbbbbbbbb';
@@ -38,15 +39,23 @@ afterAll(async () => {
   for (const directory of scratch) await rm(directory, { recursive: true, force: true });
 });
 
-const ticketStoreDirectories: string[] = [];
+const scratchDirectories: string[] = [];
 afterEach(() => {
-  for (const path of ticketStoreDirectories.splice(0)) rmSync(path, { force: true, recursive: true });
+  for (const path of scratchDirectories.splice(0)) rmSync(path, { force: true, recursive: true });
 });
 
 function newTicketStore(): FileTicketStore {
   const directory = mkdtempSync(join(tmpdir(), 'pipenzo-phase-routes-tickets-'));
-  ticketStoreDirectories.push(directory);
+  scratchDirectories.push(directory);
   return new FileTicketStore(directory);
+}
+
+/** A real, file-backed `PipenzoAuditStore` (issue #160) rooted in a fresh temp directory per test,
+ * the same "real store, not a mock" choice `newTicketStore()` above already makes. */
+function newAuditStore(): PipenzoAuditStore {
+  const directory = mkdtempSync(join(tmpdir(), 'pipenzo-phase-routes-audit-'));
+  scratchDirectories.push(directory);
+  return new PipenzoAuditStore(join(directory, 'pipenzo-audit-v1.jsonl'));
 }
 
 function spec(overrides: Partial<RefineSpecV1> = {}): RefineSpecV1 {
@@ -148,6 +157,8 @@ interface Harness {
   >;
   /** Issue #159: local ticket-store access, so `implement()` can attach the worktree it just cut. */
   tickets?: TicketWorktreeStorePort;
+  /** Issue #160: where a review-gate result is recorded. */
+  audit?: Pick<PipenzoAuditStore, 'append'>;
 }
 
 const TICKET_ID = '00000000-0000-4000-8000-0000000000aa';
@@ -301,6 +312,7 @@ function buildApp(harness: Harness = {}) {
     env: harness.env ?? REPO_ENV,
     ...(harness.machine ? { machine: harness.machine } : {}),
     ...(harness.tickets ? { tickets: harness.tickets } : {}),
+    ...(harness.audit ? { audit: harness.audit } : {}),
   });
   return {
     github,
@@ -1053,6 +1065,105 @@ describe('POST /v2/pipenzo/review', () => {
         },
       });
       expect(response.statusCode).toBe(200);
+    });
+  });
+
+  /**
+   * Issue #160: every review-gate run that reaches an outcome gets a real entry in the pipenzo
+   * audit store. `newAuditStore()` is a real, file-backed `PipenzoAuditStore` -- these tests read
+   * it back with `.list()` rather than mocking `append()`, so a wrong field name or a schema
+   * violation fails the test the same way it would fail in production, not silently.
+   */
+  describe('review-gate audit entries (issue #160)', () => {
+    function reviewRequest(overrides: Record<string, unknown> = {}) {
+      return {
+        spec: spec(),
+        worktreeId: WORKTREE_ID,
+        baseCommit: BASE_SHA,
+        headCommit: HEAD_SHA,
+        implementerTier: 'mid',
+        reviewer: { provider: 'claude', model: 'reviewer-model', tier: 'mid' },
+        verifier: { provider: 'codex', model: 'verifier-model', tier: 'frontier' },
+        ...overrides,
+      };
+    }
+
+    it('records an approved review against the real audit store', async () => {
+      const audit = newAuditStore();
+      const { app } = buildApp({ audit });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/review',
+        headers: auth,
+        payload: reviewRequest({ ticketId: TICKET_ID }),
+      });
+
+      expect(response.statusCode).toBe(200);
+      const report = response.json();
+      expect(report.outcome).toBe('approved');
+
+      const entries = await audit.list({ ticketId: TICKET_ID });
+      expect(entries).toHaveLength(1);
+      expect(entries[0]).toMatchObject({
+        kind: 'review_gate_result',
+        ticketId: TICKET_ID,
+        outcome: 'approved',
+        risk: report.risk,
+        baseCommit: BASE_SHA,
+        headCommit: HEAD_SHA,
+      });
+      expect(typeof entries[0]?.recordedAt).toBe('number');
+    });
+
+    it('records a distinct outcome (estimate_blown) with that outcome, not a generic one', async () => {
+      const audit = newAuditStore();
+      const { app } = buildApp({ audit, machine: new FakeMachine() });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/review',
+        headers: auth,
+        payload: reviewRequest({
+          ticketId: TICKET_ID,
+          spec: spec({ estimate: { changedLines: 1, filesTouched: 1, layered: false } }),
+        }),
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json().outcome).toBe('estimate_blown');
+
+      const [entry] = await audit.list({ ticketId: TICKET_ID });
+      expect(entry).toMatchObject({ kind: 'review_gate_result', outcome: 'estimate_blown' });
+    });
+
+    it('writes nothing when no ticketId was given -- there is no ticket to attribute the entry to', async () => {
+      const audit = newAuditStore();
+      const { app } = buildApp({ audit });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/review',
+        headers: auth,
+        payload: reviewRequest(),
+      });
+
+      expect(response.statusCode).toBe(200);
+      await expect(audit.list()).resolves.toEqual([]);
+    });
+
+    it('writes nothing, and still returns the report, when no audit store was configured', async () => {
+      const { app } = buildApp();
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/review',
+        headers: auth,
+        payload: reviewRequest({ ticketId: TICKET_ID }),
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json().outcome).toBe('approved');
     });
   });
 });
