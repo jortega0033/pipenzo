@@ -1,4 +1,4 @@
-import { PIPENZO_LANES, type PipenzoLaneV1 } from '@agent-dock/shared';
+import { PIPENZO_LANES, type PipenzoLabelV1, type PipenzoLaneV1 } from '@agent-dock/shared';
 
 /**
  * The board's lane list and its presentation (issue #81). `BOARD_LANES` is built on
@@ -96,4 +96,54 @@ export function ticketsByLane<T extends { readonly lane: PipenzoLaneV1 }>(
   };
   for (const ticket of tickets) grouped[ticket.lane].push(ticket);
   return grouped;
+}
+
+/**
+ * Board drag-and-drop (issue #82): the one `pipenzo:` label a manual drag onto a lane writes.
+ *
+ * This is deliberately *not* a second copy of `PIPENZO_LABEL_LANES` -- that table answers "which
+ * lane does this label put a ticket in," a many(label)-to-one(lane) map the phase machine owns and
+ * this module already refuses to re-derive (see the module comment above). This answers a different
+ * question `PIPENZO_LABEL_LANES` cannot: dropped a card on *this* lane, which single label should a
+ * human's drag write? That question only has one honest answer for three of the four lanes
+ * (`pipenzo:queued`, `pipenzo:working`, `pipenzo:ready-for-review` are each the only state label
+ * their lane has), but Needs-human has five (`needs-human`, `needs-pre-scoping`,
+ * `awaiting-stack-approval`, `ci-failed`, `interrupted`) -- and a drag is not automation reporting
+ * *why* it stopped, it is a person saying "look at this." `pipenzo:needs-human` is README's own
+ * generic "a human flagged this" label, the one member of that set that carries no claim about
+ * which specific automated condition applies, which is exactly what a manual drag can honestly
+ * assert and nothing more.
+ *
+ * The daemon's `isLegalLaneTransition` still gets the final word -- this map only decides *what to
+ * ask for*, never *whether the ask is legal*; see `use-board-drag-drop.ts` for why this module does
+ * not also duplicate that legality table to pre-filter drop targets client-side.
+ */
+export const LANE_DRAG_LABEL: Readonly<Record<PipenzoLaneV1, PipenzoLabelV1>> = Object.freeze({
+  queued: 'pipenzo:queued',
+  working: 'pipenzo:working',
+  'ready-for-review': 'pipenzo:ready-for-review',
+  'needs-human': 'pipenzo:needs-human',
+});
+
+/**
+ * Turns a dnd-kit drag gesture into "move this ticket to this lane," or `undefined` when there is
+ * nothing to do -- a pure function so `BoardScreen.tsx`'s own `onDragEnd` has no branching logic of
+ * its own to get wrong, and so this ticket's test suite can exercise every case without simulating a
+ * real pointer/keyboard drag (see that file's own test for why dnd-kit's own gesture-to-event
+ * translation is trusted rather than re-proven here).
+ *
+ * `undefined` covers three cases a caller should silently no-op on: the drag ended outside any
+ * droppable lane (`overLane` absent), the ticket named by `activeTicketId` is not one this board
+ * currently knows about (a stale drag that outlived a list refresh), or the card was dropped back on
+ * the lane it already occupies (nothing to transition).
+ */
+export function resolveBoardCardDrop<T extends { readonly ticketId: string; readonly lane: PipenzoLaneV1 }>(
+  tickets: readonly T[],
+  activeTicketId: string,
+  overLane: PipenzoLaneV1 | undefined,
+): { ticket: T; targetLane: PipenzoLaneV1 } | undefined {
+  if (!overLane) return undefined;
+  const ticket = tickets.find((candidate) => candidate.ticketId === activeTicketId);
+  if (!ticket || ticket.lane === overLane) return undefined;
+  return { ticket, targetLane: overLane };
 }

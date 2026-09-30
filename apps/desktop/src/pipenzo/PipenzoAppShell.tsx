@@ -34,6 +34,7 @@ import { DiscardBranchDialog } from './DiscardBranchDialog.js';
 import { SettingsPage } from './SettingsPage.js';
 import { TicketDetailContainer } from './TicketDetailContainer.js';
 import { useActivityFilter } from './use-activity-filter.js';
+import { useBoardDragDrop } from './use-board-drag-drop.js';
 import { useConnectedRepoList } from './use-connected-repo-list.js';
 import { usePipenzoTickets } from './use-pipenzo-tickets.js';
 import {
@@ -205,6 +206,7 @@ export function PipenzoAppShell({
   onImplementFailed,
   onPushed,
   onPullRequestOpened,
+  onTicketTransitionFailed,
 }: {
   sync: { status: SyncStatus; label: string };
   onRefreshSync: () => void;
@@ -217,6 +219,11 @@ export function PipenzoAppShell({
    *  DiffReviewScreen" above. */
   onPushed?: (ticket: PipenzoTicketViewV1, result: PipenzoPublishResultV1) => void;
   onPullRequestOpened?: (ticket: PipenzoTicketViewV1, result: PipenzoPublishResultV1) => void;
+  /** Issue #82: a board drag's real `pipenzoTicketTransition` call came back rejected, or the
+   * daemon could not be reached -- the card has already snapped back to where it started (see
+   * `use-board-drag-drop.ts`) by the time this fires. Mirrors `onImplementFailed` exactly: the toast
+   * stack lives in `AppRoot.tsx`, not here. */
+  onTicketTransitionFailed?: (ticket: PipenzoTicketViewV1, message: string) => void;
 }) {
   const [view, setView] = useState<
     'board' | 'settings' | 'activity' | 'ticket-detail' | 'diff-review'
@@ -309,6 +316,11 @@ export function PipenzoAppShell({
     () => (ticketList.status === 'ready' ? ticketList.tickets : []),
     [ticketList],
   );
+  // Issue #82: the board's own optimistic view of `tickets` above -- everywhere else in this shell
+  // (Activity's filter, the ticket switcher, `selectedTicket` below) keeps reading the real,
+  // unmodified list; only `<BoardScreen>` gets the drag-in-flight overlay, since nothing else on
+  // screen is what a drag visually moved.
+  const { tickets: boardTickets, onCardDrop } = useBoardDragDrop(tickets, onTicketTransitionFailed);
   // Issue #341: the Activity screen's own filter state, over the same unfiltered `tickets` this
   // shell already reads for the board -- never a second, separate ticket read (see
   // `use-activity-filter.ts`'s own doc comment).
@@ -419,12 +431,13 @@ export function PipenzoAppShell({
             </LoadLine>
           )}
           <BoardScreen
-            tickets={tickets}
+            tickets={boardTickets}
             loading={ticketList.status === 'loading'}
             workingLaneCapacity={
               ticketList.status === 'ready' ? ticketList.workingLaneCapacity : undefined
             }
             renderTicket={renderTicket}
+            onCardDrop={onCardDrop}
           />
         </>
       )}

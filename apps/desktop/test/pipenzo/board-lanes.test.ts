@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { PIPENZO_LABEL_LANES, PIPENZO_LANES, type PipenzoLaneV1 } from '@agent-dock/shared';
-import { BOARD_LANES, ticketsByLane } from '../../src/pipenzo/board-lanes.js';
+import {
+  BOARD_LANES,
+  LANE_DRAG_LABEL,
+  resolveBoardCardDrop,
+  ticketsByLane,
+} from '../../src/pipenzo/board-lanes.js';
 
 describe('BOARD_LANES', () => {
   it('lists exactly the four lanes from the shared phase-machine contract, in its own order', () => {
@@ -58,5 +63,52 @@ describe('ticketsByLane', () => {
     for (const lane of PIPENZO_LANES) {
       expect(grouped[lane]).toEqual([]);
     }
+  });
+});
+
+describe('LANE_DRAG_LABEL (issue #82)', () => {
+  it('names a real pipenzo: label for every lane, and only that lane maps to it', () => {
+    for (const lane of PIPENZO_LANES) {
+      const label = LANE_DRAG_LABEL[lane];
+      expect(PIPENZO_LABEL_LANES[label]).toBe(lane);
+    }
+  });
+
+  it('writes the one generic label for a manual drag onto Needs-human, not one of the five automation-specific ones', () => {
+    // README's own five Needs-human labels (`needs-human`, `needs-pre-scoping`,
+    // `awaiting-stack-approval`, `ci-failed`, `interrupted`) all render in that column, but only
+    // one of them makes sense coming from a human's drag rather than automation reporting why it
+    // stopped -- see this constant's own module comment.
+    expect(LANE_DRAG_LABEL['needs-human']).toBe('pipenzo:needs-human');
+  });
+
+  it('is total over the four board lanes, same order as BOARD_LANES', () => {
+    expect(Object.keys(LANE_DRAG_LABEL)).toEqual(BOARD_LANES.map((config) => config.lane));
+  });
+});
+
+describe('resolveBoardCardDrop (issue #82)', () => {
+  const tickets = [
+    { ticketId: 'a', lane: 'queued' as PipenzoLaneV1 },
+    { ticketId: 'b', lane: 'working' as PipenzoLaneV1 },
+  ];
+
+  it('resolves the dragged ticket and the lane it was dropped on', () => {
+    expect(resolveBoardCardDrop(tickets, 'a', 'working')).toEqual({
+      ticket: tickets[0],
+      targetLane: 'working',
+    });
+  });
+
+  it('is a no-op when the card was dropped back on its own lane', () => {
+    expect(resolveBoardCardDrop(tickets, 'b', 'working')).toBeUndefined();
+  });
+
+  it('is a no-op when the drag ended outside any droppable lane', () => {
+    expect(resolveBoardCardDrop(tickets, 'a', undefined)).toBeUndefined();
+  });
+
+  it('is a no-op for a ticket id the board no longer knows about', () => {
+    expect(resolveBoardCardDrop(tickets, 'stale-id', 'working')).toBeUndefined();
   });
 });
