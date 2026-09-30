@@ -78,6 +78,7 @@ import type {
   PipenzoDeviceCodeV1,
   PipenzoDeviceOutcomeV1,
   PipenzoGitHubConnectionV1,
+  PipenzoTicketRiskActivityOpenedRequestV1,
   PipenzoTicketRiskApprovalOutcomeRequestV1,
   PipenzoTicketRiskResponseV1,
   PipenzoMediumApprovalCaptureRequestV1,
@@ -249,6 +250,14 @@ export interface AgentDockBridge {
    */
   pipenzoRecordRiskApprovalOutcome(
     input: PipenzoTicketRiskApprovalOutcomeRequestV1,
+  ): Promise<PipenzoTicketRiskResponseV1>;
+  /**
+   * The reset rule's other half (issue #119): opening the ticket's Activity view always resets the
+   * cumulative risk score to zero, unconditionally — see `risk-score.ts`'s own doc comment on
+   * `recordActivityOpened` for why there is no "opened but doesn't count" case.
+   */
+  pipenzoRecordRiskActivityOpened(
+    input: PipenzoTicketRiskActivityOpenedRequestV1,
   ): Promise<PipenzoTicketRiskResponseV1>;
   /**
    * The MEDIUM inline approval flow (issue #97), four calls for one gate's lifecycle:

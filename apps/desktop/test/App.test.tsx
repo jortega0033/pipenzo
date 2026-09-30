@@ -171,6 +171,7 @@ function installBridge(overrides: Partial<AgentDockBridge> = {}): {
     pipenzoTicketTransition: vi.fn(),
     pipenzoListTickets: vi.fn().mockResolvedValue({ tickets: [] }),
     pipenzoRecordRiskApprovalOutcome: vi.fn(),
+    pipenzoRecordRiskActivityOpened: vi.fn(),
     captureMediumApproval: vi.fn(),
     decideMediumApproval: vi.fn(),
     mediumApprovalStatus: vi.fn(),

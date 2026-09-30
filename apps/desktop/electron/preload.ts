@@ -72,6 +72,7 @@ import {
   pipenzoTicketTransitionRequestV1Schema,
   pipenzoTicketReconciliationV1Schema,
   pipenzoTicketListV1Schema,
+  pipenzoTicketRiskActivityOpenedRequestV1Schema,
   pipenzoTicketRiskApprovalOutcomeRequestV1Schema,
   pipenzoTicketRiskResponseV1Schema,
   pipenzoMediumApprovalCaptureRequestV1Schema,
@@ -163,6 +164,7 @@ import {
   type PipenzoTicketTransitionRequestV1,
   type PipenzoTicketReconciliationV1,
   type PipenzoTicketListV1,
+  type PipenzoTicketRiskActivityOpenedRequestV1,
   type PipenzoTicketRiskApprovalOutcomeRequestV1,
   type PipenzoTicketRiskResponseV1,
   type PipenzoMediumApprovalCaptureRequestV1,
@@ -281,6 +283,10 @@ export interface AgentDockBridge {
   /** Issues #95/#97/#98. Mirrors `window.d.ts`'s declaration of the same method. */
   pipenzoRecordRiskApprovalOutcome(
     input: PipenzoTicketRiskApprovalOutcomeRequestV1,
+  ): Promise<PipenzoTicketRiskResponseV1>;
+  /** Issue #119. Mirrors `window.d.ts`'s declaration of the same method. */
+  pipenzoRecordRiskActivityOpened(
+    input: PipenzoTicketRiskActivityOpenedRequestV1,
   ): Promise<PipenzoTicketRiskResponseV1>;
   /** The MEDIUM inline approval flow (issue #97). Mirrors `window.d.ts`'s declaration of the same
    * four methods. */
@@ -980,6 +986,12 @@ const api: AgentDockBridge = {
     const parsed = pipenzoTicketRiskApprovalOutcomeRequestV1Schema.parse(input);
     return pipenzoTicketRiskResponseV1Schema.parse(
       await ipcRenderer.invoke('daemon:pipenzo-risk-approval-outcome', parsed),
+    );
+  },
+  async pipenzoRecordRiskActivityOpened(input) {
+    const parsed = pipenzoTicketRiskActivityOpenedRequestV1Schema.parse(input);
+    return pipenzoTicketRiskResponseV1Schema.parse(
+      await ipcRenderer.invoke('daemon:pipenzo-risk-activity-opened', parsed),
     );
   },
   async captureMediumApproval(input) {

@@ -133,6 +133,7 @@ import {
   pipenzoTicketTransitionRequestV1Schema,
   pipenzoTicketReconciliationV1Schema,
   pipenzoTicketListV1Schema,
+  pipenzoTicketRiskActivityOpenedRequestV1Schema,
   pipenzoTicketRiskApprovalOutcomeRequestV1Schema,
   pipenzoTicketRiskResponseV1Schema,
   pipenzoMediumApprovalCaptureRequestV1Schema,
@@ -178,6 +179,7 @@ import {
   type PipenzoTicketTransitionRequestV1,
   type PipenzoTicketReconciliationV1,
   type PipenzoTicketListV1,
+  type PipenzoTicketRiskActivityOpenedRequestV1,
   type PipenzoTicketRiskApprovalOutcomeRequestV1,
   type PipenzoTicketRiskResponseV1,
   type PipenzoMediumApprovalCaptureRequestV1,
@@ -523,6 +525,14 @@ export class AgentDockClient {
       recordRiskApprovalOutcome: (
         input: PipenzoTicketRiskApprovalOutcomeRequestV1,
       ): Promise<PipenzoTicketRiskResponseV1> => this.recordPipenzoRiskApprovalOutcomeV1(input),
+      /**
+       * The reset rule's other half (issue #119): opening the ticket's Activity view always resets
+       * the cumulative risk score to zero, unconditionally -- see `risk-score.ts`'s
+       * `recordActivityOpened` for why there is no "opened but doesn't count" case.
+       */
+      recordRiskActivityOpened: (
+        input: PipenzoTicketRiskActivityOpenedRequestV1,
+      ): Promise<PipenzoTicketRiskResponseV1> => this.recordPipenzoRiskActivityOpenedV1(input),
       /**
        * The MEDIUM inline approval flow (issue #97) -- see `pipenzo-medium-approval-v1.ts`'s module
        * comment for why capture and decide are two separate calls, and `undo-snapshot.ts`'s for why
@@ -1322,6 +1332,23 @@ export class AgentDockClient {
     );
     return this.requestV2(
       '/v2/pipenzo/tickets/risk/approval-outcome',
+      pipenzoTicketRiskResponseV1Schema,
+      'pipenzo ticket risk',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) },
+      { expectedStatus: 200 },
+    );
+  }
+
+  private async recordPipenzoRiskActivityOpenedV1(
+    input: PipenzoTicketRiskActivityOpenedRequestV1,
+  ): Promise<PipenzoTicketRiskResponseV1> {
+    const parsed = validateInput(
+      pipenzoTicketRiskActivityOpenedRequestV1Schema,
+      input,
+      'pipenzo risk activity-opened request',
+    );
+    return this.requestV2(
+      '/v2/pipenzo/tickets/risk/activity-opened',
       pipenzoTicketRiskResponseV1Schema,
       'pipenzo ticket risk',
       { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) },
