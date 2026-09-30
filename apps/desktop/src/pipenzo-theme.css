@@ -4265,6 +4265,73 @@
     overflow: hidden;
   }
 
+  /* Simple-mode shell (issue #133). `SimpleMode.dc.html`'s own root has no `.sidebar` at all -- the
+     same "no workspace chrome" shape `.preapp` above already uses for the pre-credential screens --
+     but this is a real, connected session, not a pre-credential one, so it gets its own root class
+     rather than borrowing `.preapp`'s name for an unrelated case. `.topbar`/`.center` above are
+     already shared, generic layout primitives and are reused here unchanged. See
+     SimpleModeShell.tsx. */
+  .simple-shell {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background: var(--color-bg);
+  }
+
+  /* The 540px centered column SimpleModeShell's own ticket identity and crossover links render
+     into. Deliberately narrower than what the canvas's full plain-language card holds (#134-142's
+     own content layer, not this ticket's) -- the width is kept anyway so that content can slot in
+     later without a layout change. */
+  .simple-card {
+    width: 540px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  /* The two crossover links (issue #133): icon-plus-label, distinct from both `.btn` and the
+     plainer text-only `.r-link`. `[aria-disabled='true']` is "Ask a follow-up" -- present but
+     genuinely inert, see SimpleModeShell.tsx's own doc comment on why. */
+  .link-row {
+    display: flex;
+    gap: 8px;
+  }
+
+  .link {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 32px;
+    padding: 0 12px;
+    border-radius: var(--radius-pipenzo-pill);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--color-text-soft);
+    cursor: pointer;
+    transition: color var(--ease-pipenzo), background-color var(--ease-pipenzo);
+  }
+
+  .link:hover {
+    color: var(--color-text);
+    background: var(--color-surface-2);
+  }
+
+  .link:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: var(--radius-pipenzo-sm);
+  }
+
+  .link[aria-disabled='true'] {
+    cursor: default;
+    color: var(--color-text-faint);
+  }
+
+  .link[aria-disabled='true']:hover {
+    background: transparent;
+    color: var(--color-text-faint);
+  }
+
   /* The 620px column each Connect step renders into. A fixed width, not a max-width: the device
      code and the repo list are both read at a glance, and a column that grows with the window
      turns a scannable list into a scan across a monitor. */
