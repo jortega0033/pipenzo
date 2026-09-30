@@ -139,10 +139,14 @@ export const pipenzoImplementRequestV1Schema = z
     /**
      * Which ticket this implement dispatch is for. Optional the same way `refine`'s and `review`'s
      * `ticketId` are: every existing caller and test omits it, and a dispatch without one still
-     * starts the session exactly as before. Its only effect is consequential -- when present, the
-     * daemon appends a `PipenzoTicketAttemptV1` to the ticket's `attempts[]` once the session is
+     * starts the session exactly as before. Two independent consequential effects hang off it now:
+     * the daemon appends a `PipenzoTicketAttemptV1` to the ticket's `attempts[]` once the session is
      * confirmed started, which is what gives crash recovery's session-to-ticket matching
-     * (`pipenzo-crash-recovery.ts`, issue #201) real data instead of only what a test hand-seeds.
+     * (`pipenzo-crash-recovery.ts`, issue #201) real data instead of only what a test hand-seeds; and
+     * (issue #159) it best-effort records the worktree id/branch the dispatch just cut onto the
+     * ticket record, which is what lets a later terminal-state transition (PR merged, closed,
+     * abandoned) find the worktree to clean up without the renderer ever having to remember and
+     * resend it.
      */
     ticketId: pipenzoTicketIdV1Schema.optional(),
     /**

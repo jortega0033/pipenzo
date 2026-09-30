@@ -54,6 +54,7 @@ import { IssueDraftError, IssueDrafter } from './issue-drafter.js';
 import { readPipenzoRepoConfig, type PipenzoCommandConfig } from './pipenzo-repo-config.js';
 import { isBudgetExhausted, type PipenzoPhaseMachine } from './pipenzo-phase-machine.js';
 import { evaluateDiffSizeGate } from './refine-gate.js';
+import { attachTicketWorktree, type TicketWorktreeStorePort } from './pipenzo-worktree-lifecycle.js';
 
 /**
  * The one service the Refine / Implement / Review routes call (Pipenzo issue #184).
@@ -137,6 +138,15 @@ export interface PipenzoPhaseServiceOptions {
     PipenzoPhaseMachine,
     'read' | 'transition' | 'recordAttempt' | 'recordTokenUsage' | 'peekBudget'
   >;
+  /**
+   * Local-only ticket-record access (issue #159), narrower than `machine` on purpose: attaching a
+   * worktree id to a ticket is not a lane transition and costs no GitHub round trip, so this is a
+   * direct store port rather than another `PipenzoPhaseMachine` method. Optional so a service built
+   * without one (every test that predates this ticket) still implements exactly as before — it just
+   * has nowhere to record the worktree it cut, the same "best-effort, logged, never thrown" shape
+   * `#reportRefusal`/`#reportBlownEstimate` already use for their own secondary writes.
+   */
+  tickets?: TicketWorktreeStorePort;
   /** Logs a failed blown-estimate consequence without failing the review call that produced a
    * perfectly good report — see `review()`'s own comment for why. */
   logger?: Logger;
@@ -156,6 +166,7 @@ export class PipenzoPhaseService {
         'read' | 'transition' | 'recordAttempt' | 'recordTokenUsage' | 'peekBudget'
       >
     | undefined;
+  readonly #ticketWorktrees: TicketWorktreeStorePort | undefined;
   readonly #logger: Logger | undefined;
 
   constructor(options: PipenzoPhaseServiceOptions) {
@@ -182,6 +193,7 @@ export class PipenzoPhaseService {
     this.#github = options.github;
     this.#env = options.env ?? process.env;
     this.#machine = options.machine;
+    this.#ticketWorktrees = options.tickets;
     this.#logger = options.logger;
   }
 
@@ -352,6 +364,19 @@ export class PipenzoPhaseService {
             error: error instanceof Error ? error.message : String(error),
           });
         });
+    }
+
+    // Best-effort (issue #159): lets a later terminal-state transition (PR merged, closed,
+    // abandoned) find this worktree to clean up without the renderer ever having to remember and
+    // resend its id. Never allowed to turn a successful dispatch into a thrown error — see
+    // `attachTicketWorktree`'s own doc comment.
+    if (request.ticketId && this.#ticketWorktrees) {
+      attachTicketWorktree(
+        this.#ticketWorktrees,
+        request.ticketId,
+        { id: started.worktreeId, path: started.worktreePath, branch: started.branch },
+        this.#logger,
+      );
     }
 
     // `started.worktreePath` is dropped here, on purpose and by hand. It is the whole point of the

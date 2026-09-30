@@ -481,6 +481,56 @@ describe('PipenzoPhaseMachine.read reconciliation', () => {
   });
 });
 
+describe('PipenzoPhaseMachine issue state (issue #159)', () => {
+  it('reports issueState from the same round trip read() already makes', async () => {
+    const { machine } = harness();
+    const result = await machine.read(TICKET_ID);
+    expect(result.issueState).toBe('open');
+  });
+
+  it('reports closed once the issue closes, on every read() branch', async () => {
+    const tickets = new FileTicketStore(storeDirectory());
+    tickets.create(makeTicket());
+    const github = new FakeGitHubClient().seedIssue({
+      ...makeIssue(['pipenzo:queued']),
+      state: 'closed',
+    });
+    const machine = new PipenzoPhaseMachine({ tickets, github: () => github });
+
+    // Agreeing lane/labels: the "nothing changed" branch.
+    expect((await machine.read(TICKET_ID)).issueState).toBe('closed');
+  });
+
+  it('reports closed on the reconciling branch too, not just the agreeing one', async () => {
+    // A closed issue whose label disagrees with the local lane, so the reconciling branch (not the
+    // "agrees" branch, already covered above) is the one under test.
+    const tickets = new FileTicketStore(storeDirectory());
+    tickets.create(makeTicket({ lane: 'working', labels: ['pipenzo:working'] }));
+    const github = new FakeGitHubClient().seedIssue({
+      ...makeIssue(['pipenzo:needs-human']),
+      state: 'closed',
+    });
+    const machine = new PipenzoPhaseMachine({ tickets, github: () => github });
+
+    const result = await machine.read(TICKET_ID);
+    expect(result.divergence).toBe('lane_reconciled');
+    expect(result.issueState).toBe('closed');
+  });
+
+  it('carries the issue state a transition’s own read() already observed', async () => {
+    const tickets = new FileTicketStore(storeDirectory());
+    tickets.create(makeTicket());
+    const github = new FakeGitHubClient().seedIssue({
+      ...makeIssue(['pipenzo:queued']),
+      state: 'closed',
+    });
+    const machine = new PipenzoPhaseMachine({ tickets, github: () => github });
+
+    const result = await machine.transition(TICKET_ID, 'pipenzo:working');
+    expect(result.issueState).toBe('closed');
+  });
+});
+
 describe('PipenzoPhaseMachine.read title caching (issue #255)', () => {
   it('caches the title on a ticket that has never had one', async () => {
     const { machine, tickets } = harness({ issueTitle: 'Fix the board list route' });

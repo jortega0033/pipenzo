@@ -435,6 +435,15 @@ export interface PipenzoTicketReconciliation {
   readonly observedLabels: readonly PipenzoLaneBearingLabelV1[];
   /** True when the local record was rewritten as a result of this read. */
   readonly changed: boolean;
+  /**
+   * The issue's own open/closed state (issue #159), as `getIssue` reported it on this same round
+   * trip -- never a second request. `read()` is the only writer; `transition()` carries over the
+   * value its own internal `read()` already observed, since writing a label cannot itself close or
+   * reopen an issue. This is what lets a caller (the reconciler, above all) notice a ticket's issue
+   * closed -- merged or closed unmerged, README's polling reconciler does not need to tell those
+   * apart to know the ticket's worktree is no longer needed -- without a second GitHub call.
+   */
+  readonly issueState: 'open' | 'closed';
 }
 
 export interface PipenzoPhaseMachineOptions {
@@ -569,6 +578,9 @@ export class PipenzoPhaseMachine {
       previousLane: current.ticket.lane,
       observedLabels,
       changed: true,
+      // Carried over from the `read()` this transition already made to judge legality against --
+      // writing a label cannot itself close or reopen an issue, so there is nothing new to observe.
+      issueState: current.issueState,
     };
   }
 
@@ -597,10 +609,12 @@ export class PipenzoPhaseMachine {
     const client = this.#requireGitHub();
     let issueLabels: readonly string[];
     let issueTitle: string;
+    let issueState: 'open' | 'closed';
     try {
       const issue = await client.getIssue(ref, ticket.issueNumber);
       issueLabels = issue.labels;
       issueTitle = issue.title;
+      issueState = issue.state;
     } catch (error) {
       throw toMachineError(error);
     }
@@ -640,6 +654,7 @@ export class PipenzoPhaseMachine {
         previousLane: ticket.lane,
         observedLabels,
         changed: next !== ticket,
+        issueState,
       };
     }
 
@@ -657,6 +672,7 @@ export class PipenzoPhaseMachine {
         previousLane: ticket.lane,
         observedLabels,
         changed: next !== ticket,
+        issueState,
       };
     }
 
@@ -678,6 +694,7 @@ export class PipenzoPhaseMachine {
       previousLane: ticket.lane,
       observedLabels,
       changed: true,
+      issueState,
     };
   }
 

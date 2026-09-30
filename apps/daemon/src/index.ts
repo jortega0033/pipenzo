@@ -294,6 +294,9 @@ async function main() {
     // Issue #144: lets a blown-estimate review outcome transition the ticket to
     // pipenzo:awaiting-stack-approval and post the real-vs-predicted numbers as a comment.
     machine: phaseMachine,
+    // Issue #159: lets a successful implement() best-effort record the worktree it just cut onto
+    // the ticket record, which terminal-state cleanup (below) later reads back.
+    tickets: ticketStore,
     logger,
   });
 
