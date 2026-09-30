@@ -119,6 +119,9 @@ describe('electron/preload.ts — real bridge (AD-07)', () => {
         // HIGH never offers Undo.
         'captureHighApproval',
         'decideHighApproval',
+        // Issue #99: the stack approval panel's own two calls -- same capture/decide shape as HIGH.
+        'captureStackApproval',
+        'decideStackApproval',
         'onPipenzoPhaseEvent',
         // The GitHub connection-health stream (issue #257), plus its manual poll trigger (#70/#71/#75).
         'onPipenzoGitHubHealth',

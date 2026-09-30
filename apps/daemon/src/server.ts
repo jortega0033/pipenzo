@@ -30,6 +30,8 @@ import { registerPipenzoMediumApprovalRoutes } from './routes/pipenzo-medium-app
 import type { MediumApprovalStore } from './medium-approval-store.js';
 import { registerPipenzoHighApprovalRoutes } from './routes/pipenzo-high-approval.js';
 import type { HighApprovalStore } from './high-approval-store.js';
+import { registerPipenzoStackApprovalRoutes } from './routes/pipenzo-stack-approval.js';
+import type { StackApprovalStore } from './stack-approval-store.js';
 import type { PipenzoPhaseEventBus } from './pipenzo-phase-events.js';
 import type { PipenzoCrashRecovery } from './pipenzo-crash-recovery.js';
 import { registerPipenzoRecoveryRoutes } from './routes/pipenzo-recovery.js';
@@ -141,6 +143,12 @@ export interface BuildServerOptions {
    * without the `phaseMachine`/`worktreeManager` it also needs, has no high-approval routes at all.
    */
   highApprovalStore?: HighApprovalStore;
+  /**
+   * The stack approval panel's own approval store (issue #99). Optional for the same reason
+   * `highApprovalStore` is: a daemon assembled without one, or without the `phaseMachine`/
+   * `phaseService` it also needs, has no stack-approval routes at all.
+   */
+  stackApprovalStore?: StackApprovalStore;
 }
 
 /**
@@ -243,6 +251,13 @@ export function buildServer(opts: BuildServerOptions): FastifyInstance {
         opts.phaseMachine,
         opts.worktreeManager,
         opts.highApprovalStore,
+      );
+    if (opts.phaseMachine && opts.phaseService && opts.stackApprovalStore)
+      registerPipenzoStackApprovalRoutes(
+        app,
+        opts.phaseMachine,
+        opts.phaseService,
+        opts.stackApprovalStore,
       );
     if (opts.crashRecovery) registerPipenzoRecoveryRoutes(app, opts.crashRecovery);
     if (opts.connectedRepos && opts.pipenzoGitHubClient)

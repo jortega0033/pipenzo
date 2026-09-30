@@ -212,6 +212,13 @@ export function createDemoBridge(): AgentDockBridge {
     decideHighApproval: async () => {
       throw new Error('the high-approval flow is not available in demo mode');
     },
+    // The stack approval panel (issue #99): same reasoning as the MEDIUM/HIGH stubs above.
+    captureStackApproval: async () => {
+      throw new Error('the stack-approval flow is not available in demo mode');
+    },
+    decideStackApproval: async () => {
+      throw new Error('the stack-approval flow is not available in demo mode');
+    },
     // Demo mode has no daemon to stream from; subscribing is inert rather than an error.
     onPipenzoPhaseEvent: () => () => {},
     onPipenzoGitHubHealth: () => () => {},

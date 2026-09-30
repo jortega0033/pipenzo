@@ -20,7 +20,7 @@ import type {
   PipenzoPhaseMachine,
   PipenzoTicketReconciliation,
 } from '../src/pipenzo-phase-machine.js';
-import type { TicketWorktreeStorePort } from '../src/pipenzo-worktree-lifecycle.js';
+import type { StackTicketStorePort } from '../src/pipenzo-stack-materializer.js';
 import type { PipenzoTicketAttemptV1, PipenzoTicketRecordV1 } from '@agent-dock/shared';
 import { PipenzoAuditStore } from '../src/pipenzo-audit-store.js';
 
@@ -156,7 +156,7 @@ interface Harness {
     'read' | 'transition' | 'recordAttempt' | 'recordTokenUsage' | 'peekBudget' | 'gradeRiskAction'
   >;
   /** Issue #159: local ticket-store access, so `implement()` can attach the worktree it just cut. */
-  tickets?: TicketWorktreeStorePort;
+  tickets?: StackTicketStorePort;
   /** Issue #160: where a review-gate result is recorded. */
   audit?: Pick<PipenzoAuditStore, 'append'>;
 }

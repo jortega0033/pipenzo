@@ -148,6 +148,10 @@ import {
   pipenzoHighApprovalCaptureResultV1Schema,
   pipenzoHighApprovalDecideRequestV1Schema,
   pipenzoHighApprovalDecideResultV1Schema,
+  pipenzoStackApprovalCaptureRequestV1Schema,
+  pipenzoStackApprovalCaptureResultV1Schema,
+  pipenzoStackApprovalDecideRequestV1Schema,
+  pipenzoStackApprovalDecideResultV1Schema,
   pipenzoPhaseEventOrStreamErrorV1Schema,
   pipenzoGitHubHealthV1Schema,
   type PipenzoGitHubHealthV1,
@@ -198,6 +202,10 @@ import {
   type PipenzoHighApprovalCaptureResultV1,
   type PipenzoHighApprovalDecideRequestV1,
   type PipenzoHighApprovalDecideResultV1,
+  type PipenzoStackApprovalCaptureRequestV1,
+  type PipenzoStackApprovalCaptureResultV1,
+  type PipenzoStackApprovalDecideRequestV1,
+  type PipenzoStackApprovalDecideResultV1,
   type PipenzoPhaseEventV1,
 } from '@agent-dock/shared';
 import {
@@ -569,6 +577,12 @@ export class AgentDockClient {
       decideHighApproval: (
         input: PipenzoHighApprovalDecideRequestV1,
       ): Promise<PipenzoHighApprovalDecideResultV1> => this.decideHighApprovalV1(input),
+      captureStackApproval: (
+        input: PipenzoStackApprovalCaptureRequestV1,
+      ): Promise<PipenzoStackApprovalCaptureResultV1> => this.captureStackApprovalV1(input),
+      decideStackApproval: (
+        input: PipenzoStackApprovalDecideRequestV1,
+      ): Promise<PipenzoStackApprovalDecideResultV1> => this.decideStackApprovalV1(input),
       /**
        * The phase-change stream (issue #189): one daemon-wide stream carrying every ticket's
        * transitions, so a board needs one connection rather than one per card.
@@ -1472,6 +1486,40 @@ export class AgentDockClient {
       '/v2/pipenzo/tickets/risk/high-approval/decide',
       pipenzoHighApprovalDecideResultV1Schema,
       'pipenzo high-approval decision',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) },
+      { expectedStatus: 200 },
+    );
+  }
+
+  private async captureStackApprovalV1(
+    input: PipenzoStackApprovalCaptureRequestV1,
+  ): Promise<PipenzoStackApprovalCaptureResultV1> {
+    const parsed = validateInput(
+      pipenzoStackApprovalCaptureRequestV1Schema,
+      input,
+      'pipenzo stack-approval capture request',
+    );
+    return this.requestV2(
+      '/v2/pipenzo/tickets/risk/stack-approval/capture',
+      pipenzoStackApprovalCaptureResultV1Schema,
+      'pipenzo stack-approval pending record',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) },
+      { expectedStatus: 200 },
+    );
+  }
+
+  private async decideStackApprovalV1(
+    input: PipenzoStackApprovalDecideRequestV1,
+  ): Promise<PipenzoStackApprovalDecideResultV1> {
+    const parsed = validateInput(
+      pipenzoStackApprovalDecideRequestV1Schema,
+      input,
+      'pipenzo stack-approval decide request',
+    );
+    return this.requestV2(
+      '/v2/pipenzo/tickets/risk/stack-approval/decide',
+      pipenzoStackApprovalDecideResultV1Schema,
+      'pipenzo stack-approval decision',
       { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) },
       { expectedStatus: 200 },
     );
