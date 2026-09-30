@@ -31,6 +31,7 @@ import { BoardImplementDialog } from './BoardImplementDialog.js';
 import { BoardScreen } from './BoardScreen.js';
 import { DiffReviewScreen } from './DiffReviewScreen.js';
 import { DiscardBranchDialog } from './DiscardBranchDialog.js';
+import { ModelsGatesScreen } from './ModelsGatesScreen.js';
 import { SettingsPage } from './SettingsPage.js';
 import { TicketDetailContainer } from './TicketDetailContainer.js';
 import { useActivityFilter } from './use-activity-filter.js';
@@ -50,17 +51,26 @@ import {
  * `demo-bridge.ts`'s Pipenzo methods (`pipenzoListTickets` included) throw rather than answer, and
  * this shell has nothing else to show.
  *
- * ## Why the nav has exactly these items (issue #341)
+ * ## Why the nav has exactly these items (issue #341, plus Models & gates via #470)
  *
- * `Main.dc.html`'s own sidebar also carries "Needs me", "Open PRs" and "Models & gates" -- none of
- * which have a screen behind them yet. A nav item that leads nowhere is worse than one that does
- * not exist: it is a control a person can click, in an app whose whole premise is "every action is
- * real or absent, never decorative". Board, Activity and Settings are the three top-level screens
- * with a real, tested container behind them today (`BoardScreen`, `ActivityScreen`,
- * `SettingsPage`); the rest are their own future tickets, each free to add its own row when it
- * lands. TicketDetail is deliberately not a nav item -- it is a drill-down into one ticket, reached
- * from a board card or an activity row, never a standing destination of its own (see "Reaching
- * TicketDetail" below).
+ * `Main.dc.html`'s own sidebar also carries "Needs me" and "Open PRs", neither of which has a
+ * screen behind them yet. A nav item that leads nowhere is worse than one that does not exist: it
+ * is a control a person can click, in an app whose whole premise is "every action is real or
+ * absent, never decorative". Board, Activity, Models & gates and Settings are the four top-level
+ * screens with a real, tested container behind them today (`BoardScreen`, `ActivityScreen`,
+ * `ModelsGatesScreen`, `SettingsPage`); "Needs me" and "Open PRs" are their own future tickets,
+ * each free to add its own row when it lands. TicketDetail is deliberately not a nav item -- it is
+ * a drill-down into one ticket, reached from a board card or an activity row, never a standing
+ * destination of its own (see "Reaching TicketDetail" below).
+ *
+ * ## Reaching ModelsGatesScreen (issue #470)
+ *
+ * `DeterministicGatesPanel.tsx`/`AgentCapturedPanel.tsx` (#123/#124) rendered real, tested content
+ * with no route reaching them -- `ModelsGatesScreen` is that route, and this shell mounts it the
+ * same additive way #341 added Activity: one `NavItem` under the existing "Repo" group (next to
+ * Settings, matching `Main.dc.html`'s own grouping), one `view` case, and one crumb case. It takes
+ * `activeRepo`, the same `owner/name` the workspace switcher below already resolves -- see that
+ * screen's own doc comment for why an agent-captured capability probe needs one.
  *
  * ## Reaching TicketDetail (issue #341)
  *
@@ -219,7 +229,7 @@ export function PipenzoAppShell({
   onPullRequestOpened?: (ticket: PipenzoTicketViewV1, result: PipenzoPublishResultV1) => void;
 }) {
   const [view, setView] = useState<
-    'board' | 'settings' | 'activity' | 'ticket-detail' | 'diff-review'
+    'board' | 'settings' | 'activity' | 'ticket-detail' | 'diff-review' | 'models'
   >('board');
   const { ticketList, refresh } = usePipenzoTickets();
   const { repoList, refresh: refreshRepoList } = useConnectedRepoList();
@@ -341,6 +351,8 @@ export function PipenzoAppShell({
     setView('settings');
   }, []);
 
+  const goToModels = useCallback(() => setView('models'), []);
+
   const onManageRepos = useCallback(() => {
     // Incremented rather than set to a fixed truthy value: `ConnectedReposPanel` may already be
     // mounted on the Settings screen, in which case only a *changed* prop retriggers its effect --
@@ -374,6 +386,9 @@ export function PipenzoAppShell({
             </NavItem>
           </NavGroup>
           <NavGroup title="Repo">
+            <NavItem icon="gates" active={view === 'models'} onClick={goToModels}>
+              Models &amp; gates
+            </NavItem>
             <NavItem icon="settings" active={view === 'settings'} onClick={goToSettings}>
               Settings
             </NavItem>
@@ -434,6 +449,7 @@ export function PipenzoAppShell({
           onConnectedReposChange={() => refreshRepoList()}
         />
       )}
+      {view === 'models' && <ModelsGatesScreen activeRepo={activeRepoId} />}
       {view === 'activity' && (
         <ActivityScreen
           tickets={activityTickets}
@@ -544,7 +560,7 @@ export function PipenzoAppShell({
  * guessed number.
  */
 function crumbItems(
-  view: 'board' | 'settings' | 'activity' | 'ticket-detail' | 'diff-review',
+  view: 'board' | 'settings' | 'activity' | 'ticket-detail' | 'diff-review' | 'models',
   selectedTicket: PipenzoTicketViewV1 | undefined,
   reviewingTicket: PipenzoTicketViewV1 | undefined,
   goToBoard: () => void,
@@ -557,6 +573,8 @@ function crumbItems(
       return ['Settings'];
     case 'activity':
       return ['Activity'];
+    case 'models':
+      return ['Models & gates'];
     case 'ticket-detail':
       return [
         <CrumbLink key="board" onClick={goToBoard}>
