@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState, type KeyboardEvent, type ReactNode } fr
 import type {
   PipenzoImplementResultV1,
   PipenzoPublishResultV1,
+  PipenzoTicketAttemptV1,
   PipenzoTicketViewV1,
   RefineSpecV1,
 } from '@agent-dock/shared';
@@ -20,7 +21,10 @@ import { Button } from '../components/primitives/Button.js';
 import { Card, CardFoot, CardMeta } from '../components/primitives/Card.js';
 import { FailNote, WaitNote } from '../components/primitives/CardNote.js';
 import { Chip } from '../components/primitives/Chip.js';
+import { Conflict } from '../components/primitives/Conflict.js';
 import { LoadLine } from '../components/primitives/LoadLine.js';
+import { Notice } from '../components/primitives/Notice.js';
+import { Split, type SplitRow } from '../components/primitives/Split.js';
 import { SyncStatusPill, type SyncStatus } from '../components/primitives/SyncStatusPill.js';
 import { WorkspaceSwitcher } from '../components/primitives/WorkspaceSwitcher.js';
 import { ActivityFilterBar } from './ActivityFilterBar.js';
@@ -32,6 +36,7 @@ import { BoardScreen } from './BoardScreen.js';
 import { DiffReviewScreen } from './DiffReviewScreen.js';
 import { DiscardBranchDialog } from './DiscardBranchDialog.js';
 import { ModelsGatesScreen } from './ModelsGatesScreen.js';
+import { classifyNeedsHumanCard, type NeedsHumanCardClassification } from './needs-human-card.js';
 import { SettingsPage } from './SettingsPage.js';
 import { TicketDetailContainer } from './TicketDetailContainer.js';
 import { useActivityFilter } from './use-activity-filter.js';
@@ -152,11 +157,13 @@ import {
  *
  * `Card` -- id/title, plus the one status chip and foot line each lane's own real data already
  * supports without guessing (Working's phase, Ready-for-review's branch and, since issue #87, its
- * own ci-failed `FailNote`). This still is not a guess at #86's lane-specific card content:
- * Needs-human's seven variants stay their own ticket, and nothing here invents data that ticket is
- * meant to add -- `ticket.phase`/`ticket.worktree`/`ticket.labels`/`ticket.attempts` are already
- * real fields on `PipenzoTicketViewV1`, not placeholders standing in for a schema that does not
- * exist yet.
+ * own ci-failed `FailNote`). Needs-human is issue #86: `needs-human-card.ts`'s own
+ * `classifyNeedsHumanCard` picks one of five real variants
+ * (`needs-pre-scoping`/`awaiting-stack-approval`/`interrupted`/`merge-conflict`/`failed`, plus a
+ * `generic` fallback for a bare park this router does not further specialize), and
+ * `needsHumanChip`/`needsHumanCardBody` below turn that answer into a chip and a body -- never a
+ * guess at the two named variants (`claim-conflict`, `plan-review`) that module's own doc comment
+ * found no persisted backend signal for yet.
  *
  * ## The Working lane's held card (issue #85)
  *
@@ -317,6 +324,7 @@ export function PipenzoAppShell({
               )}
             </>
           )}
+          {ticket.lane === 'needs-human' && needsHumanCardBody(classifyNeedsHumanCard(ticket))}
         </Card>
       );
     },
@@ -672,6 +680,15 @@ function loadLineTarget(repoNames: readonly string[] | undefined): ReactNode {
  * ticket in this lane with the label is trusted the same way `board-lanes.ts`'s own module comment
  * already trusts `lane` itself. Every other ready-for-review ticket -- no `pipenzo:ci-failed` --
  * is the plain gates-passed case.
+ *
+ * Needs-human's own five variants (issue #86): the chip text matches each real label verbatim
+ * except `failed`, which reads `3 failed` -- `Main.dc.html`'s own board sample spells it that way
+ * for the "parked after repeated failures" reading of the bare `pipenzo:needs-human` label, and
+ * `needs-human-card.ts`'s own doc comment states why that reading, and not "a denied approval", is
+ * the one this router can tell apart from real data. The other two named variants
+ * (`claim-conflict`, `plan-review`) have no persisted signal to key a chip off yet -- see that
+ * module's doc comment -- so `classifyNeedsHumanCard` never returns them and no chip text exists
+ * for them here.
  */
 function laneChip(ticket: PipenzoTicketViewV1) {
   if (ticket.lane === 'working') {
@@ -685,7 +702,28 @@ function laneChip(ticket: PipenzoTicketViewV1) {
     }
     return <Chip tone="ok">ready for review</Chip>;
   }
+  if (ticket.lane === 'needs-human') {
+    return needsHumanChip(classifyNeedsHumanCard(ticket));
+  }
   return undefined;
+}
+
+/** The needs-human chip text and tone for each of `needs-human-card.ts`'s five real variants. */
+function needsHumanChip(card: NeedsHumanCardClassification) {
+  switch (card.variant) {
+    case 'needs-pre-scoping':
+      return <Chip tone="neutral">pipenzo:needs-pre-scoping</Chip>;
+    case 'awaiting-stack-approval':
+      return <Chip tone="warn">pipenzo:awaiting-stack-approval</Chip>;
+    case 'interrupted':
+      return <Chip tone="warn">pipenzo:interrupted</Chip>;
+    case 'merge-conflict':
+      return <Chip tone="warn">pipenzo:merge-conflict</Chip>;
+    case 'failed':
+      return <Chip tone="danger">3 failed</Chip>;
+    case 'generic':
+      return <Chip tone="danger">pipenzo:needs-human</Chip>;
+  }
 }
 
 /**
@@ -705,4 +743,136 @@ function ciFixReadyDetail(ticket: PipenzoTicketViewV1): string {
   return last
     ? `A post-merge-request check failed. A fix attempt has since committed (${last.tier} tier, ${last.model}) and is waiting on this same human push gate -- it is never resubmitted on its own.`
     : 'A post-merge-request check failed on this ticket. It only moves here once a fix attempt commits -- nothing is pushed without an explicit human approval.';
+}
+
+/**
+ * The Needs-human card body for each of `needs-human-card.ts`'s five real variants (issue #86) --
+ * see that module's own doc comment for exactly which real fields each one is built from and which
+ * two named variants (`claim-conflict`, `plan-review`) never reach this function at all.
+ *
+ * `needs-pre-scoping`/`awaiting-stack-approval` reuse `Split` -- the same primitive `RefusalPanel`
+ * already renders a richer version of on `TicketDetail`, and `Main.dc.html`'s own board mock uses
+ * the identical `.split` block for both -- with only the base `ticket.estimate` and, for a refusal,
+ * a real cached `proposedSplit` when one survived. `interrupted` uses the generic `Notice` rather
+ * than the dangling `Resume` primitive: `Resume`'s own test suite (`Resume.test.tsx`) fixes Discard
+ * and restart as *always* enabled, a contract this board card cannot honestly meet -- the ticket
+ * list this card renders from carries no crash-recovery session data to back a real resume or
+ * discard action from here, and a board-level "always enabled, does nothing" button would be
+ * exactly the decorative control this codebase's own doc comments repeatedly refuse to ship. Wiring
+ * `Resume` for real is a follow-up once the recovery report reaches the board (see this module's
+ * sibling doc comment). `merge-conflict` reuses `Conflict` in its file-less mode -- no PR number, no
+ * per-file hunk list, both absent from `PipenzoTicketViewV1` today -- with README's own real,
+ * generic explanation of what the label means. `failed`/`generic` both reuse `FailNote`, the same
+ * "parked, here's why" treatment issue #87 already established for a different lane.
+ */
+function needsHumanCardBody(card: NeedsHumanCardClassification): ReactNode {
+  switch (card.variant) {
+    case 'needs-pre-scoping':
+      return (
+        <Split
+          icon="prohibit"
+          quiet
+          head="Declined at Refine · nothing written"
+          kv={estimateKv(card)}
+          rows={
+            card.proposedSplit
+              ? card.proposedSplit.map(
+                  (part, index): SplitRow => ({
+                    n: index + 1,
+                    children: (
+                      <>
+                        {part.summary}{' '}
+                        <span className="mono">
+                          ≈ {part.changedLines.toLocaleString()} lines · {part.filesTouched} files
+                        </span>
+                      </>
+                    ),
+                  }),
+                )
+              : []
+          }
+        />
+      );
+    case 'awaiting-stack-approval':
+      return (
+        <Split
+          icon="pr-stack"
+          head={
+            card.childCount > 0
+              ? `Proposed stack · ${card.childCount} ${card.childCount === 1 ? 'PR' : 'PRs'}`
+              : 'Awaiting a human decision on how to split or proceed'
+          }
+          kv={estimateKv(card)}
+          rows={[]}
+        />
+      );
+    case 'interrupted':
+      return (
+        <Notice tone="warn" icon="warning" title="The daemon died mid-run">
+          Last phase: <b>{phaseLabel(card.phase)}</b>.
+          {card.branch && (
+            <>
+              {' '}
+              Worktree branch <span className="mono">{card.branch}</span>.
+            </>
+          )}{' '}
+          It never auto-resumes on its own -- open the ticket for the full record once resume/discard
+          reaches the board.
+        </Notice>
+      );
+    case 'merge-conflict':
+      return (
+        <Conflict icon="git-branch" head="Conflicts with main">
+          <b>Nothing failed and no commit is lost.</b> The approved branch stopped merging cleanly
+          with main while it waited -- a rebase re-enters the same human push gate.
+        </Conflict>
+      );
+    case 'failed':
+      return <FailNote>{failedOrGenericDetail(card, true)}</FailNote>;
+    case 'generic':
+      return <FailNote>{failedOrGenericDetail(card, false)}</FailNote>;
+  }
+}
+
+/** The real lines/files/layered line every Split-based Needs-human variant shares -- never the
+ *  canvas's own invented added/removed line split, which `pipenzoTicketEstimateV1Schema` does not
+ *  carry (see `needs-human-card.ts`'s own doc comment). */
+function estimateKv(card: { lines: number; files: number; layered: boolean }): string {
+  const { lines, files, layered } = card;
+  return `${lines.toLocaleString()} changed lines · ${files} file${files === 1 ? '' : 's'}${
+    layered ? ' · layered' : ' · no clean layering'
+  }`;
+}
+
+/** `Refine`/`Implement`/`Review`, the same three real phases `PIPENZO_PHASES` closes over. */
+function phaseLabel(phase: PipenzoTicketViewV1['phase']): string {
+  if (phase === 'refine') return 'Refine';
+  if (phase === 'implement') return 'Implement';
+  return 'Review';
+}
+
+/**
+ * `failed`'s and `generic`'s shared `FailNote` body -- `isThreeFailed` only changes the headline
+ * clause, never which fields are read: both variants carry the identical real shape
+ * (`attemptCount`/`last`), and both fall back to the same honest "no attempts recorded yet" when
+ * `last` is absent.
+ */
+function failedOrGenericDetail(
+  card: { attemptCount: number; last?: PipenzoTicketAttemptV1 },
+  isThreeFailed: boolean,
+): ReactNode {
+  const headline = isThreeFailed
+    ? `Parked after ${card.attemptCount} failed attempts -- no more runs will be spent.`
+    : `Parked for a human to look at -- ${card.attemptCount} attempt${
+        card.attemptCount === 1 ? '' : 's'
+      } recorded.`;
+  if (!card.last) {
+    return isThreeFailed ? headline : 'Parked for a human to look at -- no attempts recorded yet.';
+  }
+  return (
+    <>
+      {headline} Last attempt: {card.last.tier} tier, {card.last.model}, outcome &quot;
+      {card.last.outcome}&quot;.
+    </>
+  );
 }
