@@ -55,7 +55,7 @@ import { IssueDraftError, IssueDrafter } from './issue-drafter.js';
 import { readPipenzoRepoConfig, type PipenzoCommandConfig } from './pipenzo-repo-config.js';
 import { isBudgetExhausted, type PipenzoPhaseMachine } from './pipenzo-phase-machine.js';
 import { evaluateDiffSizeGate } from './refine-gate.js';
-import { attachTicketWorktree, type TicketWorktreeStorePort } from './pipenzo-worktree-lifecycle.js';
+import { attachTicketWorktree } from './pipenzo-worktree-lifecycle.js';
 import type { PipenzoAuditStore } from './pipenzo-audit-store.js';
 import { materializeStack, type StackTicketStorePort } from './pipenzo-stack-materializer.js';
 
