@@ -700,7 +700,7 @@ describe('PipenzoAppShell', () => {
           lane: 'needs-human',
           labels: ['pipenzo:needs-human'],
           attempts: [
-            { sessionId: 's1', tier: 'low', model: 'sonnet', outcome: 'gate_failed' },
+            { sessionId: 's1', tier: 'cheap', model: 'sonnet', outcome: 'gate_failed' },
             { sessionId: 's2', tier: 'mid', model: 'sonnet', outcome: 'gate_failed' },
             { sessionId: 's3', tier: 'mid', model: 'sonnet', outcome: 'vitest timed out' },
           ],
