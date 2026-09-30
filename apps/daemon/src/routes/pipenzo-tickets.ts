@@ -135,10 +135,10 @@ async function auditTransitionDivergence(
       outcome: 'reconciled_to_label',
     });
   } catch (error) {
-    logger?.warn('pipenzo ticket-transition divergence audit write failed', {
-      ticketId,
-      error: error instanceof Error ? error.message : String(error),
-    });
+    logger?.warn(
+      { ticketId, error: error instanceof Error ? error.message : String(error) },
+      'pipenzo ticket-transition divergence audit write failed',
+    );
   }
 }
 
