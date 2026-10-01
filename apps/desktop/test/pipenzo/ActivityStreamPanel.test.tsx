@@ -255,4 +255,50 @@ describe('ActivityStreamPanel', () => {
     await waitFor(() => expect(container.querySelectorAll('.evt')).toHaveLength(1));
     expect(container.querySelector('.evt-line')).not.toHaveClass('end');
   });
+
+  it('renders a trailing ci-failed row naming the real recorded fix attempt (issue #102)', async () => {
+    installBridge(
+      vi.fn().mockResolvedValue(
+        reconciliation(
+          ticket({
+            labels: ['pipenzo:ci-failed'],
+            attempts: [{ sessionId: 's1', tier: 'frontier', model: 'opus', outcome: 'dispatched' }],
+          }),
+        ),
+      ),
+    );
+    const { container } = render(<ActivityStreamPanel ticketId={TICKET_ID} />);
+
+    await waitFor(() => expect(container.querySelectorAll('.evt')).toHaveLength(2));
+    expect(screen.getByText(/A fix attempt has been recorded \(frontier tier, opus\)/)).toBeInTheDocument();
+    // the real lineage line: the attempt row's connector continues, only the trailing ci-failed
+    // row's connector ends the stream.
+    const rows = Array.from(container.querySelectorAll('.evt'));
+    expect(rows[0]?.querySelector('.evt-line')).not.toHaveClass('end');
+    expect(rows[1]?.querySelector('.evt-line')).toHaveClass('end');
+    expect(rows[1]?.querySelector('.evt-ic')).toHaveClass('bad');
+  });
+
+  it('renders the honest ci-failed gap when no fix attempt has been recorded yet', async () => {
+    installBridge(
+      vi.fn().mockResolvedValue(reconciliation(ticket({ labels: ['pipenzo:ci-failed'], attempts: [] }))),
+    );
+    render(<ActivityStreamPanel ticketId={TICKET_ID} />);
+
+    await waitFor(() =>
+      expect(screen.getByText('A post-merge-request check failed on this ticket. No fix attempt has been recorded yet.')).toBeInTheDocument(),
+    );
+  });
+
+  it('renders no ci-failed row for a ticket that never carried the real label', async () => {
+    installBridge(
+      vi.fn().mockResolvedValue(
+        reconciliation(ticket({ attempts: [{ sessionId: 's1', tier: 'mid', model: 'sonnet', outcome: 'dispatched' }] })),
+      ),
+    );
+    render(<ActivityStreamPanel ticketId={TICKET_ID} />);
+
+    await waitFor(() => expect(screen.getByText('Implement session dispatched')).toBeInTheDocument());
+    expect(screen.queryByText(/post-merge-request check failed/)).not.toBeInTheDocument();
+  });
 });
