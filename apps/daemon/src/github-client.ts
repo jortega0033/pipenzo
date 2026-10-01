@@ -105,7 +105,12 @@ export type GitHubClientErrorCode =
   | 'not_found'
   | 'rate_limited'
   | 'invalid_response'
-  | 'network';
+  | 'network'
+  /**
+   * A write's caller-supplied precondition did not hold against the state the write itself just
+   * read (issue #511: `setIssueLabels`' `precondition`). Nothing was written.
+   */
+  | 'precondition_failed';
 
 /**
  * Typed failure, matching agentdock's `WorktreeManagerError` shape (a closed `code` union plus a
@@ -322,6 +327,43 @@ export const GITHUB_REPO_PAGE_CAP = 50;
 export const GITHUB_PR_PAGE_CAP = 50;
 
 /**
+ * How many pages of one repository's open issues `listOpenIssues` walks (issue #511).
+ *
+ * Lower than the two caps above on purpose: those back one-shot, human-initiated listings, and this
+ * one backs the polling reconciler's intake pass, which repeats for every connected repository. 100
+ * per page, so 1,000 open issues -- newest first, so a repository past the cap loses its *oldest*
+ * backlog from intake rather than its newest work, and the caller is told it was truncated.
+ */
+export const GITHUB_OPEN_ISSUE_PAGE_CAP = 10;
+
+/**
+ * One open issue as the reconciler's intake pass reads it (issue #511).
+ *
+ * Narrower than `GitHubIssue` on purpose, and the narrowness is load-bearing rather than tidy: every
+ * page of this listing is held in the shared `ConditionalRequestCache` so an unchanged page answers
+ * `304`, and storing each issue's whole body there would spend that cache's byte budget on text
+ * nothing on this path reads. Intake needs the number to key on, the labels to decide eligibility,
+ * and the title to show a card before the first per-ticket read. Pull requests never appear here --
+ * see `normalizeOpenIssue`.
+ */
+export interface GitHubOpenIssueSummary {
+  readonly number: number;
+  readonly title: string;
+  readonly labels: readonly string[];
+}
+
+/**
+ * One cached page of `listOpenIssues`. `hasNext` is what the page's own `Link` header said; `empty`
+ * is whether GitHub sent no rows at all -- kept separately from `issues`, which can be empty on a
+ * page that was entirely pull requests and is *not* the end of the list.
+ */
+interface OpenIssuePage {
+  readonly issues: readonly GitHubOpenIssueSummary[];
+  readonly hasNext: boolean;
+  readonly empty: boolean;
+}
+
+/**
  * Matches a Pipenzo-owned ticket worktree's branch name (issue #205's exclusion filter). Mirrors
  * `implement-orchestrator.ts`'s `ticketBranchName()` format (`issue-<n>`) exactly, but is not
  * imported from there: `github-client.ts` is a lower-level GitHub REST wrapper, and having it
@@ -431,11 +473,19 @@ export interface GitHubClient {
    * namespace, not the issue, so a human's `bug` or `good first issue` has to survive every lane
    * write — and a rule enforced at one call site is a rule that the second call site forgets. See
    * the implementation for the read-modify-write this costs.
+   *
+   * `precondition` (issue #511) is checked against the issue's labels *as this call's own read
+   * found them*, immediately before the write; when it returns false nothing is written and the
+   * call fails `precondition_failed`. Intake uses it so that a lane set on github.com after the
+   * listing it decided from -- seconds earlier, or longer behind a lagging list endpoint -- is
+   * refused rather than replaced. It narrows the window to this method's own GET-then-PUT, the
+   * same window every other caller already accepts; it cannot close it.
    */
   setIssueLabels(
     ref: RepoRef,
     issueNumber: number,
     labels: readonly string[],
+    options?: SetIssueLabelsOptions,
   ): Promise<readonly string[]>;
   /** Removes one label, treating "it was not there" as success so a transition is idempotent. */
   removeIssueLabel(ref: RepoRef, issueNumber: number, name: string): Promise<void>;
@@ -525,6 +575,23 @@ export interface GitHubClient {
     readonly pullRequests: readonly GitHubPullRequestSummary[];
     readonly truncated: boolean;
   }>;
+  /**
+   * Every open issue on one repository, newest first, pull requests excluded (issue #511) -- the
+   * read the polling reconciler's intake pass diffs against the local ticket store.
+   *
+   * Read-only. The first page is requested with its stored `If-None-Match`, so a pass over a
+   * single-page repository whose open issues have not changed is one `304` and costs no rate-limit
+   * quota; later pages are always read fresh. See the implementation for why only page one is cached.
+   */
+  listOpenIssues(ref: RepoRef): Promise<{
+    readonly issues: readonly GitHubOpenIssueSummary[];
+    readonly truncated: boolean;
+  }>;
+}
+
+/** See `GitHubClient.setIssueLabels`. */
+export interface SetIssueLabelsOptions {
+  readonly precondition?: (currentLabels: readonly string[]) => boolean;
 }
 
 /** What `createIssue` accepts. No assignee: creating and claiming stay two auditable steps. */
@@ -1560,6 +1627,7 @@ export class OctokitGitHubClient implements GitHubClient {
     ref: RepoRef,
     issueNumber: number,
     labels: readonly string[],
+    options: SetIssueLabelsOptions = {},
   ): Promise<readonly string[]> {
     const operation = `setIssueLabels ${ref.owner}/${ref.repo}#${issueNumber}`;
     assertPositiveInteger(issueNumber, 'issue number', operation);
@@ -1584,7 +1652,14 @@ export class OctokitGitHubClient implements GitHubClient {
         'GET /repos/{owner}/{repo}/issues/{issue_number}/labels',
         { owner: ref.owner, repo: ref.repo, issue_number: issueNumber, per_page: 100 },
       );
-      const foreign = labelNames(current).filter((name) => !isPipenzoLabel(name));
+      const currentNames = labelNames(current);
+      if (options.precondition && !options.precondition(currentNames)) {
+        throw new GitHubClientError(
+          'precondition_failed',
+          `${operation}: the issue's labels no longer satisfy the caller's precondition; nothing written`,
+        );
+      }
+      const foreign = currentNames.filter((name) => !isPipenzoLabel(name));
       // A caller that repeats a name, or a foreign label that somehow starts with the namespace,
       // must not produce a duplicate entry in the write.
       const desired = [...new Set([...foreign, ...labels])];
@@ -1748,6 +1823,127 @@ export class OctokitGitHubClient implements GitHubClient {
     }
     return { pullRequests: collected, truncated };
   }
+
+  /**
+   * Walks `GET /repos/{owner}/{repo}/issues?state=open`; the first page is a conditional request.
+   *
+   * ## Why page one is cached on its own, when `listLabels` refuses that
+   *
+   * `listLabels` caches one *list* under page one's ETag, which is unsound for a multi-page list: a
+   * change on page two leaves page one's validator matching. This caches **page one only**, under
+   * its own key (`open-issues:1`), and serves it only on its own `304` -- so the page returned is
+   * GitHub's current representation of that page, and every later page is always read fresh.
+   *
+   * Only page one, because the cache is shared with the per-ticket `issue:<n>` validators that keep
+   * the reconciler's every-minute polling free (issue #511's security review, L3): ten cached pages
+   * per large repository would evict those, and a polled ticket that misses its validator pays a
+   * point every minute, which costs far more than the at most nine pages a listing re-reads. On a
+   * repository that fits in one page -- most of them -- an unchanged listing is a single free `304`.
+   *
+   * What any paginated walk cannot promise is consistency *across* pages (an issue closing mid-walk
+   * shifts the rest by one). Intake tolerates it both ways: an issue skipped by a shift is admitted
+   * on the next pass, and one seen twice is de-duplicated by number below.
+   *
+   * ## Whether there is a next page
+   *
+   * Followed if the response's `Link` says so -- including a `304`'s, where `acceptNotModified` is
+   * the only place its headers are visible -- **or** if the stored page said so when it was cached.
+   * The `or` is deliberate: a page cached as the last one whose list has since grown is caught by
+   * the `304`'s `Link`, and a page cached with a next page is never cut short by a `304` that
+   * happened to arrive without a `Link`. The worst case of trusting either is one extra request
+   * answering an empty page; the worst case of trusting neither is silently missing issues.
+   *
+   * Newest first, so the page cap drops the oldest backlog rather than the newest work.
+   */
+  async listOpenIssues(ref: RepoRef): Promise<{
+    readonly issues: readonly GitHubOpenIssueSummary[];
+    readonly truncated: boolean;
+  }> {
+    const operation = `listOpenIssues ${ref.owner}/${ref.repo}`;
+    const collected = new Map<number, GitHubOpenIssueSummary>();
+    const send = (page: number, headers: Record<string, string>) =>
+      this.#octokit.request('GET /repos/{owner}/{repo}/issues', {
+        owner: ref.owner,
+        repo: ref.repo,
+        state: 'open',
+        sort: 'created',
+        direction: 'desc',
+        per_page: 100,
+        page,
+        headers,
+      });
+    const normalize = (response: ConditionalResponse): OpenIssuePage => {
+      if (!Array.isArray(response.data)) {
+        throw new GitHubClientError('invalid_response', `${operation}: issues was not an array`);
+      }
+      const issues: GitHubOpenIssueSummary[] = [];
+      for (const entry of response.data) {
+        const issue = normalizeOpenIssue(entry as Record<string, unknown>, operation);
+        if (issue) issues.push(issue);
+      }
+      return { issues, hasNext: hasNextPage(response.headers), empty: response.data.length === 0 };
+    };
+    for (let page = 1; ; page += 1) {
+      const notModified = { saysNext: false };
+      let result: OpenIssuePage | undefined;
+      if (page === 1) {
+        result = await this.#conditional<OpenIssuePage>(
+          ref,
+          'open-issues:1',
+          operation,
+          (headers) => send(page, headers),
+          normalize,
+          (headers) => {
+            notModified.saysNext = hasNextPage(headers);
+            return true;
+          },
+        );
+      } else {
+        let response: ConditionalResponse;
+        try {
+          response = await send(page, {});
+        } catch (error) {
+          throw toGitHubClientError(error, operation);
+        }
+        // Outside the `try`, as in `#conditional`: a malformed body is `invalid_response`, not `network`.
+        result = normalize(response);
+      }
+      // Unreachable: this resource's `normalize` either returns a page or throws. Checked for the
+      // reason `getIssue` checks: a later edit returning `undefined` must fail loudly, not stop the
+      // walk early and present a short list as complete.
+      if (result === undefined) {
+        throw new GitHubClientError('invalid_response', `${operation}: no page in the response`);
+      }
+      for (const issue of result.issues) {
+        if (!collected.has(issue.number)) collected.set(issue.number, issue);
+      }
+      // An empty page is the end of the list whatever a `Link` claims. A page of nothing but pull
+      // requests is not empty, which is why this reads `empty` rather than `issues.length`.
+      const hasNext = !result.empty && (result.hasNext || notModified.saysNext);
+      if (!hasNext) return { issues: [...collected.values()], truncated: false };
+      if (page >= GITHUB_OPEN_ISSUE_PAGE_CAP) return { issues: [...collected.values()], truncated: true };
+    }
+  }
+}
+
+/**
+ * `undefined` for a pull request (issue #511). GitHub's issues-list endpoint returns pull requests
+ * too, marked by a `pull_request` key, and a PR is not a ticket -- filtered here, at the
+ * normalization boundary, for the same reason `getIssue` refuses one: so no caller has to remember.
+ * A closed issue is dropped too, should one ever arrive on a `state=open` listing: intake must never
+ * be the thing that labels finished work.
+ */
+function normalizeOpenIssue(
+  raw: Record<string, unknown>,
+  operation: string,
+): GitHubOpenIssueSummary | undefined {
+  if (raw.pull_request !== undefined) return undefined;
+  if (raw.state !== undefined && raw.state !== 'open') return undefined;
+  return {
+    number: requireNumber(raw.number, 'number', operation),
+    title: requireString(raw.title, 'title', operation),
+    labels: labelNames(raw.labels),
+  };
 }
 
 /**

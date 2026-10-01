@@ -9,10 +9,12 @@ import {
   type GitHubIssueComment,
   type GitHubIssueDraft,
   type GitHubLabel,
+  type GitHubOpenIssueSummary,
   type GitHubRepository,
   type GitHubPullRequestDiff,
   type GitHubPullRequestSummary,
   type RepoRef,
+  type SetIssueLabelsOptions,
 } from './github-client.js';
 import {
   GITHUB_CORE_RATE_LIMIT_RESOURCE,
@@ -256,6 +258,7 @@ export class FakeGitHubClient implements GitHubClient {
     ref: RepoRef,
     issueNumber: number,
     labels: readonly string[],
+    options: SetIssueLabelsOptions = {},
   ): Promise<readonly string[]> {
     const key = FakeGitHubClient.key(ref, issueNumber);
     this.#enter('setIssueLabels', `${key}:${labels.join(',')}`);
@@ -273,6 +276,13 @@ export class FakeGitHubClient implements GitHubClient {
     }
     const issue = this.#issues.get(key);
     if (!issue) throw new GitHubClientError('not_found', `setIssueLabels ${key}: no such issue`);
+    // Same place the real client checks it: against the labels as they stand now, before writing.
+    if (options.precondition && !options.precondition([...issue.labels])) {
+      throw new GitHubClientError(
+        'precondition_failed',
+        `setIssueLabels ${key}: the issue's labels no longer satisfy the caller's precondition`,
+      );
+    }
     const foreign = issue.labels.filter((name) => !isPipenzoLabel(name));
     const next = [...new Set([...foreign, ...labels])];
     this.#issues.set(key, { ...issue, labels: next });
@@ -312,6 +322,27 @@ export class FakeGitHubClient implements GitHubClient {
   }> {
     this.#enter('listPullRequests', String(this.#pullRequests.length));
     return { pullRequests: this.#pullRequests, truncated: this.#pullRequestsTruncated };
+  }
+
+  /**
+   * Every seeded open issue on `ref`, newest first (issue #511), derived from the same map
+   * `getIssue` and `setIssueLabels` read and write -- not a separately seeded list -- so a label
+   * this fake's `setIssueLabels` just wrote shows up on the next listing, exactly as it would on
+   * GitHub. Pull-request exclusion is the real client's normalization step and is tested against
+   * GitHub's raw payload there; a seeded `GitHubIssue` is never a pull request.
+   */
+  async listOpenIssues(ref: RepoRef): Promise<{
+    readonly issues: readonly GitHubOpenIssueSummary[];
+    readonly truncated: boolean;
+  }> {
+    this.#enter('listOpenIssues', `${ref.owner}/${ref.repo}`);
+    const issues = [...this.#issues.values()]
+      .filter(
+        (issue) => issue.owner === ref.owner && issue.repo === ref.repo && issue.state === 'open',
+      )
+      .sort((a, b) => b.number - a.number)
+      .map((issue) => ({ number: issue.number, title: issue.title, labels: [...issue.labels] }));
+    return { issues, truncated: false };
   }
 
   async getAuthenticatedLogin(): Promise<string> {

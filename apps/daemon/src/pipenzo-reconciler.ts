@@ -1,9 +1,14 @@
 import type { Logger } from '@agent-dock/agent-runtime';
 import type { PipenzoGitHubHealthV1, PipenzoGitHubQuotaV1 } from '@agent-dock/shared';
 import type { ConnectedReposStore } from './connected-repos-store.js';
-import type { GitHubClient } from './github-client.js';
+import { GitHubClientError, parseRepoRef, type GitHubClient, type RepoRef } from './github-client.js';
 import type { PipenzoAuditStore } from './pipenzo-audit-store.js';
-import { PipenzoPhaseMachineError, type PipenzoPhaseMachine } from './pipenzo-phase-machine.js';
+import {
+  PipenzoPhaseMachineError,
+  isIntakeEligible,
+  type PipenzoIntakeIssue,
+  type PipenzoPhaseMachine,
+} from './pipenzo-phase-machine.js';
 import type { FileTicketStore } from './pipenzo-ticket-store.js';
 import {
   cleanupTerminalWorktree,
@@ -26,11 +31,46 @@ import {
  *
  * ## What one tick actually costs
  *
- * `GitHubClient` has no "list this repo's issues" method, deliberately, so a tick does not discover
- * work — it re-reads work already known. The ticket store holds the issue numbers, and one tick
- * calls `PipenzoPhaseMachine.read()` once per ticket belonging to a connected repo. That is one
+ * Re-reading known work: the ticket store holds the issue numbers, and one tick calls
+ * `PipenzoPhaseMachine.read()` once per ticket belonging to a connected repo. That is one
  * conditional GET each, and the whole reason a per-minute loop is affordable is that an unchanged
  * issue answers `304` and costs no quota at all (#161).
+ *
+ * ## Intake: every open issue of a connected repo (issue #511)
+ *
+ * This loop used to deliberately not discover work, on quota grounds. Issue #511 reversed that as a
+ * product decision -- connecting a repo syncs all of its open issues onto the board as Queued -- and
+ * the quota question it had skipped is answered here rather than assumed away:
+ *
+ * - **Listing cadence: a repo is listed when first seen, then at most once per
+ *   `DEFAULT_DISCOVERY_INTERVAL_MS` (5 min), never every tick.** "First seen" means newly connected
+ *   or the first tick after a daemon start, so a repo connected in the picker fills its board on the
+ *   next tick. Page one of the listing is conditional (free when unchanged); later pages are read
+ *   fresh, so one listing costs at most `GITHUB_OPEN_ISSUE_PAGE_CAP - 1` (9) points, and one repo at
+ *   most 12 x 10 = 120 points an hour -- typically 0 for a single-page repo. Six large repos stay
+ *   under 15% of the 5,000-point budget. The tradeoff: a brand-new issue reaches the board within
+ *   five minutes rather than one. Known tickets' lanes still reconcile every tick, as before.
+ * - **Admissions are rate-limited by wall clock, not per tick: at most
+ *   `MAX_ADMISSIONS_PER_MINUTE` (20) and `MAX_ADMISSIONS_PER_HOUR` (300), across all repos.** Each
+ *   admission is one `setIssueLabels` (a GET and a PUT, 2 points), so a large first sync costs at
+ *   most 600 points an hour while it drains, and its writes stay under GitHub's documented
+ *   content-creation secondary limits (80 a minute, 500 an hour) however often ticks run -- a
+ *   human-clicked `pollNow()` included. A 1,000-issue backlog therefore takes a little over three
+ *   hours to land on the board, which is the price of not tripping those limits.
+ * - **A backlog drains from memory, not by re-listing.** A listing's eligible, untracked issues are
+ *   kept per repo and admitted over the next ticks as the rate limit allows; the repo is listed
+ *   again only once that backlog is empty and the interval has passed, or once the backlog is older
+ *   than the interval (so nothing is admitted from a listing more than five minutes stale). Each
+ *   admission still re-checks the issue's live labels (`admit()`'s precondition), so a remembered
+ *   entry a human has since moved into a lane is refused, not overwritten.
+ * - **Degraded quota pauses intake.** Below `DEGRADED_QUOTA_FRACTION` the interval already widens;
+ *   intake additionally stops until headroom returns, because keeping known tickets' lanes honest
+ *   matters more than admitting new ones.
+ *
+ * Intake writes only through `PipenzoPhaseMachine.admit()` -- the same GitHub-first, label-wins path
+ * every other write uses -- and only onto an issue `isIntakeEligible` accepts: one carrying no
+ * `pipenzo:` label beyond `queued` and the v1 marker. An issue a human (or another Pipenzo) already
+ * put in a lane is left exactly as it is. Pull requests never reach it: `listOpenIssues` drops them.
  *
  * Going through the phase machine rather than the GitHub client directly is not incidental: `read()`
  * is the label-wins reconciliation, so a lane a human changed on GitHub self-heals locally as a
@@ -52,9 +92,11 @@ import {
  * surfaced. What backs off here is the *poll interval*, not the request: by the time a failure
  * reaches this class the transport has finished with it. Two ladders would multiply.
  *
- * **No writes.** This reads. Label writes stay with the phase machine behind a human action, which
- * is the whole publish-boundary rule; a loop that could write to GitHub unattended is the one thing
- * this product must not grow.
+ * **One write, and only one.** Apart from intake's `pipenzo:queued` admission above, this loop only
+ * reads. Every lane *change* stays with the phase machine behind a human action. Admission is not
+ * one: it moves no existing ticket, dispatches nothing, and a queued ticket runs nothing until a
+ * human clicks Implement on it -- it is intake visibility, not autonomy. The publish boundary (the
+ * only code that pushes or opens a PR is `publish-service.ts`) is untouched by it.
  *
  * **No transport for the health payload.** It is published in process, through `health()` and
  * `subscribeHealth()`. Whether it reaches the renderer on the phase event stream or on a route of
@@ -84,6 +126,13 @@ export const DEFAULT_MAX_POLL_ATTEMPTS = 5;
 
 /** The longest gap the ladder will ever schedule, jitter aside. */
 export const MAX_POLL_BACKOFF_MS = 15 * 60_000;
+
+/** How often one connected repo's open issues are re-listed for intake. See the module comment. */
+export const DEFAULT_DISCOVERY_INTERVAL_MS = 5 * 60_000;
+
+/** Intake's wall-clock write limits, across every repo. See the module comment. */
+export const MAX_ADMISSIONS_PER_MINUTE = 20;
+export const MAX_ADMISSIONS_PER_HOUR = 300;
 
 /**
  * The scheduling seam, matching `MonotonicScheduler` in `interaction-state.ts`.
@@ -118,11 +167,22 @@ export interface PipenzoReconcilerOptions {
    */
   audit?: Pick<PipenzoAuditStore, 'append'>;
   /**
-   * Built lazily per call, exactly as everywhere else on this surface, and used *only* for
-   * `rateLimit()` — which reads the shared tracker and makes no request. The reconciler never
-   * calls GitHub through this.
+   * Built lazily per call, exactly as everywhere else on this surface. Used for `rateLimit()` --
+   * which reads the shared tracker and makes no request -- and, when `intake` is wired, for the one
+   * read intake needs that is not about a known ticket: `listOpenIssues`. Every write still goes
+   * through the phase machine.
    */
   github?: () => GitHubClient;
+  /**
+   * Issue #511's intake: admits each untracked open issue of a connected repo as `pipenzo:queued`.
+   * Optional for the reason `audit` and `worktrees` are -- a reconciler built without it (every test
+   * that predates #511) polls exactly as before and never lists a repo's issues. The shipped daemon
+   * wires the phase machine itself here.
+   */
+  intake?: Pick<PipenzoPhaseMachine, 'admit'>;
+  discoveryIntervalMs?: number;
+  maxAdmissionsPerMinute?: number;
+  maxAdmissionsPerHour?: number;
   /**
    * Terminal-state worktree cleanup (issue #159). Optional so a reconciler built without one (every
    * test that predates this ticket) still polls exactly as before — it just never notices a closed
@@ -159,6 +219,20 @@ export class PipenzoReconciler {
   readonly #random: () => number;
   readonly #pollIntervalMs: number;
   readonly #maxAttempts: number;
+  readonly #intake: Pick<PipenzoPhaseMachine, 'admit'> | undefined;
+  readonly #discoveryIntervalMs: number;
+  readonly #maxAdmissionsPerMinute: number;
+  readonly #maxAdmissionsPerHour: number;
+  /**
+   * When each connected repo (lowercased) was last listed. A repo absent from this map is due. In
+   * memory on purpose: a daemon start re-lists every repo once, which is exactly the "first seen"
+   * pass the module comment describes.
+   */
+  readonly #lastDiscoveryAt = new Map<string, number>();
+  /** Per repo (lowercased): eligible issues from its last listing not yet admitted. */
+  readonly #backlog = new Map<string, PipenzoIntakeIssue[]>();
+  /** When each admission attempt was made, for the wall-clock limits. At most one hour's worth. */
+  #admissionTimes: number[] = [];
 
   readonly #listeners = new Set<(health: PipenzoGitHubHealthV1) => void>();
   #health: PipenzoGitHubHealthV1 = { state: 'unknown' };
@@ -184,6 +258,10 @@ export class PipenzoReconciler {
     this.#random = options.random ?? Math.random;
     this.#pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
     this.#maxAttempts = options.maxAttempts ?? DEFAULT_MAX_POLL_ATTEMPTS;
+    this.#intake = options.intake;
+    this.#discoveryIntervalMs = options.discoveryIntervalMs ?? DEFAULT_DISCOVERY_INTERVAL_MS;
+    this.#maxAdmissionsPerMinute = options.maxAdmissionsPerMinute ?? MAX_ADMISSIONS_PER_MINUTE;
+    this.#maxAdmissionsPerHour = options.maxAdmissionsPerHour ?? MAX_ADMISSIONS_PER_HOUR;
   }
 
   /** The latest health payload. Synchronous, and never a request. */
@@ -301,14 +379,18 @@ export class PipenzoReconciler {
     if (repositories.length === 0) return { kind: 'nothing_to_poll' };
 
     const connected = new Set(repositories);
+    // Taken before intake runs, so a ticket admitted this tick is not immediately re-read: `admit()`
+    // built it from the labels GitHub just reported, and a cold `getIssue` would pay for that answer
+    // a second time.
     const ticketIds = this.#tickets
       .list()
       .filter((ticket) => connected.has(ticket.repo))
       .map((ticket) => ticket.ticketId);
-    if (ticketIds.length === 0) return { kind: 'nothing_to_poll' };
 
-    let reachedGitHub = false;
-    let unreachable: { retryAfterMs: number | undefined } | undefined;
+    const intake = await this.#discover(repositories);
+    if (intake.kind === 'credential_rejected') return { kind: 'credential_rejected' };
+    let reachedGitHub = intake.reachedGitHub;
+    let unreachable = intake.unreachable;
     for (const ticketId of ticketIds) {
       if (!this.#running) break;
       try {
@@ -371,7 +453,176 @@ export class PipenzoReconciler {
     if (unreachable !== undefined && !reachedGitHub) {
       return { kind: 'unreachable', retryAfterMs: unreachable.retryAfterMs };
     }
+    // No ticket to read and no intake pass that reached GitHub: nothing was observed this tick.
+    if (!reachedGitHub && ticketIds.length === 0) return { kind: 'nothing_to_poll' };
     return { kind: 'clean' };
+  }
+
+  /**
+   * Issue #511's intake pass over every connected repo that is due. See the module comment for the
+   * cadence, the wall-clock admission limits, the remembered backlog, and why degraded quota
+   * pauses it.
+   *
+   * Never throws. Failures are classified the way the per-ticket loop classifies them: a rejected
+   * credential short-circuits the tick, an unreachable GitHub is remembered so the tick can report it
+   * if nothing else succeeded, and a repo- or issue-level refusal is GitHub answering, so it is
+   * logged and the pass moves on.
+   */
+  async #discover(repositories: readonly string[]): Promise<
+    | { kind: 'credential_rejected' }
+    | {
+        kind: 'done';
+        reachedGitHub: boolean;
+        unreachable: { retryAfterMs: number | undefined } | undefined;
+      }
+  > {
+    let reachedGitHub = false;
+    let unreachable: { retryAfterMs: number | undefined } | undefined;
+    const done = () => ({ kind: 'done' as const, reachedGitHub, unreachable });
+    const intake = this.#intake;
+    const github = this.#github;
+    if (!intake || !github) return done();
+
+    // A disconnected repo forgets its last listing and backlog, so reconnecting it counts as new.
+    const connectedKeys = new Set(repositories.map((repo) => repo.toLowerCase()));
+    for (const key of [...this.#lastDiscoveryAt.keys()]) {
+      if (!connectedKeys.has(key)) this.#lastDiscoveryAt.delete(key);
+    }
+    for (const key of [...this.#backlog.keys()]) {
+      if (!connectedKeys.has(key)) this.#backlog.delete(key);
+    }
+
+    const now = this.#scheduler.now();
+    // A backlog is never drained from a listing older than one interval: past that it is dropped and
+    // the repo is listed again, so a remembered entry is at most one interval stale.
+    for (const [key, listedAt] of this.#lastDiscoveryAt) {
+      if (now - listedAt >= this.#discoveryIntervalMs) this.#backlog.delete(key);
+    }
+    const work = repositories.filter((repo) => {
+      const key = repo.toLowerCase();
+      if (this.#backlog.has(key)) return true;
+      const last = this.#lastDiscoveryAt.get(key);
+      return last === undefined || now - last >= this.#discoveryIntervalMs;
+    });
+    if (work.length === 0) return done();
+    // Scarce quota: keeping known tickets' lanes honest outranks admitting new ones.
+    if (this.#readQuota(now)?.degraded === true) return done();
+    // No write allowance left this minute/hour: a listing now would only go stale before it drained.
+    let allowance = this.#admissionAllowance(now);
+    if (allowance <= 0) return done();
+
+    let client: GitHubClient;
+    try {
+      client = github();
+    } catch (error) {
+      // No credential configured: not a GitHub observation, and not worth a warning every tick.
+      this.#logger?.debug('pipenzo reconciler intake skipped: no GitHub client', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return done();
+    }
+
+    for (const repo of work) {
+      if (!this.#running || allowance <= 0) break;
+      const key = repo.toLowerCase();
+      let backlog = this.#backlog.get(key);
+      if (backlog === undefined) {
+        let ref: RepoRef;
+        try {
+          ref = parseRepoRef(repo);
+        } catch {
+          this.#logger?.warn('pipenzo reconciler intake skipped an unparseable repo', { repo });
+          continue;
+        }
+        let listing: Awaited<ReturnType<GitHubClient['listOpenIssues']>>;
+        try {
+          listing = await client.listOpenIssues(ref);
+        } catch (error) {
+          const verdict = classifyListingFailure(error);
+          if (verdict.kind === 'credential_rejected') return { kind: 'credential_rejected' };
+          if (verdict.kind === 'unreachable') {
+            unreachable ??= { retryAfterMs: verdict.retryAfterMs };
+            continue;
+          }
+          if (verdict.kind === 'repo') reachedGitHub = true;
+          this.#logger?.warn('pipenzo reconciler could not list open issues', {
+            repo,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          continue;
+        }
+        reachedGitHub = true;
+        if (listing.truncated) {
+          this.#logger?.warn('pipenzo reconciler intake saw only the newest open issues of a repo', {
+            repo,
+            listed: listing.issues.length,
+          });
+        }
+        backlog = listing.issues
+          .filter((issue) => !this.#isTracked(key, issue.number) && isIntakeEligible(issue.labels))
+          .map((issue) => ({ number: issue.number, title: issue.title, labels: [...issue.labels] }));
+        this.#lastDiscoveryAt.set(key, now);
+        this.#backlog.set(key, backlog);
+      }
+
+      let admitted = 0;
+      while (backlog.length > 0 && this.#running && allowance > 0) {
+        const issue = backlog[0]!;
+        // Tracked since it was listed (a stack child, say): nothing to write, no allowance spent.
+        if (this.#isTracked(key, issue.number)) {
+          backlog.shift();
+          continue;
+        }
+        allowance -= 1;
+        this.#admissionTimes.push(now);
+        try {
+          if ((await intake.admit(repo, issue)).admitted) admitted += 1;
+        } catch (error) {
+          const verdict = classifyFailure(error);
+          // Both keep the issue at the head of the backlog, to be retried once GitHub answers again.
+          if (verdict.kind === 'credential_rejected') return { kind: 'credential_rejected' };
+          if (verdict.kind === 'unreachable') {
+            unreachable ??= { retryAfterMs: verdict.retryAfterMs };
+            break;
+          }
+          // One issue's refusal -- deleted since the listing, moved into a lane in between (the
+          // precondition), a local store failure after the label landed. Logged and dropped from the
+          // backlog; the next listing sees it again if it is still eligible.
+          this.#logger?.warn('pipenzo reconciler could not admit an open issue', {
+            repo,
+            issueNumber: issue.number,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+        backlog.shift();
+      }
+      if (admitted > 0) {
+        this.#logger?.info('pipenzo reconciler admitted open issues as queued', { repo, admitted });
+      }
+      if (backlog.length === 0) this.#backlog.delete(key);
+    }
+    return done();
+  }
+
+  /** Whether a local ticket already tracks `repoKey#issueNumber` (repo lowercased). */
+  #isTracked(repoKey: string, issueNumber: number): boolean {
+    return this.#tickets
+      .list()
+      .some((ticket) => ticket.repo.toLowerCase() === repoKey && ticket.issueNumber === issueNumber);
+  }
+
+  /**
+   * How many admissions the wall-clock limits allow right now: the smaller of what is left of the
+   * per-minute and per-hour budgets. Attempts are counted, not successes -- a refused write still
+   * reached GitHub, and the secondary limits count requests, not outcomes.
+   */
+  #admissionAllowance(now: number): number {
+    this.#admissionTimes = this.#admissionTimes.filter((at) => now - at < 3_600_000);
+    const lastMinute = this.#admissionTimes.filter((at) => now - at < 60_000).length;
+    return Math.min(
+      this.#maxAdmissionsPerMinute - lastMinute,
+      this.#maxAdmissionsPerHour - this.#admissionTimes.length,
+    );
   }
 
   /** Folds one outcome into the failure bookkeeping, publishes health, and returns the next delay. */
@@ -575,6 +826,29 @@ function classifyFailure(
     return { kind: 'unreachable', retryAfterMs: error.retryAfterMs };
   }
   return { kind: 'ticket' };
+}
+
+/**
+ * `classifyFailure`'s counterpart for intake's one direct client call, `listOpenIssues`, which
+ * throws `GitHubClientError` rather than the phase machine's wrapper. The same lines, drawn the same
+ * way: `unauthorized` is the credential; `rate_limited`/`network`/`invalid_response` are the
+ * connection; `token_missing` (or anything unexpected) never reached GitHub at all; and the rest --
+ * `forbidden`, `not_found`, an invalid repo or request -- is GitHub answering about one repo.
+ */
+function classifyListingFailure(
+  error: unknown,
+):
+  | { kind: 'credential_rejected' }
+  | { kind: 'unreachable'; retryAfterMs: number | undefined }
+  | { kind: 'local' }
+  | { kind: 'repo' } {
+  if (!(error instanceof GitHubClientError)) return { kind: 'local' };
+  if (error.code === 'unauthorized') return { kind: 'credential_rejected' };
+  if (error.code === 'rate_limited' || error.code === 'network' || error.code === 'invalid_response') {
+    return { kind: 'unreachable', retryAfterMs: error.retryAfterMs };
+  }
+  if (error.code === 'token_missing') return { kind: 'local' };
+  return { kind: 'repo' };
 }
 
 /** Spreads a key only when it has a value, so an optional field is absent rather than `undefined`. */

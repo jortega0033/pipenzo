@@ -50,6 +50,8 @@ const GITHUB_ERROR_STATUS: Record<GitHubClientErrorCode, number> = {
   invalid_request: 400,
   invalid_response: 502,
   network: 502,
+  // Not reachable from the repo routes (no label write takes a precondition here); a conflict if it were.
+  precondition_failed: 409,
 };
 
 /**
