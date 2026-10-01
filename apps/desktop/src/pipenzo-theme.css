@@ -4564,6 +4564,7 @@
      across every screen artboard). See AppShell.tsx. */
   .shell {
     display: flex;
+    height: 100vh;
     overflow: hidden;
     position: relative;
     background: var(--color-bg);
