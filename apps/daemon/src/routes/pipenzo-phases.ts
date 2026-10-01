@@ -88,6 +88,11 @@ const PHASE_ERROR_STATUS: Record<PipenzoPhaseErrorCodeV1, number> = {
   github_forbidden: 502,
   github_rate_limited: 429,
   github_failed: 502,
+  // Issue #103: no dispatched Implement attempt exists for this ticket at all.
+  run_not_found: 404,
+  // Issue #103: an attempt exists but its session is not live right now -- the current state of
+  // the dispatched session, not a bad request, same 409 family as commit_failed/branch_failed.
+  run_not_active: 409,
 };
 
 function fail(reply: FastifyReply, error: PipenzoPhaseError): void {
