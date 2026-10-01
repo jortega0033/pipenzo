@@ -53,14 +53,14 @@ describe('stateDirectory', () => {
         homeDirectory: '/home/alice',
         env: { XDG_STATE_HOME: '/state' },
       }),
-    ).toBe(join('/state', 'agent-dock'));
+    ).toBe(join('/state', 'pipenzo'));
     expect(
       stateDirectory({
         platform: 'win32',
         homeDirectory: 'C:\\Users\\Alice',
         env: { LOCALAPPDATA: 'D:\\UserState' },
       }),
-    ).toBe(join('D:\\UserState', 'agent-dock'));
+    ).toBe(join('D:\\UserState', 'pipenzo'));
     expect(stateDirectory({ env: { AGENT_DOCK_STATE_DIR: '/isolated/state' } })).toBe(
       '/isolated/state',
     );
