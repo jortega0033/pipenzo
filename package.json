@@ -1,5 +1,5 @@
 {
-  "name": "agent-dock",
+  "name": "pipenzo",
   "private": true,
   "version": "0.1.0",
   "description": "Open-source Electron and local-daemon boilerplate for apps using Claude Agent SDK, Claude CLI, or Codex",
