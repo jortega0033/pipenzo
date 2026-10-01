@@ -116,6 +116,20 @@ export function findingLocation(finding: CombinedFinding): string | undefined {
   return finding.line === undefined ? finding.path : `${finding.path}:${finding.line}`;
 }
 
+/**
+ * The `DiffFileList` `hitLocation` for the selected finding (issue #108), or `undefined` when no
+ * finding is selected or the selected one has no real `path`/`line` to point at (e.g. the
+ * reviewer's info-level note with no location). A finding with a `path` but no `line` cannot mark
+ * a single gutter row either -- `DiffHitLocation` is always a specific line, never a whole file --
+ * so that case is also `undefined` rather than a fabricated line number.
+ */
+export function hitLocationForFinding(
+  finding: CombinedFinding | undefined,
+): { readonly path: string; readonly line: number } | undefined {
+  if (!finding?.path || finding.line === undefined) return undefined;
+  return { path: finding.path, line: finding.line };
+}
+
 export interface DiffScopeSummary {
   readonly statusText: string;
   readonly detailText: string;

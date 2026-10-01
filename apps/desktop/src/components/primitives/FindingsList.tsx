@@ -36,9 +36,45 @@ export function FindingsCount({
   );
 }
 
-/** `.findings` -- the 2px-gap column of `Finding` rows. */
+/**
+ * `.findings` -- the 2px-gap column of `Finding` rows.
+ *
+ * Bidirectional keyboard support (issue #108): ArrowUp/ArrowDown move focus between findings,
+ * Home/End jump to the first/last -- the same roving-focus shape `ActivityTimeline.tsx`'s
+ * `moveFocus` already uses for its cards, rather than a second, differently-behaved pattern for a
+ * second list of focusable rows. Moving focus is deliberately separate from selecting one: Enter/
+ * Space/click (handled by `Finding` itself) is what marks and scrolls to a finding's line, the
+ * same split `ActivityTimeline` and `Screenshot`'s lightbox already make between "where the arrow
+ * keys put focus" and "what activates".
+ */
 export function FindingsList({ children }: { children: ReactNode }) {
-  return <div className="findings">{children}</div>;
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+    if (!(event.target instanceof HTMLElement) || !event.target.matches('[data-finding]')) return;
+    const rows = Array.from(
+      event.currentTarget.querySelectorAll<HTMLElement>('[data-finding]'),
+    );
+    if (rows.length === 0) return;
+    const current = rows.indexOf(document.activeElement as HTMLElement);
+    const target =
+      event.key === 'Home'
+        ? rows[0]
+        : event.key === 'End'
+          ? rows.at(-1)
+          : event.key === 'ArrowDown'
+            ? rows[Math.min(rows.length - 1, Math.max(0, current + 1))]
+            : rows[Math.max(0, current < 0 ? rows.length - 1 : current - 1)];
+    if (target) {
+      event.preventDefault();
+      target.focus();
+    }
+  };
+
+  return (
+    <div className="findings" onKeyDown={onKeyDown}>
+      {children}
+    </div>
+  );
 }
 
 /**
@@ -75,6 +111,7 @@ export function Finding({
   return (
     <div
       className={active ? 'finding active' : 'finding'}
+      data-finding
       tabIndex={0}
       role="button"
       onClick={onClick}
