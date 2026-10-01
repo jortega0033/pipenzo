@@ -12,6 +12,7 @@ import {
   pipenzoTicketBudgetV1Schema,
   pipenzoTicketEstimateV1Schema,
   pipenzoTicketEtagsV1Schema,
+  pipenzoTicketApprovalRejectionV1Schema,
   pipenzoTicketIdV1Schema,
   pipenzoTicketPrecommitV1Schema,
   pipenzoTicketRiskV1Schema,
@@ -155,6 +156,10 @@ export const pipenzoTicketViewV1Schema = z
     /** See `pipenzoTicketRecordV1Schema.updatedAt` (issue #116) — crosses this boundary unchanged,
      *  it is not a filesystem path and carries no worktree-boundary concern. */
     updatedAt: z.string().min(1).max(64).optional(),
+    /** See `pipenzoTicketRecordV1Schema.lastApprovalRejection` (issue #105) — crosses this boundary
+     *  unchanged, same reasoning as `updatedAt` above: not a filesystem path, and `TicketDetail`'s
+     *  own Retry header action needs it client-side to decide whether to render the button at all. */
+    lastApprovalRejection: pipenzoTicketApprovalRejectionV1Schema.optional(),
   })
   .strict();
 

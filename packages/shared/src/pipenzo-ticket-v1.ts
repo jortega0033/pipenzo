@@ -267,6 +267,51 @@ export const pipenzoTicketAttemptV1Schema = z
   .strict();
 
 /**
+ * README's "3 consecutive failures" needs-human threshold (issue #86). Originally a
+ * `needs-human-card.ts`-local constant (desktop-only, since the card router was the only reader);
+ * promoted here, unchanged, so issue #105's daemon-side retry classifier can park on exactly the
+ * same number without a daemon module reaching across the daemon/desktop boundary into
+ * `apps/desktop`. `needs-human-card.ts` re-exports this under its original name rather than
+ * redefining it, so neither copy can drift from the other.
+ */
+export const PIPENZO_NEEDS_HUMAN_FAILED_ATTEMPT_THRESHOLD = 3;
+
+/**
+ * The three approval surfaces a human can say "no" through (issues #97/#98/#99): MEDIUM's inline
+ * approval, HIGH's full publish gate, and the stack-approval panel. Closed, unlike `attempt.outcome`
+ * above — unlike that still-moving vocabulary, these three names are already fixed by their own
+ * shipped stores (`high-approval-store.ts`/`medium-approval-store.ts`/`stack-approval-store.ts`),
+ * so there is nothing here still in flux to avoid closing over.
+ */
+export const PIPENZO_APPROVAL_REJECTION_KINDS = ['high', 'medium', 'stack'] as const;
+export type PipenzoApprovalRejectionKindV1 = (typeof PIPENZO_APPROVAL_REJECTION_KINDS)[number];
+export const pipenzoApprovalRejectionKindV1Schema = z.enum(PIPENZO_APPROVAL_REJECTION_KINDS);
+
+/**
+ * CLAUDE.md hard rule 4's own persisted half: "a denied approval is never auto-retried." None of
+ * the three approval stores keep a decided entry around (`HighApprovalStore`/`StackApprovalStore`
+ * delete on every decision, approve or reject alike; `MediumApprovalStore` only keeps an *allowed*
+ * entry alive for its own resolved-line UI) — a reject is gone from every one of them the instant
+ * its route returns. Issue #105's retry gate needs a decision that outlives that moment, so this is
+ * a second, small, durable record: the ticket's own last approval rejection, written by
+ * `PipenzoPhaseMachine.recordApprovalRejection()` from each of the three reject routes.
+ *
+ * `reason` is optional because MEDIUM's own reject allows an absent reason (see
+ * `medium-approval-store.ts`'s own module comment: "MEDIUM's `reason` is optional either way") —
+ * HIGH and the stack panel both require one, but this one record has to describe all three honestly
+ * rather than claim a reason exists where the originating decision never required one.
+ */
+export const pipenzoTicketApprovalRejectionV1Schema = z
+  .object({
+    kind: pipenzoApprovalRejectionKindV1Schema,
+    reason: z.string().min(1).max(2_000).optional(),
+    decidedAt: z.string().min(1).max(64),
+  })
+  .strict();
+
+export type PipenzoTicketApprovalRejectionV1 = z.infer<typeof pipenzoTicketApprovalRejectionV1Schema>;
+
+/**
  * Token spend against this ticket. `limit: 0` is README's worked example and means "no limit
  * configured" rather than "zero tokens allowed" — a ticket with a real zero-token budget could never
  * dispatch a single session, which is not a state anything in this design produces.
@@ -425,6 +470,17 @@ export const pipenzoTicketRecordV1Schema = z
      * has no value to backfill it with; `apps/daemon/src/pipenzo-phase-machine.ts` is the only writer.
      */
     updatedAt: z.string().min(1).max(64).optional(),
+    /**
+     * Issue #105's retry gate (CLAUDE.md hard rule 4). Set by `recordApprovalRejection()` the moment
+     * a human rejects a HIGH/MEDIUM/stack approval for this ticket, and the one real signal
+     * `classifyRetry()` refuses a retry on — present means "do not auto-retry this ticket," full
+     * stop, regardless of how few attempts it has made. Cleared the next time `recordAttempt()` runs
+     * (see that method's own doc comment): a fresh dispatch — always a human's own "Start Implement"
+     * click, never the gated Retry action itself — is the one event that makes a stale rejection
+     * record stop mattering. Optional because every record persisted before this field existed, and
+     * every ticket that has never had an approval rejected, has none to backfill.
+     */
+    lastApprovalRejection: pipenzoTicketApprovalRejectionV1Schema.optional(),
   })
   .strict();
 
