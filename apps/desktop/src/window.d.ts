@@ -79,6 +79,8 @@ import type {
   PipenzoConcurrencySettingsUpdateV1,
   PipenzoCaptureSettingsV1,
   PipenzoCaptureSettingsUpdateV1,
+  PipenzoNotificationSettingsV1,
+  PipenzoNotificationSettingsUpdateV1,
   PipenzoDeviceCodeV1,
   PipenzoDeviceOutcomeV1,
   PipenzoGitHubConnectionV1,
@@ -480,6 +482,16 @@ export interface AgentDockBridge {
   pipenzoUpdateCaptureSettings(
     input: PipenzoCaptureSettingsUpdateV1,
   ): Promise<PipenzoCaptureSettingsV1>;
+  /**
+   * Settings' Notifications panel (issue #129): the `refusal`/`medium`/`badge`/`sound`
+   * preferences. An ordinary daemon route, same reasoning as the lesson/repo/concurrency/
+   * capture-settings channels above -- no credential in main. There is deliberately no way to read
+   * or write a HIGH preference through this surface -- see `pipenzo-notification-settings-v1.ts`.
+   */
+  pipenzoNotificationSettings(): Promise<PipenzoNotificationSettingsV1>;
+  pipenzoUpdateNotificationSettings(
+    input: PipenzoNotificationSettingsUpdateV1,
+  ): Promise<PipenzoNotificationSettingsV1>;
   selectAndUploadAttachments(sessionId?: string): Promise<AttachmentMetadataV2[]>;
   validateStructuredOutput(input: StructuredWorkflowRequestV2): Promise<StructuredWorkflowResultV2>;
   createSession(input: CreateSessionInput): Promise<AgentSession>;

@@ -22,6 +22,7 @@ import { LessonStore } from './pipenzo-lesson-store.js';
 import { PipenzoConcurrencyStore } from './pipenzo-concurrency-store.js';
 import { PipenzoExecutionLimiter } from './pipenzo-execution-limiter.js';
 import { PipenzoCaptureSettingsStore } from './pipenzo-capture-settings-store.js';
+import { PipenzoNotificationSettingsStore } from './pipenzo-notification-settings-store.js';
 import { RepoCheckouts, reposRoot } from './repo-checkout.js';
 import { ensureStateDirectory, stateDirectory } from './state-directory.js';
 import { SubagentGraphStore } from './subagent-graph-store.js';
@@ -193,6 +194,11 @@ async function main() {
   // `concurrencyStore` above, beside the other durable stores.
   const captureSettingsStore = new PipenzoCaptureSettingsStore(
     join(durableStateDirectory, 'capture-settings-v1.json'),
+  );
+  // Settings' Notifications panel (issue #129): the refusal/medium/badge/sound preferences. Same
+  // single-file layout as `captureSettingsStore` above, beside the other durable stores.
+  const notificationSettingsStore = new PipenzoNotificationSettingsStore(
+    join(durableStateDirectory, 'notification-settings-v1.json'),
   );
   // The real enforcement layer (issue #126): refuses a new Implement dispatch once this many
   // tickets are already in flight, live-updated by `PUT /v2/pipenzo/concurrency` with no restart
@@ -447,6 +453,8 @@ async function main() {
     executionLimiter,
     // Issue #470: the Models & gates screen's agent-captured panel.
     captureSettingsStore,
+    // Issue #129: Settings' Notifications panel.
+    notificationSettingsStore,
     // Issue #159: lets the ticket-transition route look up a ticket's recorded worktree and clean
     // it up on an abandonment (working/ready-for-review -> queued).
     ticketStore,

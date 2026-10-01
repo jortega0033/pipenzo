@@ -136,6 +136,8 @@ export function installAssetCaptureBridge(): void {
     pipenzoUpdateConcurrencySettings: async () => { throw new Error('changing concurrency settings is not available while capturing assets'); },
     pipenzoCaptureSettings: async () => ({ schemaVersion: 1, screenshotEnabled: true, escapeHatchEnabled: false }),
     pipenzoUpdateCaptureSettings: async () => { throw new Error('changing capture settings is not available while capturing assets'); },
+    pipenzoNotificationSettings: async () => ({ schemaVersion: 1, refusal: true, medium: true, badge: true, sound: false }),
+    pipenzoUpdateNotificationSettings: async () => { throw new Error('changing notification settings is not available while capturing assets'); },
     startGitHubDeviceFlow: async () => { throw new Error('signing in to GitHub is not available while capturing assets'); },
     openGitHubDeviceVerification: async () => { throw new Error('signing in to GitHub is not available while capturing assets'); },
     cancelGitHubDeviceFlow: async () => {},

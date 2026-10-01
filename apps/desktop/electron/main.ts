@@ -48,6 +48,7 @@ import {
   pipenzoLessonDeleteRequestV1Schema,
   pipenzoConcurrencySettingsUpdateV1Schema,
   pipenzoCaptureSettingsUpdateV1Schema,
+  pipenzoNotificationSettingsUpdateV1Schema,
   pipenzoTicketReadRequestV1Schema,
   pipenzoTicketTransitionRequestV1Schema,
   pipenzoTicketRiskActivityOpenedRequestV1Schema,
@@ -1384,6 +1385,21 @@ handle('daemon:pipenzo-capture-settings', async () => {
 handle('daemon:pipenzo-update-capture-settings', async (_event, input: unknown) => {
   if (!client) throw new Error('daemon is not ready yet');
   return client.v2.pipenzo.updateCaptureSettings(pipenzoCaptureSettingsUpdateV1Schema.parse(input));
+});
+
+// Settings' Notifications panel (issue #129): the refusal/medium/badge/sound preferences. Ordinary
+// daemon routes, same reasoning as the lesson/repo/concurrency/capture-settings channels above --
+// no credential in main. There is no "update HIGH" channel: the wire schema has no field for it.
+handle('daemon:pipenzo-notification-settings', async () => {
+  if (!client) throw new Error('daemon is not ready yet');
+  return client.v2.pipenzo.notificationSettings();
+});
+
+handle('daemon:pipenzo-update-notification-settings', async (_event, input: unknown) => {
+  if (!client) throw new Error('daemon is not ready yet');
+  return client.v2.pipenzo.updateNotificationSettings(
+    pipenzoNotificationSettingsUpdateV1Schema.parse(input),
+  );
 });
 
 handle('daemon:list-providers', async () => {

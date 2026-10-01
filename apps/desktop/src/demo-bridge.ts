@@ -4,6 +4,7 @@ import type {
   AgentSession,
   PipenzoCaptureSettingsV1,
   PipenzoConcurrencySettingsV1,
+  PipenzoNotificationSettingsV1,
 } from '@agent-dock/shared';
 import type {
   RendererApprovalInteraction,
@@ -87,6 +88,17 @@ export function createDemoBridge(): AgentDockBridge {
     schemaVersion: 1,
     screenshotEnabled: true,
     escapeHatchEnabled: false,
+  };
+  // Settings' Notifications panel (issue #129). Mutable for the same reason the two settings
+  // above are -- the four real toggles should be something real to play with in demo mode, matching
+  // `Settings.dc.html`'s own seeded state. There is no `high` field: HIGH is locked on and carries
+  // no preference to seed.
+  let demoNotificationSettings: PipenzoNotificationSettingsV1 = {
+    schemaVersion: 1,
+    refusal: true,
+    medium: true,
+    badge: true,
+    sound: false,
   };
 
   const interactiveSessionId = '123e4567-e89b-42d3-a456-426614174000';
@@ -335,6 +347,17 @@ export function createDemoBridge(): AgentDockBridge {
           : {}),
       };
       return demoCaptureSettings;
+    },
+    pipenzoNotificationSettings: async () => demoNotificationSettings,
+    pipenzoUpdateNotificationSettings: async (input) => {
+      demoNotificationSettings = {
+        ...demoNotificationSettings,
+        ...(input.refusal !== undefined ? { refusal: input.refusal } : {}),
+        ...(input.medium !== undefined ? { medium: input.medium } : {}),
+        ...(input.badge !== undefined ? { badge: input.badge } : {}),
+        ...(input.sound !== undefined ? { sound: input.sound } : {}),
+      };
+      return demoNotificationSettings;
     },
     startGitHubDeviceFlow: async () => {
       throw new Error('signing in to GitHub is not available in demo mode');
