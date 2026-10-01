@@ -81,13 +81,25 @@ try {
   await realpath(PACKAGED_DAEMON);
   await realpath(PACKAGED_JOB_HOST);
   await realpath(PACKAGED_CLAUDE_SDK_BINARY);
+  // The expected version comes from the packaged NOTICE.txt itself (written by
+  // stage-claude-agent-sdk-assets.mjs from the real installed metadata at package time) rather
+  // than a hardcoded literal here: a hardcoded expectation drifts silently out of sync on every
+  // SDK bump and only fails loudly in CI, which is exactly what happened with the version this
+  // literal used to name (see #508).
+  const sdkNotice = await readFile(PACKAGED_CLAUDE_SDK_NOTICE, 'utf8');
+  const expectedExecutableVersion = /executable (\S+) packaged asset notice/u.exec(sdkNotice)?.[1];
+  assert(
+    typeof expectedExecutableVersion === 'string',
+    'could not read the expected executable version out of the packaged SDK notice',
+  );
   const sdkVersion = await run(PACKAGED_CLAUDE_SDK_BINARY, ['--version']);
   assert(sdkVersion.code === 0, 'packaged Claude Agent SDK executable version probe failed');
   assert(
-    /(?:^|\D)2\.1\.260(?:$|\D)/u.test(`${sdkVersion.stdout}\n${sdkVersion.stderr}`),
-    'packaged Claude Agent SDK executable version is not 2.1.260',
+    new RegExp(`(?:^|\\D)${expectedExecutableVersion.replaceAll('.', '\\.')}(?:$|\\D)`, 'u').test(
+      `${sdkVersion.stdout}\n${sdkVersion.stderr}`,
+    ),
+    `packaged Claude Agent SDK executable version is not ${expectedExecutableVersion}`,
   );
-  const sdkNotice = await readFile(PACKAGED_CLAUDE_SDK_NOTICE, 'utf8');
   assert(sdkNotice.includes('Claude Agent'), 'packaged SDK branding notice is missing');
   assert(
     sdkNotice.includes('Do not use: Claude Code, Claude Code Agent.'),
