@@ -224,6 +224,20 @@ export const pipenzoTicketWorktreeV1Schema = z
     id: z.string().uuid(),
     path: z.string().min(1).max(4_096),
     branch: z.string().min(1).max(255),
+    /**
+     * The commit `branch` was cut from (issue #103). Optional for the same reason `path` itself
+     * cannot be assumed present on every record: a worktree attached before this field existed has
+     * none to backfill. Recorded once, right alongside `path`/`branch` in `attachTicketWorktree()`,
+     * from the same `started.baseCommit` `ImplementOrchestrator.start()` already returns — not
+     * re-derived later, and not the same thing as `implement.baseCommit` above (that one is only
+     * ever written once a human has actually collected a diff; this one exists the moment the
+     * worktree does, which is what lets Stop report a real commit count while the session is still
+     * running and nobody has collected anything yet).
+     */
+    baseCommit: z
+      .string()
+      .regex(/^[0-9a-f]{40}$/)
+      .optional(),
   })
   .strict();
 
