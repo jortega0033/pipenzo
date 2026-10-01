@@ -165,6 +165,11 @@ describe('electron/preload.ts — real bridge (AD-07)', () => {
         // reasoning as the lesson/repo/concurrency channels above.
         'pipenzoCaptureSettings',
         'pipenzoUpdateCaptureSettings',
+        // Settings' Notifications panel (issue #129): the refusal/medium/badge/sound preferences.
+        // Ordinary daemon routes, same reasoning as the lesson/repo/concurrency/capture-settings
+        // channels above. There is deliberately no channel for a HIGH preference at all.
+        'pipenzoNotificationSettings',
+        'pipenzoUpdateNotificationSettings',
         'selectAndUploadAttachments',
         'validateStructuredOutput',
         'createSession',
