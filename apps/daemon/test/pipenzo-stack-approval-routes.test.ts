@@ -260,6 +260,14 @@ describe('POST /v2/pipenzo/tickets/risk/stack-approval/decide', () => {
       const comments = built.github.issueComments({ owner: 'jortega0033', repo: 'pipenzo' }, ISSUE_NUMBER);
       expect(comments).toHaveLength(1);
       expect(comments[0]!.body).toContain('too risky');
+
+      // Issue #105, CLAUDE.md hard rule 4: the comment above already told a human the stack was
+      // declined -- this is the ticket's own durable record of it, for `classifyRetry()` to refuse
+      // a retry against.
+      expect(built.tickets.get(TICKET_ID)?.lastApprovalRejection).toMatchObject({
+        kind: 'stack',
+        reason: 'too risky',
+      });
     },
     GIT_HEAVY_TIMEOUT_MS,
   );

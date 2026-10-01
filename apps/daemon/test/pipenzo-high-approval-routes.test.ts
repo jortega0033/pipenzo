@@ -311,6 +311,28 @@ describe('POST /v2/pipenzo/tickets/risk/high-approval/decide', () => {
   );
 
   it(
+    'records a durable rejection on the ticket itself (issue #105, CLAUDE.md hard rule 4)',
+    async () => {
+      const { worktreeManager, worktreeId, branch } = await realWorktree();
+      const { app, tickets, approvalId } = await captured(worktreeManager, worktreeId, branch);
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/tickets/risk/high-approval/decide',
+        headers: auth,
+        payload: { ticketId: TICKET_ID, approvalId, decision: 'reject', reason: 'touches the token vault' },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(tickets.get(TICKET_ID)?.lastApprovalRejection).toMatchObject({
+        kind: 'high',
+        reason: 'touches the token vault',
+      });
+    },
+    GIT_HEAVY_TIMEOUT_MS,
+  );
+
+  it(
     'refuses a reject with no reason at the wire level -- 400, and the approval is still pending afterward',
     async () => {
       const { worktreeManager, worktreeId, branch } = await realWorktree();

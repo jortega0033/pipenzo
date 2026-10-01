@@ -770,6 +770,96 @@ describe('PipenzoPhaseMachine.recordAttempt', () => {
 });
 
 /**
+ * Issue #105, CLAUDE.md hard rule 4's persisted half: "a denied approval is never auto-retried."
+ * None of the three approval stores (`high-approval-store.ts`/`medium-approval-store.ts`/
+ * `stack-approval-store.ts`) keep a decided reject around -- this is the ticket's own durable
+ * record of one, and `classifyRetry()`'s structural refusal reads it back through
+ * `peekApprovalRejection()`.
+ */
+describe('PipenzoPhaseMachine.recordApprovalRejection / peekApprovalRejection', () => {
+  it('records a rejection with its reason, readable back through peekApprovalRejection', () => {
+    const { machine, tickets } = harness();
+
+    machine.recordApprovalRejection(TICKET_ID, 'high', 'the diff touches auth, not ready');
+
+    expect(machine.peekApprovalRejection(TICKET_ID)).toMatchObject({
+      kind: 'high',
+      reason: 'the diff touches auth, not ready',
+    });
+    expect(tickets.get(TICKET_ID)?.lastApprovalRejection).toMatchObject({ kind: 'high' });
+  });
+
+  it('records a rejection with no reason at all -- MEDIUM’s own reject allows an absent one', () => {
+    const { machine } = harness();
+
+    machine.recordApprovalRejection(TICKET_ID, 'medium');
+
+    expect(machine.peekApprovalRejection(TICKET_ID)).toEqual({
+      kind: 'medium',
+      decidedAt: expect.any(String),
+    });
+  });
+
+  it('treats a blank reason the same as no reason -- never persists whitespace', () => {
+    const { machine } = harness();
+
+    machine.recordApprovalRejection(TICKET_ID, 'medium', '   ');
+
+    expect(machine.peekApprovalRejection(TICKET_ID)?.reason).toBeUndefined();
+  });
+
+  it('records a stack rejection the same way as high/medium', () => {
+    const { machine } = harness();
+
+    machine.recordApprovalRejection(TICKET_ID, 'stack', 'proposed split is wrong');
+
+    expect(machine.peekApprovalRejection(TICKET_ID)).toMatchObject({ kind: 'stack' });
+  });
+
+  it('returns undefined for a ticket that has never had an approval rejected', () => {
+    const { machine } = harness();
+    expect(machine.peekApprovalRejection(TICKET_ID)).toBeUndefined();
+  });
+
+  it('returns undefined for an unknown ticket rather than throwing', () => {
+    const { machine } = harness();
+    expect(machine.peekApprovalRejection('00000000-0000-4000-8000-00000000ffff')).toBeUndefined();
+  });
+
+  it('throws ticket_not_found rather than silently doing nothing for an unknown ticket', () => {
+    const { machine } = harness();
+    expect(() =>
+      machine.recordApprovalRejection('00000000-0000-4000-8000-00000000ffff', 'high', 'reason'),
+    ).toThrow(PipenzoPhaseMachineError);
+  });
+
+  it('clears a prior rejection the next time recordAttempt() runs -- a fresh dispatch supersedes it', () => {
+    const { machine, tickets } = harness();
+    machine.recordApprovalRejection(TICKET_ID, 'high', 'needs another look');
+    expect(machine.peekApprovalRejection(TICKET_ID)).toBeDefined();
+
+    machine.recordAttempt(TICKET_ID, {
+      sessionId: 'session-fresh-start',
+      tier: 'mid',
+      model: 'claude-sonnet',
+      outcome: 'dispatched',
+    });
+
+    expect(machine.peekApprovalRejection(TICKET_ID)).toBeUndefined();
+    expect(tickets.get(TICKET_ID)?.lastApprovalRejection).toBeUndefined();
+  });
+
+  it('does not announce a phase-stream event -- recording a rejection never moves a lane', () => {
+    const events = new PipenzoPhaseEventBus();
+    const { machine } = harness({ events });
+
+    machine.recordApprovalRejection(TICKET_ID, 'high', 'reason');
+
+    expect(events.retained).toHaveLength(0);
+  });
+});
+
+/**
  * Issue #74, the split of #20 that guards the phase machine's write path: an issue carrying a
  * `pipenzo:schema-vN` marker newer than this build understands (`pipenzo:schema-v1`) must refuse
  * both reconciliation and transition rather than write v1 semantics over state a newer Pipenzo
