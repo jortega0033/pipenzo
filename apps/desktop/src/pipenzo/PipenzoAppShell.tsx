@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
 import type {
   PipenzoImplementResultV1,
   PipenzoPublishResultV1,
@@ -15,6 +15,7 @@ import {
   NavItem,
   Sidebar,
   SidebarBrand,
+  SidebarFoot,
 } from '../components/primitives/AppShell.js';
 import { Banner } from '../components/primitives/Banner.js';
 import { Button } from '../components/primitives/Button.js';
@@ -30,7 +31,7 @@ import { WorkspaceSwitcher } from '../components/primitives/WorkspaceSwitcher.js
 import { ActivityFilterBar } from './ActivityFilterBar.js';
 import { ActivityRow } from './ActivityRow.js';
 import { ActivityScreen } from './ActivityScreen.js';
-import { BoardCommandPalette } from './BoardCommandPalette.js';
+import { BoardCommandPalette, isEditableTarget } from './BoardCommandPalette.js';
 import { BoardImplementDialog } from './BoardImplementDialog.js';
 import { BoardNewFromIdeaDialog } from './BoardNewFromIdeaDialog.js';
 import { BoardScreen } from './BoardScreen.js';
@@ -283,6 +284,28 @@ export function PipenzoAppShell({
   // Incremented once per "Manage repos…" click, `undefined` otherwise (see `ConnectedReposPanel.tsx`'s
   // own doc comment on why a token rather than a boolean).
   const [openRepoPickerToken, setOpenRepoPickerToken] = useState<number | undefined>(undefined);
+  // `Main.dc.html`'s own Collapse row (`.sidebar.collapsed`, CSS-only width/visibility, already
+  // wired into `Sidebar`/`NavItem` -- see their own doc comments): in-memory only, same as every
+  // other view-state field here, since nothing in the canvas asks for this to survive a restart.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const toggleSidebar = useCallback(() => setSidebarCollapsed((current) => !current), []);
+
+  // The canvas draws this shortcut as the Collapse row's own `"["` kbd hint, live globally like
+  // `BoardCommandPalette`'s own single-letter shortcuts -- same guard reused from there (no open
+  // palette, no modifier held, nothing editable focused) so typing `[` into a ticket title or a
+  // repo filter is never hijacked.
+  useEffect(() => {
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (isEditableTarget(event.target)) return;
+      if (event.key === '[') {
+        event.preventDefault();
+        toggleSidebar();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [toggleSidebar]);
 
   // Issue #341: the one navigation every "reporting, not deciding" callback built ahead of this
   // shell (`ActivityRow.tsx`'s `onOpenTicket`, `TicketSwitcherPanel.tsx`'s `onSwitch`, and this
@@ -403,7 +426,7 @@ export function PipenzoAppShell({
   return (
     <AppShell
       sidebar={
-        <Sidebar>
+        <Sidebar collapsed={sidebarCollapsed}>
           <SidebarBrand />
           {workspaceRepos.length > 0 && (
             <WorkspaceSwitcher
@@ -432,6 +455,11 @@ export function PipenzoAppShell({
               Settings
             </NavItem>
           </NavGroup>
+          <SidebarFoot>
+            <NavItem icon="sidebar" kbd count="[" onClick={toggleSidebar}>
+              {sidebarCollapsed ? 'Expand' : 'Collapse'}
+            </NavItem>
+          </SidebarFoot>
         </Sidebar>
       }
     >
