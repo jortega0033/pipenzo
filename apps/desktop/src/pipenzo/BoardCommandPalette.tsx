@@ -35,20 +35,22 @@ function isEditableTarget(target: EventTarget | null): boolean {
  * fetch -- a second, ad-hoc `pipenzoConnectedRepos()` call from inside this component would be
  * exactly the duplicate read that comment argues against.
  *
- * ## Why the Actions group has two rows, not the canvas's four
+ * ## Why the Actions group has three rows, not the canvas's four
  *
  * `Main.dc.html` draws "New from idea", "Open Board", "Open Activity" and "Open Settings" here.
  * `PipenzoAppShell.tsx`'s own doc comment already declined to add "Activity" (and "Open PRs",
  * "Models & gates") to the sidebar for a stated reason: a nav item that leads nowhere is worse
  * than one that does not exist, and Activity's own screen is still three open tickets away (#116,
- * #93, #118). "New from idea" is close to unblocked now that `resolvePipenzoCheckout` and
- * `BoardImplementDialog`'s checkout/trust flow exist (#342/#344), but mounting
- * `NewFromIdeaDialog` for real still needs its own answer to a question this ticket has no
- * business deciding on the side -- does drafting an issue need the same workspace-trust gate
- * Implement does, or can it skip straight to a checkout the way a read-only drafter arguably
- * should -- so it stays a follow-up rather than a decision folded into "wire up the palette".
- * "Open Board" and "Open Settings" are the two actions this shell can wire to something real,
- * with no new design questions, today.
+ * #93, #118), so it stays absent here too.
+ *
+ * "New from idea" is no longer that kind of gap. The question this component's own history left
+ * open -- whether drafting an issue needs the same workspace-trust gate Implement does, or can
+ * skip straight to a checkout since it is read-only against the repository -- resolves to "yes,
+ * the same gate": `issue-drafter.ts` runs a real agent session against the checkout (read-only
+ * tools, but a session all the same), and the daemon already refuses to run one in an untrusted
+ * workspace. `BoardNewFromIdeaDialog` is `BoardImplementDialog`'s own checkout/trust preamble
+ * applied to that fact, given the workspace switcher's active repo (issue #89) rather than a
+ * ticket's `repo`. Selecting the row, or pressing its shortcut, opens it for that repo.
  *
  * ## Why a ticket or repo row does what it does
  *
@@ -65,12 +67,17 @@ export function BoardCommandPalette({
   onOpenBoard,
   onOpenSettings,
   onSelectRepo,
+  onNewFromIdea,
 }: {
   tickets: readonly PipenzoTicketViewV1[];
   repositories: readonly string[];
   onOpenBoard: () => void;
   onOpenSettings: () => void;
   onSelectRepo: (repoFullName: string) => void;
+  /** Opens `BoardNewFromIdeaDialog` for the workspace's active repo. Only reachable -- the row and
+   * its "N" shortcut both hide -- when `repositories` is non-empty, since a drafter with no repo to
+   * read from has nothing to ground a draft in. */
+  onNewFromIdea: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -97,11 +104,14 @@ export function BoardCommandPalette({
       } else if (event.key === ',') {
         event.preventDefault();
         onOpenSettings();
+      } else if ((event.key === 'n' || event.key === 'N') && repositories.length > 0) {
+        event.preventDefault();
+        onNewFromIdea();
       }
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [open, onOpenBoard, onOpenSettings]);
+  }, [open, onOpenBoard, onOpenSettings, onNewFromIdea, repositories.length]);
 
   const selectBoard = useCallback(() => {
     onOpenBoard();
@@ -112,6 +122,11 @@ export function BoardCommandPalette({
     onOpenSettings();
     closePalette();
   }, [onOpenSettings, closePalette]);
+
+  const selectNewFromIdea = useCallback(() => {
+    onNewFromIdea();
+    closePalette();
+  }, [onNewFromIdea, closePalette]);
 
   const selectRepo = useCallback(
     (fullName: string) => {
@@ -158,6 +173,17 @@ export function BoardCommandPalette({
   groups.push({
     title: 'Actions',
     items: [
+      ...(repositories.length > 0
+        ? [
+            {
+              key: 'action-new-from-idea',
+              icon: 'idea',
+              label: 'New from idea',
+              meta: <Kbd>N</Kbd>,
+              onSelect: selectNewFromIdea,
+            } satisfies CommandPaletteItem,
+          ]
+        : []),
       {
         key: 'action-board',
         icon: 'board',
