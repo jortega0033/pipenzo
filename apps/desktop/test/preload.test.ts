@@ -100,6 +100,9 @@ describe('electron/preload.ts — real bridge (AD-07)', () => {
         'runStatusPipenzo',
         'steerPipenzo',
         'stopPipenzo',
+        // "Retry phase" (issue #105, CLAUDE.md hard rule 4): classified retry for a ticket parked
+        // on pipenzo:needs-human.
+        'retryPipenzo',
         'claimPipenzoIssue',
         'createPipenzoIssue',
         'commentOnPipenzoIssue',
