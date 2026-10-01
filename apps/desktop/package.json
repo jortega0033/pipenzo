@@ -13,7 +13,9 @@
     "test": "vitest run",
     "test:packaged-daemon-win": "node scripts/packaged-daemon-win-smoke.mjs",
     "package": "electron-builder",
-    "package:win": "electron-builder --win nsis"
+    "package:win": "electron-builder --win nsis",
+    "package:mac": "electron-builder --mac dmg zip",
+    "package:linux": "electron-builder --linux AppImage deb"
   },
   "devDependencies": {
     "@agent-dock/client": "workspace:*",

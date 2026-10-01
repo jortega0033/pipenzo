@@ -18,6 +18,8 @@
     "package": "pnpm build && pnpm --filter @agent-dock/desktop run package",
     "prepackage:win": "node apps/daemon/scripts/build-windows-job-host.mjs --assert-windows",
     "package:win": "pnpm build && pnpm --filter @agent-dock/desktop run package:win",
+    "package:mac": "pnpm build && pnpm --filter @agent-dock/desktop run package:mac",
+    "package:linux": "pnpm build && pnpm --filter @agent-dock/desktop run package:linux",
     "assets:generate": "python scripts/assets/generate_assets.py && python scripts/assets/generate_public_assets.py",
     "assets:validate": "python scripts/assets/validate_assets.py",
     "docs:claim-check": "node scripts/docs-claim-check.mjs",
