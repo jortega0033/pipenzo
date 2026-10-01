@@ -162,6 +162,10 @@ import {
   pipenzoStackApprovalCaptureResultV1Schema,
   pipenzoStackApprovalDecideRequestV1Schema,
   pipenzoStackApprovalDecideResultV1Schema,
+  pipenzoPlanReviewCaptureRequestV1Schema,
+  pipenzoPlanReviewCaptureResultV1Schema,
+  pipenzoPlanReviewDecideRequestV1Schema,
+  pipenzoPlanReviewDecideResultV1Schema,
   pipenzoPhaseEventOrStreamErrorV1Schema,
   pipenzoGitHubHealthV1Schema,
   type PipenzoGitHubHealthV1,
@@ -226,6 +230,10 @@ import {
   type PipenzoStackApprovalCaptureResultV1,
   type PipenzoStackApprovalDecideRequestV1,
   type PipenzoStackApprovalDecideResultV1,
+  type PipenzoPlanReviewCaptureRequestV1,
+  type PipenzoPlanReviewCaptureResultV1,
+  type PipenzoPlanReviewDecideRequestV1,
+  type PipenzoPlanReviewDecideResultV1,
   type PipenzoPhaseEventV1,
 } from '@agent-dock/shared';
 import {
@@ -634,6 +642,17 @@ export class AgentDockClient {
       decideStackApproval: (
         input: PipenzoStackApprovalDecideRequestV1,
       ): Promise<PipenzoStackApprovalDecideResultV1> => this.decideStackApprovalV1(input),
+      /**
+       * The plan-review gate (issue #15, UI half #101) -- see `pipenzo-plan-review-v1.ts`'s module
+       * comment for why capture and decide are two separate calls, and why `decide` takes three
+       * decisions where stack approval's own takes two.
+       */
+      capturePlanReview: (
+        input: PipenzoPlanReviewCaptureRequestV1,
+      ): Promise<PipenzoPlanReviewCaptureResultV1> => this.capturePlanReviewV1(input),
+      decidePlanReview: (
+        input: PipenzoPlanReviewDecideRequestV1,
+      ): Promise<PipenzoPlanReviewDecideResultV1> => this.decidePlanReviewV1(input),
       /**
        * The phase-change stream (issue #189): one daemon-wide stream carrying every ticket's
        * transitions, so a board needs one connection rather than one per card.
@@ -1672,6 +1691,40 @@ export class AgentDockClient {
       '/v2/pipenzo/tickets/risk/stack-approval/decide',
       pipenzoStackApprovalDecideResultV1Schema,
       'pipenzo stack-approval decision',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) },
+      { expectedStatus: 200 },
+    );
+  }
+
+  private async capturePlanReviewV1(
+    input: PipenzoPlanReviewCaptureRequestV1,
+  ): Promise<PipenzoPlanReviewCaptureResultV1> {
+    const parsed = validateInput(
+      pipenzoPlanReviewCaptureRequestV1Schema,
+      input,
+      'pipenzo plan-review capture request',
+    );
+    return this.requestV2(
+      '/v2/pipenzo/tickets/risk/plan-review/capture',
+      pipenzoPlanReviewCaptureResultV1Schema,
+      'pipenzo plan-review pending record',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) },
+      { expectedStatus: 200 },
+    );
+  }
+
+  private async decidePlanReviewV1(
+    input: PipenzoPlanReviewDecideRequestV1,
+  ): Promise<PipenzoPlanReviewDecideResultV1> {
+    const parsed = validateInput(
+      pipenzoPlanReviewDecideRequestV1Schema,
+      input,
+      'pipenzo plan-review decide request',
+    );
+    return this.requestV2(
+      '/v2/pipenzo/tickets/risk/plan-review/decide',
+      pipenzoPlanReviewDecideResultV1Schema,
+      'pipenzo plan-review decision',
       { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) },
       { expectedStatus: 200 },
     );

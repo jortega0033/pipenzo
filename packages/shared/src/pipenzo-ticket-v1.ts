@@ -410,6 +410,39 @@ export const pipenzoTicketRecordV1Schema = z
      * produced it.
      */
     spec: refineSpecV1Schema.optional(),
+    /**
+     * The plan-review gate's own local marker (issue #15, UI half #101): `true` once a clean Refine
+     * verdict parks this ticket for a human's Approve/Request-changes/Reject decision, cleared the
+     * moment any of the three real decisions lands.
+     *
+     * **Deliberately not a `pipenzo:` label.** `design/artboards/TicketDetail.dc.html`'s own
+     * plan-review mockup states the reasoning this field exists to implement rather than
+     * contradict: "The published label set does not name this state yet, so the ticket parks under
+     * `pipenzo:needs-human` rather than inventing a label a teammate's older build would not
+     * understand" -- the exact CLAUDE.md hard rule #5 concern ("no bare names... a bare label
+     * collides with labels a real repo already uses" generalizes to "an invented label an older
+     * Pipenzo instance reading the same repo has never heard of"). So `#reportPlanReviewGate`
+     * transitions the ticket to the bare, already-real `pipenzo:needs-human` label -- GitHub only
+     * ever sees a label every Pipenzo build already understands -- and this field is exactly the
+     * "everything GitHub can't hold" half of README's own ticket-store precedence rule (this
+     * schema's own module doc comment), the local-only fact that distinguishes *why* a bare
+     * `needs-human` ticket is parked from the three other real causes
+     * (`needs-human-card.ts`'s `classifyNeedsHumanCard` reads it, gated on `spec` also being
+     * present, the same "never from one field alone" discipline `pipenzoTicketRefusalV1Schema`'s own
+     * doc comment states for a different pair of fields).
+     */
+    awaitingPlanReview: z.boolean().optional(),
+    /**
+     * The human's "request changes" feedback from the plan-review gate (issue #15), carried from a
+     * request-changes decide call through to the next `refine()` for this ticket. Written by
+     * `PipenzoPhaseService.requestPlanReviewChanges()` the moment a human asks for changes, and
+     * consumed -- read once, then cleared -- by `refine()`'s own `#consumePlanReviewFeedback`, the
+     * same "a decision, once acted on, is not re-askable" shape `MediumApprovalStore.decide()`'s own
+     * doc comment states for a different store. Optional and absent on every ticket that has never
+     * been through the plan-review gate's "request changes" path, which is every ticket before this
+     * field existed.
+     */
+    planReviewFeedback: z.string().min(1).max(4_000).optional(),
     /** The commit range Implement produced from `spec`, if it has run. See the schema's own doc. */
     implement: pipenzoTicketImplementRangeV1Schema.optional(),
     attempts: z.array(pipenzoTicketAttemptV1Schema).max(50),
