@@ -58,6 +58,11 @@ export function installAssetCaptureBridge(): void {
     implementResultPipenzo: async () => { throw new Error('implement is not available while capturing assets'); },
     implementDiffPipenzo: async () => { throw new Error('implement is not available while capturing assets'); },
     reviewPipenzo: async () => { throw new Error('review is not available while capturing assets'); },
+    // A probe, not an action -- same reasoning as `pipenzoCaptureCapabilities` below: answers
+    // "nothing is live" rather than throwing, which is true while capturing assets.
+    runStatusPipenzo: async () => ({ live: false }),
+    steerPipenzo: async () => { throw new Error('steering a run is not available while capturing assets'); },
+    stopPipenzo: async () => { throw new Error('stopping a run is not available while capturing assets'); },
     claimPipenzoIssue: async () => { throw new Error('claiming is not available while capturing assets'); },
     createPipenzoIssue: async () => { throw new Error('issue creation is not available while capturing assets'); },
     commentOnPipenzoIssue: async () => { throw new Error('commenting is not available while capturing assets'); },

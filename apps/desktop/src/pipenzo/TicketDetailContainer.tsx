@@ -4,6 +4,7 @@ import { CumulativeRiskStrip } from './CumulativeRiskStrip.js';
 import { ModelRoutingBlock } from './ModelRoutingBlock.js';
 import { PhaseStepperPanel } from './PhaseStepperPanel.js';
 import { RefusalPanel } from './RefusalPanel.js';
+import { RunControlsPanel } from './RunControlsPanel.js';
 import { SubscriptionHeadroomBlock } from './SubscriptionHeadroomBlock.js';
 import { TicketDetailScreen } from './TicketDetailScreen.js';
 import { TicketSwitcherPanel } from './TicketSwitcherPanel.js';
@@ -21,7 +22,9 @@ import { TicketSwitcherPanel } from './TicketSwitcherPanel.js';
  * comment says it renders. `stepper`/`ticketSwitcher`/the stream panel each do their own live
  * `pipenzoTicketRead`/phase-event subscription (see `use-ticket-phase-stepper.ts`) rather than
  * trusting this possibly-stale list snapshot for anything that needs to stay current while the
- * screen is open.
+ * screen is open. `runControls` (issue #103's `RunControlsPanel`) does the same, through its own
+ * `use-ticket-run-controls.ts` -- it renders nothing at all unless a fresh, polled answer says this
+ * ticket's dispatched session is genuinely live right now, never a guess from `ticket.attempts`.
  *
  * ## What is deliberately left unwired, and why
  *
@@ -29,11 +32,6 @@ import { TicketSwitcherPanel } from './TicketSwitcherPanel.js';
  *   codebase (`git grep` for it turns up nothing but this screen's own doc comment naming it). Left
  *   `undefined`, which `TicketDetailScreen` already renders as nothing, rather than guessing at a
  *   design that has not been built.
- * - **`runControls` (issue #103)** -- `RunControls.tsx` exists but needs live Steer/Stop backend
- *   calls (`onSteer`/`onStop`) this codebase has no bridge method for yet (`bridge.ts` has no
- *   steer/stop route). `RunControls`'s own doc comment says a caller renders nothing at all rather
- *   than a disabled control when no session is genuinely live -- that is exactly what omitting this
- *   slot does.
  * - **`lessonPrompt` (issue #104)** -- `LessonPrompt` is real and already wired into
  *   `DiffReviewScreen.tsx`, keyed off that screen's own `resolved` flag (a push or opened PR just
  *   happened, in that same session). Viewing a ticket's detail is not that event -- there is no
@@ -89,6 +87,7 @@ export function TicketDetailContainer({
       ticketSwitcher={
         <TicketSwitcherPanel activeTicketId={ticket.ticketId} onSwitch={onSwitchTicket} />
       }
+      runControls={<RunControlsPanel ticketId={ticket.ticketId} />}
       riskBlock={<CumulativeRiskStrip risk={ticket.risk} />}
       modelRoutingBlock={<ModelRoutingBlock attempts={ticket.attempts} />}
       headroomBlock={

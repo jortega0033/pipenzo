@@ -96,6 +96,10 @@ describe('electron/preload.ts — real bridge (AD-07)', () => {
         'implementResultPipenzo',
         'implementDiffPipenzo',
         'reviewPipenzo',
+        // Live run controls (issue #103): Steer/Stop for a ticket's dispatched Implement session.
+        'runStatusPipenzo',
+        'steerPipenzo',
+        'stopPipenzo',
         'claimPipenzoIssue',
         'createPipenzoIssue',
         'commentOnPipenzoIssue',

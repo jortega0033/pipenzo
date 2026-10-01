@@ -58,6 +58,12 @@ import {
   pipenzoImplementDiffResultV1Schema,
   pipenzoReviewRequestV1Schema,
   pipenzoReviewResultV1Schema,
+  pipenzoRunStatusRequestV1Schema,
+  pipenzoRunStatusResultV1Schema,
+  pipenzoSteerRequestV1Schema,
+  pipenzoSteerResultV1Schema,
+  pipenzoStopRequestV1Schema,
+  pipenzoStopResultV1Schema,
   pipenzoIssueClaimRequestV1Schema,
   pipenzoIssueClaimResultV1Schema,
   pipenzoIssueCommentRequestV1Schema,
@@ -162,6 +168,12 @@ import {
   type PipenzoImplementDiffResultV1,
   type PipenzoReviewRequestV1,
   type PipenzoReviewResultV1,
+  type PipenzoRunStatusRequestV1,
+  type PipenzoRunStatusResultV1,
+  type PipenzoSteerRequestV1,
+  type PipenzoSteerResultV1,
+  type PipenzoStopRequestV1,
+  type PipenzoStopResultV1,
   type PipenzoIssueClaimRequestV1,
   type PipenzoIssueClaimResultV1,
   type PipenzoIssueCommentRequestV1,
@@ -294,6 +306,10 @@ export interface AgentDockBridge {
   implementResultPipenzo(input: PipenzoImplementResultQueryV1): Promise<PipenzoImplementCommitsV1>;
   implementDiffPipenzo(input: PipenzoImplementDiffRequestV1): Promise<PipenzoImplementDiffResultV1>;
   reviewPipenzo(input: PipenzoReviewRequestV1): Promise<PipenzoReviewResultV1>;
+  /** Live run controls (issue #103): Steer/Stop for a ticket's dispatched Implement session. */
+  runStatusPipenzo(input: PipenzoRunStatusRequestV1): Promise<PipenzoRunStatusResultV1>;
+  steerPipenzo(input: PipenzoSteerRequestV1): Promise<PipenzoSteerResultV1>;
+  stopPipenzo(input: PipenzoStopRequestV1): Promise<PipenzoStopResultV1>;
   claimPipenzoIssue(input: PipenzoIssueClaimRequestV1): Promise<PipenzoIssueClaimResultV1>;
   createPipenzoIssue(input: PipenzoIssueCreateRequestV1): Promise<PipenzoIssueCreateResultV1>;
   commentOnPipenzoIssue(input: PipenzoIssueCommentRequestV1): Promise<PipenzoIssueCommentResultV1>;
@@ -1007,6 +1023,20 @@ const api: AgentDockBridge = {
   async reviewPipenzo(input) {
     const parsed = pipenzoReviewRequestV1Schema.parse(input);
     return pipenzoReviewResultV1Schema.parse(await ipcRenderer.invoke('daemon:pipenzo-review', parsed));
+  },
+  async runStatusPipenzo(input) {
+    const parsed = pipenzoRunStatusRequestV1Schema.parse(input);
+    return pipenzoRunStatusResultV1Schema.parse(
+      await ipcRenderer.invoke('daemon:pipenzo-run-status', parsed),
+    );
+  },
+  async steerPipenzo(input) {
+    const parsed = pipenzoSteerRequestV1Schema.parse(input);
+    return pipenzoSteerResultV1Schema.parse(await ipcRenderer.invoke('daemon:pipenzo-steer', parsed));
+  },
+  async stopPipenzo(input) {
+    const parsed = pipenzoStopRequestV1Schema.parse(input);
+    return pipenzoStopResultV1Schema.parse(await ipcRenderer.invoke('daemon:pipenzo-stop', parsed));
   },
   async claimPipenzoIssue(input) {
     const parsed = pipenzoIssueClaimRequestV1Schema.parse(input);
