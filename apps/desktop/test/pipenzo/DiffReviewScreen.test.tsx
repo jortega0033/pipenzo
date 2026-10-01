@@ -320,4 +320,61 @@ describe('DiffReviewScreen', () => {
       expect(screen.getByText(`Saved locally — 1 lesson on ${TICKET.repo}`)).toBeInTheDocument(),
     );
   });
+
+  /** Issue #104's `LessonPrompt` has no id of its own for "which ticket's resolution is this" --
+   * it relies entirely on being re-keyed by its mount point. This proves DiffReviewScreen supplies
+   * that key: if the same screen instance were ever reused for a different ticket without a full
+   * remount (not how it's wired today, but exactly the risk the component's own doc comment
+   * warns about), a saved lesson's `step`/`text` state must not leak onto the new ticket. */
+  it('keys LessonPrompt by ticket, so a ticket change on a reused screen does not leak lesson state', async () => {
+    const implementResultPipenzo = vi.fn().mockResolvedValue(commits());
+    const implementDiffPipenzo = vi.fn().mockResolvedValue(diffResult());
+    const publishResult: PipenzoPublishResultV1 = {
+      worktreeId: STARTED.worktreeId,
+      remote: 'origin',
+      branch: STARTED.branch,
+      headSha: 'b'.repeat(40),
+      updatedRemote: true,
+    };
+    const publishPipenzo = vi.fn().mockResolvedValue(publishResult);
+    const pipenzoCreateLesson = vi.fn().mockResolvedValue({
+      lessons: [
+        {
+          schemaVersion: 1 as const,
+          id: 'lesson-1',
+          repo: TICKET.repo,
+          issueNumber: TICKET.num,
+          text: 'Worth remembering',
+          savedAt: '2026-09-06T14:14:00.000Z',
+        },
+      ],
+    });
+    setBridgeOverride({ implementResultPipenzo, implementDiffPipenzo, publishPipenzo, pipenzoCreateLesson } as never);
+
+    const { rerender } = render(<DiffReviewScreen ticket={TICKET} spec={SPEC} started={STARTED} />);
+    await waitFor(() => expect(screen.getByText(TICKET.title)).toBeInTheDocument());
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /push branch/i }));
+    });
+
+    const field = await screen.findByLabelText('Lesson text');
+    fireEvent.change(field, { target: { value: 'Worth remembering' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /save lesson/i }));
+    });
+    await waitFor(() =>
+      expect(screen.getByText(`Saved locally — 1 lesson on ${TICKET.repo}`)).toBeInTheDocument(),
+    );
+
+    // Same screen instance, a different ticket -- as if a future parent reused this component
+    // across tickets without unmounting it. Without a key on LessonPrompt, React would keep the
+    // 'saved' step and this ticket's lesson state alive under the new ticket's identity.
+    const OTHER_TICKET = { num: 95, title: 'A different ticket', repo: 'jortega0033/other-repo' };
+    rerender(<DiffReviewScreen ticket={OTHER_TICKET} spec={SPEC} started={STARTED} />);
+
+    const freshField = await screen.findByLabelText('Lesson text');
+    expect(freshField).toHaveValue('');
+    expect(screen.queryByText(/Saved locally/)).not.toBeInTheDocument();
+  });
 });

@@ -166,7 +166,17 @@ export function DiffReviewScreen({
         onPullRequestOpened={handlePullRequestOpened}
       />
       {resolved && (
-        <LessonPrompt repo={ticket.repo} issueNumber={ticket.num} prefill={deriveLessonPrefill(report)} />
+        // Keyed by the resolution's own identity (issue #104's callers have no other id for a
+        // ticket): a screen reused for a different ticket without a full remount must still get a
+        // fresh `LessonPrompt` mount, per that component's own "keyed by whatever identifies that
+        // resolution at the call site" doc comment -- otherwise its draft/step state would leak
+        // from one ticket's resolution into another's.
+        <LessonPrompt
+          key={`${ticket.repo}#${ticket.num}`}
+          repo={ticket.repo}
+          issueNumber={ticket.num}
+          prefill={deriveLessonPrefill(report)}
+        />
       )}
       <div className="body">
         <DiffFileList diffText={result.diffText} />
