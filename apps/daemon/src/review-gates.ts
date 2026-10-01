@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import {
   DETERMINISTIC_GATE_IDS,
   modelTierRank,
@@ -264,6 +265,22 @@ const DEFAULT_LINT_COMMAND = ['pnpm', 'lint'] as const;
  * is reported as the real failure it partly is, rather than silently downgraded to `skipped` --
  * exactly the failure shape issue #196 was about, which this whole gate exists to catch. */
 const PNPM_MISSING_SCRIPT_MARKER = 'ERR_PNPM_NO_SCRIPT';
+/**
+ * The semgrep gate's `--config` value (issue #320). `--config auto` used to make semgrep call its
+ * own registry at gate-run time and pick a ruleset dynamically -- unpinned, and unreviewed by
+ * anyone in this project, inside a security gate that runs against *arbitrary repos this runner
+ * reviews* (see `ReviewGatesOptions`'s own doc comment), not just Pipenzo's own code. Pointing at
+ * this vendored directory instead means every rule the gate enforces is readable in a normal
+ * `git diff` and the gate produces the same result with or without network access.
+ *
+ * Resolved from this module's own location rather than `process.cwd()` or `request.worktreePath`,
+ * both of which are the *target* repo being reviewed, not this one -- semgrep's own ruleset has to
+ * travel with Pipenzo, never with whatever is being gated. `'../semgrep-rules'` resolves correctly
+ * from both `src/review-gates.ts` (dev, via tsx) and the bundled `dist/index.js` (esbuild's
+ * `scripts/build.mjs` bundles this module in but does not relocate it out of `apps/daemon/`), since
+ * both sit exactly one directory below `apps/daemon/`.
+ */
+const SEMGREP_CONFIG_DIR = fileURLToPath(new URL('../semgrep-rules', import.meta.url));
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
 const MAX_DETAIL = 20_000;
 /** The review-input-completeness limit (issue #316), in UTF-16 code units (JavaScript string
@@ -682,7 +699,7 @@ export class ReviewGatesRunner {
               ? this.#test
               : id === 'gitleaks'
                 ? ['gitleaks', 'detect', '--source', '.', '--no-git', '--redact']
-                : ['semgrep', '--error', '--quiet', '--config', 'auto', '.'];
+                : ['semgrep', '--error', '--quiet', '--config', SEMGREP_CONFIG_DIR, '.'];
 
     const executable = command[0];
     if (!executable) return finish('errored', `${id} has no command configured`);

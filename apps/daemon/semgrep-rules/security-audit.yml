@@ -1,0 +1,124 @@
+# Vendored ruleset -- Pipenzo issue #320.
+#
+# These rules are committed to this repo on purpose (see review-gates.ts's `SEMGREP_CONFIG_DIR`):
+# the semgrep gate used to run `--config auto`, which fetches a ruleset from Semgrep's registry at
+# gate-run time -- unpinned and unreviewed by anyone in this project. Pointing `--config` at this
+# directory instead means every rule the gate enforces is readable in a normal `git diff` and the
+# gate produces the same result with or without network access.
+#
+# Snapshot date: 2026-10-01. Broad, multi-language coverage modeled after Semgrep's own curated
+# `p/security-audit` pack, trimmed to a small set of high-signal checks rather than vendoring that
+# pack's full breadth (see the issue's "out of scope": widening this is deliberately deferred).
+# Bumping this snapshot, or widening coverage, is a normal PR against this file.
+rules:
+  - id: pipenzo-dangerous-eval
+    languages: [python, javascript, typescript]
+    severity: ERROR
+    message: >-
+      Call to eval()/exec() (or the JS Function constructor) on a value that is not a fixed string
+      literal. Evaluating dynamic input as code is a common injection sink.
+    metadata:
+      category: security
+      cwe: CWE-95
+      references:
+        - https://owasp.org/www-community/attacks/Code_Injection
+    patterns:
+      - pattern-either:
+          - pattern: eval(...)
+          - pattern: exec(...)
+          - pattern: new Function(...)
+      - pattern-not: eval("...")
+      - pattern-not: exec("...")
+
+  - id: pipenzo-shell-true-subprocess
+    languages: [python]
+    severity: ERROR
+    message: >-
+      subprocess call with shell=True. Shell interpolation of any non-literal argument is a
+      command-injection sink; prefer passing an argv list with shell=False (the default).
+    metadata:
+      category: security
+      cwe: CWE-78
+    patterns:
+      - pattern-either:
+          - pattern: subprocess.run(..., shell=True, ...)
+          - pattern: subprocess.call(..., shell=True, ...)
+          - pattern: subprocess.Popen(..., shell=True, ...)
+          - pattern: os.system(...)
+
+  - id: pipenzo-disabled-tls-verification
+    languages: [python, javascript, typescript, go]
+    severity: ERROR
+    message: >-
+      TLS/SSL certificate verification is explicitly disabled. This defeats transport security
+      against on-path attackers and should never ship outside a throwaway local script.
+    metadata:
+      category: security
+      cwe: CWE-295
+    patterns:
+      - pattern-either:
+          - pattern: requests.$METHOD(..., verify=False, ...)
+          - pattern: $OPTS.rejectUnauthorized = false
+          - pattern: new https.Agent({ ..., rejectUnauthorized: false, ... })
+          - pattern: $CFG.InsecureSkipVerify = true
+
+  - id: pipenzo-insecure-yaml-load
+    languages: [python]
+    severity: WARNING
+    message: >-
+      yaml.load() without an explicit safe Loader can deserialize arbitrary Python objects from
+      untrusted YAML. Use yaml.safe_load(), or pass Loader=yaml.SafeLoader explicitly.
+    metadata:
+      category: security
+      cwe: CWE-502
+    pattern: yaml.load($DATA)
+
+  - id: pipenzo-sql-string-concat
+    languages: [python, javascript, typescript, java]
+    severity: WARNING
+    message: >-
+      SQL-looking string built by concatenation or interpolation rather than a parameterized
+      query. If any part of this string can come from user input, this is a SQL injection sink.
+    metadata:
+      category: security
+      cwe: CWE-89
+    patterns:
+      - pattern-either:
+          - pattern: $CURSOR.execute("..." + $X)
+          - pattern: $CURSOR.execute(`...${$X}...`)
+          - pattern: $DB.query("..." + $X)
+
+  - id: pipenzo-raw-innerhtml-assignment
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: >-
+      Direct assignment to innerHTML (or React's dangerouslySetInnerHTML) with a non-literal
+      value. If the value can carry attacker-controlled content, this is a stored/reflected XSS
+      sink.
+    metadata:
+      category: security
+      cwe: CWE-79
+    patterns:
+      - pattern-either:
+          - pattern: $EL.innerHTML = $X
+          - pattern: dangerouslySetInnerHTML={{ __html: $X }}
+      - pattern-not: $EL.innerHTML = "..."
+
+  - id: pipenzo-weak-random-for-security
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: >-
+      Math.random() used where the surrounding code's name (token/secret/password/session/key)
+      suggests a security-sensitive value. Math.random() is not cryptographically secure; use
+      crypto.randomBytes()/crypto.randomUUID() instead.
+    metadata:
+      category: security
+      cwe: CWE-338
+    patterns:
+      # `<... ... ...>` is semgrep's deep-expression operator: it matches `Math.random()` anywhere
+      # inside the assigned expression, not only when it is the entire right-hand side (a bare
+      # `...` only fills argument-list/statement-sequence/literal slots, not "anywhere").
+      - pattern: $VAR = <... Math.random() ...>
+      - metavariable-regex:
+          metavariable: $VAR
+          regex: (?i)(token|secret|password|session|apikey|api_key)
