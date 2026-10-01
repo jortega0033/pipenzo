@@ -46,6 +46,7 @@ import { PipenzoPhaseMachine } from './pipenzo-phase-machine.js';
 import { MediumApprovalStore } from './medium-approval-store.js';
 import { HighApprovalStore } from './high-approval-store.js';
 import { StackApprovalStore } from './stack-approval-store.js';
+import { PlanReviewStore } from './plan-review-store.js';
 import { PipenzoPhaseEventBus } from './pipenzo-phase-events.js';
 import { PipenzoCrashRecovery } from './pipenzo-crash-recovery.js';
 import { PipenzoReconciler } from './pipenzo-reconciler.js';
@@ -410,6 +411,13 @@ async function main() {
   // store needs to persist across a restart either.
   const stackApprovalStore = new StackApprovalStore();
 
+  // The plan-review gate's own approval store (issue #15, UI half #101). In-process and
+  // per-daemon-lifetime like `stackApprovalStore` above -- a pending plan review that outlives a
+  // daemon restart is recoverable from the ticket's own local `awaitingPlanReview` marker and cached
+  // `spec` (a fresh `capture` call re-reads both), so there is nothing this in-memory store needs to
+  // persist across a restart either.
+  const planReviewStore = new PlanReviewStore();
+
   const app = buildServer({
     registry,
     sessionManager,
@@ -428,6 +436,7 @@ async function main() {
     mediumApprovalStore,
     highApprovalStore,
     stackApprovalStore,
+    planReviewStore,
     crashRecovery,
     connectedRepos,
     repoCheckouts,

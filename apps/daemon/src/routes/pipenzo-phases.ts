@@ -83,6 +83,10 @@ const PHASE_ERROR_STATUS: Record<PipenzoPhaseErrorCodeV1, number> = {
   // (`routes/sessions.ts`/`routes/v2-sessions.ts`) for the same "at capacity, try again shortly"
   // shape -- a client's `retry` treatment of a 429 is already the right one here.
   execution_limit_exceeded: 429,
+  // Issue #15: the ticket's own current state (its local `awaitingPlanReview` marker is still set)
+  // preventing the operation, same 409 family as budget_exhausted/claimed_elsewhere above -- never a
+  // client input error, and never retried automatically (CLAUDE.md hard rule #4).
+  plan_review_pending: 409,
   token_missing: 412,
   repository_not_configured: 412,
   issue_not_found: 404,

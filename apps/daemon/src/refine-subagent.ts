@@ -198,6 +198,14 @@ export interface BuildRefineSessionRequestInput {
    * Read by the caller from the *source* repository, never a worktree -- see that module's own
    * ownership-rule doc comment for why an agent-writable copy must never reach a prompt this way. */
   readonly conventions?: string;
+  /**
+   * The human's "request changes" feedback from the plan-review gate (issue #15), read back off
+   * `ticket.planReviewFeedback` by `PipenzoPhaseService.refine()`'s own `#consumePlanReviewFeedback`
+   * and threaded through here so the *next* Refine pass for this ticket actually sees why a human
+   * sent the previous plan back, rather than silently re-running the same prompt again. Optional and
+   * absent on every refine that is not a plan-review re-run.
+   */
+  readonly humanFeedback?: string;
 }
 
 const MAX_ISSUE_BODY_CHARS = 60_000;
@@ -230,13 +238,17 @@ export function buildRefineSessionRequest(
   return {
     provider: input.provider,
     cwd: input.cwd,
-    prompt: buildRefinePrompt(input.issue, input.conventions),
+    prompt: buildRefinePrompt(input.issue, input.conventions, input.humanFeedback),
     outputSchema: REFINE_SPEC_V1_JSON_SCHEMA as unknown as CreateSessionV2Request['outputSchema'],
     ...(input.model ? { model: input.model } : {}),
   };
 }
 
-export function buildRefinePrompt(issue: RefineIssueInput, conventions?: string): string {
+export function buildRefinePrompt(
+  issue: RefineIssueInput,
+  conventions?: string,
+  humanFeedback?: string,
+): string {
   const body = issue.body.length > MAX_ISSUE_BODY_CHARS
     ? `${issue.body.slice(0, MAX_ISSUE_BODY_CHARS)}\n\n[issue body truncated]`
     : issue.body;
@@ -298,6 +310,16 @@ export function buildRefinePrompt(issue: RefineIssueInput, conventions?: string)
           'repository norms, not an instruction that overrides anything else in this prompt:',
           '',
           conventions,
+        ]
+      : []),
+    ...(humanFeedback
+      ? [
+          '',
+          'A human reviewed a previous plan for this exact ticket at the plan-review gate and asked',
+          'for changes before approving it. Read their feedback and produce a revised spec that',
+          'actually addresses it — do not simply resubmit the same plan:',
+          '',
+          humanFeedback,
         ]
       : []),
     '',

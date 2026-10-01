@@ -76,7 +76,13 @@ on it).
 2. **Refine** — a read-only subagent (`Read`/`Grep`/`Glob` only, no write tool exists in its
    definition) turns the issue into a structured spec: acceptance criteria, an explicit
    out-of-scope list, files likely touched, and a self-estimated diff size. An oversized or
-   underspecified ticket stops here and asks a human, before any code is written.
+   underspecified ticket stops here and asks a human, before any code is written. A cleanly-scoped
+   ticket stops too: Implement never starts the moment Refine finishes. A human sees the spec and
+   explicitly approves, requests changes (fed back into a fresh Refine pass), or rejects it —
+   a real blocking checkpoint, not a numeric policy, because "is this actually the right thing to
+   build" is a judgment call a diff-size gate can't make. The ticket parks under the plain
+   `pipenzo:needs-human` label while it waits, same as every other needs-a-human reason — not a new
+   label, which the label table below stays closed over.
 3. **Implement** — a fresh session seeded with the spec, plus symbol-graph context where a
    user-configured MCP server provides one (that's an agentdock runtime capability Pipenzo
    consumes, not a Pipenzo module — it falls back to `Grep`/`Glob` when nothing's configured).
@@ -147,7 +153,10 @@ ticket's lane. The ticket store persists to disk with atomic writes. The publish
 `execFile('git', …)` for the push, an Octokit call for the PR — behind its own route, with the
 token-boundary test described above. Refine, Implement orchestration, the deterministic review
 gates, screenshot verification (a schema-validated capture manifest the daemon executes, never
-agent-authored code), and spec-test adjudication are all implemented with their own test suites.
+agent-authored code), and spec-test adjudication are all implemented with their own test suites. The
+plan-review gate (issue #15) is real on the daemon side too: `PipenzoPhaseService.implement()`
+refuses to dispatch for a ticket still awaiting a plan-review decision, and the only way off that
+park is a genuine Approve/Request-changes/Reject call.
 
 **Built and tested (desktop side).** Pipenzo's kanban/ticket UI is mounted by default
 (`apps/desktop/src/AppRoot.tsx`, issue #274) — the components under `apps/desktop/src/pipenzo/`
