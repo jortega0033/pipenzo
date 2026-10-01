@@ -273,6 +273,103 @@ export const pipenzoImplementDiffResultV1Schema = z
 export type PipenzoImplementDiffRequestV1 = z.infer<typeof pipenzoImplementDiffRequestV1Schema>;
 export type PipenzoImplementDiffResultV1 = z.infer<typeof pipenzoImplementDiffResultV1Schema>;
 
+/* ------------------------------------------------------------- run controls (issue #103) */
+
+/**
+ * Steer and Stop for a ticket's dispatched Implement session (issue #103). Both are addressed by
+ * `ticketId`, never by `sessionId` or worktree id: `PipenzoPhaseService` resolves the ticket's
+ * current attempt itself, the same "the renderer names the thing it is looking at, the daemon
+ * resolves what that maps to" rule `pipenzoTicketTransitionRequestV1Schema` already follows for a
+ * label move. A renderer that could name a session id directly could steer or stop a session that
+ * is not this ticket's own dispatched attempt.
+ *
+ * Neither call is gated on the ticket's `lane`/label here — `PipenzoPhaseService` gates on whether
+ * the attempt's session is genuinely still running right now (a fresh check, not a cached one),
+ * which is the real thing `RunControls.tsx`'s own "no absent state" doc comment asks a caller to
+ * know for certain, and a `pipenzo:working` label alone cannot promise that (the reconciler polls
+ * on its own cadence and cannot observe a session ending between polls).
+ */
+export const pipenzoSteerRequestV1Schema = z
+  .object({
+    ticketId: pipenzoTicketIdV1Schema,
+    /**
+     * One instruction, delivered at the running session's next tool boundary — it is appended as a
+     * fresh turn, never folded into or replacing the approved Refine spec. Same shape as
+     * `extraInstructions` above: a caller-authored string that reaches a prompt, bounded and
+     * control-character-free.
+     */
+    instruction: z
+      .string()
+      .min(1)
+      .max(4_000)
+      .refine(noControlCharacters, 'must not contain control characters'),
+  })
+  .strict();
+
+export const pipenzoSteerResultV1Schema = z
+  .object({
+    /** The session the instruction was actually delivered to, so a caller can tell this apart from
+     *  a steer that landed against a since-replaced attempt. */
+    sessionId: z.string().min(1).max(128),
+  })
+  .strict();
+
+export const pipenzoStopRequestV1Schema = z
+  .object({ ticketId: pipenzoTicketIdV1Schema })
+  .strict();
+
+export const pipenzoStopResultV1Schema = z
+  .object({
+    worktreeId: z.string().uuid(),
+    branch: z.string().min(1).max(255),
+    /**
+     * Commits already on `branch` at the moment the in-flight tool call was abandoned. Never
+     * fewer than a `git log` on the worktree would show right now — nothing this call does touches
+     * a commit, only the session's own in-flight turn.
+     */
+    commitCount: z.number().int().nonnegative(),
+    /**
+     * The label the ticket parked under. A literal rather than the full label vocabulary — Stop has
+     * exactly one outcome label today — spelled as a label string rather than a bare `true` for the
+     * same reason `pipenzoTicketTransitionRequestV1Schema.label` names a label and not a lane.
+     */
+    label: z.literal('pipenzo:needs-human'),
+  })
+  .strict();
+
+/**
+ * A read-only poll for whether a ticket's most recent Implement attempt is a session genuinely
+ * live right now (issue #103). `RunControls.tsx` renders nothing at all rather than a disabled
+ * control when no session is live, so a caller has to know this for certain rather than infer it
+ * from `ticket.attempts` — that array's `outcome` is written once, at dispatch, and nothing
+ * rewrites it when the session actually ends (see `pipenzoTicketAttemptV1Schema`'s own doc
+ * comment on why `outcome` stays an open, sparsely-written string).
+ */
+export const pipenzoRunStatusRequestV1Schema = z
+  .object({ ticketId: pipenzoTicketIdV1Schema })
+  .strict();
+
+export const pipenzoRunStatusResultV1Schema = z.discriminatedUnion('live', [
+  z
+    .object({
+      live: z.literal(true),
+      sessionId: z.string().min(1).max(128),
+      tier: modelTierSchema,
+      model: z.string().min(1).max(256),
+      branch: z.string().min(1).max(255),
+      commitCount: z.number().int().nonnegative(),
+    })
+    .strict(),
+  z.object({ live: z.literal(false) }).strict(),
+]);
+
+export type PipenzoSteerRequestV1 = z.infer<typeof pipenzoSteerRequestV1Schema>;
+export type PipenzoSteerResultV1 = z.infer<typeof pipenzoSteerResultV1Schema>;
+export type PipenzoStopRequestV1 = z.infer<typeof pipenzoStopRequestV1Schema>;
+export type PipenzoStopResultV1 = z.infer<typeof pipenzoStopResultV1Schema>;
+export type PipenzoRunStatusRequestV1 = z.infer<typeof pipenzoRunStatusRequestV1Schema>;
+export type PipenzoRunStatusResultV1 = z.infer<typeof pipenzoRunStatusResultV1Schema>;
+
 /* ------------------------------------------------------------------ review */
 
 const pipenzoModelChoiceV1Schema = z
@@ -608,6 +705,19 @@ export const PIPENZO_PHASE_ERROR_CODES = [
   'verifier_failed',
   // shared session failure
   'session_failed',
+  /**
+   * Issue #103: Steer/Stop was asked for a ticket with no dispatched Implement attempt at all --
+   * never reached Implement, or its attempt lineage is empty. Distinct from `run_not_active` below,
+   * which means an attempt exists but its session already ended.
+   */
+  'run_not_found',
+  /**
+   * Issue #103: the ticket's most recent Implement attempt is not a session genuinely live right
+   * now — already completed, failed, cancelled or interrupted. Steer/Stop both refuse cleanly
+   * rather than dispatching a command against a session that can no longer act on it; nothing this
+   * code names ever discards a commit or a worktree, because neither call reaches that far.
+   */
+  'run_not_active',
   /**
    * Issue #143, slice 2: this ticket's `budget.limit` is real (non-zero) and `budget.tokensUsed`
    * has already reached or passed it. Refused before a new session is dispatched -- README's own
