@@ -3,8 +3,10 @@ import {
   PIPENZO_SCHEMA_V1_MARKER_LABEL,
   isPipenzoLabel,
   pipenzoLabelV1Schema,
+  type PipenzoApprovalRejectionKindV1,
   type PipenzoLabelV1,
   type PipenzoLaneV1,
+  type PipenzoTicketApprovalRejectionV1,
   type PipenzoTicketAttemptV1,
   type PipenzoTicketRecordV1,
   type PipenzoTicketRiskV1,
@@ -783,6 +785,14 @@ export class PipenzoPhaseMachine {
    * oldest attempt is dropped once a ticket would exceed it, because losing the *newest* one --
    * exactly the one a live interrupted session would need matched -- would defeat the reason this
    * method exists.
+   *
+   * **Also clears `lastApprovalRejection` (issue #105).** A real dispatch landing here is always
+   * either a human's own fresh "Start Implement" click or a classified retry this ticket's own
+   * `classifyRetry()`/`retryImplement()` has already refused to make while a rejection is on
+   * file -- so the only way execution ever reaches this line with a rejection still set is the
+   * former: a human consciously starting over. That supersedes the stale "do not retry" signal,
+   * the same way a MEDIUM/HIGH reject's own entry is deleted from its approval store the moment it
+   * resolves rather than lingering to block something unrelated later.
    */
   recordAttempt(ticketId: string, attempt: PipenzoTicketAttemptV1): void {
     const ticket = this.#tickets.get(ticketId);
@@ -790,7 +800,45 @@ export class PipenzoPhaseMachine {
       throw new PipenzoPhaseMachineError('ticket_not_found', `no such ticket: ${ticketId}`);
     }
     const attempts = [...ticket.attempts, attempt].slice(-ATTEMPTS_MAX);
-    persist(() => this.#tickets.update(ticketId, { ...ticket, attempts }));
+    persist(() =>
+      this.#tickets.update(ticketId, { ...ticket, attempts, lastApprovalRejection: undefined }),
+    );
+  }
+
+  /**
+   * CLAUDE.md hard rule 4's persisted half: records that a human rejected a HIGH/MEDIUM/stack
+   * approval against this ticket, so `classifyRetry()` can refuse a retry on it structurally rather
+   * than a caller having to remember to check the (ephemeral, delete-on-decide) approval store
+   * itself. See `pipenzoTicketApprovalRejectionV1Schema`'s own doc comment for why this record has
+   * to exist at all: none of the three approval stores keep a decided reject around.
+   *
+   * Local-only, same reasoning as `recordAttempt()` just above: a human has already said no by the
+   * time this is called, and recording that must not cost a GitHub round trip or be blocked by a
+   * rate-limited token.
+   */
+  recordApprovalRejection(
+    ticketId: string,
+    kind: PipenzoApprovalRejectionKindV1,
+    reason?: string,
+  ): void {
+    const ticket = this.#tickets.get(ticketId);
+    if (!ticket) {
+      throw new PipenzoPhaseMachineError('ticket_not_found', `no such ticket: ${ticketId}`);
+    }
+    const lastApprovalRejection: PipenzoTicketApprovalRejectionV1 = {
+      kind,
+      ...(reason && reason.trim().length > 0 ? { reason: reason.trim() } : {}),
+      decidedAt: new Date().toISOString(),
+    };
+    persist(() => this.#tickets.update(ticketId, { ...ticket, lastApprovalRejection }));
+  }
+
+  /** The ticket's last approval rejection, if it has one on file right now -- `undefined` for an
+   *  unknown ticket or one that has never had an approval rejected (or has had a fresh attempt
+   *  dispatched since, per `recordAttempt()`'s own clearing). Same local-only, best-effort shape as
+   *  `peekBudget()`/`peekRiskScore()`: a pre-dispatch gate must not cost a network call. */
+  peekApprovalRejection(ticketId: string): PipenzoTicketApprovalRejectionV1 | undefined {
+    return this.#tickets.get(ticketId)?.lastApprovalRejection;
   }
 
   /**

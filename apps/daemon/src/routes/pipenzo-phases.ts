@@ -18,6 +18,8 @@ import {
   pipenzoIssueCreateResultV1Schema,
   pipenzoRefineRequestV1Schema,
   pipenzoRefineResultV1Schema,
+  pipenzoRetryRequestV1Schema,
+  pipenzoRetryResultV1Schema,
   pipenzoReviewRequestV1Schema,
   pipenzoReviewResultV1Schema,
   pipenzoRunStatusRequestV1Schema,
@@ -99,6 +101,18 @@ const PHASE_ERROR_STATUS: Record<PipenzoPhaseErrorCodeV1, number> = {
   // Issue #103: an attempt exists but its session is not live right now -- the current state of
   // the dispatched session, not a bad request, same 409 family as commit_failed/branch_failed.
   run_not_active: 409,
+  // Issue #105: the opposite of run_not_active -- Retry requires the prior attempt to have already
+  // ended, same 409 family.
+  run_still_active: 409,
+  // Issue #105: the ticket is not parked on pipenzo:needs-human, so Retry does not apply to it.
+  not_parked: 409,
+  // Issue #105, CLAUDE.md hard rule 4: a denied approval is never auto-retried.
+  approval_denied: 409,
+  // Issue #105: this ticket has already made its maximum number of retry attempts.
+  max_retries_reached: 409,
+  // Issue #105: a same-tier retry's fork could not be carried out -- an upstream/session-machinery
+  // fact, same 502 family as session_failed, not a bad request.
+  fork_unavailable: 502,
 };
 
 function fail(reply: FastifyReply, error: PipenzoPhaseError): void {
@@ -214,6 +228,20 @@ export function registerPipenzoPhaseRoutes(
     } catch (error) {
       if (error instanceof PipenzoPhaseError) return fail(reply, error);
       return fail(reply, new PipenzoPhaseError('session_failed', 'stop failed'));
+    }
+  });
+
+  // Issue #105, CLAUDE.md hard rule 4: classified retry for a ticket parked on
+  // `pipenzo:needs-human`. Human-paced, same `limits` as every other phase route on this surface --
+  // same reasoning as Steer/Stop, this is a person clicking a header action, not a loop.
+  app.post('/v2/pipenzo/implement/retry', limits, async (req, reply) => {
+    const parsed = pipenzoRetryRequestV1Schema.safeParse(req.body);
+    if (!parsed.success) return invalid(reply, 'retry request');
+    try {
+      reply.send(pipenzoRetryResultV1Schema.parse(await service.retryImplement(parsed.data)));
+    } catch (error) {
+      if (error instanceof PipenzoPhaseError) return fail(reply, error);
+      return fail(reply, new PipenzoPhaseError('session_failed', 'retry failed'));
     }
   });
 

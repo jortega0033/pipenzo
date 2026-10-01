@@ -36,6 +36,7 @@ import {
 } from './pipenzo-phase-sessions.js';
 import { V2SessionFacade } from './v2-session-facade.js';
 import { V2RunControlSessions } from './pipenzo-run-control-sessions.js';
+import { SessionManagerRetrySessions } from './pipenzo-retry-sessions.js';
 import { ExecFileGateCommands } from './gate-commands.js';
 import { OctokitGitHubClient, registerKnownSecret } from './github-client.js';
 import { ConditionalRequestCache } from './github-conditional-cache.js';
@@ -313,6 +314,11 @@ async function main() {
   // reads, so two independent facades over the same manager see the same live sessions rather than
   // needing to share one object.
   const pipenzoRunControlSessions = new V2RunControlSessions(new V2SessionFacade(sessionManager));
+  // Issue #105's own seam: lets a same-tier retry recover the prior attempt's provider-native
+  // session id to fork via `sessionManager` directly, rather than through either `V2SessionFacade`
+  // above (its continuation bindings are V2-protocol-only, which Implement's own dispatch does not
+  // use -- see `pipenzo-phase-sessions.ts`'s own doc comment).
+  const pipenzoRetrySessions = new SessionManagerRetrySessions(sessionManager);
 
   const phaseService = new PipenzoPhaseService({
     // Refine and Draft read a repository path the renderer names, so it must be a trusted
@@ -345,6 +351,9 @@ async function main() {
     // Issue #103: lets steerImplement()/stopImplement()/runStatus() reach a dispatched session's
     // real, current status rather than guessing from the ticket's own label.
     runControls: pipenzoRunControlSessions,
+    // Issue #105: lets retryImplement()'s same-tier path recover a prior attempt's provider-native
+    // session id to fork.
+    retrySessions: pipenzoRetrySessions,
   });
 
   // Pipenzo's polling reconciler (issue #231): the loop that makes the connected-repos list worth
