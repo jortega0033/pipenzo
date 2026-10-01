@@ -469,10 +469,23 @@ function spawnDaemon(): void {
     });
   });
 
-  waitForDaemonReady(child, spawnedAt, plan.credentialSource).catch((err: Error) => {
-    if (daemonChild !== child) return; // a replacement is already reporting for itself
-    sendStatus({ state: 'unavailable', error: `daemon failed to start: ${err.message}` });
-  });
+  waitForDaemonReady(child, spawnedAt, plan.credentialSource)
+    .catch(() =>
+      // One retry before giving up: `waitForDaemonReady`'s 15s timeout only fires while the
+      // process is still alive (a real crash is already reported by the 'exit' handler above,
+      // independently and usually first) -- so a first-attempt timeout means "still starting,"
+      // not "failed." A slow-but-healthy boot (first-run module resolution, AV-scanned fresh
+      // build, a loaded machine) can legitimately take a little over 15s; giving it one more
+      // full window before reporting a terminal, restart-required error avoids wedging the UI
+      // on a daemon that goes on to start successfully a few seconds later.
+      daemonChild === child
+        ? waitForDaemonReady(child, spawnedAt, plan.credentialSource)
+        : Promise.resolve(),
+    )
+    .catch((err: Error) => {
+      if (daemonChild !== child) return; // a replacement is already reporting for itself
+      sendStatus({ state: 'unavailable', error: `daemon failed to start: ${err.message}` });
+    });
 }
 
 function sendInteractionResolutions(
@@ -1917,6 +1930,11 @@ if (gotSingleInstanceLock) {
   app.on('second-instance', () => {
     if (!mainWindow) return;
     if (mainWindow.isMinimized()) mainWindow.restore();
+    // A window hidden to the tray (the close button hides rather than closes -- see above) is
+    // neither minimized nor focusable into visibility: focus() on a hidden BrowserWindow is a
+    // silent no-op, so a second launch attempt while the first instance is already running
+    // produced no visible effect at all. show() is itself a no-op on an already-visible window.
+    if (!mainWindow.isVisible()) mainWindow.show();
     mainWindow.focus();
   });
 
