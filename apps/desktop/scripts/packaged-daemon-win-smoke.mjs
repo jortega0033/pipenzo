@@ -193,7 +193,11 @@ async function waitForDiscovery(path, daemon) {
     try {
       return JSON.parse(await readFile(path, 'utf8'));
     } catch (error) {
-      if (error?.code !== 'ENOENT') throw error;
+      // ENOENT: the file doesn't exist yet. SyntaxError: it exists but the daemon is still
+      // mid-write (a real race -- the file is created, then its JSON content flushed, as two
+      // separate steps) -- a partial read here is empty or truncated, not malformed forever.
+      // Both mean "keep polling"; anything else is a genuine, unrecoverable failure.
+      if (error?.code !== 'ENOENT' && !(error instanceof SyntaxError)) throw error;
     }
     await new Promise((resolve) => setTimeout(resolve, 50));
   }

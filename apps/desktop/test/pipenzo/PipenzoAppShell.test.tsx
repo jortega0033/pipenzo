@@ -1907,4 +1907,71 @@ describe('PipenzoAppShell', () => {
       await waitFor(() => expect(bridge.pipenzoListTickets).toHaveBeenCalledTimes(3));
     });
   });
+
+  /**
+   * `Main.dc.html`'s own Collapse row (`.sidebar.collapsed`) -- CSS-only width/visibility,
+   * already present and tested on `Sidebar`/`NavItem` themselves; this covers the real toggle
+   * reaching them, both by click and by the canvas's own `"["` kbd hint.
+   */
+  describe('the sidebar collapse toggle', () => {
+    it('starts expanded, and the Collapse row toggles .sidebar.collapsed on click, flipping its own label', async () => {
+      installBridge();
+      const { container } = render(
+        <ThemeProvider>
+          <PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />
+        </ThemeProvider>,
+      );
+      await screen.findByText('Queued');
+
+      expect(container.querySelector('.sidebar')).not.toHaveClass('collapsed');
+      // The row's accessible name includes its own kbd-rendered "[" shortcut hint (`NavItem`'s
+      // `count` prop), same as every other counted nav row in this suite.
+      const collapseRow = screen.getByRole('button', { name: 'Collapse [' });
+
+      fireEvent.click(collapseRow);
+
+      expect(container.querySelector('.sidebar')).toHaveClass('collapsed');
+      expect(screen.getByRole('button', { name: 'Expand [' })).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Expand [' }));
+
+      expect(container.querySelector('.sidebar')).not.toHaveClass('collapsed');
+      expect(screen.getByRole('button', { name: 'Collapse [' })).toBeInTheDocument();
+    });
+
+    it('toggles on the global "[" shortcut, the same as the row\'s own click', async () => {
+      installBridge();
+      const { container } = render(
+        <ThemeProvider>
+          <PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />
+        </ThemeProvider>,
+      );
+      await screen.findByText('Queued');
+
+      fireEvent.keyDown(document, { key: '[' });
+
+      expect(container.querySelector('.sidebar')).toHaveClass('collapsed');
+
+      fireEvent.keyDown(document, { key: '[' });
+
+      expect(container.querySelector('.sidebar')).not.toHaveClass('collapsed');
+    });
+
+    it('does not fire the "[" shortcut while the command palette\'s own search field is focused', async () => {
+      installBridge();
+      const { container } = render(
+        <ThemeProvider>
+          <PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />
+        </ThemeProvider>,
+      );
+      await screen.findByText('Queued');
+      fireEvent.keyDown(document, { key: 'k', ctrlKey: true });
+      const search = screen.getByRole('dialog', { name: 'Command palette' }).querySelector('input');
+      search?.focus();
+
+      fireEvent.keyDown(search!, { key: '[' });
+
+      expect(container.querySelector('.sidebar')).not.toHaveClass('collapsed');
+    });
+  });
 });
