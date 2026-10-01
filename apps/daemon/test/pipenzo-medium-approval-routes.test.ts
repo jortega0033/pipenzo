@@ -299,6 +299,28 @@ describe('POST /v2/pipenzo/tickets/risk/medium-approval/decide', () => {
   );
 
   it(
+    'records a durable rejection on the ticket itself even with no reason given (issue #105, CLAUDE.md hard rule 4)',
+    async () => {
+      const { worktreeManager, worktreeId, branch } = await realWorktree();
+      const { app, tickets, snapshotId } = await captured(worktreeManager, worktreeId, branch);
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/tickets/risk/medium-approval/decide',
+        headers: auth,
+        payload: { ticketId: TICKET_ID, snapshotId, decision: 'reject' },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(tickets.get(TICKET_ID)?.lastApprovalRejection).toEqual({
+        kind: 'medium',
+        decidedAt: expect.any(String),
+      });
+    },
+    GIT_HEAVY_TIMEOUT_MS,
+  );
+
+  it(
     'refuses a second decide on the same snapshot -- a decision is never re-askable',
     async () => {
       const { worktreeManager, worktreeId, branch } = await realWorktree();

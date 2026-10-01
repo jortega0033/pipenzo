@@ -115,6 +115,8 @@ import {
   pipenzoSteerResultV1Schema,
   pipenzoStopRequestV1Schema,
   pipenzoStopResultV1Schema,
+  pipenzoRetryRequestV1Schema,
+  pipenzoRetryResultV1Schema,
   pipenzoReviewRequestV1Schema,
   pipenzoReviewResultV1Schema,
   pipenzoIssueClaimRequestV1Schema,
@@ -185,6 +187,8 @@ import {
   type PipenzoSteerResultV1,
   type PipenzoStopRequestV1,
   type PipenzoStopResultV1,
+  type PipenzoRetryRequestV1,
+  type PipenzoRetryResultV1,
   type PipenzoReviewRequestV1,
   type PipenzoReviewResultV1,
   type PipenzoIssueClaimRequestV1,
@@ -497,6 +501,10 @@ export class AgentDockClient {
       steer: (input: PipenzoSteerRequestV1): Promise<PipenzoSteerResultV1> =>
         this.steerPipenzoV1(input),
       stop: (input: PipenzoStopRequestV1): Promise<PipenzoStopResultV1> => this.stopPipenzoV1(input),
+      /** "Retry phase" (issue #105): classified retry for a ticket parked on
+       *  `pipenzo:needs-human`, addressed by ticket id only -- same reasoning as Steer/Stop above. */
+      retry: (input: PipenzoRetryRequestV1): Promise<PipenzoRetryResultV1> =>
+        this.retryPipenzoV1(input),
       claimIssue: (input: PipenzoIssueClaimRequestV1): Promise<PipenzoIssueClaimResultV1> =>
         this.claimPipenzoIssueV1(input),
       createIssue: (input: PipenzoIssueCreateRequestV1): Promise<PipenzoIssueCreateResultV1> =>
@@ -1234,6 +1242,18 @@ export class AgentDockClient {
       '/v2/pipenzo/implement/stop',
       pipenzoStopResultV1Schema,
       'pipenzo stop result',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) },
+      { expectedStatus: 200 },
+    );
+  }
+
+  /** Issue #105: classified retry for a ticket parked on `pipenzo:needs-human`. */
+  private async retryPipenzoV1(input: PipenzoRetryRequestV1): Promise<PipenzoRetryResultV1> {
+    const parsed = validateInput(pipenzoRetryRequestV1Schema, input, 'pipenzo retry request');
+    return this.requestV2(
+      '/v2/pipenzo/implement/retry',
+      pipenzoRetryResultV1Schema,
+      'pipenzo retry result',
       { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) },
       { expectedStatus: 200 },
     );

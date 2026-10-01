@@ -1,7 +1,8 @@
-import type {
-  PipenzoTicketAttemptV1,
-  PipenzoTicketViewV1,
-  RefineProposedSplitPartV1,
+import {
+  PIPENZO_NEEDS_HUMAN_FAILED_ATTEMPT_THRESHOLD,
+  type PipenzoTicketAttemptV1,
+  type PipenzoTicketViewV1,
+  type RefineProposedSplitPartV1,
 } from '@agent-dock/shared';
 
 /**
@@ -133,8 +134,11 @@ export type NeedsHumanCardClassification =
     };
 
 /** README's own threshold for the generic label's "3 consecutive failures" reading -- see this
- *  module's own doc comment on why attempt *count* is the one real signal available for it. */
-export const NEEDS_HUMAN_FAILED_ATTEMPT_THRESHOLD = 3;
+ *  module's own doc comment on why attempt *count* is the one real signal available for it.
+ *  Re-exported from `@agent-dock/shared` (issue #105) rather than redefined here, so the daemon's
+ *  own retry classifier parks on exactly this number without reaching across the daemon/desktop
+ *  boundary into this module. */
+export const NEEDS_HUMAN_FAILED_ATTEMPT_THRESHOLD = PIPENZO_NEEDS_HUMAN_FAILED_ATTEMPT_THRESHOLD;
 
 function lastAttempt(ticket: PipenzoTicketViewV1): PipenzoTicketAttemptV1 | undefined {
   return ticket.attempts[ticket.attempts.length - 1];

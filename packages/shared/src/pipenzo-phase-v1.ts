@@ -338,6 +338,30 @@ export const pipenzoStopResultV1Schema = z
   .strict();
 
 /**
+ * "Retry phase" (issue #105, CLAUDE.md hard rule 4): classified retry for a ticket parked on
+ * `pipenzo:needs-human`. Addressed by `ticketId` only, same reasoning as Steer/Stop above --
+ * `PipenzoPhaseService.retryImplement()` resolves the ticket's own current attempt, classification
+ * and worktree itself; a renderer that could name a session, tier or model directly could ask for
+ * exactly the thing this route exists to refuse (a human picking the tier instead of the classifier,
+ * or quietly bypassing the denied-approval gate by naming a different "retry").
+ */
+export const pipenzoRetryRequestV1Schema = z.object({ ticketId: pipenzoTicketIdV1Schema }).strict();
+
+export const pipenzoRetryResultV1Schema = z
+  .object({
+    sessionId: z.string().min(1).max(128),
+    /** `'fork'`: a same-tier retry, continuing the prior attempt's provider-native session.
+     *  `'fresh'`: a tier escalation -- always a genuinely new session, never a continuation. See
+     *  `retry-classifier.ts`'s own doc comment (CLAUDE.md hard rule 4). */
+    mode: z.enum(['fork', 'fresh']),
+    tier: modelTierSchema,
+  })
+  .strict();
+
+export type PipenzoRetryRequestV1 = z.infer<typeof pipenzoRetryRequestV1Schema>;
+export type PipenzoRetryResultV1 = z.infer<typeof pipenzoRetryResultV1Schema>;
+
+/**
  * A read-only poll for whether a ticket's most recent Implement attempt is a session genuinely
  * live right now (issue #103). `RunControls.tsx` renders nothing at all rather than a disabled
  * control when no session is live, so a caller has to know this for certain rather than infer it
@@ -718,6 +742,41 @@ export const PIPENZO_PHASE_ERROR_CODES = [
    * code names ever discards a commit or a worktree, because neither call reaches that far.
    */
   'run_not_active',
+  /**
+   * Issue #105: Retry was asked for a ticket whose dispatched attempt is still a session genuinely
+   * live right now -- the opposite refusal from `run_not_active` above, and for the opposite reason:
+   * Steer/Stop require a live session to act on, Retry requires the opposite (its own classifier and
+   * dispatch assume the prior attempt has already ended).
+   */
+  'run_still_active',
+  /**
+   * Issue #105: Retry was asked for a ticket not currently parked on `pipenzo:needs-human` -- the
+   * header action's own gate (`TicketDetail.dc.html`'s "visible for a ticket in a state where retry
+   * makes sense"), re-checked here server-side rather than trusted from the renderer alone.
+   */
+  'not_parked',
+  /**
+   * Issue #105, CLAUDE.md hard rule 4: this ticket's last real outcome was a human rejecting a
+   * HIGH/MEDIUM/stack approval (`PipenzoTicketApprovalRejectionV1` on the ticket record). A denied
+   * approval is never auto-retried, structurally -- there is no path through `retryImplement()` that
+   * dispatches a session while this is set, regardless of how few attempts the ticket has made.
+   */
+  'approval_denied',
+  /**
+   * Issue #105: this ticket has already made `PIPENZO_NEEDS_HUMAN_FAILED_ATTEMPT_THRESHOLD` (3)
+   * attempts -- the same "park after 3 failures" shape `#reportBudgetExhausted` already applies to a
+   * spent budget. The ticket is parked on `pipenzo:needs-human` (if it was not already) before this
+   * is thrown, same as that sibling code path.
+   */
+  'max_retries_reached',
+  /**
+   * Issue #105: a same-tier retry's `fork` mode could not continue the prior attempt's session --
+   * this daemon process never observed that session report a provider-native session id to fork
+   * (most commonly, a daemon restart between the original attempt and the retry). Distinct from
+   * `session_failed`: the classifier's own decision was sound, only the mechanics of carrying it out
+   * were unavailable.
+   */
+  'fork_unavailable',
   /**
    * Issue #143, slice 2: this ticket's `budget.limit` is real (non-zero) and `budget.tokensUsed`
    * has already reached or passed it. Refused before a new session is dispatched -- README's own

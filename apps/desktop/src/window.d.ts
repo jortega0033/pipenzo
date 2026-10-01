@@ -93,6 +93,8 @@ import type {
   PipenzoSteerResultV1,
   PipenzoStopRequestV1,
   PipenzoStopResultV1,
+  PipenzoRetryRequestV1,
+  PipenzoRetryResultV1,
   PipenzoMediumApprovalCaptureRequestV1,
   PipenzoMediumApprovalCaptureResultV1,
   PipenzoMediumApprovalDecideRequestV1,
@@ -224,6 +226,15 @@ export interface AgentDockBridge {
   runStatusPipenzo(input: PipenzoRunStatusRequestV1): Promise<PipenzoRunStatusResultV1>;
   steerPipenzo(input: PipenzoSteerRequestV1): Promise<PipenzoSteerResultV1>;
   stopPipenzo(input: PipenzoStopRequestV1): Promise<PipenzoStopResultV1>;
+  /**
+   * "Retry phase" (issue #105, CLAUDE.md hard rule 4): classified retry for a ticket parked on
+   * `pipenzo:needs-human`, addressed by ticket id only -- the daemon resolves the ticket's own
+   * current attempt, classification (same-tier fork vs. tier-escalation fresh session) and worktree
+   * itself. Rejects with the daemon's own error for every one of CLAUDE.md hard rule 4's structural
+   * refusals (`approval_denied`, `max_retries_reached`, `not_parked`, `run_still_active`) rather than
+   * ever silently dispatching a session this ticket should not get.
+   */
+  retryPipenzo(input: PipenzoRetryRequestV1): Promise<PipenzoRetryResultV1>;
   /**
    * The claim pre-flight (issue #83). Assigns the issue and then re-reads it uncached; an
    * `claimed_elsewhere` outcome means the race was lost and the ticket must not be started.

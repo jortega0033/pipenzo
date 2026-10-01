@@ -93,7 +93,23 @@ export function registerPipenzoHighApprovalRoutes(
 
     if (decision === 'reject') {
       // The asymmetric reset rule only ever fires on an approval -- a rejected action never ran, so
-      // it never earns a risk-score entry of its own.
+      // it never earns a risk-score entry of its own. It does earn a durable rejection record,
+      // though (issue #105, CLAUDE.md hard rule 4): `HighApprovalStore.decide()` already deleted its
+      // own ephemeral entry above, so this is the one place the ticket itself learns a human said no,
+      // for `classifyRetry()` to refuse a retry against. Best-effort, never thrown -- the reject
+      // itself already succeeded by the time this runs, same reasoning as every other secondary
+      // bookkeeping write on this surface (`pipenzo-phase-service.ts`'s `#reportBudgetExhausted` is
+      // the closest precedent) -- but logged via the request's own logger rather than swallowed
+      // silently: a failure here is exactly the case CLAUDE.md hard rule 4 needs to be *detectable*,
+      // since a later retry would otherwise find no rejection on file and proceed.
+      try {
+        machine.recordApprovalRejection(ticketId, 'high', decided.reason);
+      } catch (error) {
+        req.log.warn(
+          { ticketId, error: error instanceof Error ? error.message : String(error) },
+          'pipenzo: a HIGH reject succeeded but its durable rejection record could not be written',
+        );
+      }
       reply.send(pipenzoHighApprovalDecideResultV1Schema.parse({ decision }));
       return;
     }

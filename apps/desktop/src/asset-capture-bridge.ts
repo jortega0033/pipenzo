@@ -63,6 +63,7 @@ export function installAssetCaptureBridge(): void {
     runStatusPipenzo: async () => ({ live: false }),
     steerPipenzo: async () => { throw new Error('steering a run is not available while capturing assets'); },
     stopPipenzo: async () => { throw new Error('stopping a run is not available while capturing assets'); },
+    retryPipenzo: async () => { throw new Error('retrying a run is not available while capturing assets'); },
     claimPipenzoIssue: async () => { throw new Error('claiming is not available while capturing assets'); },
     createPipenzoIssue: async () => { throw new Error('issue creation is not available while capturing assets'); },
     commentOnPipenzoIssue: async () => { throw new Error('commenting is not available while capturing assets'); },

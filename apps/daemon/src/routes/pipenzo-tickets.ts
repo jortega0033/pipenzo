@@ -204,6 +204,9 @@ function toTicketView(ticket: PipenzoTicketRecordV1): PipenzoTicketViewV1 {
     precommits: ticket.precommits,
     etags: ticket.etags,
     ...(ticket.updatedAt ? { updatedAt: ticket.updatedAt } : {}),
+    ...(ticket.lastApprovalRejection
+      ? { lastApprovalRejection: ticket.lastApprovalRejection }
+      : {}),
   };
 }
 

@@ -55,7 +55,7 @@ function invalid(reply: FastifyReply, what: string): void {
 
 export function registerPipenzoStackApprovalRoutes(
   app: FastifyInstance,
-  machine: Pick<PipenzoPhaseMachine, 'read'>,
+  machine: Pick<PipenzoPhaseMachine, 'read' | 'recordApprovalRejection'>,
   service: Pick<PipenzoPhaseService, 'acceptStack' | 'rejectStack'>,
   store: StackApprovalStore,
 ): void {
@@ -116,6 +116,21 @@ export function registerPipenzoStackApprovalRoutes(
           reply,
           'store_failed',
           error instanceof Error ? error.message : 'could not post the rejection reason to the issue',
+        );
+      }
+      // Issue #105, CLAUDE.md hard rule 4: the comment above already posted, so the human's "no" is
+      // visible on the issue either way -- this is the ticket's own durable record of it, for
+      // `classifyRetry()` to refuse a retry against. Best-effort, same "the real action already
+      // happened, a bookkeeping failure here must not turn it into an error response" reasoning as
+      // HIGH/MEDIUM's own reject branches -- but logged via the request's own logger rather than
+      // swallowed silently, for the same reason those two are: a failure here needs to be
+      // detectable, since a later retry would otherwise find no rejection on file and proceed.
+      try {
+        machine.recordApprovalRejection(ticketId, 'stack', decided.reason);
+      } catch (error) {
+        req.log.warn(
+          { ticketId, error: error instanceof Error ? error.message : String(error) },
+          'pipenzo: a stack reject succeeded but its durable rejection record could not be written',
         );
       }
       reply.send(pipenzoStackApprovalDecideResultV1Schema.parse({ decision: 'reject' }));

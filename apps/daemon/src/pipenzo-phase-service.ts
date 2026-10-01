@@ -19,6 +19,8 @@ import type {
   PipenzoPhaseErrorCodeV1,
   PipenzoRefineRequestV1,
   PipenzoRefineResultV1,
+  PipenzoRetryRequestV1,
+  PipenzoRetryResultV1,
   PipenzoReviewRequestV1,
   PipenzoReviewResultV1,
   PipenzoRunStatusRequestV1,
@@ -45,9 +47,13 @@ import { RefineSubagent, RefinePhaseError, type RefineSessionPort } from './refi
 import {
   ImplementOrchestrator,
   ImplementOrchestratorError,
+  appendOperatorInstructions,
+  buildImplementPrompt,
   type ImplementSessionPort,
   type ImplementWorktreeManager,
 } from './implement-orchestrator.js';
+import { classifyRetry } from './retry-classifier.js';
+import type { PipenzoRetrySessionPort } from './pipenzo-retry-sessions.js';
 import {
   ReviewGateError,
   ReviewGatesRunner,
@@ -195,6 +201,14 @@ export interface PipenzoPhaseServiceOptions {
    * both refuse outright rather than guessing at.
    */
   runControls?: PipenzoRunControlSessionPort;
+  /**
+   * Issue #105's own seam: lets `retryImplement()`'s same-tier path recover the prior attempt's
+   * provider-native session id to fork. Optional so a service built without one (every test and
+   * caller that predates this ticket) still implements exactly as before; `retryImplement()` itself
+   * refuses with `fork_unavailable` for any ticket it is asked to fork without one configured,
+   * rather than guessing at a continuation it cannot actually verify.
+   */
+  retrySessions?: PipenzoRetrySessionPort;
 }
 
 export class PipenzoPhaseService {
@@ -220,6 +234,12 @@ export class PipenzoPhaseService {
   readonly #logger: Logger | undefined;
   readonly #audit: Pick<PipenzoAuditStore, 'append'> | undefined;
   readonly #runControls: PipenzoRunControlSessionPort | undefined;
+  readonly #retrySessions: PipenzoRetrySessionPort | undefined;
+  /** Issue #105's own direct seam onto the raw dispatch port, kept alongside `#implement` (which
+   *  always cuts a *new* worktree -- see `ImplementOrchestrator.start()`'s own doc comment). A retry
+   *  dispatches straight into the ticket's *existing* worktree, so it goes around the orchestrator
+   *  entirely rather than through it. */
+  readonly #implementSessions: ImplementSessionPort;
   readonly #runGit: PipenzoGitRunner;
 
   constructor(options: PipenzoPhaseServiceOptions) {
@@ -251,6 +271,8 @@ export class PipenzoPhaseService {
     this.#logger = options.logger;
     this.#audit = options.audit;
     this.#runControls = options.runControls;
+    this.#retrySessions = options.retrySessions;
+    this.#implementSessions = options.implementSessions;
     this.#runGit = options.runGit ?? runGitCommand;
   }
 
@@ -1276,6 +1298,200 @@ export class PipenzoPhaseService {
       commitCount,
       label: 'pipenzo:needs-human',
     };
+  }
+
+  /**
+   * "Retry phase" (issue #105): classified retry for a ticket parked on `pipenzo:needs-human`. See
+   * `retry-classifier.ts`'s own doc comment for the full decision this delegates to; this method is
+   * the effectful half -- resolving the ticket, enforcing CLAUDE.md hard rule 4's structural
+   * refusals, and dispatching exactly the session the classifier named.
+   *
+   * ## Order of checks, and why
+   *
+   * 1. **`lastApprovalRejection`, before anything else.** A denied approval refuses a retry
+   *    unconditionally -- checked here even though `classifyRetry()` checks it too, because this is
+   *    the one property CLAUDE.md names as a hard rule rather than a preference, and a second,
+   *    independent check at the effectful boundary is the same defense-in-depth
+   *    `HighApprovalStore.decide()`'s own mandatory-reason re-check already uses for its own
+   *    CLAUDE.md rule.
+   * 2. **The ticket must actually be parked (`pipenzo:needs-human`).** The header action's own gate
+   *    (`TicketDetail.dc.html`), re-checked server-side rather than trusted from the renderer alone --
+   *    the same "never just a UI-hidden button" property the issue asks for.
+   * 3. **The dispatched attempt must not still be live.** Reusing `#runControls` the same way
+   *    `#resolveRunningAttempt` does, but for the opposite assertion: Steer/Stop require a live
+   *    session, Retry requires the prior one to have already ended.
+   * 4. **`classifyRetry()`** -- same-tier fork, tier-escalation fresh session, or "max retries
+   *    reached," which parks the ticket (if it was not parked for this reason already) before
+   *    refusing, the same `#reportBudgetExhausted` shape issue #143 already established for a spent
+   *    budget.
+   *
+   * The dispatched prompt reuses `buildImplementPrompt()` -- the exact function Implement's own
+   * first attempt builds its prompt with -- rather than a second, retry-specific prompt builder, so
+   * a retry is read from precisely the same spec a fresh Implement run would be. A short, fixed note
+   * is appended via `appendOperatorInstructions()` (the same mechanism the Implement dialog's own
+   * "extra instructions" field uses) stating this is a retry; attaching the prior attempt's literal
+   * diff and failing-gate output is a stated follow-up, not a silent gap -- this ticket does not yet
+   * persist a structured "failing gate output" record for a dispatch-only Implement attempt to read
+   * back (`ImplementStartResult`'s own doc comment: Implement is dispatch-only, and nothing observes
+   * *why* a session ended until a human collects its diff).
+   */
+  async retryImplement(request: PipenzoRetryRequestV1): Promise<PipenzoRetryResultV1> {
+    if (!this.#machine) {
+      throw new Error('retry requires a phase machine to be configured');
+    }
+    const { ticketId } = request;
+    const current = await this.#machine.read(ticketId);
+    const ticket = current.ticket;
+
+    // CLAUDE.md hard rule 4's structural refusal. Checked first, independently of `classifyRetry()`
+    // below -- see this method's own doc comment.
+    if (ticket.lastApprovalRejection) {
+      throw new PipenzoPhaseError(
+        'approval_denied',
+        'this ticket’s last approval was rejected and cannot be auto-retried',
+      );
+    }
+
+    if (!ticket.labels.includes('pipenzo:needs-human')) {
+      throw new PipenzoPhaseError(
+        'not_parked',
+        'retry is only available for a ticket parked on pipenzo:needs-human',
+      );
+    }
+
+    const attempt = ticket.attempts.at(-1);
+    if (!attempt) {
+      throw new PipenzoPhaseError('run_not_found', 'this ticket has no dispatched Implement attempt to retry');
+    }
+    if (this.#runControls?.status(attempt.sessionId)?.active) {
+      throw new PipenzoPhaseError(
+        'run_still_active',
+        'this ticket’s dispatched session is still running -- stop it before retrying',
+      );
+    }
+
+    const classification = classifyRetry(ticket);
+    if (!classification.eligible) {
+      if (classification.reason === 'denied_approval') {
+        // Unreachable given the check above, kept for exhaustiveness against `classifyRetry()`'s own
+        // real union rather than an unchecked cast.
+        throw new PipenzoPhaseError(
+          'approval_denied',
+          'this ticket’s last approval was rejected and cannot be auto-retried',
+        );
+      }
+      if (classification.reason === 'no_attempts') {
+        throw new PipenzoPhaseError('run_not_found', 'this ticket has no dispatched Implement attempt to retry');
+      }
+      // 'max_retries_reached': README's "park after 3 failures". The `not_parked` check above
+      // already requires this ticket to be on `pipenzo:needs-human` before any retry is considered
+      // at all, so this is a no-op in the one path that can reach it today -- kept, and best-effort
+      // like every other secondary write in this file, so this still parks a ticket correctly if a
+      // future caller ever reaches `classifyRetry()`'s refusal from a surface that does not already
+      // enforce that precondition (`transition()` itself is a no-op for a label already held).
+      try {
+        await this.#machine.transition(ticketId, 'pipenzo:needs-human');
+      } catch (error) {
+        this.#logger?.warn('pipenzo: could not park a ticket that reached its retry limit', {
+          ticketId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      throw new PipenzoPhaseError(
+        'max_retries_reached',
+        'this ticket has already made its maximum number of retry attempts',
+      );
+    }
+
+    if (!ticket.worktree) {
+      throw new PipenzoPhaseError('worktree_not_found', 'this ticket has no recorded worktree to retry into');
+    }
+    if (!ticket.spec) {
+      throw new PipenzoPhaseError('spec_missing', 'this ticket has no cached spec to retry from');
+    }
+    const location = this.#worktrees.ownedLocation(ticket.worktree.id);
+    if (!location) {
+      throw new PipenzoPhaseError('worktree_not_found', 'no such owned worktree');
+    }
+
+    const attemptNumber = ticket.attempts.length + 1;
+    const note =
+      classification.mode === 'fork'
+        ? `This is a retry of the previous attempt (attempt ${attemptNumber}), continuing its own session at the same model tier.`
+        : `This is a tier-escalation retry (attempt ${attemptNumber}) after the previous attempt did not reach review. Re-read the spec below and try again.`;
+    const prompt = appendOperatorInstructions(buildImplementPrompt(ticket.spec), note);
+
+    let sessionId: string;
+    if (classification.mode === 'fork') {
+      const providerSessionId = this.#retrySessions?.providerSessionId(attempt.sessionId);
+      if (!providerSessionId) {
+        throw new PipenzoPhaseError(
+          'fork_unavailable',
+          'the previous attempt has no provider-native session to fork',
+        );
+      }
+      try {
+        const outcome = await this.#implementSessions.run({
+          provider: 'claude',
+          cwd: location.path,
+          prompt,
+          // No `model`: CLAUDE.md hard rule 4 -- a fork cannot change model, and
+          // `pipenzo-phase-sessions.ts`'s own `startSession()` refuses a request that supplies both.
+          continuation: { kind: 'fork', providerSessionId },
+        });
+        sessionId = outcome.sessionId;
+      } catch (error) {
+        throw new PipenzoPhaseError(
+          'session_failed',
+          error instanceof Error ? error.message : 'the retry session failed',
+        );
+      }
+    } else {
+      try {
+        const outcome = await this.#implementSessions.run({
+          provider: 'claude',
+          cwd: location.path,
+          prompt,
+          // No `model` -- README's Model routing section states a real tier-to-model router is
+          // post-MVP; `tier` below is still real, recorded data even while `model` stays the same
+          // `'default'` placeholder `#recordAttempt()` already uses for the same reason.
+        });
+        sessionId = outcome.sessionId;
+      } catch (error) {
+        throw new PipenzoPhaseError(
+          'session_failed',
+          error instanceof Error ? error.message : 'the retry session failed',
+        );
+      }
+    }
+
+    try {
+      this.#machine.recordAttempt(ticketId, {
+        sessionId,
+        tier: classification.tier,
+        model: 'default',
+        outcome: 'dispatched',
+      });
+    } catch (error) {
+      this.#logger?.warn('could not record a retry attempt against its ticket', {
+        ticketId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    // A genuinely new session is now running against this ticket -- it is no longer parked waiting
+    // on a human, it is working again. Best-effort, same reasoning as every other secondary label
+    // write in this file: the retry itself already succeeded by the time this runs.
+    try {
+      await this.#machine.transition(ticketId, 'pipenzo:working');
+    } catch (error) {
+      this.#logger?.warn('pipenzo: retried an implement attempt but could not move its ticket off pipenzo:needs-human', {
+        ticketId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    return { sessionId, mode: classification.mode, tier: classification.tier };
   }
 
   /* ---------------------------------------------------------------- review */

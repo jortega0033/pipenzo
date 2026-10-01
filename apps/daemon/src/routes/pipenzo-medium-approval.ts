@@ -111,7 +111,21 @@ export function registerPipenzoMediumApprovalRoutes(
 
     if (decision === 'reject') {
       // The asymmetric reset rule (risk-score.ts) only ever fires on an *approval* -- a rejected
-      // action never ran, so it never earns a risk-score entry of its own, allow or reset alike.
+      // action never ran, so it never earns a risk-score entry of its own, allow or reset alike. It
+      // does earn a durable rejection record (issue #105, CLAUDE.md hard rule 4) -- same reasoning
+      // as `routes/pipenzo-high-approval.ts`'s own reject branch. Best-effort, never lets a
+      // bookkeeping failure turn an already-succeeded reject into an error response -- but logged via
+      // the request's own logger rather than swallowed silently, same reasoning as HIGH's own branch:
+      // a failure here needs to be detectable, since a later retry would otherwise find no rejection
+      // on file and proceed.
+      try {
+        machine.recordApprovalRejection(ticketId, 'medium', reason);
+      } catch (error) {
+        req.log.warn(
+          { ticketId, error: error instanceof Error ? error.message : String(error) },
+          'pipenzo: a MEDIUM reject succeeded but its durable rejection record could not be written',
+        );
+      }
       reply.send(pipenzoMediumApprovalDecideResultV1Schema.parse({ decision }));
       return;
     }

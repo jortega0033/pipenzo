@@ -5,6 +5,7 @@ import { ModelRoutingBlock } from './ModelRoutingBlock.js';
 import { PhaseStepperPanel } from './PhaseStepperPanel.js';
 import { PlanReviewGate } from './PlanReviewGate.js';
 import { RefusalPanel } from './RefusalPanel.js';
+import { RetryActionButton } from './RetryActionButton.js';
 import { RunControlsPanel } from './RunControlsPanel.js';
 import { SubscriptionHeadroomBlock } from './SubscriptionHeadroomBlock.js';
 import { TicketDetailScreen } from './TicketDetailScreen.js';
@@ -110,6 +111,7 @@ export function TicketDetailContainer({
         <TicketSwitcherPanel activeTicketId={ticket.ticketId} onSwitch={onSwitchTicket} />
       }
       runControls={<RunControlsPanel ticketId={ticket.ticketId} />}
+      retryAction={<RetryActionButton ticket={ticket} />}
       riskBlock={<CumulativeRiskStrip risk={ticket.risk} />}
       modelRoutingBlock={<ModelRoutingBlock attempts={ticket.attempts} />}
       headroomBlock={

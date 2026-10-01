@@ -165,6 +165,7 @@ function installBridge(overrides: Partial<AgentDockBridge> = {}): {
     runStatusPipenzo: vi.fn().mockResolvedValue({ live: false }),
     steerPipenzo: vi.fn(),
     stopPipenzo: vi.fn(),
+    retryPipenzo: vi.fn(),
     claimPipenzoIssue: vi.fn(),
     createPipenzoIssue: vi.fn(),
     commentOnPipenzoIssue: vi.fn(),

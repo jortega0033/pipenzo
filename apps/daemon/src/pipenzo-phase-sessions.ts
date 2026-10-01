@@ -259,6 +259,20 @@ async function startSession(
   workspaceTrust: WorkspaceTrustStore | 'daemon-owned-worktree',
 ): Promise<string> {
   assertProviderGrant(request.provider, sandbox, evaluate);
+  // Issue #105's same-tier retry: `request.continuation` was unused here before this ticket --
+  // every existing caller (Refine, Review, Implement's own first dispatch) never sets it. A fork
+  // continues the prior attempt's provider-native session via the legacy dispatch's own
+  // `resumeProviderSessionId` parameter, which is this codebase's real equivalent of agentdock's V2
+  // `session.fork` for phase sessions (Implement does not run on the V2 protocol -- see this
+  // module's own doc comment). CLAUDE.md hard rule 4's "a fork cannot change model" is enforced here,
+  // fail closed, rather than left to whichever caller happens to build the request correctly: a
+  // request that asks to continue a session *and* pick a model is refused outright, never silently
+  // resolved by preferring one over the other.
+  if (request.continuation && request.model) {
+    throw new PhaseSessionError(
+      'a continued phase session cannot select a model -- the provider-native thread is frozen to the model it started with',
+    );
+  }
   const workspace =
     workspaceTrust === 'daemon-owned-worktree'
       ? undefined
@@ -273,7 +287,7 @@ async function startSession(
     request.provider,
     launchCwd,
     request.prompt ?? '',
-    undefined, // resumeProviderSessionId
+    request.continuation?.providerSessionId, // resumeProviderSessionId -- issue #105's fork retry
     1, // protocolVersion
     workspace, // binds the session to it: a blocked or revoked workspace refuses or cancels it
     undefined, // providerStatus
