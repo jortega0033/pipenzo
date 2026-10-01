@@ -34,6 +34,9 @@ import {
   pipenzoImplementResultQueryV1Schema,
   pipenzoImplementDiffRequestV1Schema,
   pipenzoReviewRequestV1Schema,
+  pipenzoRunStatusRequestV1Schema,
+  pipenzoSteerRequestV1Schema,
+  pipenzoStopRequestV1Schema,
   pipenzoIssueClaimRequestV1Schema,
   pipenzoIssueCommentRequestV1Schema,
   pipenzoIssueCreateRequestV1Schema,
@@ -1519,6 +1522,22 @@ handle('daemon:pipenzo-implement-diff', async (_event, input: unknown) => {
 handle('daemon:pipenzo-review', async (_event, input: unknown) => {
   if (!client) throw new Error('daemon is not ready yet');
   return client.v2.pipenzo.review(pipenzoReviewRequestV1Schema.parse(input));
+});
+// Live run controls (issue #103): Steer/Stop for a ticket's dispatched Implement session. Same
+// boundary as every other handler on this surface -- main-process only, invoked by a renderer
+// click (or, for `run-status`, a poll) -- and addressed by ticket id, never by session or worktree
+// id, so the renderer cannot name a session that is not this ticket's own dispatched attempt.
+handle('daemon:pipenzo-run-status', async (_event, input: unknown) => {
+  if (!client) throw new Error('daemon is not ready yet');
+  return client.v2.pipenzo.runStatus(pipenzoRunStatusRequestV1Schema.parse(input));
+});
+handle('daemon:pipenzo-steer', async (_event, input: unknown) => {
+  if (!client) throw new Error('daemon is not ready yet');
+  return client.v2.pipenzo.steer(pipenzoSteerRequestV1Schema.parse(input));
+});
+handle('daemon:pipenzo-stop', async (_event, input: unknown) => {
+  if (!client) throw new Error('daemon is not ready yet');
+  return client.v2.pipenzo.stop(pipenzoStopRequestV1Schema.parse(input));
 });
 handle('daemon:pipenzo-claim-issue', async (_event, input: unknown) => {
   if (!client) throw new Error('daemon is not ready yet');

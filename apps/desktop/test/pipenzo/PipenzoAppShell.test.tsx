@@ -94,6 +94,12 @@ function installBridge(
       .mockResolvedValue({ state: 'connected', login: 'octocat', source: 'vault' }),
     listProvidersV2: vi.fn().mockResolvedValue([]),
     disconnectGitHub: vi.fn(),
+    // Issue #103: TicketDetail's `runControls` slot polls this on mount via `RunControlsPanel`.
+    // `live: false` for every ticket here, same reasoning as `pipenzoCaptureCapabilities` above --
+    // none of this file's fixtures models a genuinely running Implement session.
+    runStatusPipenzo: vi.fn().mockResolvedValue({ live: false }),
+    steerPipenzo: vi.fn(),
+    stopPipenzo: vi.fn(),
     pipenzoTicketRead: vi.fn(({ ticketId }: { ticketId: string }) => {
       const ticket = tickets.find((candidate) => candidate.ticketId === ticketId);
       return ticket
@@ -887,6 +893,11 @@ describe('PipenzoAppShell', () => {
       pipenzoRecordRiskActivityOpened: vi.fn().mockResolvedValue({
         risk: { score: 0, lastResetAt: '2026-01-01T00:00:00.000Z' },
       }),
+      // Issue #103: TicketDetail's `runControls` slot polls this on mount; this helper's own
+      // tickets never model a genuinely running session.
+      runStatusPipenzo: vi.fn().mockResolvedValue({ live: false }),
+      steerPipenzo: vi.fn(),
+      stopPipenzo: vi.fn(),
       resolvePipenzoCheckout: vi.fn().mockResolvedValue({ repo: REPO, repositoryPath: CHECKOUT }),
       inspectWorkspace: vi.fn().mockResolvedValue(TRUSTED),
       setWorkspaceTrust: vi.fn(),

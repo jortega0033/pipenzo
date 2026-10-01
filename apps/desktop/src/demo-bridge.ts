@@ -171,6 +171,15 @@ export function createDemoBridge(): AgentDockBridge {
     reviewPipenzo: async () => {
       throw new Error('review is not available in demo mode');
     },
+    // A probe, not an action -- honestly answering "nothing is live, because this is demo mode"
+    // rather than throwing, the same reasoning `pipenzoCaptureCapabilities` below already states.
+    runStatusPipenzo: async () => ({ live: false }),
+    steerPipenzo: async () => {
+      throw new Error('steering a run is not available in demo mode');
+    },
+    stopPipenzo: async () => {
+      throw new Error('stopping a run is not available in demo mode');
+    },
     claimPipenzoIssue: async () => {
       throw new Error('claiming a ticket is not available in demo mode');
     },
