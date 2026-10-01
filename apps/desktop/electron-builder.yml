@@ -78,3 +78,48 @@ nsis:
   # A .blockmap is only useful for differential auto-update downloads, which this project doesn't
   # have — skip generating one rather than ship a file with no purpose.
   differentialPackage: false
+
+# macOS — unsigned at the same tier the Windows NSIS installer ships at (see README's "What exists
+# today" and issue #8's own title: "unsigned Windows x64 NSIS installer"). A real Gatekeeper-clean
+# build needs a paid Apple Developer ID plus notarization (`notarize:`/`identity:` below), which is
+# real work this project is explicitly deferring, not a build flag — see issue #156. Opening an
+# unsigned .dmg/.zip shows macOS's standard "unidentified developer" Gatekeeper warning; the user
+# has to right-click → Open (or clear the quarantine attribute) to run it. That's the same honest
+# tradeoff the unsigned Windows installer already makes (SmartScreen warns there too).
+mac:
+  executableName: Pipenzo
+  # scripts/assets/generate_assets.py already generates pipenzo.icns (and every PNG size below) from
+  # the same SVG source as the Windows .ico — nothing new to generate here.
+  icon: pipenzo.icns
+  category: public.app-category.developer-tools
+  # Explicit, not just "unconfigured": without a Developer ID cert electron-builder would otherwise
+  # probe the local keychain and silently sign with whatever ad-hoc identity it finds. identity: null
+  # forces the unsigned path on every machine, including a real Mac; notarize/hardenedRuntime/
+  # gatekeeperAssess only matter once signing exists, so they're turned off rather than misconfigured.
+  identity: null
+  notarize: false
+  hardenedRuntime: false
+  gatekeeperAssess: false
+  artifactName: '${productName}-${version}-${arch}.${ext}'
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+    - target: zip
+      arch: [x64, arm64]
+
+# Linux — unsigned AppImage (works on effectively any distro, no install step) plus a low-effort
+# .deb for Debian/Ubuntu users who'd rather use their package manager. Same unsigned-tier scope as
+# macOS/Windows above; Linux desktop distribution has no Gatekeeper/SmartScreen equivalent to warn
+# about, so there's no comparable caveat to document here.
+linux:
+  # Lowercase, matching how other Electron apps install as a Linux binary/desktop entry (e.g. `code`,
+  # `discord`) — distinct from the Title Case Windows/macOS executableName above.
+  executableName: pipenzo
+  icon: png/pipenzo-icon-1024.png
+  category: Development
+  artifactName: '${productName}-${version}-${arch}.${ext}'
+  target:
+    - target: AppImage
+      arch: [x64]
+    - target: deb
+      arch: [x64]

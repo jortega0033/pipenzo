@@ -359,7 +359,9 @@ pnpm build             # compile every package and application
 pnpm typecheck         # strict TypeScript across the workspace
 pnpm test              # unit + integration tests; no real provider calls
 pnpm lint              # ESLint
-pnpm package:win       # Windows NSIS installer
+pnpm package:win       # Windows NSIS installer (unsigned)
+pnpm package:mac       # macOS .dmg + .zip, x64 + arm64 (unsigned, not notarized — see issue #156)
+pnpm package:linux     # Linux AppImage + .deb, x64 (unsigned — see issue #156)
 ```
 
 Full setup, architecture, provider-transport details, and the rest of agentdock's own docs live in
