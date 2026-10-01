@@ -14,7 +14,7 @@ export interface StateDirectoryOptions {
 
 /** Resolves AgentDock's durable, per-user state directory without using the temp rendezvous. */
 export function stateDirectory(options: StateDirectoryOptions = {}): string {
-  const appId = options.appId ?? 'agent-dock';
+  const appId = options.appId ?? 'pipenzo';
   if (!APP_ID_PATTERN.test(appId)) throw new Error('invalid application id for state directory');
 
   const env = options.env ?? process.env;

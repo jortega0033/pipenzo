@@ -9,8 +9,13 @@ export interface DaemonDiscoveryInfo {
   startedAt: string;
 }
 
-/** Used when no app id is supplied; the reference desktop app never needs to override this. */
-export const DEFAULT_APP_ID = 'agent-dock';
+/**
+ * Used when no app id is supplied. The reference desktop app never needs to override this, but a
+ * fork shipping its own product under a different name should -- Pipenzo's own
+ * `apps/desktop/electron/main.ts` always passes an explicit `AGENT_DOCK_APP_ID`, so this default
+ * is reached only by a standalone daemon run outside that spawn path (e.g. `pnpm daemon` directly).
+ */
+export const DEFAULT_APP_ID = 'pipenzo';
 
 const APP_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/;
 

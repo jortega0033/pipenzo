@@ -136,6 +136,17 @@ const IS_DEVELOPMENT_BUILD =
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+// `apps/desktop/package.json`'s own "name" is the inherited AgentDock workspace package scope
+// (`@agent-dock/desktop`), left alone deliberately -- CLAUDE.md's own guidance is not to rename
+// inherited AgentDock infrastructure without reason. In an unpackaged dev run (no
+// electron-builder `productName` metadata to read instead), Electron derives `app.getName()`,
+// and therefore `app.getPath('userData')`, from that same scoped package name -- which is why a
+// dev build's userData directory (and anything under it, like a "New from idea" checkout path)
+// showed up as `...\agent-dock\...` rather than Pipenzo's own name. A packaged build already gets
+// this right from `electron-builder.yml`'s `productName: Pipenzo`; setting it explicitly here
+// makes a dev run match, without touching the package name itself.
+app.setName('Pipenzo');
+
 // Two AgentDock windows would each spawn their own daemon sidecar and race over the same
 // discovery file (the daemon's own single-instance guard, see SECURITY.md, would make the
 // second one fail to start). Rather than let that surface as a confusing "daemon unavailable"
@@ -194,10 +205,12 @@ const DAEMON_CREDENTIAL_RESTART_TIMEOUT_MS = 15_000;
 // Namespaces the daemon rendezvous per application (AD-02); see apps/daemon/src/discovery-file.ts
 // for the daemon side of this. A fork shipping its own product under a different name should set
 // this to its own id (env var, or hardcode a different literal here) so it doesn't collide with
-// another AgentDock-based app's daemon on the same machine; the reference app just uses the
-// default. The daemon validates/sanitizes this value itself and refuses to start on an invalid
-// one, so it isn't duplicated here.
-const APP_ID = process.env.AGENT_DOCK_APP_ID?.trim() || 'agent-dock';
+// another AgentDock-based app's daemon on the same machine -- this is exactly that: Pipenzo is
+// such a fork, and `AGENT_DOCK_APP_ID` still defaulting to the reference app's own id would
+// collide with a real AgentDock (or another AgentDock-based fork) running on the same machine.
+// The daemon validates/sanitizes this value itself and refuses to start on an invalid one, so it
+// isn't duplicated here.
+const APP_ID = process.env.AGENT_DOCK_APP_ID?.trim() || 'pipenzo';
 
 /**
  * Issue #182's publish-nonce secret. Generated once, here, for this process's whole lifetime --

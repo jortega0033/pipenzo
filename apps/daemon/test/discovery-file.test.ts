@@ -100,8 +100,8 @@ describe('per-app-id namespacing (AD-02)', () => {
     expect(discoveryFilePath('my-cool-app_2')).toBe(join(discoveryDir, 'my-cool-app_2.json'));
   });
 
-  it('defaults to "agent-dock" when no app id is given', () => {
-    expect(discoveryFilePath()).toBe(join(discoveryDir, 'agent-dock.json'));
+  it('defaults to "pipenzo" when no app id is given', () => {
+    expect(discoveryFilePath()).toBe(join(discoveryDir, 'pipenzo.json'));
   });
 });
 
