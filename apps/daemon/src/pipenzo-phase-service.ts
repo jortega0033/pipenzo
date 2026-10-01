@@ -1920,6 +1920,9 @@ const GITHUB_CODES: Record<GitHubClientError['code'], PipenzoPhaseErrorCodeV1> =
   rate_limited: 'github_rate_limited',
   invalid_response: 'github_failed',
   network: 'github_failed',
+  // Unreachable from this service, which never passes `setIssueLabels` a precondition; mapped so the
+  // record stays total over the union.
+  precondition_failed: 'invalid_request',
 };
 
 /**

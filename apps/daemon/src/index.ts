@@ -364,14 +364,17 @@ async function main() {
   });
 
   // Pipenzo's polling reconciler (issue #231): the loop that makes the connected-repos list worth
-  // having. Same GitHub boundary and same shared cache/tracker as the phase machine above -- it
-  // reaches GitHub only through `phaseMachine.read()`, never through a client of its own, which is
-  // what makes every poll a conditional read against `githubConditionalCache` rather than a second,
-  // uncached implementation of "fetch this issue".
+  // having. Same GitHub boundary and same shared cache/tracker as the phase machine above -- a known
+  // ticket is re-read only through `phaseMachine.read()`, which is what makes every poll a
+  // conditional read against `githubConditionalCache` rather than a second, uncached implementation
+  // of "fetch this issue". Issue #511's intake lists each connected repo's open issues through the
+  // same cached client and admits untracked ones through `phaseMachine.admit()`, so its one write
+  // is the machine's, not the reconciler's.
   const pipenzoReconciler = new PipenzoReconciler({
     repos: connectedRepos,
     tickets: ticketStore,
     machine: phaseMachine,
+    intake: phaseMachine,
     audit: pipenzoAuditStore,
     github: () =>
       OctokitGitHubClient.fromToken(githubCredential.resolve(), {

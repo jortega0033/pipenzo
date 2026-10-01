@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import {
   PIPENZO_LABEL_LANES,
   PIPENZO_SCHEMA_V1_MARKER_LABEL,
@@ -338,6 +339,8 @@ const GITHUB_CODES: Record<GitHubClientError['code'], PipenzoPhaseMachineErrorCo
   rate_limited: 'github_rate_limited',
   invalid_response: 'github_failed',
   network: 'github_failed',
+  // Only `admit()` passes a precondition: the issue moved into a lane after intake decided to admit it.
+  precondition_failed: 'illegal_transition',
 };
 
 /** Mirrors `pipenzoTicketRecordV1Schema`'s `attempts: z.array(...).max(50)`, not a second cap. */
@@ -345,6 +348,41 @@ const ATTEMPTS_MAX = 50;
 
 /** Mirrors `pipenzoTicketBudgetV1Schema`'s `tokensUsed: z.number().int().nonnegative().max(...)`. */
 const TICKET_BUDGET_TOKENS_MAX = 2_147_483_647;
+
+/** Mirrors `pipenzoTicketRecordV1Schema`'s `title: z.string().min(1).max(512)`, not a second cap. */
+const MAX_TICKET_TITLE_CHARS = 512;
+
+/** What `admit()` needs to know about an issue: `GitHubOpenIssueSummary`'s shape, structurally. */
+export interface PipenzoIntakeIssue {
+  readonly number: number;
+  readonly title: string;
+  readonly labels: readonly string[];
+}
+
+/**
+ * Whether intake may write `pipenzo:queued` onto an issue carrying `labels` (issue #511).
+ *
+ * True only when every `pipenzo:`-prefixed label on it is `pipenzo:queued` or the v1 schema marker
+ * -- i.e. when the namespace replacement `setIssueLabels` performs would erase nothing anybody put
+ * there. Foreign labels are irrelevant (they are preserved). Everything else in the namespace is a
+ * decision intake must not overwrite: another lane or condition a human set on github.com, an
+ * unknown `pipenzo:` label, or a newer `pipenzo:schema-vN` marker this build must not write over.
+ * An issue already carrying exactly `pipenzo:queued` stays eligible on purpose: that is the state a
+ * crash between `admit()`'s label write and its record write leaves behind.
+ *
+ * Compared case-insensitively, unlike `isPipenzoLabel`: GitHub matches label names without regard
+ * to case, so a hand-typed `Pipenzo:Working` is a person stating a lane, and the conservative
+ * reading of an ambiguous label is "leave this issue alone".
+ */
+export function isIntakeEligible(labels: readonly string[]): boolean {
+  return labels.every((name) => {
+    const folded = name.toLowerCase();
+    return (
+      !isPipenzoLabel(folded) ||
+      (folded === name && (name === 'pipenzo:queued' || name === PIPENZO_SCHEMA_V1_MARKER_LABEL))
+    );
+  });
+}
 
 /**
  * Whether a ticket's budget is exhausted (Pipenzo issue #143, slice 2). `limit: 0` means "no
@@ -766,6 +804,99 @@ export class PipenzoPhaseMachine {
   }
 
   /**
+   * Admits an open issue no local ticket tracks yet, as `pipenzo:queued` (issue #511).
+   *
+   * The only way a ticket record is born from an *existing* issue, and it follows the same rules as
+   * every other write in this machine rather than being a quieter side door:
+   *
+   * - **GitHub first, local second** (see the module comment): `pipenzo:queued` and the schema
+   *   marker are written through `setIssueLabels` -- the same namespace-guarded, foreign-label-
+   *   preserving write `transition()` uses -- and the record is created from the labels GitHub
+   *   *reports*, so the lane follows the label. A crash between the two leaves an issue labelled
+   *   queued with no record, which is itself eligible for intake again: the next pass rewrites the
+   *   same two labels and creates the record. Self-healing, never duplicated.
+   * - **Never a second record for one issue.** An issue a ticket already tracks is returned as-is
+   *   with `admitted: false` and nothing written, so a racing or repeated call is a no-op.
+   * - **Never over a lane a human or another instance chose.** `isIntakeEligible` refuses an issue
+   *   carrying any `pipenzo:` label beyond `queued` and the v1 marker -- another lane, a condition, an
+   *   unknown label, or a newer schema marker -- because `setIssueLabels` replaces the namespace and
+   *   would erase it. Refused here as well as filtered by the caller, so the rule holds for any caller,
+   *   and checked a third time as `setIssueLabels`' precondition against the labels its own read
+   *   finds just before writing -- the caller's listing can be stale, the write's own read is not.
+   *
+   * Admission is visibility, not autonomy: a queued ticket runs nothing until a human clicks
+   * Implement on it. `estimate` and `taskType` are placeholders until Refine produces real ones --
+   * the record schema requires both, and zero lines/files is the honest "not estimated yet".
+   */
+  async admit(
+    repo: string,
+    issue: PipenzoIntakeIssue,
+  ): Promise<{ readonly ticket: PipenzoTicketRecordV1; readonly admitted: boolean }> {
+    let ref: RepoRef;
+    try {
+      ref = parseRepoRef(repo);
+    } catch (error) {
+      throw toMachineError(error);
+    }
+    const existing = this.#findTicket(repo, issue.number);
+    if (existing) return { ticket: existing, admitted: false };
+
+    if (!isIntakeEligible(issue.labels)) {
+      throw new PipenzoPhaseMachineError(
+        'illegal_transition',
+        `${ref.owner}/${ref.repo}#${issue.number} already carries pipenzo labels; intake leaves it alone`,
+      );
+    }
+
+    const client = this.#requireGitHub();
+    let resulting: readonly string[];
+    try {
+      // Eligibility is judged again against the labels `setIssueLabels` itself reads right before
+      // writing, not only against the (possibly lagging) listing the caller decided from: a lane a
+      // human or another instance set in between is refused, never replaced.
+      resulting = await client.setIssueLabels(
+        ref,
+        issue.number,
+        ['pipenzo:queued', PIPENZO_SCHEMA_V1_MARKER_LABEL],
+        { precondition: isIntakeEligible },
+      );
+    } catch (error) {
+      throw toMachineError(error);
+    }
+
+    // Checked again after the await: a record for this issue may have been created while the write
+    // was in flight (the stack materializer creates its children's records after labelling them).
+    // The label write was idempotent, so yielding to that record loses nothing.
+    const raced = this.#findTicket(repo, issue.number);
+    if (raced) return { ticket: raced, admitted: false };
+
+    const title = issue.title.trim();
+    const ticket: PipenzoTicketRecordV1 = withUpdatedAt({
+      schemaVersion: 1,
+      ticketId: randomUUID(),
+      repo,
+      issueNumber: issue.number,
+      ...(title.length > 0 && issue.title.length <= MAX_TICKET_TITLE_CHARS ? { title: issue.title } : {}),
+      lane: laneFromObserved(laneBearingLabelsOf(resulting)) ?? 'queued',
+      phase: 'refine',
+      labels: pipenzoLabelsOf(resulting),
+      estimate: { lines: 0, files: 0, layered: false },
+      taskType: 'feature',
+      stack: { parentId: null, childIds: [], index: null },
+      attempts: [],
+      budget: { tokensUsed: 0, limit: 0 },
+      risk: { score: 0, lastResetAt: new Date().toISOString() },
+      precommits: [],
+      etags: {},
+    });
+    persist(() => this.#tickets.create(ticket));
+    // `fromLane === toLane`, which the event schema already defines as a label-only move -- there is
+    // no earlier lane to report, and a board listening on the stream learns a card now exists.
+    this.#announce(ticket, ticket);
+    return { ticket, admitted: true };
+  }
+
+  /**
    * Appends one dispatched-session attempt to a ticket's local record (Pipenzo issue #201's own
    * gap, named in `implement-orchestrator.ts`'s module comment and this module's own transition
    * doc: "nothing populates `attempts[]` yet"). `pipenzo-crash-recovery.ts`'s session-to-ticket
@@ -1052,6 +1183,14 @@ export class PipenzoPhaseMachine {
   peekWorktree(ticketId: string): { id: string; branch: string } | undefined {
     const worktree = this.#tickets.get(ticketId)?.worktree;
     return worktree ? { id: worktree.id, branch: worktree.branch } : undefined;
+  }
+
+  /** The record tracking `repo#issueNumber`, if any. GitHub compares repo names case-insensitively. */
+  #findTicket(repo: string, issueNumber: number): PipenzoTicketRecordV1 | undefined {
+    const repoKey = repo.toLowerCase();
+    return this.#tickets
+      .list()
+      .find((ticket) => ticket.repo.toLowerCase() === repoKey && ticket.issueNumber === issueNumber);
   }
 
   #repoRef(ticket: PipenzoTicketRecordV1): RepoRef {

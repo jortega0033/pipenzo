@@ -65,8 +65,9 @@ export interface StackWorktreePort {
   ownedLocation(id: string): { path: string } | undefined;
 }
 
-/** Local-only ticket-record access this module needs: reading the parent, creating each child. */
-export type StackTicketStorePort = Pick<FileTicketStore, 'get' | 'update' | 'create'>;
+/** Local-only ticket-record access this module needs: reading the parent, creating each child, and
+ * `list` to find a child record the reconciler's intake (issue #511) may already have created. */
+export type StackTicketStorePort = Pick<FileTicketStore, 'get' | 'update' | 'create' | 'list'>;
 
 export interface MaterializeStackOptions {
   readonly parentTicket: PipenzoTicketRecordV1;
@@ -192,7 +193,15 @@ export async function materializeStack(options: MaterializeStackOptions): Promis
       );
     }
 
-    const ticketId = randomUUID();
+    // Issue #511: the child issue is intake-eligible (`pipenzo:queued` + the v1 marker) from the
+    // moment `createIssue` returns, and the worktree and branch above take seconds -- so the
+    // reconciler's intake may already have admitted it as a plain, stackless ticket. That record is
+    // taken over (same id, this module's richer content) rather than duplicated beside.
+    const repoKey = options.parentTicket.repo.toLowerCase();
+    const admitted = options.tickets
+      .list()
+      .find((candidate) => candidate.repo.toLowerCase() === repoKey && candidate.issueNumber === issue.number);
+    const ticketId = admitted?.ticketId ?? randomUUID();
     const ticket: PipenzoTicketRecordV1 = {
       schemaVersion: 1,
       ticketId,
@@ -213,7 +222,8 @@ export async function materializeStack(options: MaterializeStackOptions): Promis
       etags: {},
     };
     try {
-      options.tickets.create(ticket);
+      if (admitted) options.tickets.update(ticketId, ticket);
+      else options.tickets.create(ticket);
     } catch (error) {
       throw new StackMaterializationError(
         `could not persist the ticket record for stack entry ${index + 1} of ${total} (issue #${issue.number} and its worktree were already created)`,
