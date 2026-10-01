@@ -212,7 +212,6 @@ describe('POST /v2/pipenzo/tickets/risk/plan-review/capture', () => {
     const response = await app.inject({
       method: 'POST',
       url: '/v2/pipenzo/tickets/risk/plan-review/capture',
-      payload: { ticketId: TICKET_ID },
     });
     expect(response.statusCode).toBe(401);
   });
@@ -386,11 +385,9 @@ describe('POST /v2/pipenzo/tickets/risk/plan-review/decide', () => {
 
   it('rejects an unauthenticated request', async () => {
     const built = await buildApp({ ticket: { spec: planSpec(), awaitingPlanReview: true } });
-    const approvalId = await captured(built);
     const response = await built.app.inject({
       method: 'POST',
       url: '/v2/pipenzo/tickets/risk/plan-review/decide',
-      payload: { ticketId: TICKET_ID, approvalId, decision: 'reject', reason: 'x' },
     });
     expect(response.statusCode).toBe(401);
   });
