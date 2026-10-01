@@ -19,11 +19,10 @@ import { REVIEW_OUTCOMES, riskGradeV1Schema } from './pipenzo-review-v1.js';
  * ## Shape
  *
  * `kind` is a discriminated union on purpose. #160 (an audit entry for every publish/gate result)
- * adds the two branches below; #269 (a blown-estimate-miss record) is still not built here -- it
- * adds its own branch when it lands, rather than this one widening with optional fields most
- * entries would leave unset. What every branch shares is the minimum this ticket actually needs
- * recorded: what happened (`kind`), when (`recordedAt`), which ticket (`ticketId`), and an
- * `outcome`.
+ * added the first two branches below; #269 (a blown-estimate-miss record) adds the third, the same
+ * way -- its own branch, rather than this one widening with optional fields most entries would
+ * leave unset. What every branch shares is the minimum this ticket actually needs recorded: what
+ * happened (`kind`), when (`recordedAt`), which ticket (`ticketId`), and an `outcome`.
  */
 
 export const PIPENZO_AUDIT_SCHEMA_VERSION = 1 as const;
@@ -128,11 +127,59 @@ export const pipenzoAuditReviewGateEntryV1Schema = pipenzoAuditEntryBaseV1Schema
   })
   .strict();
 
+/**
+ * A blown-estimate miss (issue #269) -- the real predicted/actual/ratio numbers behind an
+ * `estimate_blown` review-gate outcome, persisted so the daemon can query the miss itself later
+ * rather than it only ever existing transiently in the `ReviewReportV1` response and the
+ * `blownEstimateCommentBody()` GitHub comment text (`pipenzo-phase-service.ts`).
+ *
+ * `predicted`/`actual` deliberately mirror `diffScopeV1Schema`'s own `estimate`/`implementation`
+ * sub-shapes (`pipenzo-review-v1.ts`) -- `changedLines`/`filesTouched` only, not the full
+ * `RefineEstimateV1` (which also carries `layered`): `review()`'s call site has nothing but
+ * `ReviewReportV1.diffScope` to read these numbers from by the time an `estimate_blown` outcome is
+ * known, and `layered` is a Refine-time routing decision this record has no use for.
+ *
+ * Written once per `estimate_blown` outcome, the same unconditional "one entry per call" discipline
+ * `pipenzoAuditReviewGateEntryV1Schema` already uses -- a log of every miss a ticket's reviews
+ * produced, not deduplicated state. (The lane transition and GitHub comment `#reportBlownEstimate`
+ * makes alongside this *are* deduplicated against a retried `review()` call, for their own, separate
+ * reason: GitHub has no idempotency key for a comment. This record is just data, and a second
+ * identical row costs nothing a reader cannot already filter out by `recordedAt`.)
+ *
+ * `outcome` is always `'estimate_blown'` -- there is currently only one way to produce this `kind` --
+ * kept as its own field rather than folded into `kind` for the same reason
+ * `pipenzoAuditDivergenceEntryV1Schema.outcome` is its own field despite also only ever taking one
+ * value: every branch in this union carries an explicit `outcome`, not left implicit in `kind`.
+ */
+export const pipenzoAuditEstimateMissEntryV1Schema = pipenzoAuditEntryBaseV1Schema
+  .extend({
+    kind: z.literal('estimate_miss'),
+    outcome: z.literal('estimate_blown'),
+    predicted: z
+      .object({
+        changedLines: z.number().int().nonnegative(),
+        filesTouched: z.number().int().nonnegative(),
+      })
+      .strict(),
+    actual: z
+      .object({
+        changedLines: z.number().int().nonnegative(),
+        filesTouched: z.number().int().nonnegative(),
+      })
+      .strict(),
+    /** Actual changed lines as a ratio of predicted. Always > README's blown-estimate tolerance for
+     * a real `estimate_blown` outcome, but not re-validated against that threshold here -- this
+     * schema records what the review gate already decided, it does not re-decide it. */
+    ratio: z.number().nonnegative(),
+  })
+  .strict();
+
 export const pipenzoAuditEntryV1Schema = z
   .discriminatedUnion('kind', [
     pipenzoAuditDivergenceEntryV1Schema,
     pipenzoAuditPublishEntryV1Schema,
     pipenzoAuditReviewGateEntryV1Schema,
+    pipenzoAuditEstimateMissEntryV1Schema,
   ])
   .superRefine((entry, ctx) => {
     // A publish entry's own outcome-conditional fields (a `ZodEffects` cannot itself be a member of
@@ -179,13 +226,15 @@ export const pipenzoAuditEntryV1Schema = z
 
 /** What a caller supplies to append an entry; the store fills in the envelope fields
  * (`schemaVersion`/`sequence`/`entryId`/`recordedAt`). Grows by one member per future `kind`
- * (#269 next) rather than this file guessing their shape now. */
+ * rather than this file guessing their shape now. */
 export type NewPipenzoAuditEntryV1 =
   | Omit<PipenzoAuditDivergenceEntryV1, 'schemaVersion' | 'sequence' | 'entryId' | 'recordedAt'>
   | Omit<PipenzoAuditPublishEntryV1, 'schemaVersion' | 'sequence' | 'entryId' | 'recordedAt'>
-  | Omit<PipenzoAuditReviewGateEntryV1, 'schemaVersion' | 'sequence' | 'entryId' | 'recordedAt'>;
+  | Omit<PipenzoAuditReviewGateEntryV1, 'schemaVersion' | 'sequence' | 'entryId' | 'recordedAt'>
+  | Omit<PipenzoAuditEstimateMissEntryV1, 'schemaVersion' | 'sequence' | 'entryId' | 'recordedAt'>;
 
 export type PipenzoAuditDivergenceEntryV1 = z.infer<typeof pipenzoAuditDivergenceEntryV1Schema>;
 export type PipenzoAuditPublishEntryV1 = z.infer<typeof pipenzoAuditPublishEntryV1Schema>;
 export type PipenzoAuditReviewGateEntryV1 = z.infer<typeof pipenzoAuditReviewGateEntryV1Schema>;
+export type PipenzoAuditEstimateMissEntryV1 = z.infer<typeof pipenzoAuditEstimateMissEntryV1Schema>;
 export type PipenzoAuditEntryV1 = z.infer<typeof pipenzoAuditEntryV1Schema>;

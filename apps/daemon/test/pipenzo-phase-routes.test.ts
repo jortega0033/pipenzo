@@ -1134,8 +1134,12 @@ describe('POST /v2/pipenzo/review', () => {
       expect(response.statusCode).toBe(200);
       expect(response.json().outcome).toBe('estimate_blown');
 
-      const [entry] = await audit.list({ ticketId: TICKET_ID });
-      expect(entry).toMatchObject({ kind: 'review_gate_result', outcome: 'estimate_blown' });
+      // Issue #269 also writes an `estimate_miss` entry for this same outcome (see the
+      // "estimate-miss audit entries" describe block below) -- found by `kind` here rather than
+      // destructured by position, so this test keeps asserting only what it is about.
+      const entries = await audit.list({ ticketId: TICKET_ID });
+      const reviewGateEntry = entries.find((entry) => entry.kind === 'review_gate_result');
+      expect(reviewGateEntry).toMatchObject({ kind: 'review_gate_result', outcome: 'estimate_blown' });
     });
 
     it('writes nothing when no ticketId was given -- there is no ticket to attribute the entry to', async () => {
@@ -1165,6 +1169,106 @@ describe('POST /v2/pipenzo/review', () => {
 
       expect(response.statusCode).toBe(200);
       expect(response.json().outcome).toBe('approved');
+    });
+  });
+
+  /**
+   * Issue #269: a real `estimate_blown` outcome persists the miss itself -- predicted (the spec's
+   * own `estimate`), actual (`diffScope.implementation`), and the ratio between them -- as its own
+   * `estimate_miss` audit entry, alongside the pre-existing `review_gate_result` entry #160 already
+   * writes for every outcome. `newAuditStore()` is real and file-backed, same reasoning as the
+   * `review-gate audit entries` describe block above: a wrong field name or schema violation fails
+   * these tests the same way it would fail in production.
+   */
+  describe('estimate-miss audit entries (issue #269)', () => {
+    function reviewRequest(overrides: Record<string, unknown> = {}) {
+      return {
+        spec: spec(),
+        worktreeId: WORKTREE_ID,
+        baseCommit: BASE_SHA,
+        headCommit: HEAD_SHA,
+        implementerTier: 'mid',
+        reviewer: { provider: 'claude', model: 'reviewer-model', tier: 'mid' },
+        verifier: { provider: 'codex', model: 'verifier-model', tier: 'frontier' },
+        ...overrides,
+      };
+    }
+
+    it('records the real predicted/actual/ratio numbers for a real estimate_blown outcome', async () => {
+      const audit = newAuditStore();
+      const { app } = buildApp({ audit, machine: new FakeMachine() });
+
+      // `runGit`'s fake `diff --numstat` always reports a single 10+2-line file -- 12 changed
+      // lines, 1 file touched. An estimate of 1 changed line makes that a 12x overrun, well past
+      // README's 50% blown-estimate tolerance.
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/review',
+        headers: auth,
+        payload: reviewRequest({
+          ticketId: TICKET_ID,
+          spec: spec({ estimate: { changedLines: 1, filesTouched: 1, layered: false } }),
+        }),
+      });
+
+      expect(response.statusCode).toBe(200);
+      const report = response.json();
+      expect(report.outcome).toBe('estimate_blown');
+      expect(report.diffScope).toMatchObject({
+        estimate: { changedLines: 1, filesTouched: 1 },
+        implementation: { changedLines: 12, filesTouched: 1 },
+      });
+
+      const entries = await audit.list({ ticketId: TICKET_ID });
+      const estimateMiss = entries.find((entry) => entry.kind === 'estimate_miss');
+      expect(estimateMiss).toMatchObject({
+        kind: 'estimate_miss',
+        outcome: 'estimate_blown',
+        ticketId: TICKET_ID,
+        predicted: { changedLines: 1, filesTouched: 1 },
+        actual: { changedLines: 12, filesTouched: 1 },
+        ratio: report.diffScope.ratio,
+      });
+      expect(typeof estimateMiss?.recordedAt).toBe('number');
+
+      // Both #160's own review_gate_result entry and #269's new estimate_miss entry are written for
+      // the same call -- one does not replace the other.
+      expect(entries.map((entry) => entry.kind).sort()).toEqual(['estimate_miss', 'review_gate_result']);
+    });
+
+    it('writes no estimate_miss entry for an approved review', async () => {
+      const audit = newAuditStore();
+      const { app } = buildApp({ audit });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/review',
+        headers: auth,
+        payload: reviewRequest({ ticketId: TICKET_ID }),
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json().outcome).toBe('approved');
+
+      const entries = await audit.list({ ticketId: TICKET_ID });
+      expect(entries.map((entry) => entry.kind)).toEqual(['review_gate_result']);
+    });
+
+    it('writes nothing when no audit store was configured, and still returns the blown-estimate report', async () => {
+      const { app } = buildApp({ machine: new FakeMachine() });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v2/pipenzo/review',
+        headers: auth,
+        payload: reviewRequest({
+          ticketId: TICKET_ID,
+          spec: spec({ estimate: { changedLines: 1, filesTouched: 1, layered: false } }),
+        }),
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json().outcome).toBe('estimate_blown');
     });
   });
 });

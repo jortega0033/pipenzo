@@ -27,6 +27,7 @@ async function auditPath(): Promise<string> {
 type NewDivergenceEntry = Extract<NewPipenzoAuditEntryV1, { kind: 'ticket_divergence' }>;
 type NewPublishEntry = Extract<NewPipenzoAuditEntryV1, { kind: 'publish_result' }>;
 type NewReviewGateEntry = Extract<NewPipenzoAuditEntryV1, { kind: 'review_gate_result' }>;
+type NewEstimateMissEntry = Extract<NewPipenzoAuditEntryV1, { kind: 'estimate_miss' }>;
 
 function divergenceEntry(overrides: Partial<NewDivergenceEntry> = {}): NewPipenzoAuditEntryV1 {
   return {
@@ -71,6 +72,19 @@ function reviewGateEntry(overrides: Partial<NewReviewGateEntry> = {}): NewPipenz
     risk: 'low',
     baseCommit: HEAD_SHA,
     headCommit: HEAD_SHA,
+    ...overrides,
+  };
+}
+
+/** A blown-estimate-miss entry (issue #269). */
+function estimateMissEntry(overrides: Partial<NewEstimateMissEntry> = {}): NewPipenzoAuditEntryV1 {
+  return {
+    ticketId: randomUUID(),
+    kind: 'estimate_miss',
+    outcome: 'estimate_blown',
+    predicted: { changedLines: 200, filesTouched: 3 },
+    actual: { changedLines: 900, filesTouched: 4 },
+    ratio: 4.5,
     ...overrides,
   };
 }
@@ -288,5 +302,53 @@ describe('PipenzoAuditStore — review_gate_result entries (issue #160)', () => 
       'publish_result',
       'review_gate_result',
     ]);
+  });
+});
+
+describe('PipenzoAuditStore — estimate_miss entries (issue #269)', () => {
+  it('appends and reloads a blown-estimate miss with its real predicted/actual/ratio numbers', async () => {
+    const path = await auditPath();
+    const store = new PipenzoAuditStore(path);
+
+    const written = await store.append(estimateMissEntry());
+    expect(written).toMatchObject({
+      kind: 'estimate_miss',
+      outcome: 'estimate_blown',
+      predicted: { changedLines: 200, filesTouched: 3 },
+      actual: { changedLines: 900, filesTouched: 4 },
+      ratio: 4.5,
+    });
+
+    const reloaded = await new PipenzoAuditStore(path).list();
+    expect(reloaded).toEqual([written]);
+  });
+
+  it('rejects an entry whose predicted/actual object carries an unknown field', async () => {
+    const store = new PipenzoAuditStore(await auditPath());
+    await expect(
+      store.append(
+        estimateMissEntry({
+          predicted: { changedLines: 1, filesTouched: 1, layered: false } as never,
+        }),
+      ),
+    ).rejects.toThrow();
+  });
+
+  it('rejects a negative ratio', async () => {
+    const store = new PipenzoAuditStore(await auditPath());
+    await expect(store.append(estimateMissEntry({ ratio: -1 }))).rejects.toThrow();
+  });
+
+  it('scopes a mixed log that includes an estimate_miss entry alongside the others', async () => {
+    const path = await auditPath();
+    const store = new PipenzoAuditStore(path);
+    const ticketId = randomUUID();
+
+    await store.append(reviewGateEntry({ ticketId, outcome: 'estimate_blown' }));
+    await store.append(estimateMissEntry({ ticketId }));
+    await store.append(divergenceEntry());
+
+    const scoped = await store.list({ ticketId });
+    expect(scoped.map((entry) => entry.kind)).toEqual(['review_gate_result', 'estimate_miss']);
   });
 });
