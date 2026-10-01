@@ -37,6 +37,10 @@ function installBridge() {
       .fn()
       .mockResolvedValue({ schemaVersion: 1, screenshotEnabled: true, escapeHatchEnabled: false }),
     pipenzoUpdateCaptureSettings: vi.fn(),
+    pipenzoNotificationSettings: vi
+      .fn()
+      .mockResolvedValue({ schemaVersion: 1, refusal: true, medium: true, badge: true, sound: false }),
+    pipenzoUpdateNotificationSettings: vi.fn(),
     pipenzoListTickets: vi.fn().mockResolvedValue({ tickets: [], workingLaneCapacity: 2 }),
     onPipenzoPhaseEvent: () => () => {},
     pipenzoGitHubConnection: vi
@@ -112,5 +116,17 @@ describe('SettingsPage', () => {
     const leftColumn = container.querySelectorAll('.cols > .col')[0];
     const panels = leftColumn?.querySelectorAll('.form-panel');
     expect(panels?.[1]?.textContent).toContain('Concurrency');
+  });
+
+  it('hosts the notifications panel, ahead of account in the right column', async () => {
+    installBridge();
+    const { container } = renderSettingsPage();
+    await screen.findByText('octocat/hello-world');
+
+    expect(await screen.findByText('Notifications')).toBeInTheDocument();
+    expect(await screen.findByText('HIGH-risk approvals')).toBeInTheDocument();
+    const rightColumn = container.querySelectorAll('.cols > .col')[1];
+    const panels = rightColumn?.querySelectorAll('.form-panel');
+    expect(panels?.[0]?.textContent).toContain('Notifications');
   });
 });

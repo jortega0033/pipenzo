@@ -3,6 +3,7 @@ import { AppearancePanel } from './AppearancePanel.js';
 import { ConcurrencyPanel } from './ConcurrencyPanel.js';
 import { ConnectedReposPanel } from './ConnectedReposPanel.js';
 import { LessonsPanel } from './LessonsPanel.js';
+import { NotificationsPanel } from './NotificationsPanel.js';
 
 /**
  * The Settings screen's page body (issue #125): the per-machine framing note, then the two-column
@@ -25,10 +26,10 @@ import { LessonsPanel } from './LessonsPanel.js';
  * rhythm the canvas draws — which is why `ConnectedReposPanel` and `LessonsPanel` share one `.col`
  * below rather than each claiming a grid cell of their own. The left column holds Connected repos
  * (#125), Concurrency (#126) and Lesson memory (#128), in the canvas's own order; the right holds
- * Account / Providers / Disconnect (#130). The remaining canvas panels are their own still-open
- * tickets — Default mode (#127) slots into the left column below Concurrency once built,
- * Notifications (#129) into the right — and each drops into its column here rather than restating
- * the layout.
+ * Notifications (#129) ahead of Account / Providers / Disconnect (#130), matching the canvas's own
+ * right-column order. The remaining canvas panel is its own still-open ticket — Default mode (#127)
+ * slots into the left column below Concurrency once built — and it will drop into its column here
+ * rather than restating the layout.
  *
  * ## What this is not
  *
@@ -66,6 +67,7 @@ export function SettingsPage({
           <LessonsPanel />
         </div>
         <div className="col">
+          <NotificationsPanel />
           <AccountPanel />
           <AppearancePanel />
         </div>
