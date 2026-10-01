@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -447,6 +447,36 @@ describe('ReviewGatesRunner — honesty of the evidence', () => {
     }
     expect(report.outcome).toBe('approved');
     expect(h.ran).not.toContain('gitleaks');
+  });
+
+  /**
+   * Issue #320: `--config auto` made semgrep fetch its ruleset from Semgrep's own registry at
+   * gate-run time -- unpinned, and unreviewed by anyone in this project, inside a security gate.
+   * Asserting only that `semgrep` ran (as the "absent scanner" test above does) would pass just as
+   * happily with `auto` still wired in; this pins the actual `--config` argv value, so a future
+   * regression back to `auto` (or to any other live-registry reference) fails this test directly.
+   */
+  it('invokes semgrep with --config pointed at the vendored ruleset directory, never auto', async () => {
+    const h = harness({ specTests: true });
+    await h.runner.run(request());
+
+    const semgrepRun = h.commandRuns.find((argv) => argv[0] === 'semgrep');
+    expect(semgrepRun).toBeDefined();
+    const configIndex = semgrepRun?.indexOf('--config') ?? -1;
+    expect(configIndex).toBeGreaterThan(-1);
+    const configValue = semgrepRun?.[configIndex + 1];
+
+    expect(configValue).not.toBe('auto');
+    // Resolved the same way `review-gates.ts` resolves `SEMGREP_CONFIG_DIR`: relative to this
+    // module's own location, one directory above `apps/daemon/test/` -- never derived from the
+    // worktree path being reviewed, which is a different repo entirely.
+    const expectedConfigDir = fileURLToPath(new URL('../semgrep-rules', import.meta.url));
+    expect(configValue).toBe(expectedConfigDir);
+
+    // AC-3: the vendored directory is real, committed content -- not an empty placeholder that
+    // would make "network-free" trivially true by having nothing for semgrep to load either way.
+    expect(existsSync(join(expectedConfigDir, 'security-audit.yml'))).toBe(true);
+    expect(existsSync(join(expectedConfigDir, 'secrets.yml'))).toBe(true);
   });
 
   it('records a missing spec-test generator as skipped, saying the tests were never written', async () => {

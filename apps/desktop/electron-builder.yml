@@ -43,6 +43,12 @@ files:
 extraResources:
   - from: ../daemon/dist
     to: daemon
+  # The semgrep review gate's vendored ruleset (issue #320) — `review-gates.ts`'s
+  # `SEMGREP_CONFIG_DIR` resolves it as `../semgrep-rules` relative to wherever the daemon's own
+  # entry file is running from, so it has to land as a sibling of `daemon/` here, exactly like it
+  # is a sibling of `apps/daemon/dist/` in the unpackaged build — not inside `to: daemon` above.
+  - from: ../daemon/semgrep-rules
+    to: semgrep-rules
   - from: assets/pipenzo/app-icons/png/pipenzo-icon-256.png
     to: assets/app-icons/png/pipenzo-icon-256.png
 
