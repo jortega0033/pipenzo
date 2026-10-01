@@ -85,6 +85,12 @@ import type {
   PipenzoTicketRiskActivityOpenedRequestV1,
   PipenzoTicketRiskApprovalOutcomeRequestV1,
   PipenzoTicketRiskResponseV1,
+  PipenzoRunStatusRequestV1,
+  PipenzoRunStatusResultV1,
+  PipenzoSteerRequestV1,
+  PipenzoSteerResultV1,
+  PipenzoStopRequestV1,
+  PipenzoStopResultV1,
   PipenzoMediumApprovalCaptureRequestV1,
   PipenzoMediumApprovalCaptureResultV1,
   PipenzoMediumApprovalDecideRequestV1,
@@ -201,6 +207,17 @@ export interface AgentDockBridge {
    * constructed.
    */
   reviewPipenzo(input: PipenzoReviewRequestV1): Promise<PipenzoReviewResultV1>;
+  /**
+   * Live run controls (issue #103): Steer/Stop for a ticket's dispatched Implement session,
+   * addressed by ticket id only -- the daemon resolves which session that is. `runStatusPipenzo`
+   * is a read-only poll for `RunControls.tsx`'s own "present only while genuinely running" gate;
+   * `steerPipenzo` delivers one instruction at the session's current turn boundary without ever
+   * touching the ticket's approved spec; `stopPipenzo` abandons only that turn and parks the
+   * ticket on `pipenzo:needs-human`, never discarding a commit or the worktree.
+   */
+  runStatusPipenzo(input: PipenzoRunStatusRequestV1): Promise<PipenzoRunStatusResultV1>;
+  steerPipenzo(input: PipenzoSteerRequestV1): Promise<PipenzoSteerResultV1>;
+  stopPipenzo(input: PipenzoStopRequestV1): Promise<PipenzoStopResultV1>;
   /**
    * The claim pre-flight (issue #83). Assigns the issue and then re-reads it uncached; an
    * `claimed_elsewhere` outcome means the race was lost and the ticket must not be started.

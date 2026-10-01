@@ -34,6 +34,8 @@ import {
   AwaitedPhaseSessions,
   DispatchOnlyPhaseSessions,
 } from './pipenzo-phase-sessions.js';
+import { V2SessionFacade } from './v2-session-facade.js';
+import { V2RunControlSessions } from './pipenzo-run-control-sessions.js';
 import { ExecFileGateCommands } from './gate-commands.js';
 import { OctokitGitHubClient, registerKnownSecret } from './github-client.js';
 import { ConditionalRequestCache } from './github-conditional-cache.js';
@@ -306,6 +308,12 @@ async function main() {
     events: phaseEvents,
   });
 
+  // Issue #103: its own `V2SessionFacade`, not `routes/v2-sessions.ts`'s -- a fresh facade
+  // `hydrate()`s from `sessionManager.executionGraphStore`, the same durable state either instance
+  // reads, so two independent facades over the same manager see the same live sessions rather than
+  // needing to share one object.
+  const pipenzoRunControlSessions = new V2RunControlSessions(new V2SessionFacade(sessionManager));
+
   const phaseService = new PipenzoPhaseService({
     // Refine and Draft read a repository path the renderer names, so it must be a trusted
     // workspace; Review reads a daemon-owned worktree resolved by id.
@@ -334,6 +342,9 @@ async function main() {
     // Issue #126: refuses a new Implement dispatch once the workspace's configured execution limit
     // is already at capacity.
     executionLimiter,
+    // Issue #103: lets steerImplement()/stopImplement()/runStatus() reach a dispatched session's
+    // real, current status rather than guessing from the ticket's own label.
+    runControls: pipenzoRunControlSessions,
   });
 
   // Pipenzo's polling reconciler (issue #231): the loop that makes the connected-repos list worth

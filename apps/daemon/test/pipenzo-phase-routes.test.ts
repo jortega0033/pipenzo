@@ -687,6 +687,7 @@ describe('POST /v2/pipenzo/implement', () => {
         id: WORKTREE_ID,
         path: WORKTREE_PATH,
         branch: 'issue-184',
+        baseCommit: BASE_SHA,
       });
     });
 

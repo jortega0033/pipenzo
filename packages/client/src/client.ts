@@ -109,6 +109,12 @@ import {
   pipenzoImplementCommitsV1Schema,
   pipenzoImplementDiffRequestV1Schema,
   pipenzoImplementDiffResultV1Schema,
+  pipenzoRunStatusRequestV1Schema,
+  pipenzoRunStatusResultV1Schema,
+  pipenzoSteerRequestV1Schema,
+  pipenzoSteerResultV1Schema,
+  pipenzoStopRequestV1Schema,
+  pipenzoStopResultV1Schema,
   pipenzoReviewRequestV1Schema,
   pipenzoReviewResultV1Schema,
   pipenzoIssueClaimRequestV1Schema,
@@ -167,6 +173,12 @@ import {
   type PipenzoImplementCommitsV1,
   type PipenzoImplementDiffRequestV1,
   type PipenzoImplementDiffResultV1,
+  type PipenzoRunStatusRequestV1,
+  type PipenzoRunStatusResultV1,
+  type PipenzoSteerRequestV1,
+  type PipenzoSteerResultV1,
+  type PipenzoStopRequestV1,
+  type PipenzoStopResultV1,
   type PipenzoReviewRequestV1,
   type PipenzoReviewResultV1,
   type PipenzoIssueClaimRequestV1,
@@ -463,6 +475,16 @@ export class AgentDockClient {
       ): Promise<PipenzoImplementDiffResultV1> => this.implementDiffPipenzoV1(input),
       review: (input: PipenzoReviewRequestV1): Promise<PipenzoReviewResultV1> =>
         this.reviewPipenzoV1(input),
+      /**
+       * Steer/Stop for a ticket's dispatched Implement session (issue #103), addressed by ticket
+       * id only -- the daemon resolves which session that is and whether it is genuinely live
+       * right now, never a session or worktree id this client could get out of date.
+       */
+      runStatus: (input: PipenzoRunStatusRequestV1): Promise<PipenzoRunStatusResultV1> =>
+        this.runStatusPipenzoV1(input),
+      steer: (input: PipenzoSteerRequestV1): Promise<PipenzoSteerResultV1> =>
+        this.steerPipenzoV1(input),
+      stop: (input: PipenzoStopRequestV1): Promise<PipenzoStopResultV1> => this.stopPipenzoV1(input),
       claimIssue: (input: PipenzoIssueClaimRequestV1): Promise<PipenzoIssueClaimResultV1> =>
         this.claimPipenzoIssueV1(input),
       createIssue: (input: PipenzoIssueCreateRequestV1): Promise<PipenzoIssueCreateResultV1> =>
@@ -1139,6 +1161,45 @@ export class AgentDockClient {
       '/v2/pipenzo/implement/diff',
       pipenzoImplementDiffResultV1Schema,
       'pipenzo implement diff',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) },
+      { expectedStatus: 200 },
+    );
+  }
+
+  /** Issue #103's read-only poll: whether a ticket's most recent Implement attempt is genuinely
+   *  live right now. */
+  private async runStatusPipenzoV1(
+    input: PipenzoRunStatusRequestV1,
+  ): Promise<PipenzoRunStatusResultV1> {
+    const parsed = validateInput(pipenzoRunStatusRequestV1Schema, input, 'pipenzo run status request');
+    return this.requestV2(
+      '/v2/pipenzo/implement/status',
+      pipenzoRunStatusResultV1Schema,
+      'pipenzo run status',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) },
+      { expectedStatus: 200 },
+    );
+  }
+
+  /** Issue #103: delivers one instruction to a genuinely running Implement session. */
+  private async steerPipenzoV1(input: PipenzoSteerRequestV1): Promise<PipenzoSteerResultV1> {
+    const parsed = validateInput(pipenzoSteerRequestV1Schema, input, 'pipenzo steer request');
+    return this.requestV2(
+      '/v2/pipenzo/implement/steer',
+      pipenzoSteerResultV1Schema,
+      'pipenzo steer result',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) },
+      { expectedStatus: 200 },
+    );
+  }
+
+  /** Issue #103: abandons only the running Implement session's current in-flight turn. */
+  private async stopPipenzoV1(input: PipenzoStopRequestV1): Promise<PipenzoStopResultV1> {
+    const parsed = validateInput(pipenzoStopRequestV1Schema, input, 'pipenzo stop request');
+    return this.requestV2(
+      '/v2/pipenzo/implement/stop',
+      pipenzoStopResultV1Schema,
+      'pipenzo stop result',
       { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed) },
       { expectedStatus: 200 },
     );

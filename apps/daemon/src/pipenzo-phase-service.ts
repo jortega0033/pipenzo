@@ -21,7 +21,13 @@ import type {
   PipenzoRefineResultV1,
   PipenzoReviewRequestV1,
   PipenzoReviewResultV1,
+  PipenzoRunStatusRequestV1,
+  PipenzoRunStatusResultV1,
   PipenzoStackApprovalDecideChildV1,
+  PipenzoSteerRequestV1,
+  PipenzoSteerResultV1,
+  PipenzoStopRequestV1,
+  PipenzoStopResultV1,
   PipenzoTicketRecordV1,
   RefineEstimateV1,
   RefineProposedSplitPartV1,
@@ -49,7 +55,8 @@ import {
   type SpecTestGeneratorPort,
 } from './review-gates.js';
 import type { OwnedWorktreeLocator } from './publish-service.js';
-import type { PipenzoGitRunner } from './pipenzo-git.js';
+import { runGitCommand, type PipenzoGitRunner } from './pipenzo-git.js';
+import type { PipenzoRunControlSessionPort } from './pipenzo-run-control-sessions.js';
 import { detectScreenshotCapability } from './screenshot-capture.js';
 import { IssueDraftError, IssueDrafter } from './issue-drafter.js';
 import { readPipenzoRepoConfig, type PipenzoCommandConfig } from './pipenzo-repo-config.js';
@@ -179,6 +186,14 @@ export interface PipenzoPhaseServiceOptions {
    * see `pipenzo-execution-limiter.ts`'s module comment for why the two are separate.
    */
   executionLimiter?: PipenzoExecutionLimiter;
+  /**
+   * The seam onto agentdock's generic V2 session commands (issue #103's Steer/Stop) --
+   * `V2RunControlSessions` in production. Optional so a service built without one (every test and
+   * caller that predates this ticket) still refines/implements/reviews exactly as before; it just
+   * has no way to steer or stop a dispatched session, which `steerImplement()`/`stopImplement()`
+   * both refuse outright rather than guessing at.
+   */
+  runControls?: PipenzoRunControlSessionPort;
 }
 
 export class PipenzoPhaseService {
@@ -203,6 +218,8 @@ export class PipenzoPhaseService {
   readonly #ticketWorktrees: StackTicketStorePort | undefined;
   readonly #logger: Logger | undefined;
   readonly #audit: Pick<PipenzoAuditStore, 'append'> | undefined;
+  readonly #runControls: PipenzoRunControlSessionPort | undefined;
+  readonly #runGit: PipenzoGitRunner;
 
   constructor(options: PipenzoPhaseServiceOptions) {
     this.#refine = new RefineSubagent(options.refineSessions, options.runGit);
@@ -232,6 +249,8 @@ export class PipenzoPhaseService {
     this.#ticketWorktrees = options.tickets;
     this.#logger = options.logger;
     this.#audit = options.audit;
+    this.#runControls = options.runControls;
+    this.#runGit = options.runGit ?? runGitCommand;
   }
 
   /* ---------------------------------------------------------------- refine */
@@ -571,7 +590,16 @@ export class PipenzoPhaseService {
       attachTicketWorktree(
         this.#ticketWorktrees,
         request.ticketId,
-        { id: started.worktreeId, path: started.worktreePath, branch: started.branch },
+        {
+          id: started.worktreeId,
+          path: started.worktreePath,
+          branch: started.branch,
+          // Issue #103: recorded now, alongside `path`/`branch`, so `stopImplement()`/`runStatus()`
+          // can report a real commit count while the session is still running -- see
+          // `pipenzoTicketWorktreeV1Schema.baseCommit`'s own doc comment for why this is not the
+          // same field `implement.baseCommit` caches later, on a human's first collected diff.
+          baseCommit: started.baseCommit,
+        },
         this.#logger,
       );
     }
@@ -764,6 +792,164 @@ export class PipenzoPhaseService {
     } catch (error) {
       throw toPhaseError(error);
     }
+  }
+
+  /* --------------------------------------------------- run controls (issue #103) */
+
+  /**
+   * Resolves a ticket's most recent Implement attempt to a session that is genuinely live right
+   * now, or throws the one of `run_not_found`/`run_not_active` that explains why not. Shared by
+   * `steerImplement()` and `stopImplement()` — both need exactly this before they may touch a
+   * session, and neither may guess: `RunControls.tsx`'s own "no absent state" rule is only honest
+   * if the caller checked a real, current status rather than a ticket's own possibly-stale label.
+   *
+   * Throws a plain `Error` (not `PipenzoPhaseError`) when this service was built without a phase
+   * machine or a run-control port — the same "misconfiguration, not a runtime outcome" distinction
+   * `acceptStack()`/`rejectStack()` already draw for their own required dependencies.
+   */
+  async #resolveRunningAttempt(
+    ticketId: string,
+  ): Promise<{ ticket: PipenzoTicketRecordV1; attempt: PipenzoTicketRecordV1['attempts'][number]; turnId: string }> {
+    if (!this.#machine) {
+      throw new Error('steering or stopping a run requires a phase machine to be configured');
+    }
+    if (!this.#runControls) {
+      throw new Error('steering or stopping a run requires a run-control session port to be configured');
+    }
+    const current = await this.#machine.read(ticketId);
+    const attempt = current.ticket.attempts.at(-1);
+    if (!attempt) {
+      throw new PipenzoPhaseError('run_not_found', 'this ticket has no dispatched Implement attempt');
+    }
+    const status = this.#runControls.status(attempt.sessionId);
+    if (!status?.active || !status.turnId) {
+      throw new PipenzoPhaseError(
+        'run_not_active',
+        'this ticket’s dispatched session is not running right now',
+      );
+    }
+    return { ticket: current.ticket, attempt, turnId: status.turnId };
+  }
+
+  /**
+   * Commits already on `worktree.branch`, counted fresh from the worktree itself rather than
+   * cached anywhere — the one number `RunControls.tsx` needs that nothing already on the ticket
+   * record can answer while a session is still running (`ticket.implement` is only ever written
+   * once a human has collected a diff; see `pipenzoTicketImplementRangeV1Schema`'s own doc
+   * comment). Reads only; never stages, commits, or resets anything in the worktree.
+   *
+   * `0` for a worktree this service does not own, or a baseCommit this ticket has never recorded
+   * (a worktree attached before issue #103) — the same "cannot say, so say the harmless thing"
+   * shape `commitCount`'s own schema comment describes, not a thrown error over a display number.
+   */
+  async #commitCount(worktreeId: string, baseCommit: string | undefined): Promise<number> {
+    if (!baseCommit || !/^[0-9a-f]{40}$/.test(baseCommit)) return 0;
+    const location = this.#worktrees.ownedLocation(worktreeId);
+    if (!location) return 0;
+    try {
+      const result = await this.#runGit(
+        ['rev-list', '--count', '--end-of-options', `${baseCommit}..HEAD`],
+        location.path,
+      );
+      const count = Number.parseInt(result.stdout.trim(), 10);
+      return result.code === 0 && Number.isInteger(count) && count >= 0 ? count : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
+   * A read-only poll for `RunControls.tsx`'s own gate: "present only while genuinely running."
+   * Never throws over a ticket that is not running — that is one of its two ordinary answers, not
+   * a failure — so this deliberately does not reuse `#resolveRunningAttempt` above, which throws
+   * for exactly that case on purpose for Steer/Stop's different needs.
+   */
+  async runStatus(request: PipenzoRunStatusRequestV1): Promise<PipenzoRunStatusResultV1> {
+    if (!this.#machine) {
+      throw new Error('run status requires a phase machine to be configured');
+    }
+    const current = await this.#machine.read(request.ticketId);
+    const attempt = current.ticket.attempts.at(-1);
+    const status = attempt && this.#runControls ? this.#runControls.status(attempt.sessionId) : undefined;
+    if (!attempt || !status?.active || !current.ticket.worktree) {
+      return { live: false };
+    }
+    const commitCount = await this.#commitCount(
+      current.ticket.worktree.id,
+      current.ticket.worktree.baseCommit,
+    );
+    return {
+      live: true,
+      sessionId: attempt.sessionId,
+      tier: attempt.tier,
+      model: attempt.model,
+      branch: current.ticket.worktree.branch,
+      commitCount,
+    };
+  }
+
+  /**
+   * Delivers one instruction to a genuinely running Implement session, at its current turn
+   * boundary (issue #103). Dispatched as `input.steer` through `PipenzoRunControlSessionPort` —
+   * agentdock's own session machinery is what actually holds the instruction until the session's
+   * next tool boundary and records it as a fresh turn in that session's own transcript; nothing in
+   * this method touches the ticket's cached Refine spec, because nothing here ever reads or writes
+   * `ticket.spec`.
+   */
+  async steerImplement(request: PipenzoSteerRequestV1): Promise<PipenzoSteerResultV1> {
+    const { attempt, turnId } = await this.#resolveRunningAttempt(request.ticketId);
+    const result = await this.#runControls!.steer(attempt.sessionId, turnId, request.instruction);
+    if (!result.ok) {
+      throw new PipenzoPhaseError(
+        'run_not_active',
+        'this ticket’s dispatched session is not running right now',
+      );
+    }
+    return { sessionId: attempt.sessionId };
+  }
+
+  /**
+   * Abandons only the running Implement session's current in-flight turn (issue #103) — dispatched
+   * as `session.interrupt`, agentdock's own primitive for exactly that, never a worktree cleanup
+   * call. Neither this method nor `PipenzoRunControlSessionPort.interrupt()` beneath it ever calls
+   * `cleanupTerminalWorktree()`/`cleanupWorktree()` or removes a branch: the worktree this ticket
+   * owns, and every commit already on it, are exactly as they were the moment before this call, by
+   * construction rather than by care taken here.
+   *
+   * The ticket's label move to `pipenzo:needs-human` is the one consequence of a successful stop,
+   * and it is best-effort like every other secondary write in this file (`#reportBudgetExhausted`
+   * is the closest precedent: same target label, same "the real action already happened, a
+   * bookkeeping failure here must not be reported as if it hadn't" reasoning) — a human who just
+   * clicked Stop already sees a stopped run even if this particular relabel has to be retried.
+   */
+  async stopImplement(request: PipenzoStopRequestV1): Promise<PipenzoStopResultV1> {
+    const { ticket, attempt, turnId } = await this.#resolveRunningAttempt(request.ticketId);
+    if (!ticket.worktree) {
+      throw new PipenzoPhaseError('run_not_found', 'this ticket has no recorded worktree to stop into');
+    }
+    const result = await this.#runControls!.interrupt(attempt.sessionId, turnId);
+    if (!result.ok) {
+      throw new PipenzoPhaseError(
+        'run_not_active',
+        'this ticket’s dispatched session is not running right now',
+      );
+    }
+    const worktree = ticket.worktree;
+    try {
+      await this.#machine!.transition(request.ticketId, 'pipenzo:needs-human');
+    } catch (error) {
+      this.#logger?.warn('pipenzo: stopped a run but could not park its ticket on pipenzo:needs-human', {
+        ticketId: request.ticketId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    const commitCount = await this.#commitCount(worktree.id, worktree.baseCommit);
+    return {
+      worktreeId: worktree.id,
+      branch: worktree.branch,
+      commitCount,
+      label: 'pipenzo:needs-human',
+    };
   }
 
   /* ---------------------------------------------------------------- review */
