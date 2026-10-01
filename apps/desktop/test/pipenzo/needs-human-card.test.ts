@@ -163,14 +163,68 @@ describe('classifyNeedsHumanCard', () => {
     expect(classifyNeedsHumanCard(ticket).variant).toBe('awaiting-stack-approval');
   });
 
-  it('never returns claim-conflict or plan-review -- no real backend signal exists for either yet', () => {
-    // A ticket carrying none of the four specific labels and no attempts is exactly the shape a
-    // lost claim race or an unbuilt plan-review gate would produce today: it always falls back to
-    // the honest 'generic' park rather than a variant this module cannot back with real data.
+  it('never returns claim-conflict -- no real backend signal exists for it yet', () => {
+    // A ticket carrying none of the five specific signals and no attempts is exactly the shape a
+    // lost claim race would produce today: it always falls back to the honest 'generic' park
+    // rather than a variant this module cannot back with real data.
     const ticket = makeTicket({ labels: ['pipenzo:needs-human'], attempts: [] });
     const card = classifyNeedsHumanCard(ticket);
     expect(card.variant).not.toBe('claim-conflict');
-    expect(card.variant).not.toBe('plan-review');
     expect(card.variant).toBe('generic');
+  });
+
+  it(
+    'classifies a bare pipenzo:needs-human ticket carrying planReview as plan-review, using the real base estimate (issue #15)',
+    () => {
+      const ticket = makeTicket({
+        labels: ['pipenzo:needs-human'],
+        estimate: { lines: 38, files: 2, layered: false },
+        planReview: {
+          summary: 'Persist poll ETags per repo and resource in the ticket store.',
+          acceptanceCriteria: [
+            {
+              id: 'AC-1',
+              kind: 'event',
+              text: "When a poll completes, the reconciler shall store the response ETag.",
+            },
+          ],
+          outOfScope: ['The secondary-limit handling.'],
+          filesLikelyTouched: ['apps/daemon/src/github-reconciler.ts'],
+          estimate: { changedLines: 38, filesTouched: 2, layered: false },
+          openQuestions: [],
+        },
+      });
+      const card = classifyNeedsHumanCard(ticket);
+      expect(card.variant).toBe('plan-review');
+      if (card.variant !== 'plan-review') throw new Error('unreachable');
+      expect(card.lines).toBe(38);
+      expect(card.files).toBe(2);
+      expect(card.layered).toBe(false);
+    },
+  );
+
+  it('prioritizes plan-review over the generic fallback even with three-plus stale attempts from a prior implement cycle', () => {
+    const ticket = makeTicket({
+      labels: ['pipenzo:needs-human'],
+      attempts: [
+        { sessionId: 's1', tier: 'cheap', model: 'sonnet', outcome: 'gate_failed' },
+        { sessionId: 's2', tier: 'mid', model: 'sonnet', outcome: 'gate_failed' },
+        { sessionId: 's3', tier: 'mid', model: 'sonnet', outcome: 'timed_out' },
+      ],
+      planReview: {
+        summary: 'A revised plan after changes were requested.',
+        acceptanceCriteria: [{ id: 'AC-1', kind: 'ubiquitous', text: 'The system shall do the thing.' }],
+        outOfScope: ['Everything else.'],
+        filesLikelyTouched: [],
+        estimate: { changedLines: 10, filesTouched: 1, layered: false },
+        openQuestions: [],
+      },
+    });
+    expect(classifyNeedsHumanCard(ticket).variant).toBe('plan-review');
+  });
+
+  it('does not misclassify a plain generic needs-human ticket as plan-review when planReview is absent', () => {
+    const ticket = makeTicket({ labels: ['pipenzo:needs-human'], attempts: [] });
+    expect(classifyNeedsHumanCard(ticket).variant).toBe('generic');
   });
 });

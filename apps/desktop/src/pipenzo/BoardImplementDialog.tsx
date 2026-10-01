@@ -55,6 +55,16 @@ interface PreparedCheckout {
  * Only then does `ImplementDialog` mount, with that path. From there on nothing here is involved:
  * Refine, the claim pre-flight, the worktree preview and the implement dispatch are all
  * `ImplementDialog`'s own, unchanged.
+ *
+ * `ticket.ticketId` is threaded through to `ImplementDialog`'s own `ticket` prop (issue #15): a
+ * board-started ticket is exactly the real, tracked ticket the plan-review gate needs an id for --
+ * without it, a clean Refine verdict would never park this ticket for a human's decision at all,
+ * and `implement()`'s own `plan_review_pending` refusal (see `PipenzoPhaseService.implement()`'s
+ * doc comment) would have nothing to check. This is also what makes budget tracking, attempt
+ * recording, and worktree-id caching (issues #143/#201/#159) actually fire for a board-dispatched
+ * ticket, all three of which `ImplementDialog`'s own refine/implement calls were already wired to
+ * honor the moment a `ticketId` is present -- this was simply never supplied for the board's own
+ * entry point until now.
  */
 export function BoardImplementDialog({
   ticket,
@@ -94,7 +104,7 @@ export function BoardImplementDialog({
       <ImplementDialog
         open
         onClose={onClose}
-        ticket={{ num: ticket.issueNumber, title, repo: ticket.repo }}
+        ticket={{ num: ticket.issueNumber, title, repo: ticket.repo, ticketId: ticket.ticketId }}
         cwd={prepared.repositoryPath}
         provider={provider}
         onStarted={(started, spec) => onStarted?.(started, spec)}

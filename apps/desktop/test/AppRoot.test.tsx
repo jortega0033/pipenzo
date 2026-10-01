@@ -89,6 +89,8 @@ function realBridge(
     decideHighApproval: vi.fn(),
     captureStackApproval: vi.fn(),
     decideStackApproval: vi.fn(),
+    capturePlanReview: vi.fn(),
+    decidePlanReview: vi.fn(),
     onPipenzoPhaseEvent: vi.fn(() => () => {}),
     onPipenzoGitHubHealth: vi.fn(() => () => {}),
     pollGitHubHealthNow: vi.fn(async () => {}),
@@ -418,10 +420,12 @@ describe('AppRoot pre-app gate (issue #113)', () => {
 
     expect(await screen.findByText('Implement started on #42')).toBeInTheDocument();
     expect(screen.getByText('octocat/hello-world · issue-42')).toBeInTheDocument();
+    // Issue #15: `ticketId` now rides along too -- see `BoardImplementDialog.tsx`'s own doc comment.
     expect(bridge.implementPipenzo).toHaveBeenCalledWith({
       spec,
       repositoryPath: checkout,
       provider: 'claude',
+      ticketId: '00000000-0000-4000-8000-000000000042',
     });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     // The dialog closing is not "back to the board" any more -- it is the real DiffReviewScreen

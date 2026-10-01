@@ -45,9 +45,13 @@ function installBridge(
   options: {
     tickets?: readonly PipenzoTicketViewV1[];
     connectedRepos?: readonly string[];
+    /** Issue #15: overrides for the plan-review gate's two bridge calls, which most of this
+     *  describe block's fixtures never reach (no ticket here carries `planReview`). Individual
+     *  tests that do pass real mocks here rather than widening every other test's own fixture. */
+    overrides?: Record<string, unknown>;
   } = {},
 ) {
-  const { tickets = [], connectedRepos = ['octocat/hello-world'] } = options;
+  const { tickets = [], connectedRepos = ['octocat/hello-world'], overrides = {} } = options;
   const pipenzoListTickets = vi.fn().mockResolvedValue({ tickets });
   // More than one subscriber is real: `usePipenzoTickets` (this shell), and, once TicketDetail is
   // open, `useTicketPhaseStepper` for both `PhaseStepperPanel` and `ActivityStreamPanel`, each via
@@ -115,6 +119,14 @@ function installBridge(
     pipenzoRecordRiskActivityOpened: vi.fn().mockResolvedValue({
       risk: { score: 0, lastResetAt: '2026-01-01T00:00:00.000Z' },
     }),
+    // Issue #15: `PlanReviewGate` calls `capturePlanReview` unconditionally whenever
+    // `ticket.planReview` is set; every fixture in this file predates that field and never sets
+    // it, so these never fire for them. Rejecting by default (rather than hanging) means a test
+    // that forgets to override them for a `planReview`-carrying fixture fails loudly instead of
+    // timing out.
+    capturePlanReview: vi.fn().mockRejectedValue(new Error('capturePlanReview not mocked')),
+    decidePlanReview: vi.fn().mockRejectedValue(new Error('decidePlanReview not mocked')),
+    ...overrides,
   } as never);
   return {
     pipenzoListTickets,
@@ -1038,10 +1050,15 @@ describe('PipenzoAppShell', () => {
       expect.objectContaining({ issueNumber: 42, repo: REPO }),
       IMPLEMENTED,
     );
+    // Issue #15: `ticketId` now rides along too -- see `BoardImplementDialog.tsx`'s own doc comment
+    // on why a board-dispatched ticket has to carry its id through to this call for the
+    // plan-review gate (and budget tracking, attempt recording, worktree-id caching) to have
+    // anything to key off.
     expect(bridge.implementPipenzo).toHaveBeenCalledWith({
       spec: SPEC,
       repositoryPath: CHECKOUT,
       provider: 'claude',
+      ticketId: 'a',
     });
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     await waitFor(() => expect(bridge.pipenzoListTickets).toHaveBeenCalledTimes(2));
@@ -1405,6 +1422,135 @@ describe('PipenzoAppShell', () => {
 
       await screen.findByText('Cumulative risk');
       expect(screen.queryByText('Declined at Refine — needs pre-scoping')).not.toBeInTheDocument();
+    });
+
+    /**
+     * Issue #15 (UI half #101): `PlanReviewGate` (and the `PlanReviewPanel` it wraps) had no
+     * caller anywhere in the live app before this. `planReview` is `PipenzoTicketViewV1`'s own
+     * real, wire-persisted field (`pipenzoTicketPlanReviewV1Schema`) -- populated only once
+     * `#reportPlanReviewGate` has cached a clean-verdict spec onto the ticket record, the same
+     * shape `RefusalPanel`'s own test above exercises for a different field. Unlike `RefusalPanel`,
+     * this panel makes its own live `capturePlanReview` call on mount (see `use-plan-review.ts`),
+     * so this fixture carries no label at all for it -- there is none, by design.
+     */
+    it('renders PlanReviewGate with real data for a ticket carrying a cached plan review', async () => {
+      const PLAN_SPEC = {
+        summary: 'Persist poll ETags per repo and resource in the ticket store.',
+        acceptanceCriteria: [
+          {
+            id: 'AC-1',
+            kind: 'event' as const,
+            text: "When a poll completes, the reconciler shall store the response ETag.",
+          },
+        ],
+        outOfScope: ['The secondary-limit handling.'],
+        filesLikelyTouched: ['apps/daemon/src/github-reconciler.ts'],
+        estimate: { changedLines: 38, filesTouched: 2, layered: false },
+        openQuestions: [],
+      };
+      installBridge({
+        tickets: [
+          makeTicket({
+            ticketId: 'a',
+            issueNumber: 98,
+            lane: 'needs-human',
+            title: 'Persist poll ETags per repo and resource',
+            labels: ['pipenzo:needs-human'],
+            planReview: PLAN_SPEC,
+          }),
+        ],
+        overrides: {
+          capturePlanReview: vi
+            .fn()
+            .mockResolvedValue({ approvalId: '00000000-0000-4000-8000-000000000f01', spec: PLAN_SPEC }),
+        },
+      });
+      render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+
+      fireEvent.click(await screen.findByText('Persist poll ETags per repo and resource'));
+
+      expect(
+        await screen.findByText('Plan review — approve the spec before Implement starts'),
+      ).toBeInTheDocument();
+      expect(screen.getByText(/AC-1/)).toBeInTheDocument();
+      expect(screen.getByText('The secondary-limit handling.')).toBeInTheDocument();
+    });
+
+    it('renders no PlanReviewGate for an ordinary needs-human ticket with no planReview', async () => {
+      installBridge({
+        tickets: [
+          makeTicket({
+            ticketId: 'a',
+            issueNumber: 115,
+            lane: 'needs-human',
+            title: 'Parked for an unrelated reason',
+            labels: ['pipenzo:needs-human'],
+          }),
+        ],
+      });
+      render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+
+      fireEvent.click(await screen.findByText('Parked for an unrelated reason'));
+
+      await screen.findByText('Cumulative risk');
+      expect(
+        screen.queryByText('Plan review — approve the spec before Implement starts'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('Approve resolves the real repository checkout and dispatches decidePlanReview with it', async () => {
+      const PLAN_SPEC = {
+        summary: 'Persist poll ETags per repo and resource in the ticket store.',
+        acceptanceCriteria: [
+          { id: 'AC-1', kind: 'ubiquitous' as const, text: 'The system shall persist ETags.' },
+        ],
+        outOfScope: ['Everything else.'],
+        filesLikelyTouched: [],
+        estimate: { changedLines: 10, filesTouched: 1, layered: false },
+        openQuestions: [],
+      };
+      const decidePlanReview = vi.fn().mockResolvedValue({
+        decision: 'approve',
+        worktreeId: '00000000-0000-4000-8000-000000000f02',
+        branch: 'issue-98',
+        baseCommit: 'a'.repeat(40),
+        sessionId: 'session-implement',
+      });
+      installBridge({
+        tickets: [
+          makeTicket({
+            ticketId: 'a',
+            issueNumber: 98,
+            lane: 'needs-human',
+            title: 'Persist poll ETags per repo and resource',
+            repo: REPO,
+            labels: ['pipenzo:needs-human'],
+            planReview: PLAN_SPEC,
+          }),
+        ],
+        overrides: {
+          capturePlanReview: vi
+            .fn()
+            .mockResolvedValue({ approvalId: '00000000-0000-4000-8000-000000000f01', spec: PLAN_SPEC }),
+          resolvePipenzoCheckout: vi
+            .fn()
+            .mockResolvedValue({ repo: REPO, repositoryPath: '/state/repos/jortega0033/pipenzo' }),
+          decidePlanReview,
+        },
+      });
+      render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+
+      fireEvent.click(await screen.findByText('Persist poll ETags per repo and resource'));
+      fireEvent.click(await screen.findByRole('button', { name: /Approve & start Implement/ }));
+
+      await waitFor(() =>
+        expect(decidePlanReview).toHaveBeenCalledWith({
+          ticketId: 'a',
+          approvalId: '00000000-0000-4000-8000-000000000f01',
+          decision: 'approve',
+          implement: { repositoryPath: '/state/repos/jortega0033/pipenzo', provider: 'claude' },
+        }),
+      );
     });
 
     it('goes back to Board from the crumb trail\'s "Board" link', async () => {

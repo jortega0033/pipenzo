@@ -734,6 +734,14 @@ export const PIPENZO_PHASE_ERROR_CODES = [
    * ticket's session ends and frees a slot.
    */
   'execution_limit_exceeded',
+  /**
+   * Issue #15: this ticket's local `awaitingPlanReview` marker is still set -- Refine finished with
+   * a clean verdict but no human has approved the plan yet. Refused rather than dispatched, the same
+   * "never queue past the limit" shape `execution_limit_exceeded` above already uses -- the only way
+   * to clear the marker is a real plan-review `approve` decision
+   * (`PipenzoPhaseService.approvePlanReview()`), never a direct `implement()` call.
+   */
+  'plan_review_pending',
   // github
   'token_missing',
   'repository_not_configured',

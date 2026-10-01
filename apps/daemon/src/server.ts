@@ -33,6 +33,8 @@ import { registerPipenzoHighApprovalRoutes } from './routes/pipenzo-high-approva
 import type { HighApprovalStore } from './high-approval-store.js';
 import { registerPipenzoStackApprovalRoutes } from './routes/pipenzo-stack-approval.js';
 import type { StackApprovalStore } from './stack-approval-store.js';
+import { registerPipenzoPlanReviewRoutes } from './routes/pipenzo-plan-review.js';
+import type { PlanReviewStore } from './plan-review-store.js';
 import type { PipenzoPhaseEventBus } from './pipenzo-phase-events.js';
 import type { PipenzoCrashRecovery } from './pipenzo-crash-recovery.js';
 import { registerPipenzoRecoveryRoutes } from './routes/pipenzo-recovery.js';
@@ -164,6 +166,13 @@ export interface BuildServerOptions {
    */
   stackApprovalStore?: StackApprovalStore;
   /**
+   * The plan-review gate's own approval store (issue #15, UI half #101), the third real-dispatch
+   * sibling of `stackApprovalStore` above. Optional for the same reason: a daemon assembled without
+   * one, or without the `phaseMachine`/`phaseService` it also needs, has no plan-review routes at
+   * all.
+   */
+  planReviewStore?: PlanReviewStore;
+  /**
    * Bounded local concurrency's settings (Pipenzo issue #126): Settings' Concurrency panel. Both
    * optional, and only ever registered together -- the route has nothing to enforce a change
    * against without the live limiter, and nothing to persist a change to without the store. A
@@ -290,6 +299,13 @@ export function buildServer(opts: BuildServerOptions): FastifyInstance {
         opts.phaseMachine,
         opts.phaseService,
         opts.stackApprovalStore,
+      );
+    if (opts.phaseMachine && opts.phaseService && opts.planReviewStore)
+      registerPipenzoPlanReviewRoutes(
+        app,
+        opts.phaseMachine,
+        opts.phaseService,
+        opts.planReviewStore,
       );
     if (opts.crashRecovery) registerPipenzoRecoveryRoutes(app, opts.crashRecovery);
     if (opts.connectedRepos && opts.pipenzoGitHubClient)

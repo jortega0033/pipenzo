@@ -3,6 +3,7 @@ import { ActivityStreamPanel } from './ActivityStreamPanel.js';
 import { CumulativeRiskStrip } from './CumulativeRiskStrip.js';
 import { ModelRoutingBlock } from './ModelRoutingBlock.js';
 import { PhaseStepperPanel } from './PhaseStepperPanel.js';
+import { PlanReviewGate } from './PlanReviewGate.js';
 import { RefusalPanel } from './RefusalPanel.js';
 import { RunControlsPanel } from './RunControlsPanel.js';
 import { SubscriptionHeadroomBlock } from './SubscriptionHeadroomBlock.js';
@@ -71,6 +72,27 @@ import { TicketSwitcherPanel } from './TicketSwitcherPanel.js';
  * the callback is exactly what `RefusalPanel`'s own doc comment already sanctions for a caller
  * without a real retry to offer; inventing one with nothing behind it would be worse than the
  * button not existing at all.
+ *
+ * ## `PlanReviewGate` (issue #15, UI half #101)
+ *
+ * Renders at the top of the stream, ahead of `RefusalPanel` and the activity feed, for any ticket
+ * whose view carries `planReview` -- `toTicketView()`'s own real, wire-persisted projection
+ * (`pipenzoTicketPlanReviewV1Schema`, `@agent-dock/shared`), populated only when the ticket's local
+ * `awaitingPlanReview` marker is genuinely set and its cached spec survived. No label to check here
+ * the way `RefusalPanel`'s own `pipenzo:needs-pre-scoping` is: the gate deliberately parks a ticket
+ * under the bare `pipenzo:needs-human` label instead of a dedicated one (see
+ * `pipenzoTicketRecordV1Schema.awaitingPlanReview`'s own doc comment for why), so `planReview`'s
+ * mere presence on the wire is the one real signal this container has, mirroring exactly how
+ * `needs-human-card.ts`'s own `classifyNeedsHumanCard` reads the same field for the board card.
+ *
+ * Unlike `RefusalPanel`, this is not purely presentational over already-fetched ticket fields --
+ * approving, requesting changes, or rejecting are real daemon round trips `PlanReviewGate` makes
+ * itself (via `use-plan-review.ts`), the same "does its own live bridge calls rather than trusting
+ * this possibly-stale list snapshot" shape `runControls`/`stepper` above already use. `repo` is
+ * passed through because `approve()` needs it to resolve a repository checkout the same way
+ * `BoardImplementDialog.tsx` already does -- see that hook's own doc comment for why this is the one
+ * plan-review action that needs more than `ticketId` alone, and why that does not reopen the
+ * `onRetryRefine`-shaped gap just closed above for a different action.
  */
 export function TicketDetailContainer({
   ticket,
@@ -94,6 +116,7 @@ export function TicketDetailContainer({
         <SubscriptionHeadroomBlock attempts={ticket.attempts} budget={ticket.budget} />
       }
     >
+      {ticket.planReview && <PlanReviewGate ticketId={ticket.ticketId} repo={ticket.repo} />}
       {ticket.labels.includes('pipenzo:needs-pre-scoping') && ticket.refusal && (
         <RefusalPanel
           repo={ticket.repo}

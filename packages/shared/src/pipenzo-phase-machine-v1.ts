@@ -1,6 +1,10 @@
 import { z } from 'zod';
 import { pipenzoIssueNumberV1Schema, pipenzoRepoRefV1Schema } from './pipenzo-phase-v1.js';
-import { refineEstimateV1Schema, refineProposedSplitPartV1Schema } from './pipenzo-refine-v1.js';
+import {
+  refineAcceptanceCriterionV1Schema,
+  refineEstimateV1Schema,
+  refineProposedSplitPartV1Schema,
+} from './pipenzo-refine-v1.js';
 import { riskGradeV1Schema } from './pipenzo-review-v1.js';
 import {
   PIPENZO_LABELS,
@@ -114,6 +118,40 @@ export const pipenzoTicketRefusalV1Schema = z
 export type PipenzoTicketRefusalV1 = z.infer<typeof pipenzoTicketRefusalV1Schema>;
 
 /**
+ * The plan-review gate's own wire-safe slice of a cached `RefineSpecV1` (issue #15), the sibling of
+ * `pipenzoTicketRefusalV1Schema` above for a different cause. Present on `pipenzoTicketViewV1Schema`
+ * only when both are true: the ticket's local-only `awaitingPlanReview` marker is set, and its
+ * cached `spec` survived -- `toTicketView()` in `routes/pipenzo-tickets.ts` is where that gate is
+ * enforced, mirroring `refusal`'s own. Unlike `refusal` (keyed off the real, GitHub-visible
+ * `pipenzo:needs-pre-scoping` label), there is no dedicated label for this one --
+ * `pipenzoTicketRecordV1Schema.awaitingPlanReview`'s own doc comment explains why the plan-review
+ * gate parks a ticket under the bare `pipenzo:needs-human` label instead, which means this
+ * projection's mere *presence* on the wire is itself the one signal a renderer has for "this bare
+ * needs-human ticket is specifically a pending plan review" -- `needs-human-card.ts`'s
+ * `classifyNeedsHumanCard` reads exactly that.
+ *
+ * Wider than `pipenzoTicketRefusalV1Schema` on purpose: a refusal report only needs to justify
+ * *why* Refine declined (the estimate, and an optional split), but a plan-review decision is judged
+ * on the plan itself -- the same `summary`/`acceptanceCriteria`/`outOfScope` fields that schema's own
+ * doc comment says are "Refine's business, not a 'why was this declined' report's" are exactly this
+ * schema's business, because approving a plan *is* Refine's business reaching a human.
+ * `proposedSplit` is deliberately absent: it only ever accompanies a `refuse`/`stack` verdict, never
+ * the clean `single` verdict this gate exists for.
+ */
+export const pipenzoTicketPlanReviewV1Schema = z
+  .object({
+    summary: z.string().min(1).max(4_000),
+    acceptanceCriteria: z.array(refineAcceptanceCriterionV1Schema).min(1).max(50),
+    outOfScope: z.array(z.string().min(1).max(500)).min(1).max(50),
+    filesLikelyTouched: z.array(z.string().min(1).max(1_024)).max(200),
+    estimate: refineEstimateV1Schema,
+    openQuestions: z.array(z.string().min(1).max(1_000)).max(20),
+  })
+  .strict();
+
+export type PipenzoTicketPlanReviewV1 = z.infer<typeof pipenzoTicketPlanReviewV1Schema>;
+
+/**
  * The ticket as it crosses the wire: `pipenzoTicketRecordV1Schema` with `worktree.path` removed.
  *
  * Spelled out field by field rather than derived with `.omit()` on a nested object, because a
@@ -147,6 +185,8 @@ export const pipenzoTicketViewV1Schema = z
     concurrency: pipenzoTicketConcurrencyV1Schema.optional(),
     /** See `pipenzoTicketRefusalV1Schema`'s own doc comment (issue #469). */
     refusal: pipenzoTicketRefusalV1Schema.optional(),
+    /** See `pipenzoTicketPlanReviewV1Schema`'s own doc comment (issue #15). */
+    planReview: pipenzoTicketPlanReviewV1Schema.optional(),
     attempts: z.array(pipenzoTicketAttemptV1Schema).max(50),
     budget: pipenzoTicketBudgetV1Schema,
     risk: pipenzoTicketRiskV1Schema,

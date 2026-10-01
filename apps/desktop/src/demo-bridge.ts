@@ -250,6 +250,13 @@ export function createDemoBridge(): AgentDockBridge {
     decideStackApproval: async () => {
       throw new Error('the stack-approval flow is not available in demo mode');
     },
+    // The plan-review gate (issue #15, UI half #101): same reasoning as the stubs above.
+    capturePlanReview: async () => {
+      throw new Error('the plan-review flow is not available in demo mode');
+    },
+    decidePlanReview: async () => {
+      throw new Error('the plan-review flow is not available in demo mode');
+    },
     // Demo mode has no daemon to stream from; subscribing is inert rather than an error.
     onPipenzoPhaseEvent: () => () => {},
     onPipenzoGitHubHealth: () => () => {},

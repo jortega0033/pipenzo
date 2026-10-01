@@ -97,6 +97,10 @@ import {
   pipenzoStackApprovalCaptureResultV1Schema,
   pipenzoStackApprovalDecideRequestV1Schema,
   pipenzoStackApprovalDecideResultV1Schema,
+  pipenzoPlanReviewCaptureRequestV1Schema,
+  pipenzoPlanReviewCaptureResultV1Schema,
+  pipenzoPlanReviewDecideRequestV1Schema,
+  pipenzoPlanReviewDecideResultV1Schema,
   pipenzoPhaseEventV1Schema,
   pipenzoGitHubHealthV1Schema,
   pipenzoConnectReposRequestV1Schema,
@@ -207,6 +211,10 @@ import {
   type PipenzoStackApprovalCaptureResultV1,
   type PipenzoStackApprovalDecideRequestV1,
   type PipenzoStackApprovalDecideResultV1,
+  type PipenzoPlanReviewCaptureRequestV1,
+  type PipenzoPlanReviewCaptureResultV1,
+  type PipenzoPlanReviewDecideRequestV1,
+  type PipenzoPlanReviewDecideResultV1,
   type PipenzoPhaseEventV1,
   type PipenzoGitHubHealthV1,
   type PipenzoConnectReposRequestV1,
@@ -358,6 +366,14 @@ export interface AgentDockBridge {
   decideStackApproval(
     input: PipenzoStackApprovalDecideRequestV1,
   ): Promise<PipenzoStackApprovalDecideResultV1>;
+  /** The plan-review gate (issue #15, UI half #101). Mirrors `window.d.ts`'s declaration of the
+   * same two methods. */
+  capturePlanReview(
+    input: PipenzoPlanReviewCaptureRequestV1,
+  ): Promise<PipenzoPlanReviewCaptureResultV1>;
+  decidePlanReview(
+    input: PipenzoPlanReviewDecideRequestV1,
+  ): Promise<PipenzoPlanReviewDecideResultV1>;
   /**
    * Live phase changes for every ticket (issue #189). One subscription serves the whole board;
    * filter on `ticketId` for a single card. Returns its own unsubscribe.
@@ -1127,6 +1143,18 @@ const api: AgentDockBridge = {
     const parsed = pipenzoStackApprovalDecideRequestV1Schema.parse(input);
     return pipenzoStackApprovalDecideResultV1Schema.parse(
       await ipcRenderer.invoke('daemon:pipenzo-stack-approval-decide', parsed),
+    );
+  },
+  async capturePlanReview(input) {
+    const parsed = pipenzoPlanReviewCaptureRequestV1Schema.parse(input);
+    return pipenzoPlanReviewCaptureResultV1Schema.parse(
+      await ipcRenderer.invoke('daemon:pipenzo-plan-review-capture', parsed),
+    );
+  },
+  async decidePlanReview(input) {
+    const parsed = pipenzoPlanReviewDecideRequestV1Schema.parse(input);
+    return pipenzoPlanReviewDecideResultV1Schema.parse(
+      await ipcRenderer.invoke('daemon:pipenzo-plan-review-decide', parsed),
     );
   },
   async pipenzoGitHubConnection() {

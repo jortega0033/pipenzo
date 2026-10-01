@@ -107,6 +107,10 @@ import type {
   PipenzoStackApprovalCaptureResultV1,
   PipenzoStackApprovalDecideRequestV1,
   PipenzoStackApprovalDecideResultV1,
+  PipenzoPlanReviewCaptureRequestV1,
+  PipenzoPlanReviewCaptureResultV1,
+  PipenzoPlanReviewDecideRequestV1,
+  PipenzoPlanReviewDecideResultV1,
 } from '@agent-dock/shared';
 import type {
   RendererInteraction,
@@ -352,6 +356,27 @@ export interface AgentDockBridge {
   decideStackApproval(
     input: PipenzoStackApprovalDecideRequestV1,
   ): Promise<PipenzoStackApprovalDecideResultV1>;
+  /**
+   * The plan-review gate (issue #15, UI half #101), for a ticket Refine parked in the bare
+   * `pipenzo:needs-human` lane (its local `awaitingPlanReview` marker set) after a clean verdict --
+   * the real blocking checkpoint between Refine completing and Implement starting, same two-call,
+   * capture-then-decide shape as HIGH and stack approval above:
+   *
+   * - `capturePlanReview` freezes the ticket's cached plan (`RefineSpecV1`, narrowed to the fields a
+   *   human actually reviews) and returns it alongside a fresh `approvalId`.
+   * - `decidePlanReview` records the human's Approve/Request changes/Reject. `'approve'` needs the
+   *   same inputs Implement itself dispatches with and returns the real started session; it is the
+   *   only path that moves the ticket off this gate into a running Implement session.
+   *   `'request_changes'` requires non-empty `feedback`, which the *next* Refine pass for this
+   *   ticket reads back. `'reject'` requires a non-empty `reason` (enforced on the wire, not just by
+   *   a disabled button) and parks the ticket in the bare `pipenzo:needs-human` lane.
+   */
+  capturePlanReview(
+    input: PipenzoPlanReviewCaptureRequestV1,
+  ): Promise<PipenzoPlanReviewCaptureResultV1>;
+  decidePlanReview(
+    input: PipenzoPlanReviewDecideRequestV1,
+  ): Promise<PipenzoPlanReviewDecideResultV1>;
   /**
    * Subscribes to live phase changes (issue #189).
    *

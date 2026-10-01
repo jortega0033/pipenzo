@@ -150,10 +150,17 @@ async function auditTransitionDivergence(
  * `.strict()` and would reject the extra key as a second line of defence, but a route that
  * 500s on a leak is a worse outcome than one that never assembles it — this is the first line.
  *
- * Also the one place `refusal` (issue #469) is derived, rather than copied off the record: the
- * record's `spec` gets cached early for a `stack` verdict too (`#reportStackVerdict`), and that is
- * not a refusal — so `refusal` is only assembled when the label itself says
- * `pipenzo:needs-pre-scoping` *and* a cached `spec` actually exists, never from `spec` alone.
+ * Also the one place `refusal` (issue #469) and `planReview` (issue #15) are derived, rather than
+ * copied off the record: the record's `spec` gets cached early for a `stack` verdict and a clean
+ * `single` verdict too (`#reportStackVerdict`/`#reportPlanReviewGate`), and neither of those is a
+ * refusal — so each projection is only assembled when its own real signal is actually on the ticket
+ * *and* a cached `spec` actually exists, never from `spec` alone. `refusal` reads the real,
+ * GitHub-visible `pipenzo:needs-pre-scoping` label; `planReview` reads the local-only
+ * `awaitingPlanReview` marker instead, because the plan-review gate deliberately parks a ticket under
+ * the bare `pipenzo:needs-human` label rather than a dedicated one (see
+ * `pipenzoTicketRecordV1Schema.awaitingPlanReview`'s own doc comment). The two are mutually exclusive
+ * in practice, but each is still gated on its own signal independently rather than on an `else`, so
+ * neither one ever reads as present for the wrong verdict.
  */
 function toTicketView(ticket: PipenzoTicketRecordV1): PipenzoTicketViewV1 {
   return {
@@ -176,6 +183,18 @@ function toTicketView(ticket: PipenzoTicketRecordV1): PipenzoTicketViewV1 {
           refusal: {
             estimate: ticket.spec.estimate,
             ...(ticket.spec.proposedSplit ? { proposedSplit: ticket.spec.proposedSplit } : {}),
+          },
+        }
+      : {}),
+    ...(ticket.awaitingPlanReview && ticket.spec
+      ? {
+          planReview: {
+            summary: ticket.spec.summary,
+            acceptanceCriteria: ticket.spec.acceptanceCriteria,
+            outOfScope: ticket.spec.outOfScope,
+            filesLikelyTouched: ticket.spec.filesLikelyTouched,
+            estimate: ticket.spec.estimate,
+            openQuestions: ticket.spec.openQuestions,
           },
         }
       : {}),

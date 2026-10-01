@@ -31,6 +31,7 @@ import type {
   PipenzoTicketRecordV1,
   RefineEstimateV1,
   RefineProposedSplitPartV1,
+  RefineSpecV1,
 } from '@agent-dock/shared';
 import { PIPENZO_DIFF_SIZE_THRESHOLDS } from '@agent-dock/shared';
 import {
@@ -266,6 +267,13 @@ export class PipenzoPhaseService {
       throw toPhaseError(error);
     }
     const conventions = await this.#readConventions(request.repositoryPath);
+    // Issue #15: a ticket sent back from the plan-review gate for changes carries the human's
+    // feedback on its own record, not on the wire request -- see `#consumePlanReviewFeedback`'s own
+    // doc comment for why reading it here (and clearing it immediately) is the one place that can
+    // honestly claim "the next Refine pass saw this."
+    const humanFeedback = request.ticketId
+      ? await this.#consumePlanReviewFeedback(request.ticketId)
+      : undefined;
     let result: {
       sessionId: string;
       spec: PipenzoRefineResultV1['spec'];
@@ -284,6 +292,7 @@ export class PipenzoPhaseService {
         provider: request.provider,
         ...(request.model ? { model: request.model } : {}),
         ...(conventions ? { conventions } : {}),
+        ...(humanFeedback ? { humanFeedback } : {}),
       });
     } catch (error) {
       throw toPhaseError(error);
@@ -306,6 +315,17 @@ export class PipenzoPhaseService {
     // stack-approval flow own it"). Same best-effort shape as the refusal branch above.
     if (gateVerdict === 'stack' && request.ticketId) {
       await this.#reportStackVerdict(request.ticketId, result.spec);
+    }
+
+    // Issue #15's own gate: a `single` (clean) verdict used to mean "nothing more happens here, the
+    // caller is free to dispatch Implement whenever it likes" -- that is exactly the automatic
+    // hand-off README's near-term list and the issue body both ask to replace with a real human
+    // checkpoint. Same best-effort shape as the two branches above: the spec is already valid and
+    // already returned below either way, so a bookkeeping failure here must not turn a successful
+    // refine into a thrown error -- it would just leave a ticket a human has to notice is stuck
+    // between phases, the same degraded-but-recoverable outcome `#reportRefusal` already accepts.
+    if (gateVerdict === 'single' && request.ticketId) {
+      await this.#reportPlanReviewGate(request.ticketId, result.spec);
     }
 
     // Issue #143: Refine is one of the three phases that spends a ticket's budget (slice 1), and
@@ -449,6 +469,100 @@ export class PipenzoPhaseService {
     }
   }
 
+  /**
+   * The actual consequence of a clean (`single`) diff-size-gate verdict (issue #15): transitions the
+   * ticket to the bare `pipenzo:needs-human` label instead of leaving Implement free to be
+   * dispatched the moment this call returns, then posts the estimate as a comment so the plan-review
+   * gate is visible from the issue itself, not just the board. Guarded against a retried `refine()`
+   * double-posting the same way `#reportRefusal`/`#reportStackVerdict` are: `read()` first, skip
+   * every write if the ticket is already parked there.
+   *
+   * **The bare label, not a new one.** `pipenzoTicketRecordV1Schema.awaitingPlanReview`'s own doc
+   * comment states why: `design/artboards/TicketDetail.dc.html`'s own plan-review mockup already
+   * chose this on purpose, to avoid inventing a `pipenzo:` label an older Pipenzo build reading the
+   * same repo would not understand. What actually marks a ticket as *this* kind of needs-human park,
+   * rather than a denied approval or three failed attempts, is `awaitingPlanReview: true` on the
+   * local ticket record, set in the same write that caches the whole `spec` -- the same early write
+   * `#reportRefusal`/`#reportStackVerdict` already make for their own causes, and for the same
+   * reason: a plan-review decision can come well after this request/response cycle ends (a human
+   * reopening the board the next morning), so the plan a human eventually approves, sends back, or
+   * rejects has to already be durable.
+   */
+  async #reportPlanReviewGate(ticketId: string, spec: PipenzoRefineResultV1['spec']): Promise<void> {
+    if (!this.#machine) return;
+    try {
+      const current = await this.#machine.read(ticketId);
+      if (current.ticket.awaitingPlanReview) return;
+      const result = await this.#machine.transition(ticketId, 'pipenzo:needs-human');
+
+      if (this.#ticketWorktrees) {
+        const stored = this.#ticketWorktrees.get(ticketId);
+        if (stored) {
+          try {
+            this.#ticketWorktrees.update(ticketId, { ...stored, spec, awaitingPlanReview: true });
+          } catch (error) {
+            this.#logger?.warn('pipenzo: could not cache the pending plan onto its ticket', {
+              ticketId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        } else {
+          // Security review (issue #15): if this ever fires in production, the GitHub label just
+          // moved to `pipenzo:needs-human` but the local `awaitingPlanReview` marker that
+          // `implement()`'s own gate reads was never set -- a ticket id `#machine` resolved (GitHub
+          // reconciliation succeeded) but `#ticketWorktrees` does not know, which should only be
+          // possible if the two are ever wired to different store instances. Production wires both
+          // from the same `FileTicketStore` (`index.ts`), so this is not reachable there -- logged
+          // loudly rather than silently as the one case where a config mistake would quietly defeat
+          // the gate.
+          this.#logger?.error(
+            'pipenzo: plan-review gate label moved to pipenzo:needs-human but no local ticket record exists to mark -- the gate is NOT enforced for this ticket',
+            { ticketId },
+          );
+        }
+      }
+
+      const github = this.#requireGitHub();
+      const ref = parseRepoRef(result.ticket.repo);
+      await github.createIssueComment(
+        ref,
+        result.ticket.issueNumber,
+        planReviewRequestedCommentBody(spec.estimate),
+      );
+    } catch (error) {
+      this.#logger?.warn('could not park a clean refine verdict at the plan-review gate', {
+        ticketId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
+   * Reads and clears `ticket.planReviewFeedback` (issue #15) -- "read once, then consumed" so the
+   * same feedback is never re-applied to a later, unrelated refine for this ticket. Best-effort and
+   * logged, never thrown: a store failure here must not block an otherwise-runnable Refine pass, it
+   * should just mean this one pass runs without the feedback a human already gave (the same
+   * degraded-but-recoverable shape every other secondary write in this file accepts). Returns
+   * `undefined` when there is no local ticket store, no stored record, or no feedback cached --
+   * every one of which means "nothing to carry forward," not an error.
+   */
+  async #consumePlanReviewFeedback(ticketId: string): Promise<string | undefined> {
+    if (!this.#ticketWorktrees) return undefined;
+    try {
+      const stored = this.#ticketWorktrees.get(ticketId);
+      const feedback = stored?.planReviewFeedback;
+      if (!stored || !feedback) return undefined;
+      this.#ticketWorktrees.update(ticketId, { ...stored, planReviewFeedback: undefined });
+      return feedback;
+    } catch (error) {
+      this.#logger?.warn('could not read back plan-review feedback for this ticket', {
+        ticketId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return undefined;
+    }
+  }
+
   /* -------------------------------------------------------------- stack approval (issue #99) */
 
   /**
@@ -527,10 +641,222 @@ export class PipenzoPhaseService {
     await github.createIssueComment(ref, current.ticket.issueNumber, stackRejectedCommentBody(reason));
   }
 
+  /* -------------------------------------------------------------- plan review (issue #15) */
+
+  /**
+   * The approve half of the plan-review gate. `spec` is the plan `PlanReviewStore.consume()` froze
+   * at capture time -- never re-read off the ticket record here, the same "decide against what
+   * capture froze" discipline `StackApprovalStore`'s own doc comment states for a different store,
+   * so a `refine()` retry that overwrote `ticket.spec` between capture and decide cannot change what
+   * gets implemented out from under a human who already approved a specific plan. Clears the local
+   * `awaitingPlanReview` marker and transitions the ticket's real label off the bare
+   * `pipenzo:needs-human` park onto `pipenzo:working` *before* dispatching, then calls this same
+   * service's own `implement()` with that frozen spec.
+   *
+   * ## Why the local marker is cleared here, before `implement()` runs
+   *
+   * `implement()` itself refuses to dispatch for any ticket whose `awaitingPlanReview` marker is
+   * still set (see that method's own doc comment) -- the actual enforcement of this gate, reachable
+   * for every caller, not just this one. Clearing the marker *before* calling `implement()` is what
+   * lets this method's own dispatch pass that same check rather than needing a bypass flag: there is
+   * no second code path into Implement, only one gate and one door through it. If the marker clears
+   * but the dispatch that follows throws, the ticket is left on `pipenzo:working` with nothing
+   * dispatched -- the same "real state change, dispatch may still fail" shape `implement()`'s own
+   * crash-recovery comment already accepts elsewhere, and strictly better for an operator to find
+   * than a ticket silently stuck forever on a gate it already cleared.
+   *
+   * ## Closing the two-capture race (security review finding, issue #15)
+   *
+   * `capture` mints a fresh `approvalId` on every call and does not itself refuse a second capture
+   * for the same ticket -- `PlanReviewStore.consume()` makes one `approvalId` single-use, but two
+   * *different* ids (two capture calls, e.g. two open panels) each consume cleanly and each reach
+   * this method. The naive fix -- `await this.#machine.read(ticketId)`, check the marker, then write
+   * -- has a real window: `read()` is a GitHub network round trip, wide enough for a second decide
+   * (for the other id) to run its own read-check-write before the first one's write lands, and
+   * CLAUDE.md hard rule #4 ("a decision, once made, is never re-askable") would be violated at the
+   * per-*ticket* level even though each individual `approvalId` was honestly single-use. So this
+   * method does not read-then-write across an await at all: `#consumeAwaitingPlanReview` is a single
+   * **synchronous** get-check-write against the local store, with no `await` anywhere inside it.
+   * JavaScript cannot interleave two synchronous sections from two different async call stacks, so
+   * whichever of two concurrent decide calls reaches that method's body first flips the marker before
+   * the other one's own `get()` ever runs -- the second sees it already cleared and refuses, the same
+   * single-decision guarantee `PlanReviewStore.consume()` already gives one `approvalId`, now also
+   * given to the ticket as a whole.
+   */
+  async approvePlanReview(
+    ticketId: string,
+    spec: RefineSpecV1,
+    options: Omit<PipenzoImplementRequestV1, 'spec' | 'ticketId'>,
+  ): Promise<PipenzoImplementResultV1> {
+    if (!this.#machine) {
+      throw new Error('approving a plan review requires a phase machine to be configured');
+    }
+    if (!this.#ticketWorktrees) {
+      throw new Error('approving a plan review requires a ticket store to be configured');
+    }
+    const consumed = this.#consumeAwaitingPlanReview(ticketId);
+    if (!consumed) {
+      throw new PipenzoPhaseError(
+        'invalid_request',
+        `ticket ${ticketId} is no longer awaiting a plan review`,
+      );
+    }
+    await this.#machine.transition(ticketId, 'pipenzo:working');
+
+    // Best-effort, same reasoning as `#reportRefusal`'s own trailing comment: the real consequence
+    // (the dispatch below) is what matters, and a comment-post failure must not be reported as a
+    // failure to approve.
+    try {
+      const github = this.#requireGitHub();
+      const ref = parseRepoRef(consumed.repo);
+      await github.createIssueComment(ref, consumed.issueNumber, planReviewApprovedCommentBody());
+    } catch (error) {
+      this.#logger?.warn('pipenzo: plan review approved but the acknowledgement comment failed', {
+        ticketId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    return this.implement({ ...options, ticketId, spec });
+  }
+
+  /**
+   * The request-changes half. Transitions the ticket back to `pipenzo:queued` -- README's own
+   * "Accepted, not started" reading of that label is exactly right for a ticket that is about to be
+   * refined again -- atomically consumes the local `awaitingPlanReview` marker (see
+   * `approvePlanReview`'s own doc comment on why this has to be a single synchronous step, not a
+   * read-then-write across an `await`), caching `feedback` in that same synchronous write for
+   * `refine()`'s own `#consumePlanReviewFeedback` to read back on the next pass. Unlike
+   * `approvePlanReview`'s own trailing comment, this one is **not** swallowed on failure: the same
+   * reasoning `rejectStack()` states for its own mandatory comment applies here -- the feedback is
+   * the entire visible content of this decision, and a human's stated reason that silently failed to
+   * post would leave a repository maintainer with no record of why this ticket went back for another
+   * pass.
+   */
+  async requestPlanReviewChanges(ticketId: string, feedback: string): Promise<void> {
+    if (!this.#machine) {
+      throw new Error('requesting plan-review changes requires a phase machine to be configured');
+    }
+    if (!this.#ticketWorktrees) {
+      throw new Error('requesting plan-review changes requires a ticket store to be configured');
+    }
+    const consumed = this.#consumeAwaitingPlanReview(ticketId, { planReviewFeedback: feedback });
+    if (!consumed) {
+      throw new PipenzoPhaseError(
+        'invalid_request',
+        `ticket ${ticketId} has no pending plan review to send back`,
+      );
+    }
+    const result = await this.#machine.transition(ticketId, 'pipenzo:queued');
+    const github = this.#requireGitHub();
+    const ref = parseRepoRef(result.ticket.repo);
+    await github.createIssueComment(
+      ref,
+      result.ticket.issueNumber,
+      planReviewChangesRequestedCommentBody(feedback),
+    );
+  }
+
+  /**
+   * The reject half. The ticket already sits on the bare `pipenzo:needs-human` label (the plan-review
+   * gate never parked it anywhere else -- see `pipenzoTicketRecordV1Schema.awaitingPlanReview`'s own
+   * doc comment), so there is no label to transition: this just atomically consumes the local
+   * `awaitingPlanReview` marker (see `approvePlanReview`'s own doc comment on why) -- README's own
+   * existing "a denied approval" reading of the bare label is exactly right for what this ticket
+   * becomes, not a new label invented for this ticket (CLAUDE.md hard rule #5) -- and posts the
+   * mandatory reason, not swallowed on failure, for the same reason `rejectStack()`'s and
+   * `requestPlanReviewChanges()`'s own comments are not.
+   */
+  async rejectPlanReview(ticketId: string, reason: string): Promise<void> {
+    if (!this.#machine) {
+      throw new Error('rejecting a plan review requires a phase machine to be configured');
+    }
+    if (!this.#ticketWorktrees) {
+      throw new Error('rejecting a plan review requires a ticket store to be configured');
+    }
+    const consumed = this.#consumeAwaitingPlanReview(ticketId);
+    if (!consumed) {
+      throw new PipenzoPhaseError(
+        'invalid_request',
+        `ticket ${ticketId} has no pending plan review to reject`,
+      );
+    }
+    const github = this.#requireGitHub();
+    const ref = parseRepoRef(consumed.repo);
+    await github.createIssueComment(ref, consumed.issueNumber, planReviewRejectedCommentBody(reason));
+  }
+
+  /**
+   * The one, single-use door off a ticket's `awaitingPlanReview` marker (issue #15; see
+   * `approvePlanReview`'s own doc comment for the race this closes). Deliberately has **no `await`
+   * anywhere in its body** -- `this.#ticketWorktrees.get`/`.update` are synchronous local-store calls
+   * -- so two concurrent decide calls for the same ticket can never both observe the marker still
+   * set: whichever call's synchronous body runs first clears it before the JS event loop can hand
+   * control to the other one's. Returns `undefined` (nothing consumed, nothing written) for no store,
+   * no stored record, a marker already clear, or a write failure -- every one of those must refuse
+   * the whole decision rather than proceed with a label transition the local side could not agree to.
+   */
+  #consumeAwaitingPlanReview(
+    ticketId: string,
+    extra?: Partial<PipenzoTicketRecordV1>,
+  ): PipenzoTicketRecordV1 | undefined {
+    if (!this.#ticketWorktrees) return undefined;
+    const stored = this.#ticketWorktrees.get(ticketId);
+    if (!stored?.awaitingPlanReview) return undefined;
+    try {
+      this.#ticketWorktrees.update(ticketId, { ...stored, awaitingPlanReview: false, ...extra });
+    } catch (error) {
+      this.#logger?.warn('pipenzo: could not clear the plan-review marker on its ticket', {
+        ticketId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return undefined;
+    }
+    return stored;
+  }
+
   /* ------------------------------------------------------------- implement */
 
+  /**
+   * Dispatches an Implement session. `spec` is always what the caller hands in -- directly from a
+   * `ImplementDialog`-style caller with no tracked ticket, or from `approvePlanReview()`'s own frozen
+   * plan -- never re-derived here.
+   *
+   * ## The plan-review gate's real enforcement (issue #15)
+   *
+   * A ticket whose local `awaitingPlanReview` marker is still set refuses here with
+   * `plan_review_pending`, before anything is dispatched. This is deliberately the *only* check this
+   * gate needs, and it runs for every caller of this method -- the stack-approval route's own
+   * `acceptStack`, a direct `/v2/pipenzo/implement` call, and `approvePlanReview()` above all funnel
+   * through this one `implement()`. `approvePlanReview()` passes the gate not by being a different
+   * code path but by clearing the marker *before* calling this method -- see its own doc comment. A
+   * caller that races a direct implement call against a still-pending plan review finds the marker
+   * still set and is refused; there is no `force`/`skipGate` flag that would let a caller assert its
+   * way past this check.
+   *
+   * The check reads `this.#ticketWorktrees` (the local ticket store), never `this.#machine` -- see
+   * the inline comment at the call site for why. The one real consequence of that: a production
+   * daemon always constructs this service with a ticket store once tickets exist at all (`index.ts`
+   * wires `phaseService`/`phaseMachine` from the same `FileTicketStore`), so this is not a gap an
+   * operator can hit by accident; it is the same "optional dependency, no behavior for a caller that
+   * predates it" shape every other ticket-store-backed consequence in this file already has.
+   */
   async implement(request: PipenzoImplementRequestV1): Promise<PipenzoImplementResultV1> {
     if (request.ticketId) this.#assertBudgetNotExhausted(request.ticketId);
+    // The local store, not `this.#machine.read()`: `awaitingPlanReview` is local-only data GitHub
+    // never holds (see its own doc comment), so this check has no reason to need a GitHub
+    // credential -- and `implement()` itself never required one before this gate existed. A
+    // service built without a ticket store (every test and caller that predates issue #159) still
+    // dispatches exactly as before; there is simply nothing for this check to read.
+    if (request.ticketId && this.#ticketWorktrees) {
+      const stored = this.#ticketWorktrees.get(request.ticketId);
+      if (stored?.awaitingPlanReview) {
+        throw new PipenzoPhaseError(
+          'plan_review_pending',
+          `ticket ${request.ticketId} is awaiting a plan-review decision and cannot start Implement yet`,
+        );
+      }
+    }
     let started;
     try {
       started = await this.#implement.start({
@@ -1537,6 +1863,49 @@ export function stackRejectedCommentBody(reason: string): string {
     reason,
     '',
     'The ticket stays in `pipenzo:awaiting-stack-approval` -- no worktree was created and nothing retries on its own.',
+  ].join('\n');
+}
+
+/** Posted by `#reportPlanReviewGate` the moment a clean Refine verdict parks a ticket for a human's
+ * plan-review decision (issue #15) -- the sibling of `refusalCommentBody`/`stackProposedCommentBody`
+ * for the third, "nothing is actually wrong" trigger that still asks a human to look before anything
+ * runs. */
+export function planReviewRequestedCommentBody(estimate: RefineEstimateV1): string {
+  return [
+    `Refine finished: **${estimate.changedLines}** changed lines across **${estimate.filesTouched}** files, within the one-PR budget.`,
+    '',
+    'Parked in `pipenzo:needs-human` for plan review -- Implement does not start on its own. A human approves, requests changes, or rejects the plan first.',
+  ].join('\n');
+}
+
+/** Posted by `approvePlanReview()`, best-effort -- see that method's own doc comment for why this
+ * one comment, unlike `requestPlanReviewChanges()`'s and `rejectPlanReview()`'s, is swallowed on
+ * failure rather than left to fail the whole approval. */
+export function planReviewApprovedCommentBody(): string {
+  return 'Plan review approved. Implement is starting.';
+}
+
+/** Posted by `requestPlanReviewChanges()`, mandatory feedback inline -- not swallowed on failure,
+ * for the same reason `stackRejectedCommentBody`'s own comment is not. */
+export function planReviewChangesRequestedCommentBody(feedback: string): string {
+  return [
+    'Plan review: changes requested.',
+    '',
+    feedback,
+    '',
+    'The ticket is back in `pipenzo:queued` — the next Refine pass for it will see this feedback.',
+  ].join('\n');
+}
+
+/** Posted by `rejectPlanReview()`, mandatory reason inline -- not swallowed on failure, for the
+ * same reason `stackRejectedCommentBody`'s own comment is not. */
+export function planReviewRejectedCommentBody(reason: string): string {
+  return [
+    'Plan review rejected.',
+    '',
+    reason,
+    '',
+    'The ticket is parked in `pipenzo:needs-human` -- nothing retries on its own.',
   ].join('\n');
 }
 

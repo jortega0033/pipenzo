@@ -126,11 +126,16 @@ describe('BoardImplementDialog', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Refine ticket' }));
     await waitFor(() =>
+      // Issue #15: `ticketId` rides along on both calls now -- see this component's own doc
+      // comment on why a board-started ticket has to carry its id through for the plan-review
+      // gate (and budget tracking, attempt recording, worktree-id caching) to have anything to
+      // key off.
       expect(bridge.refinePipenzo).toHaveBeenCalledWith({
         repo: REPO,
         issueNumber: 42,
         repositoryPath: CHECKOUT,
         provider: BOARD_IMPLEMENT_PROVIDER,
+        ticketId: TICKET.ticketId,
       }),
     );
     expect(bridge.inspectWorkspace).toHaveBeenCalledWith(CHECKOUT);
@@ -142,6 +147,7 @@ describe('BoardImplementDialog', () => {
       spec: SPEC,
       repositoryPath: CHECKOUT,
       provider: BOARD_IMPLEMENT_PROVIDER,
+      ticketId: TICKET.ticketId,
     });
   });
 
