@@ -79,6 +79,10 @@ function installBridge(
       .fn()
       .mockResolvedValue({ schemaVersion: 1, screenshotEnabled: true, escapeHatchEnabled: false }),
     pipenzoUpdateCaptureSettings: vi.fn(),
+    pipenzoNotificationSettings: vi
+      .fn()
+      .mockResolvedValue({ schemaVersion: 1, refusal: true, medium: true, badge: true, sound: false }),
+    pipenzoUpdateNotificationSettings: vi.fn(),
     resolvePipenzoCheckout: vi
       .fn()
       .mockResolvedValue({ repo: { owner: 'octocat', name: 'hello-world' }, repositoryPath: '/tmp/octocat-hello-world' }),
@@ -1077,6 +1081,10 @@ describe('PipenzoAppShell', () => {
       .fn()
       .mockResolvedValue({ schemaVersion: 1, screenshotEnabled: true, escapeHatchEnabled: false }),
     pipenzoUpdateCaptureSettings: vi.fn(),
+    pipenzoNotificationSettings: vi
+      .fn()
+      .mockResolvedValue({ schemaVersion: 1, refusal: true, medium: true, badge: true, sound: false }),
+    pipenzoUpdateNotificationSettings: vi.fn(),
       pipenzoGitHubConnection: vi
         .fn()
         .mockResolvedValue({ state: 'connected', login: 'octocat', source: 'vault' }),
