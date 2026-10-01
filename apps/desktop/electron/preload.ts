@@ -64,6 +64,8 @@ import {
   pipenzoSteerResultV1Schema,
   pipenzoStopRequestV1Schema,
   pipenzoStopResultV1Schema,
+  pipenzoRetryRequestV1Schema,
+  pipenzoRetryResultV1Schema,
   pipenzoIssueClaimRequestV1Schema,
   pipenzoIssueClaimResultV1Schema,
   pipenzoIssueCommentRequestV1Schema,
@@ -174,6 +176,8 @@ import {
   type PipenzoSteerResultV1,
   type PipenzoStopRequestV1,
   type PipenzoStopResultV1,
+  type PipenzoRetryRequestV1,
+  type PipenzoRetryResultV1,
   type PipenzoIssueClaimRequestV1,
   type PipenzoIssueClaimResultV1,
   type PipenzoIssueCommentRequestV1,
@@ -310,6 +314,9 @@ export interface AgentDockBridge {
   runStatusPipenzo(input: PipenzoRunStatusRequestV1): Promise<PipenzoRunStatusResultV1>;
   steerPipenzo(input: PipenzoSteerRequestV1): Promise<PipenzoSteerResultV1>;
   stopPipenzo(input: PipenzoStopRequestV1): Promise<PipenzoStopResultV1>;
+  /** "Retry phase" (issue #105, CLAUDE.md hard rule 4): classified retry for a ticket parked on
+   *  `pipenzo:needs-human`. */
+  retryPipenzo(input: PipenzoRetryRequestV1): Promise<PipenzoRetryResultV1>;
   claimPipenzoIssue(input: PipenzoIssueClaimRequestV1): Promise<PipenzoIssueClaimResultV1>;
   createPipenzoIssue(input: PipenzoIssueCreateRequestV1): Promise<PipenzoIssueCreateResultV1>;
   commentOnPipenzoIssue(input: PipenzoIssueCommentRequestV1): Promise<PipenzoIssueCommentResultV1>;
@@ -1037,6 +1044,10 @@ const api: AgentDockBridge = {
   async stopPipenzo(input) {
     const parsed = pipenzoStopRequestV1Schema.parse(input);
     return pipenzoStopResultV1Schema.parse(await ipcRenderer.invoke('daemon:pipenzo-stop', parsed));
+  },
+  async retryPipenzo(input) {
+    const parsed = pipenzoRetryRequestV1Schema.parse(input);
+    return pipenzoRetryResultV1Schema.parse(await ipcRenderer.invoke('daemon:pipenzo-retry', parsed));
   },
   async claimPipenzoIssue(input) {
     const parsed = pipenzoIssueClaimRequestV1Schema.parse(input);

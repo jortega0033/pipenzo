@@ -180,6 +180,9 @@ export function createDemoBridge(): AgentDockBridge {
     stopPipenzo: async () => {
       throw new Error('stopping a run is not available in demo mode');
     },
+    retryPipenzo: async () => {
+      throw new Error('retrying a run is not available in demo mode');
+    },
     claimPipenzoIssue: async () => {
       throw new Error('claiming a ticket is not available in demo mode');
     },

@@ -27,6 +27,7 @@ export function TicketDetailScreen({
   stepper,
   ticketSwitcher,
   runControls,
+  retryAction,
   statusBlock,
   riskBlock,
   modelRoutingBlock,
@@ -45,6 +46,10 @@ export function TicketDetailScreen({
   /** Live run controls (#103) -- `RunControls`, meant to render only while a phase is genuinely
    * running; see `RunControls.tsx`'s own "no absent state" note. Omitted renders nothing. */
   runControls?: ReactNode;
+  /** "Retry phase" (#105) -- `RetryActionButton`, meant to render only for a ticket parked on
+   * `pipenzo:needs-human` with no denied approval on file; see that component's own doc comment.
+   * Omitted renders nothing, same as `runControls` above. */
+  retryAction?: ReactNode;
   /** The rail's four blocks, fixed in `TicketDetail.dc.html`'s own order -- each expected to be a
    * `RailBlock`, or omitted while its own ticket (#94-#96) hasn't landed yet. */
   statusBlock?: ReactNode;
@@ -69,6 +74,7 @@ export function TicketDetailScreen({
           </div>
         )}
         {runControls}
+        {retryAction}
       </div>
       <div className="body">
         <div className="stream">

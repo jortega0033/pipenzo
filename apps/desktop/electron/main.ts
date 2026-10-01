@@ -37,6 +37,7 @@ import {
   pipenzoRunStatusRequestV1Schema,
   pipenzoSteerRequestV1Schema,
   pipenzoStopRequestV1Schema,
+  pipenzoRetryRequestV1Schema,
   pipenzoIssueClaimRequestV1Schema,
   pipenzoIssueCommentRequestV1Schema,
   pipenzoIssueCreateRequestV1Schema,
@@ -1538,6 +1539,12 @@ handle('daemon:pipenzo-steer', async (_event, input: unknown) => {
 handle('daemon:pipenzo-stop', async (_event, input: unknown) => {
   if (!client) throw new Error('daemon is not ready yet');
   return client.v2.pipenzo.stop(pipenzoStopRequestV1Schema.parse(input));
+});
+// Issue #105, CLAUDE.md hard rule 4: "Retry phase" for a ticket parked on pipenzo:needs-human. Same
+// boundary as Steer/Stop above -- main-process only, invoked by a renderer click.
+handle('daemon:pipenzo-retry', async (_event, input: unknown) => {
+  if (!client) throw new Error('daemon is not ready yet');
+  return client.v2.pipenzo.retry(pipenzoRetryRequestV1Schema.parse(input));
 });
 handle('daemon:pipenzo-claim-issue', async (_event, input: unknown) => {
   if (!client) throw new Error('daemon is not ready yet');
