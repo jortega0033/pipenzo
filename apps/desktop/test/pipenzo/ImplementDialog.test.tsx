@@ -264,6 +264,32 @@ describe('ImplementDialog', () => {
     });
   });
 
+  it('sends the ticket id through to implement too when the ticket carries one (issue #15)', async () => {
+    const { implementPipenzo } = installBridge();
+    renderDialog({ ticket: { ...TICKET, ticketId: '123e4567-e89b-42d3-a456-426614174001' } });
+    await refineAndWait();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+
+    await waitFor(() =>
+      expect(implementPipenzo).toHaveBeenCalledWith(
+        expect.objectContaining({ ticketId: '123e4567-e89b-42d3-a456-426614174001' }),
+      ),
+    );
+  });
+
+  it('omits ticketId from the implement request when the ticket has none', async () => {
+    const { implementPipenzo } = installBridge();
+    renderDialog();
+    await refineAndWait();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+
+    await waitFor(() => expect(implementPipenzo).toHaveBeenCalled());
+    const [request] = implementPipenzo.mock.calls[0] as [Record<string, unknown>];
+    expect(request).not.toHaveProperty('ticketId');
+  });
+
   it('passes the selected run budget through onStarted', async () => {
     installBridge();
     const onStarted = vi.fn();
