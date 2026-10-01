@@ -32,3 +32,4 @@ export * from './pipenzo-audit-v1.js';
 export * from './pipenzo-lesson-v1.js';
 export * from './pipenzo-concurrency-v1.js';
 export * from './pipenzo-capture-settings-v1.js';
+export * from './pipenzo-notification-settings-v1.js';

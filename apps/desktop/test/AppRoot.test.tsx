@@ -38,6 +38,10 @@ function realBridge(
       .fn()
       .mockResolvedValue({ schemaVersion: 1, screenshotEnabled: true, escapeHatchEnabled: false }),
     pipenzoUpdateCaptureSettings: vi.fn(),
+    pipenzoNotificationSettings: vi
+      .fn()
+      .mockResolvedValue({ schemaVersion: 1, refusal: true, medium: true, badge: true, sound: false }),
+    pipenzoUpdateNotificationSettings: vi.fn(),
     startGitHubDeviceFlow: vi.fn(),
     openGitHubDeviceVerification: vi.fn().mockResolvedValue(undefined),
     cancelGitHubDeviceFlow: vi.fn().mockResolvedValue(undefined),

@@ -111,6 +111,8 @@ import {
   pipenzoConcurrencySettingsUpdateV1Schema,
   pipenzoCaptureSettingsV1Schema,
   pipenzoCaptureSettingsUpdateV1Schema,
+  pipenzoNotificationSettingsV1Schema,
+  pipenzoNotificationSettingsUpdateV1Schema,
   pipenzoDeviceCodeV1Schema,
   pipenzoDeviceOutcomeV1Schema,
   pipenzoGitHubConnectionV1Schema,
@@ -221,6 +223,8 @@ import {
   type PipenzoConcurrencySettingsUpdateV1,
   type PipenzoCaptureSettingsV1,
   type PipenzoCaptureSettingsUpdateV1,
+  type PipenzoNotificationSettingsV1,
+  type PipenzoNotificationSettingsUpdateV1,
   type PipenzoDeviceCodeV1,
   type PipenzoDeviceOutcomeV1,
   type PipenzoGitHubConnectionV1,
@@ -447,6 +451,16 @@ export interface AgentDockBridge {
   pipenzoUpdateCaptureSettings(
     input: PipenzoCaptureSettingsUpdateV1,
   ): Promise<PipenzoCaptureSettingsV1>;
+  /**
+   * Settings' Notifications panel (issue #129): the `refusal`/`medium`/`badge`/`sound`
+   * preferences. An ordinary daemon route, same reasoning as the lesson/repo/concurrency/
+   * capture-settings channels above -- no credential in main. There is deliberately no way to read
+   * or write a HIGH preference through this surface -- see `pipenzo-notification-settings-v1.ts`.
+   */
+  pipenzoNotificationSettings(): Promise<PipenzoNotificationSettingsV1>;
+  pipenzoUpdateNotificationSettings(
+    input: PipenzoNotificationSettingsUpdateV1,
+  ): Promise<PipenzoNotificationSettingsV1>;
   selectAndUploadAttachments(sessionId?: string): Promise<AttachmentMetadataV2[]>;
   validateStructuredOutput(input: StructuredWorkflowRequestV2): Promise<StructuredWorkflowResultV2>;
   createSession(input: CreateSessionInput): Promise<AgentSession>;
@@ -1231,6 +1245,17 @@ const api: AgentDockBridge = {
     const parsed = pipenzoCaptureSettingsUpdateV1Schema.parse(input);
     return pipenzoCaptureSettingsV1Schema.parse(
       await ipcRenderer.invoke('daemon:pipenzo-update-capture-settings', parsed),
+    );
+  },
+  async pipenzoNotificationSettings() {
+    return pipenzoNotificationSettingsV1Schema.parse(
+      await ipcRenderer.invoke('daemon:pipenzo-notification-settings'),
+    );
+  },
+  async pipenzoUpdateNotificationSettings(input) {
+    const parsed = pipenzoNotificationSettingsUpdateV1Schema.parse(input);
+    return pipenzoNotificationSettingsV1Schema.parse(
+      await ipcRenderer.invoke('daemon:pipenzo-update-notification-settings', parsed),
     );
   },
   async startGitHubDeviceFlow() {

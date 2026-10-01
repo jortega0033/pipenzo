@@ -139,6 +139,8 @@ import {
   pipenzoConcurrencySettingsUpdateV1Schema,
   pipenzoCaptureSettingsV1Schema,
   pipenzoCaptureSettingsUpdateV1Schema,
+  pipenzoNotificationSettingsV1Schema,
+  pipenzoNotificationSettingsUpdateV1Schema,
   pipenzoTicketReadRequestV1Schema,
   pipenzoTicketTransitionRequestV1Schema,
   pipenzoTicketReconciliationV1Schema,
@@ -203,6 +205,8 @@ import {
   type PipenzoConcurrencySettingsUpdateV1,
   type PipenzoCaptureSettingsV1,
   type PipenzoCaptureSettingsUpdateV1,
+  type PipenzoNotificationSettingsV1,
+  type PipenzoNotificationSettingsUpdateV1,
   type PipenzoTicketReadRequestV1,
   type PipenzoTicketTransitionRequestV1,
   type PipenzoTicketReconciliationV1,
@@ -562,6 +566,17 @@ export class AgentDockClient {
       updateCaptureSettings: (
         input: PipenzoCaptureSettingsUpdateV1,
       ): Promise<PipenzoCaptureSettingsV1> => this.updatePipenzoCaptureSettingsV1(input),
+      /**
+       * Settings' Notifications panel (issue #129): `notificationSettings` reads the workspace's
+       * `refusal`/`medium`/`badge`/`sound` preferences; `updateNotificationSettings` changes one or
+       * more and answers with the daemon's own confirmed record, never an echo of the request.
+       * There is no `high` preference to read or write -- see `pipenzo-notification-settings-v1.ts`.
+       */
+      notificationSettings: (): Promise<PipenzoNotificationSettingsV1> =>
+        this.pipenzoNotificationSettingsV1(),
+      updateNotificationSettings: (
+        input: PipenzoNotificationSettingsUpdateV1,
+      ): Promise<PipenzoNotificationSettingsV1> => this.updatePipenzoNotificationSettingsV1(input),
       /**
        * The phase machine's ticket surface (issue #188). `readTicket` reconciles a ticket against
        * its issue's labels and returns the result; `transitionTicket` writes a new `pipenzo:` label
@@ -1391,6 +1406,37 @@ export class AgentDockClient {
       '/v2/pipenzo/capture-settings',
       pipenzoCaptureSettingsV1Schema,
       'pipenzo capture settings',
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(parsed),
+      },
+      { expectedStatus: 200 },
+    );
+  }
+
+  private async pipenzoNotificationSettingsV1(): Promise<PipenzoNotificationSettingsV1> {
+    return this.requestV2(
+      '/v2/pipenzo/notification-settings',
+      pipenzoNotificationSettingsV1Schema,
+      'pipenzo notification settings',
+      { method: 'GET' },
+      { expectedStatus: 200 },
+    );
+  }
+
+  private async updatePipenzoNotificationSettingsV1(
+    input: PipenzoNotificationSettingsUpdateV1,
+  ): Promise<PipenzoNotificationSettingsV1> {
+    const parsed = validateInput(
+      pipenzoNotificationSettingsUpdateV1Schema,
+      input,
+      'pipenzo notification settings update request',
+    );
+    return this.requestV2(
+      '/v2/pipenzo/notification-settings',
+      pipenzoNotificationSettingsV1Schema,
+      'pipenzo notification settings',
       {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
