@@ -1,4 +1,15 @@
-import { app, BrowserWindow, ipcMain, dialog, safeStorage, shell, Tray, Menu } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  ipcMain,
+  dialog,
+  safeStorage,
+  shell,
+  Tray,
+  Menu,
+  nativeImage,
+  type NativeImage,
+} from 'electron';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
@@ -101,6 +112,8 @@ import {
 } from './interactive-session-lifecycle.js';
 import { relayPipenzoPhaseEvents } from './pipenzo-phase-stream.js';
 import { relayPipenzoGitHubHealthEvents } from './pipenzo-health-stream.js';
+import { compositeBadgeOverlay } from './badge-overlay.js';
+import { TrayBadgeController } from './tray-badge.js';
 import { InteractionBroker, type RendererInteractionResolution } from './interaction-broker.js';
 import {
   externalUrlLogSummary,
@@ -145,6 +158,10 @@ let daemonChild: ChildProcess | undefined;
 let client: AgentDockClient | undefined;
 let mainWindow: BrowserWindow | undefined;
 let tray: Tray | undefined;
+// The unbadged tray icon, loaded once in `createTray()` so `paintTrayBadge` always composites from
+// the same clean source rather than badging an already-badged bitmap on every repaint.
+let trayBaseIcon: NativeImage | undefined;
+let trayBadge: TrayBadgeController | undefined;
 // Mirrors the last status `sendStatus` broadcast, so `daemon:get-status` can answer honestly for a
 // renderer that starts (or restarts, e.g. a dev-tools reload) after the daemon already failed --
 // deriving the answer from `client` truthiness alone (issue #286) reports `connecting` forever for
@@ -558,6 +575,7 @@ async function waitForDaemonReady(
         // transition that happens between the daemon coming up and a window being opened.
         forwardPipenzoPhaseEvents();
         forwardPipenzoGitHubHealthEvents();
+        void trayBadge?.start();
         sendStatus({ state: 'ready' });
         return;
       } catch {
@@ -626,7 +644,10 @@ function forwardPipenzoPhaseEvents(): void {
   void relayPipenzoPhaseEvents({
     signal: controller.signal,
     events: (options) => activeClient.v2.pipenzo.ticketEvents(options),
-    onEvent: (event) => sendToRenderer(mainWindow, 'daemon:pipenzo-phase-event', event),
+    onEvent: (event) => {
+      sendToRenderer(mainWindow, 'daemon:pipenzo-phase-event', event);
+      trayBadge?.onPhaseEvent();
+    },
     onReplayGap: (window) => {
       console.warn(
         `phase event stream fell behind the daemon's replay window; transitions were lost${
@@ -1053,6 +1074,42 @@ function createTray(): void {
     mainWindow?.show();
     mainWindow?.focus();
   });
+
+  // Tray badge (issue #151). `trayBaseIcon` is the same file the plain tray glyph already uses, kept
+  // around so every repaint composites from a clean source. `trayBadge` stays inert off Windows (see
+  // `TrayBadgeController`'s own `platform` gate) -- constructing it unconditionally here is simpler
+  // than guarding this whole block, and does nothing on mac/Linux.
+  trayBaseIcon = nativeImage.createFromPath(iconPath);
+  trayBadge = new TrayBadgeController({
+    platform: process.platform,
+    listTickets: async () => {
+      if (!client) throw new Error('daemon is not ready yet');
+      return client.v2.pipenzo.listTickets();
+    },
+    getNotificationSettings: async () => {
+      if (!client) throw new Error('daemon is not ready yet');
+      return client.v2.pipenzo.notificationSettings();
+    },
+    paint: paintTrayBadge,
+    onError: (error) => {
+      console.warn(`tray badge update failed: ${boundedErrorMessage(error)}`);
+    },
+  });
+}
+
+/** The one Electron-touching half of the tray badge: composites `label` onto `trayBaseIcon` and
+ *  calls `tray.setImage`, or resets to the plain icon when `label` is `undefined`. Left out of
+ *  `tray-badge.ts` so that module's counting/debounce logic needs no live `Tray` or `NativeImage` to
+ *  be tested. */
+function paintTrayBadge(label: string | undefined): void {
+  if (!tray || !trayBaseIcon) return;
+  if (label === undefined) {
+    tray.setImage(trayBaseIcon);
+    return;
+  }
+  const { width, height } = trayBaseIcon.getSize();
+  const composed = compositeBadgeOverlay({ buffer: trayBaseIcon.toBitmap(), width, height }, label);
+  tray.setImage(nativeImage.createFromBuffer(composed, { width, height }));
 }
 
 type IpcHandlerListener = Parameters<typeof ipcMain.handle>[1];
@@ -1398,9 +1455,13 @@ handle('daemon:pipenzo-notification-settings', async () => {
 
 handle('daemon:pipenzo-update-notification-settings', async (_event, input: unknown) => {
   if (!client) throw new Error('daemon is not ready yet');
-  return client.v2.pipenzo.updateNotificationSettings(
+  const result = await client.v2.pipenzo.updateNotificationSettings(
     pipenzoNotificationSettingsUpdateV1Schema.parse(input),
   );
+  // The daemon's own merged record, not the raw (possibly partial) IPC input -- see
+  // `TrayBadgeController.setEnabled`'s own doc comment for why that distinction matters (AC-5).
+  trayBadge?.setEnabled(result.badge);
+  return result;
 });
 
 handle('daemon:list-providers', async () => {
@@ -1879,6 +1940,7 @@ if (gotSingleInstanceLock) {
 
   app.on('before-quit', (event) => {
     isQuitting = true;
+    trayBadge?.stop();
     // A poll landing after this point would store a credential and then hit
     // `restartDaemonForCredentialChange`'s own `isQuitting` guard, leaving the token saved but not
     // delivered until the next launch, while the UI's last frame said it was restarting.
