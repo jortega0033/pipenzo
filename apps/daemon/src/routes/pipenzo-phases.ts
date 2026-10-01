@@ -20,6 +20,12 @@ import {
   pipenzoRefineResultV1Schema,
   pipenzoReviewRequestV1Schema,
   pipenzoReviewResultV1Schema,
+  pipenzoRunStatusRequestV1Schema,
+  pipenzoRunStatusResultV1Schema,
+  pipenzoSteerRequestV1Schema,
+  pipenzoSteerResultV1Schema,
+  pipenzoStopRequestV1Schema,
+  pipenzoStopResultV1Schema,
   type PipenzoPhaseErrorCodeV1,
 } from '@agent-dock/shared';
 import { PipenzoPhaseError, type PipenzoPhaseService } from '../pipenzo-phase-service.js';
@@ -162,6 +168,52 @@ export function registerPipenzoPhaseRoutes(
     } catch (error) {
       if (error instanceof PipenzoPhaseError) return fail(reply, error);
       return fail(reply, new PipenzoPhaseError('diff_unavailable', 'implement diff unavailable'));
+    }
+  });
+
+  // Issue #103's read-only poll: whether a ticket's most recent Implement attempt is a session
+  // genuinely live right now. Rate-limited like `capabilities` above rather than the human-paced
+  // routes -- `RunControls.tsx`'s own gating means a caller may reasonably poll this on every
+  // phase-event, not just on a click.
+  app.post(
+    '/v2/pipenzo/implement/status',
+    { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } },
+    async (req, reply) => {
+      const parsed = pipenzoRunStatusRequestV1Schema.safeParse(req.body);
+      if (!parsed.success) return invalid(reply, 'run status request');
+      try {
+        reply.send(pipenzoRunStatusResultV1Schema.parse(await service.runStatus(parsed.data)));
+      } catch (error) {
+        if (error instanceof PipenzoPhaseError) return fail(reply, error);
+        return fail(reply, new PipenzoPhaseError('session_failed', 'run status unavailable'));
+      }
+    },
+  );
+
+  // Issue #103: delivers one instruction to a genuinely running Implement session, at its current
+  // turn boundary. Human-paced, same `limits` as every other phase route on this surface.
+  app.post('/v2/pipenzo/implement/steer', limits, async (req, reply) => {
+    const parsed = pipenzoSteerRequestV1Schema.safeParse(req.body);
+    if (!parsed.success) return invalid(reply, 'steer request');
+    try {
+      reply.send(pipenzoSteerResultV1Schema.parse(await service.steerImplement(parsed.data)));
+    } catch (error) {
+      if (error instanceof PipenzoPhaseError) return fail(reply, error);
+      return fail(reply, new PipenzoPhaseError('session_failed', 'steer failed'));
+    }
+  });
+
+  // Issue #103: abandons only the running Implement session's current in-flight turn and parks the
+  // ticket on `pipenzo:needs-human` -- never a worktree or a commit, see `stopImplement()`'s own
+  // doc comment (`pipenzo-phase-service.ts`).
+  app.post('/v2/pipenzo/implement/stop', limits, async (req, reply) => {
+    const parsed = pipenzoStopRequestV1Schema.safeParse(req.body);
+    if (!parsed.success) return invalid(reply, 'stop request');
+    try {
+      reply.send(pipenzoStopResultV1Schema.parse(await service.stopImplement(parsed.data)));
+    } catch (error) {
+      if (error instanceof PipenzoPhaseError) return fail(reply, error);
+      return fail(reply, new PipenzoPhaseError('session_failed', 'stop failed'));
     }
   });
 
