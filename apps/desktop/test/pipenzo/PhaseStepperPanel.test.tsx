@@ -88,6 +88,34 @@ describe('PhaseStepperPanel', () => {
     expect(screen.getByText('Stack awaiting sign-off')).toBeInTheDocument();
   });
 
+  it('shows the plan-review gate for a real clean-verdict park (bare needs-human + planReview, issue #15)', async () => {
+    installBridge(
+      vi.fn().mockResolvedValue(
+        reconciliation(
+          ticket({
+            lane: 'needs-human',
+            phase: 'refine',
+            labels: ['pipenzo:needs-human'],
+            planReview: {
+              summary: 'Persist poll ETags per repo and resource in the ticket store.',
+              acceptanceCriteria: [
+                { id: 'AC-1', kind: 'ubiquitous', text: 'The system shall persist ETags.' },
+              ],
+              outOfScope: ['Everything else.'],
+              filesLikelyTouched: [],
+              estimate: { changedLines: 38, filesTouched: 2, layered: false },
+              openQuestions: [],
+            },
+          }),
+        ),
+      ),
+    );
+    render(<PhaseStepperPanel ticketId={TICKET_ID} />);
+
+    await waitFor(() => expect(screen.getByText('Plan review').closest('.step')).toHaveClass('await'));
+    expect(screen.getByText('Plan review — waiting on you')).toBeInTheDocument();
+  });
+
   it('shows a failed step for a ticket parked mid-implement', async () => {
     installBridge(
       vi.fn().mockResolvedValue(

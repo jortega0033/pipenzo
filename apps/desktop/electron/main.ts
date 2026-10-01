@@ -60,6 +60,8 @@ import {
   pipenzoHighApprovalDecideRequestV1Schema,
   pipenzoStackApprovalCaptureRequestV1Schema,
   pipenzoStackApprovalDecideRequestV1Schema,
+  pipenzoPlanReviewCaptureRequestV1Schema,
+  pipenzoPlanReviewDecideRequestV1Schema,
   structuredWorkflowRequestV2Schema,
   providerIdSchema,
   type AgentCommandV2,
@@ -1646,6 +1648,18 @@ handle('daemon:pipenzo-stack-approval-decide', async (_event, input: unknown) =>
   if (!client) throw new Error('daemon is not ready yet');
   return client.v2.pipenzo.decideStackApproval(
     pipenzoStackApprovalDecideRequestV1Schema.parse(input),
+  );
+});
+handle('daemon:pipenzo-plan-review-capture', async (_event, input: unknown) => {
+  if (!client) throw new Error('daemon is not ready yet');
+  return client.v2.pipenzo.capturePlanReview(
+    pipenzoPlanReviewCaptureRequestV1Schema.parse(input),
+  );
+});
+handle('daemon:pipenzo-plan-review-decide', async (_event, input: unknown) => {
+  if (!client) throw new Error('daemon is not ready yet');
+  return client.v2.pipenzo.decidePlanReview(
+    pipenzoPlanReviewDecideRequestV1Schema.parse(input),
   );
 });
 /**

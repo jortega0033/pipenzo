@@ -13,17 +13,19 @@ import type { StepSpec, StepStatus } from '../components/primitives/PhaseStepper
  * `pipenzo:ci-failed` (README: the label stays on the ticket through its whole ci-failed lifecycle,
  * so its presence is exactly "CI results exist for this ticket").
  *
- * ## Why there is no dedicated "plan review approved" label to read
+ * ## Why there is no dedicated "plan review pending" label to read (issue #15)
  *
  * `pipenzo-ticket-v1.ts`'s own comment on `PIPENZO_PHASES` states that "Approve" (there, the
  * publish gate) is not a distinct phase because `lane: 'ready-for-review'` already says a human is
- * being waited on. The same reasoning extends to the plan-review gate this ticket also has to
- * render: README's diff-size gate stops an oversized or underspecified ticket at Refine and asks a
- * human, and the only two labels that actually do that today are `pipenzo:needs-pre-scoping`
- * (`refine-gate.ts`'s `refuse` verdict) and `pipenzo:awaiting-stack-approval` (its `stack` verdict).
- * A ticket that clears Refine outright has no gate to stop at and no label to read, so the
- * plan-review step reads `done` for it -- the same way every step behind the active one reads
- * `done` regardless of whether a human explicitly clicked something.
+ * being waited on. README's diff-size gate stops an oversized or underspecified ticket at Refine and
+ * asks a human under `pipenzo:needs-pre-scoping` (`refine-gate.ts`'s `refuse` verdict) or
+ * `pipenzo:awaiting-stack-approval` (its `stack` verdict) -- but a ticket that clears Refine outright
+ * (the `single` verdict) now also stops, under the bare `pipenzo:needs-human` label rather than a
+ * third dedicated one: `design/artboards/TicketDetail.dc.html`'s own plan-review mockup is explicit
+ * that inventing a label the published set does not name would be exactly the thing CLAUDE.md hard
+ * rule #5 refuses. `ticket.planReview` -- populated only when the ticket's local `awaitingPlanReview`
+ * marker is set and its cached `spec` survived (`routes/pipenzo-tickets.ts`'s `toTicketView()`) -- is
+ * the real signal this module reads instead of a label for that third case.
  */
 
 export type TicketPhaseStepId = 'refine' | 'plan-review' | 'implement' | 'review' | 'publish' | 'ci';
@@ -61,8 +63,9 @@ function has(ticket: PipenzoTicketViewV1, label: PipenzoLabelV1): boolean {
 
 /**
  * "Parked, needs a human" in the plain sense README's `pipenzo:needs-human` row means -- three
- * consecutive failures, or a denied approval -- as opposed to the four more specific Needs-human
- * variants that each carry their own condition label and their own visual treatment below.
+ * consecutive failures, or a denied approval -- as opposed to the five more specific Needs-human
+ * variants that each carry their own condition label (or, for a pending plan review, local marker)
+ * and their own visual treatment below.
  */
 function isGenericNeedsHuman(ticket: PipenzoTicketViewV1): boolean {
   return (
@@ -71,7 +74,10 @@ function isGenericNeedsHuman(ticket: PipenzoTicketViewV1): boolean {
     !has(ticket, 'pipenzo:awaiting-stack-approval') &&
     !has(ticket, 'pipenzo:interrupted') &&
     !has(ticket, 'pipenzo:merge-conflict') &&
-    !has(ticket, 'pipenzo:ci-failed')
+    !has(ticket, 'pipenzo:ci-failed') &&
+    // Issue #15: a pending plan review also parks under the bare `pipenzo:needs-human` label (see
+    // `planReviewStatus`'s own doc comment) -- `ticket.planReview`'s presence is its real signal.
+    !ticket.planReview
   );
 }
 
@@ -88,6 +94,8 @@ function refineStatus(ticket: PipenzoTicketViewV1): StepStatus {
 function planReviewStatus(ticket: PipenzoTicketViewV1): StepStatus {
   if (ticket.phase !== 'refine') return 'done';
   if (ticket.lane !== 'needs-human') return 'upcoming';
+  // Issue #15: a clean Refine verdict, no dedicated label -- see this module's own doc comment.
+  if (ticket.planReview) return 'await';
   if (has(ticket, 'pipenzo:awaiting-stack-approval')) return 'await';
   // A refusal is a finished outcome, not something still being waited on -- see `refine-gate.ts`'s
   // `refuse` verdict and README's "refusal is a real ticket state, not an error".
@@ -122,6 +130,12 @@ function publishStatus(ticket: PipenzoTicketViewV1): StepStatus {
 }
 
 function hintFor(ticket: PipenzoTicketViewV1): TicketPhaseHint | undefined {
+  // Issue #15: checked before `isGenericNeedsHuman`'s own fallback below, the same way the other
+  // specific-signal hints in this function are -- `TicketDetail.dc.html`'s own plan-review mockup
+  // text, read exactly, minus the mockup's invented timestamp.
+  if (ticket.planReview) {
+    return { text: 'Plan review — waiting on you' };
+  }
   if (has(ticket, 'pipenzo:awaiting-stack-approval')) {
     return { text: 'Stack awaiting sign-off' };
   }

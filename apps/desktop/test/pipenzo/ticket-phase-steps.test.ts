@@ -67,6 +67,34 @@ describe('ticketPhaseSteps', () => {
     expect(ticketPhaseSteps(t).hint?.text).toBe('Stack awaiting sign-off');
   });
 
+  it(
+    'shows Plan review awaiting sign-off for a real clean-verdict park (bare needs-human + planReview, issue #15)',
+    () => {
+      const t = ticket({
+        lane: 'needs-human',
+        phase: 'refine',
+        labels: ['pipenzo:needs-human'],
+        planReview: {
+          summary: 'Persist poll ETags per repo and resource in the ticket store.',
+          acceptanceCriteria: [{ id: 'AC-1', kind: 'ubiquitous', text: 'The system shall persist ETags.' }],
+          outOfScope: ['Everything else.'],
+          filesLikelyTouched: [],
+          estimate: { changedLines: 38, filesTouched: 2, layered: false },
+          openQuestions: [],
+        },
+      });
+      expect(statusOf(t, 'refine')).toBe('done');
+      expect(statusOf(t, 'plan-review')).toBe('await');
+      expect(ticketPhaseSteps(t).hint?.text).toBe('Plan review — waiting on you');
+    },
+  );
+
+  it('does not read a bare needs-human ticket with no planReview as a plan-review wait (it is the generic fail reading instead)', () => {
+    const t = ticket({ lane: 'needs-human', phase: 'refine', labels: ['pipenzo:needs-human'] });
+    expect(statusOf(t, 'refine')).toBe('fail');
+    expect(statusOf(t, 'plan-review')).toBe('upcoming');
+  });
+
   it('shows a needs-pre-scoping refusal as a finished (failed) plan-review outcome, not a wait', () => {
     const t = ticket({
       lane: 'needs-human',

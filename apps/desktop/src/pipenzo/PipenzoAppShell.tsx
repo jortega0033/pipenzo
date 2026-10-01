@@ -157,13 +157,13 @@ import {
  *
  * `Card` -- id/title, plus the one status chip and foot line each lane's own real data already
  * supports without guessing (Working's phase, Ready-for-review's branch and, since issue #87, its
- * own ci-failed `FailNote`). Needs-human is issue #86: `needs-human-card.ts`'s own
- * `classifyNeedsHumanCard` picks one of five real variants
- * (`needs-pre-scoping`/`awaiting-stack-approval`/`interrupted`/`merge-conflict`/`failed`, plus a
- * `generic` fallback for a bare park this router does not further specialize), and
+ * own ci-failed `FailNote`). Needs-human is issue #86 (plus #15's `plan-review` addition):
+ * `needs-human-card.ts`'s own `classifyNeedsHumanCard` picks one of six real variants
+ * (`needs-pre-scoping`/`awaiting-stack-approval`/`plan-review`/`interrupted`/`merge-conflict`/
+ * `failed`, plus a `generic` fallback for a bare park this router does not further specialize), and
  * `needsHumanChip`/`needsHumanCardBody` below turn that answer into a chip and a body -- never a
- * guess at the two named variants (`claim-conflict`, `plan-review`) that module's own doc comment
- * found no persisted backend signal for yet.
+ * guess at the one named variant (`claim-conflict`) that module's own doc comment found no
+ * persisted backend signal for yet.
  *
  * ## The Working lane's held card (issue #85)
  *
@@ -686,14 +686,14 @@ function loadLineTarget(repoNames: readonly string[] | undefined): ReactNode {
  * already trusts `lane` itself. Every other ready-for-review ticket -- no `pipenzo:ci-failed` --
  * is the plain gates-passed case.
  *
- * Needs-human's own five variants (issue #86): the chip text matches each real label verbatim
- * except `failed`, which reads `3 failed` -- `Main.dc.html`'s own board sample spells it that way
- * for the "parked after repeated failures" reading of the bare `pipenzo:needs-human` label, and
- * `needs-human-card.ts`'s own doc comment states why that reading, and not "a denied approval", is
- * the one this router can tell apart from real data. The other two named variants
- * (`claim-conflict`, `plan-review`) have no persisted signal to key a chip off yet -- see that
- * module's doc comment -- so `classifyNeedsHumanCard` never returns them and no chip text exists
- * for them here.
+ * Needs-human's own six variants (issue #86, plus #15's `plan-review`): the chip text matches each
+ * real label verbatim except `failed` (reads `3 failed` -- `Main.dc.html`'s own board sample spells
+ * it that way for the "parked after repeated failures" reading of the bare `pipenzo:needs-human`
+ * label) and `plan-review` (no dedicated label exists -- see `needs-human-card.ts`'s own doc
+ * comment -- so the chip reads the bare label its ticket actually carries, with its own distinct
+ * tone). The one remaining named variant (`claim-conflict`) has no persisted signal to key a chip
+ * off yet -- see that module's doc comment -- so `classifyNeedsHumanCard` never returns it and no
+ * chip text exists for it here.
  */
 function laneChip(ticket: PipenzoTicketViewV1) {
   if (ticket.lane === 'working') {
@@ -713,13 +713,15 @@ function laneChip(ticket: PipenzoTicketViewV1) {
   return undefined;
 }
 
-/** The needs-human chip text and tone for each of `needs-human-card.ts`'s five real variants. */
+/** The needs-human chip text and tone for each of `needs-human-card.ts`'s six real variants. */
 function needsHumanChip(card: NeedsHumanCardClassification) {
   switch (card.variant) {
     case 'needs-pre-scoping':
       return <Chip tone="neutral">pipenzo:needs-pre-scoping</Chip>;
     case 'awaiting-stack-approval':
       return <Chip tone="warn">pipenzo:awaiting-stack-approval</Chip>;
+    case 'plan-review':
+      return <Chip tone="warn">plan review</Chip>;
     case 'interrupted':
       return <Chip tone="warn">pipenzo:interrupted</Chip>;
     case 'merge-conflict':
@@ -751,14 +753,18 @@ function ciFixReadyDetail(ticket: PipenzoTicketViewV1): string {
 }
 
 /**
- * The Needs-human card body for each of `needs-human-card.ts`'s five real variants (issue #86) --
- * see that module's own doc comment for exactly which real fields each one is built from and which
- * two named variants (`claim-conflict`, `plan-review`) never reach this function at all.
+ * The Needs-human card body for each of `needs-human-card.ts`'s six real variants (issue #86, plus
+ * #15's `plan-review`) -- see that module's own doc comment for exactly which real fields each one
+ * is built from and which one named variant (`claim-conflict`) never reaches this function at all.
  *
- * `needs-pre-scoping`/`awaiting-stack-approval` reuse `Split` -- the same primitive `RefusalPanel`
- * already renders a richer version of on `TicketDetail`, and `Main.dc.html`'s own board mock uses
- * the identical `.split` block for both -- with only the base `ticket.estimate` and, for a refusal,
- * a real cached `proposedSplit` when one survived. `interrupted` uses the generic `Notice` rather
+ * `needs-pre-scoping`/`awaiting-stack-approval`/`plan-review` all reuse `Split` -- the same
+ * primitive `RefusalPanel` already renders a richer version of on `TicketDetail`, and
+ * `Main.dc.html`'s own board mock uses the identical `.split` block for the first two -- with only
+ * the base `ticket.estimate` and, for a refusal, a real cached `proposedSplit` when one survived.
+ * `plan-review`'s own full spec (EARS acceptance criteria, out-of-scope, files, estimate) is the
+ * dedicated `PlanReviewPanel`'s job (`PlanReview.tsx`, issue #101), not this compact board card's --
+ * same restraint `awaiting-stack-approval` already applies by not rendering its own reorder UI here.
+ * `interrupted` uses the generic `Notice` rather
  * than the dangling `Resume` primitive: `Resume`'s own test suite (`Resume.test.tsx`) fixes Discard
  * and restart as *always* enabled, a contract this board card cannot honestly meet -- the ticket
  * list this card renders from carries no crash-recovery session data to back a real resume or
@@ -807,6 +813,15 @@ function needsHumanCardBody(card: NeedsHumanCardClassification): ReactNode {
               ? `Proposed stack · ${card.childCount} ${card.childCount === 1 ? 'PR' : 'PRs'}`
               : 'Awaiting a human decision on how to split or proceed'
           }
+          kv={estimateKv(card)}
+          rows={[]}
+        />
+      );
+    case 'plan-review':
+      return (
+        <Split
+          icon="gates"
+          head="Refine finished · approve the spec before Implement starts"
           kv={estimateKv(card)}
           rows={[]}
         />

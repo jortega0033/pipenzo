@@ -126,6 +126,10 @@ describe('electron/preload.ts — real bridge (AD-07)', () => {
         // Issue #99: the stack approval panel's own two calls -- same capture/decide shape as HIGH.
         'captureStackApproval',
         'decideStackApproval',
+        // Issue #15 (UI half #101): the plan-review gate's own two calls -- same capture/decide
+        // shape as HIGH/stack approval above.
+        'capturePlanReview',
+        'decidePlanReview',
         'onPipenzoPhaseEvent',
         // The GitHub connection-health stream (issue #257), plus its manual poll trigger (#70/#71/#75).
         'onPipenzoGitHubHealth',

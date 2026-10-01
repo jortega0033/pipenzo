@@ -183,6 +183,8 @@ function installBridge(overrides: Partial<AgentDockBridge> = {}): {
     decideHighApproval: vi.fn(),
     captureStackApproval: vi.fn(),
     decideStackApproval: vi.fn(),
+    capturePlanReview: vi.fn(),
+    decidePlanReview: vi.fn(),
     onPipenzoPhaseEvent: vi.fn(() => () => {}),
     onPipenzoGitHubHealth: vi.fn(() => () => {}),
     pollGitHubHealthNow: vi.fn(async () => {}),

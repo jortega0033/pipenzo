@@ -135,6 +135,19 @@ export async function claimIssueForTicket(ticket: {
  * acceptance criteria in front of the implementer — could reach the route. A caller that already
  * has a real spec (a ticket re-opened after a refine) passes it as `spec` and lands on step 2.
  *
+ * ## The plan-review gate (issue #15), seen from here
+ *
+ * This dialog still does not special-case any Refine verdict client-side — a `refuse`/`stack`
+ * verdict was never blocked here either, only once the ticket's real label already reflected it.
+ * A clean verdict is no different: `refine()` may park a ticket carrying `ticket.ticketId` in the
+ * bare `pipenzo:needs-human` lane for plan review the moment this step-1 call returns, and Start
+ * stays reachable in this same dialog regardless. Clicking it then hits
+ * `PipenzoPhaseService.implement()`'s own real, server-side `plan_review_pending` refusal, which
+ * surfaces through the ordinary `onFailed` toast like any other Start failure (issue #77) — the
+ * same path a workspace-trust or claim-conflict refusal already uses. A friendlier in-dialog notice
+ * for this specific case is left to whichever ticket wires the plan-review panel into a real screen
+ * (#101), not invented here.
+ *
  * ## What the branch-name override became
  *
  * It is now a read-only display of the derived name. `pipenzoImplementRequestV1Schema` has no
@@ -264,6 +277,11 @@ export function ImplementDialog({
         provider,
         ...(model ? { model } : {}),
         ...(extraInstructions.trim() ? { extraInstructions: extraInstructions.trim() } : {}),
+        // Issue #15: without this, a tracked ticket's plan-review gate (`PipenzoPhaseService
+        // .implement()`'s own `plan_review_pending` refusal) has no ticket id to check in the
+        // first place -- see `BoardImplementDialog.tsx`'s own doc comment for the board half of
+        // this wiring.
+        ...(ticket.ticketId ? { ticketId: ticket.ticketId } : {}),
       });
     };
     void start
