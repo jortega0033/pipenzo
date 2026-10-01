@@ -995,6 +995,7 @@ export class PipenzoPhaseService {
     // into a thrown error, the same reasoning `crash-recovery.ts`'s best-effort label write uses.
     if (report.outcome === 'estimate_blown' && request.ticketId) {
       await this.#reportBlownEstimate(request.ticketId, report);
+      await this.#recordEstimateMiss(request.ticketId, report);
     }
 
     if (request.ticketId && tokensUsed > 0) {
@@ -1097,6 +1098,53 @@ export class PipenzoPhaseService {
       );
     } catch (error) {
       this.#logger?.warn('could not record a blown estimate against its ticket', {
+        ticketId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
+   * Persists the blown-estimate miss itself (issue #269): predicted (`diffScope.estimate`), actual
+   * (`diffScope.implementation`), and the ratio between them, as an `estimate_miss` audit entry --
+   * so the daemon can query a ticket's past misses later, instead of the numbers only ever existing
+   * transiently in this response and in `blownEstimateCommentBody()`'s GitHub comment text.
+   *
+   * Best-effort, logged, never thrown -- same reasoning as `#recordReviewAudit` (issue #160): a
+   * review already completed and already is the thing `review()` promises to return, so a secondary
+   * bookkeeping write failing here must not turn that into a thrown error. Writes nothing when
+   * `audit` was never configured, same "no store, no entry" rule every other audit write in this
+   * file follows.
+   *
+   * Deliberately unconditional, unlike `#reportBlownEstimate`'s own label-transition/comment: this
+   * is a log entry, not a state the ticket is parked in, so a retried `review()` call that reproduces
+   * `estimate_blown` against the same worktree/commits recording a second row costs nothing a reader
+   * cannot already filter out by `recordedAt` -- there is no GitHub-comment-style "no idempotency
+   * key" reason to gate it the way that method's own doc comment explains for itself.
+   */
+  async #recordEstimateMiss(ticketId: string, report: PipenzoReviewResultV1): Promise<void> {
+    if (!this.#audit) return;
+    const scope = report.diffScope;
+    if (!scope || scope.estimate === undefined || scope.ratio === undefined) {
+      // Cannot happen for a real `estimate_blown` report -- the same invariant
+      // `blownEstimateCommentBody`'s own fallback branch documents -- but this must never fabricate
+      // numbers it does not have, so it skips the write rather than inventing a predicted/actual pair.
+      this.#logger?.warn('estimate_blown outcome had no diffScope.estimate/ratio to record', {
+        ticketId,
+      });
+      return;
+    }
+    try {
+      await this.#audit.append({
+        ticketId,
+        kind: 'estimate_miss',
+        outcome: 'estimate_blown',
+        predicted: scope.estimate,
+        actual: scope.implementation,
+        ratio: scope.ratio,
+      });
+    } catch (error) {
+      this.#logger?.warn('could not record this estimate miss to the pipenzo audit store', {
         ticketId,
         error: error instanceof Error ? error.message : String(error),
       });
