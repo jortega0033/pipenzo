@@ -9,6 +9,7 @@ import { Empty } from '../components/primitives/Empty.js';
 import { SkeletonEvent } from '../components/primitives/Skeleton.js';
 import {
   activityStreamAttemptTitle,
+  activityStreamCiFailedTitle,
   activityStreamIcon,
   activityStreamIconTone,
   activityStreamLineEnds,
@@ -183,6 +184,20 @@ function ActivityStreamRow({
         <Evt icon={icon} iconTone={iconTone} end={end}>
           <EvtHead tool="review" meta="running" metaLive />
           <EvtTitle>Review running — reviewer and verifier passes in progress</EvtTitle>
+        </Evt>
+      );
+
+    case 'ci-failed':
+      // issue #102: the one real condition row this ticket's `pipenzo:ci-failed` label backs --
+      // see `activity-stream.ts`'s own doc comment, item 4, for exactly what the canvas mocks here
+      // (a failing-check name, an error excerpt, a named forked session, a fix-commit row) that this
+      // row deliberately does not invent. The real fix-attempt half of the lineage is whatever
+      // `attempt` row(s) above already rendered from `ticket.attempts` -- the `evt-line` connector
+      // between that row and this one is the real lineage line.
+      return (
+        <Evt icon={icon} iconTone={iconTone} end={end}>
+          <EvtHead tool="ci" meta="pipenzo:ci-failed" />
+          <EvtTitle>{activityStreamCiFailedTitle(entry)}</EvtTitle>
         </Evt>
       );
   }

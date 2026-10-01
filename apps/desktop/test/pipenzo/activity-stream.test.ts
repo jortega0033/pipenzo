@@ -7,6 +7,7 @@ import type {
 } from '@agent-dock/shared';
 import {
   activityStreamAttemptTitle,
+  activityStreamCiFailedTitle,
   activityStreamIcon,
   activityStreamIconTone,
   activityStreamLineEnds,
@@ -137,6 +138,36 @@ describe('buildActivityStream', () => {
     expect(entries[0]).toMatchObject({ live: false });
     expect(entries[1]).toMatchObject({ live: true });
   });
+
+  it('appends a ci-failed row, last, only when the ticket carries the real label', () => {
+    const t = ticket({ labels: ['pipenzo:ci-failed'], attempts: [attempt({ sessionId: 's1' })] });
+    const entries = buildActivityStream(t);
+    expect(entries).toHaveLength(2);
+    expect(entries[0]).toMatchObject({ kind: 'attempt', attempt: { sessionId: 's1' } });
+    expect(entries[1]).toMatchObject({ kind: 'ci-failed', lastAttempt: { sessionId: 's1' } });
+  });
+
+  it('does not append a ci-failed row for a ticket without the real label', () => {
+    const t = ticket({ labels: ['pipenzo:working'], attempts: [attempt()] });
+    const entries = buildActivityStream(t);
+    expect(entries.some((e) => e.kind === 'ci-failed')).toBe(false);
+  });
+
+  it('appends ci-failed after every other real row, attempts, precommits, and review alike', () => {
+    const t = ticket({
+      labels: ['pipenzo:ci-failed'],
+      attempts: [attempt()],
+      precommits: [precommit()],
+    });
+    const entries = buildActivityStream(t, { reviewReport: reviewReport() });
+    expect(entries.map((e) => e.kind)).toEqual(['attempt', 'precommit', 'review', 'ci-failed']);
+  });
+
+  it('carries undefined lastAttempt on the ci-failed row when no attempt has been recorded yet', () => {
+    const t = ticket({ labels: ['pipenzo:ci-failed'], attempts: [] });
+    const entries = buildActivityStream(t);
+    expect(entries).toEqual([{ kind: 'ci-failed', lastAttempt: undefined }]);
+  });
 });
 
 describe('activityStreamIcon / activityStreamIconTone', () => {
@@ -156,6 +187,11 @@ describe('activityStreamIcon / activityStreamIconTone', () => {
     expect(activityStreamIconTone({ kind: 'review-pending' })).toBe('live');
     expect(activityStreamIconTone({ kind: 'review', report: reviewReport() })).toBe('default');
     expect(activityStreamIconTone({ kind: 'precommit', precommit: precommit() })).toBe('default');
+  });
+
+  it('maps the ci-failed row to the x-circle icon, bad tone', () => {
+    expect(activityStreamIcon({ kind: 'ci-failed', lastAttempt: undefined })).toBe('x-circle');
+    expect(activityStreamIconTone({ kind: 'ci-failed', lastAttempt: undefined })).toBe('bad');
   });
 });
 
@@ -198,6 +234,15 @@ describe('activityStreamLineEnds', () => {
     const entries: ActivityStreamEntry[] = [{ kind: 'review-pending' }];
     expect(activityStreamLineEnds(0, entries, false)).toBe(true);
   });
+
+  it('draws the real lineage line from the last attempt row down into the trailing ci-failed row', () => {
+    const entries: ActivityStreamEntry[] = [
+      { kind: 'attempt', attempt: attempt({ sessionId: 's1' }), live: false },
+      { kind: 'ci-failed', lastAttempt: attempt({ sessionId: 's1' }) },
+    ];
+    expect(activityStreamLineEnds(0, entries, false)).toBe(false);
+    expect(activityStreamLineEnds(1, entries, false)).toBe(true);
+  });
 });
 
 describe('activityStreamAttemptTitle', () => {
@@ -238,5 +283,22 @@ describe('activityStreamReviewTitle', () => {
 
   it('reports "no deterministic gates ran" honestly rather than a false 0/0', () => {
     expect(activityStreamReviewTitle(reviewReport({ deterministic: [] }))).toContain('no deterministic gates ran');
+  });
+});
+
+describe('activityStreamCiFailedTitle', () => {
+  it('names the real last-attempt tier and model when a fix attempt has been recorded', () => {
+    const title = activityStreamCiFailedTitle({
+      kind: 'ci-failed',
+      lastAttempt: attempt({ tier: 'frontier', model: 'opus' }),
+    });
+    expect(title).toContain('frontier tier');
+    expect(title).toContain('opus');
+    expect(title).not.toMatch(/PR #|commit|session\.fork/i);
+  });
+
+  it('reports the honest gap when no attempt has been recorded yet, never a guess', () => {
+    const title = activityStreamCiFailedTitle({ kind: 'ci-failed', lastAttempt: undefined });
+    expect(title).toBe('A post-merge-request check failed on this ticket. No fix attempt has been recorded yet.');
   });
 });
