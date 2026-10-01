@@ -40,6 +40,7 @@ function renderPalette(
     onOpenBoard: () => void;
     onOpenSettings: () => void;
     onSelectRepo: (repoFullName: string) => void;
+    onNewFromIdea: () => void;
   }> = {},
 ) {
   const props = {
@@ -48,6 +49,7 @@ function renderPalette(
     onOpenBoard: vi.fn(),
     onOpenSettings: vi.fn(),
     onSelectRepo: vi.fn(),
+    onNewFromIdea: vi.fn(),
     ...overrides,
   };
   render(<BoardCommandPalette {...props} />);
@@ -146,7 +148,8 @@ describe('BoardCommandPalette', () => {
     fireEvent.click(screen.getByRole('button', { name: /Jump to ticket/ }));
     const search = screen.getByLabelText('Search tickets, repos and actions');
 
-    // #85 (active by default) -> #94 -> the repo row -> Open Board -> Open Settings.
+    // #85 (active by default) -> #94 -> the repo row -> New from idea -> Open Board -> Open Settings.
+    fireEvent.keyDown(search, { key: 'ArrowDown' });
     fireEvent.keyDown(search, { key: 'ArrowDown' });
     fireEvent.keyDown(search, { key: 'ArrowDown' });
     fireEvent.keyDown(search, { key: 'ArrowDown' });
@@ -203,6 +206,39 @@ describe('BoardCommandPalette', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
+  it('"New from idea" fires the real onNewFromIdea handler and closes the palette', () => {
+    const props = renderPalette({ tickets: [] });
+    fireEvent.click(screen.getByRole('button', { name: /Jump to ticket/ }));
+
+    fireEvent.click(screen.getByRole('button', { name: /New from idea/ }));
+
+    expect(props.onNewFromIdea).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('hides "New from idea" when no repo is connected -- a drafter needs one to read', () => {
+    renderPalette({ tickets: [], repositories: [] });
+    fireEvent.click(screen.getByRole('button', { name: /Jump to ticket/ }));
+
+    expect(screen.queryByText('New from idea')).not.toBeInTheDocument();
+  });
+
+  it('the "N" shortcut fires New from idea from anywhere the palette is closed', () => {
+    const props = renderPalette({ tickets: [] });
+
+    fireEvent.keyDown(document, { key: 'n' });
+
+    expect(props.onNewFromIdea).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not fire the "N" shortcut when no repo is connected', () => {
+    const props = renderPalette({ tickets: [], repositories: [] });
+
+    fireEvent.keyDown(document, { key: 'n' });
+
+    expect(props.onNewFromIdea).not.toHaveBeenCalled();
+  });
+
   it('the "B" shortcut fires Open Board from anywhere the palette is closed', () => {
     const props = renderPalette({ tickets: [] });
 
@@ -230,6 +266,7 @@ describe('BoardCommandPalette', () => {
           onOpenBoard={onOpenBoard}
           onOpenSettings={vi.fn()}
           onSelectRepo={vi.fn()}
+          onNewFromIdea={vi.fn()}
         />
       </>,
     );

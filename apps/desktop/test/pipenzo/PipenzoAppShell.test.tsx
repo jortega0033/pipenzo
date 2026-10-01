@@ -1285,6 +1285,44 @@ describe('PipenzoAppShell', () => {
       expect(screen.getByText('Queued')).toBeInTheDocument();
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
+
+    it('"New from idea" opens the real dialog for the active repo, through a checkout and trust check', async () => {
+      const bridge = {
+        pipenzoListTickets: vi.fn().mockResolvedValue({ tickets: [] }),
+        onPipenzoPhaseEvent: () => () => {},
+        getDaemonStatus: vi.fn().mockResolvedValue({ state: 'ready' }),
+        onDaemonStatus: () => () => {},
+        pipenzoConnectedRepos: vi.fn().mockResolvedValue({ repositories: [PZ] }),
+        resolvePipenzoCheckout: vi
+          .fn()
+          .mockResolvedValue({ repo: PZ, repositoryPath: '/state/repos/jortega0033/pipenzo' }),
+        inspectWorkspace: vi.fn().mockResolvedValue({
+          schemaVersion: 1,
+          workspaceId: 'c'.repeat(64),
+          incarnation: 'd'.repeat(64),
+          displayName: 'pipenzo',
+          reusable: true,
+          state: 'trusted',
+        }),
+      };
+      setBridgeOverride(bridge as never);
+      render(<PipenzoAppShell sync={SYNC} onRefreshSync={vi.fn()} />);
+      // Wait for the connected-repos read to settle -- the "N" shortcut is gated on it, same as the
+      // palette's own row (see `BoardCommandPalette.tsx`'s doc comment).
+      await screen.findByRole('button', { name: new RegExp(PZ) });
+
+      fireEvent.keyDown(document, { key: 'n' });
+
+      // Present immediately -- `BoardNewFromIdeaDialog`'s own preamble dialog and the real
+      // `NewFromIdeaDialog` it swaps in once trusted share this title (see that component's own
+      // doc comment for why gating happens before the idea is even typed).
+      expect(screen.getByRole('dialog', { name: 'New from idea' })).toBeInTheDocument();
+      expect(bridge.resolvePipenzoCheckout).toHaveBeenCalledWith({ repo: PZ });
+
+      // The checkout/trust preamble settles into the real drafting dialog, not a permanent
+      // "preparing" state -- same settled-vs-first-rendered distinction #342's own tests draw.
+      expect(await screen.findByLabelText('What’s the problem?')).toBeInTheDocument();
+    });
   });
 
   /**

@@ -32,6 +32,7 @@ import { ActivityRow } from './ActivityRow.js';
 import { ActivityScreen } from './ActivityScreen.js';
 import { BoardCommandPalette } from './BoardCommandPalette.js';
 import { BoardImplementDialog } from './BoardImplementDialog.js';
+import { BoardNewFromIdeaDialog } from './BoardNewFromIdeaDialog.js';
 import { BoardScreen } from './BoardScreen.js';
 import { DiffReviewScreen } from './DiffReviewScreen.js';
 import { DiscardBranchDialog } from './DiscardBranchDialog.js';
@@ -214,8 +215,12 @@ import {
  * `BoardCommandPalette` wires `CommandPalette.tsx` (#33) up the same way: `tickets` and
  * `connectedRepoNames` are the exact values already computed here for the board and the switcher,
  * not a second read of either, and `onSelectRepo` is the switcher's own `setRequestedActiveRepoId`
- * -- picking a repo in the palette is the same action as picking one in the switcher. See that
- * component's own doc comment for why its Actions group has two rows rather than the canvas's four.
+ * -- picking a repo in the palette is the same action as picking one in the switcher. `onNewFromIdea`
+ * opens `BoardNewFromIdeaDialog` for `activeRepoId` -- the same repo the switcher and load-line
+ * already name as "the" repo, since the palette itself has no other notion of which repo a
+ * repo-less idea is about. See that component's own doc comment for why its Actions group has
+ * three rows rather than the canvas's four, and `BoardNewFromIdeaDialog`'s for why it gates on
+ * workspace trust the same way `BoardImplementDialog` does.
  */
 export function PipenzoAppShell({
   sync,
@@ -269,6 +274,7 @@ export function PipenzoAppShell({
   // switching lanes/lists under it (a live board sync) is picked up on the next render rather than
   // pinning a stale snapshot (issue #341).
   const [selectedTicketId, setSelectedTicketId] = useState<string | undefined>(initialTicketId);
+  const [newFromIdeaOpen, setNewFromIdeaOpen] = useState(false);
   // The user's own pick, when they have made one -- resolved against the live connected list by
   // `resolveActiveRepoId` below rather than trusted on its own, since a repo it names can stop being
   // connected (removed from Settings) out from under this state.
@@ -441,6 +447,7 @@ export function PipenzoAppShell({
             onOpenBoard={goToBoard}
             onOpenSettings={goToSettings}
             onSelectRepo={setRequestedActiveRepoId}
+            onNewFromIdea={() => setNewFromIdeaOpen(true)}
           />
         </MainHeadRight>
       </MainHead>
@@ -574,6 +581,19 @@ export function PipenzoAppShell({
             setDiscarding(undefined);
             setReviewing(undefined);
             setView('board');
+            refresh();
+          }}
+        />
+      )}
+      {newFromIdeaOpen && activeRepoId && (
+        <BoardNewFromIdeaDialog
+          // Keyed by repo so switching the active repo mid-dialog never hands a stale checkout's
+          // draft to a newly-picked one.
+          key={activeRepoId}
+          repo={activeRepoId}
+          onClose={() => setNewFromIdeaOpen(false)}
+          onCreated={() => {
+            setNewFromIdeaOpen(false);
             refresh();
           }}
         />
