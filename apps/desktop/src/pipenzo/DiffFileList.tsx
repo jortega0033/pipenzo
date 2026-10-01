@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../components/primitives/Icon.js';
 import { parseUnifiedDiff, splitPath, type DiffFile, type DiffLine } from './diff-parser.js';
 
@@ -42,6 +42,26 @@ export function DiffFileList({
 function DiffFileCard({ file, hitLocation }: { file: DiffFile; hitLocation?: DiffHitLocation }) {
   const { dir, name } = splitPath(file.path);
   const [collapsed, setCollapsed] = useState<ReadonlySet<number>>(new Set());
+
+  // A finding's line has to actually be on screen for its `.hit` row to scroll to and highlight
+  // (issue #108) -- if a reader had collapsed the hunk it lives in, clicking the finding must
+  // reopen that hunk rather than scroll to a row that isn't rendered. Only this file's own hunk is
+  // touched; a hunk collapsed in a different file, or a different hunk in this one, is untouched.
+  const hitPath = hitLocation?.path;
+  const hitLine = hitLocation?.line;
+  useEffect(() => {
+    if (hitPath !== file.path || hitLine === undefined) return;
+    const hunkIndex = file.hunks.findIndex((hunk) =>
+      hunk.lines.some((line) => (line.newLineNumber ?? line.oldLineNumber) === hitLine),
+    );
+    if (hunkIndex === -1) return;
+    setCollapsed((current) => {
+      if (!current.has(hunkIndex)) return current;
+      const next = new Set(current);
+      next.delete(hunkIndex);
+      return next;
+    });
+  }, [file, hitPath, hitLine]);
 
   const toggleHunk = (hunkIndex: number) => {
     setCollapsed((current) => {
@@ -120,16 +140,40 @@ function HunkRows({
           const lineNumber = line.newLineNumber ?? line.oldLineNumber;
           const isHit =
             !!hitLocation && hitLocation.path === path && lineNumber === hitLocation.line;
-          const rowClass = isHit ? `${line.kind === 'context' ? 'ctx' : line.kind} hit` : line.kind === 'context' ? 'ctx' : line.kind;
-          return (
-            <tr key={lineIndex} className={rowClass}>
-              <td className="ln">{line.oldLineNumber ?? ''}</td>
-              <td className="ln">{line.newLineNumber ?? ''}</td>
-              <td className="sign">{line.kind === 'add' ? '+' : line.kind === 'del' ? '−' : ''}</td>
-              <td className="code">{line.content}</td>
-            </tr>
-          );
+          return <DiffLineRow key={lineIndex} line={line} isHit={isHit} />;
         })}
     </>
+  );
+}
+
+/**
+ * One diff row. Split out of `HunkRows`'s map so the hit row can own a ref and scroll itself into
+ * view (issue #108) -- a hook can't be called from inside `.map`'s callback directly, and the
+ * alternative (a single effect at `DiffFileList` level querying `tr.hit` by class) would have to
+ * re-derive which row that was instead of each row simply knowing its own `isHit`.
+ */
+function DiffLineRow({ line, isHit }: { line: DiffLine; isHit: boolean }) {
+  const ref = useRef<HTMLTableRowElement>(null);
+
+  useEffect(() => {
+    // `scrollIntoView` is unimplemented in jsdom (undefined, not a no-op) -- optional-call it so a
+    // test environment skips the scroll silently rather than throwing, the same guard a real
+    // browser's own implementation needs none of.
+    if (isHit) ref.current?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+  }, [isHit]);
+
+  const rowClass = isHit
+    ? `${line.kind === 'context' ? 'ctx' : line.kind} hit`
+    : line.kind === 'context'
+      ? 'ctx'
+      : line.kind;
+
+  return (
+    <tr ref={ref} className={rowClass}>
+      <td className="ln">{line.oldLineNumber ?? ''}</td>
+      <td className="ln">{line.newLineNumber ?? ''}</td>
+      <td className="sign">{line.kind === 'add' ? '+' : line.kind === 'del' ? '−' : ''}</td>
+      <td className="code">{line.content}</td>
+    </tr>
   );
 }

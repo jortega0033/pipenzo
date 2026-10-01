@@ -5,6 +5,7 @@ import {
   findingLocation,
   formatDiffScopeSummary,
   gateTone,
+  hitLocationForFinding,
   mapFindingSeverity,
   tallyFindings,
   verifierStandingText,
@@ -75,6 +76,31 @@ describe('combineFindings', () => {
 
   it('returns an empty list when neither pass ran', () => {
     expect(combineFindings(undefined, undefined)).toEqual([]);
+  });
+});
+
+describe('hitLocationForFinding', () => {
+  it('returns the path/line pair for a finding that has both', () => {
+    const combined = combineFindings(REVIEWER, VERIFIER);
+    const critical = combined.find((finding) => finding.severity === 'critical');
+    expect(hitLocationForFinding(critical)).toEqual({ path: 'b.ts', line: 10 });
+  });
+
+  it('returns undefined when no finding is selected', () => {
+    expect(hitLocationForFinding(undefined)).toBeUndefined();
+  });
+
+  it('returns undefined for a finding with no path at all', () => {
+    const combined = combineFindings(REVIEWER, VERIFIER);
+    const info = combined.find((finding) => finding.severity === 'info');
+    expect(info?.path).toBeUndefined();
+    expect(hitLocationForFinding(info)).toBeUndefined();
+  });
+
+  it('returns undefined for a finding that has a path but no line', () => {
+    expect(
+      hitLocationForFinding({ severity: 'info', source: 'reviewer', message: 'm', path: 'a.ts' }),
+    ).toBeUndefined();
   });
 });
 

@@ -269,6 +269,109 @@ describe('DiffReviewScreen', () => {
     expect(pipenzoCreateLesson).not.toHaveBeenCalled();
   });
 
+  /**
+   * Issue #108: clicking a finding has to reach all the way from the rail into the real
+   * `DiffFileList` rendering the same report's diff -- not a mocked prop, the actual `ReviewReportV1`
+   * findings this screen already fetched via `reviewPipenzo`.
+   */
+  it('clicking a finding marks+scrolls to its real file:line, and a second click toggles it off', async () => {
+    const implementResultPipenzo = vi.fn().mockResolvedValue(commits());
+    const implementDiffPipenzo = vi.fn().mockResolvedValue(diffResult());
+    const base = reviewReport();
+    const report: PipenzoReviewResultV1 = {
+      ...base,
+      reviewer: {
+        ...base.reviewer!,
+        findings: [
+          { severity: 'medium', message: 'the added line looks off', path: 'src/a.ts', line: 2 },
+        ],
+      },
+    };
+    const reviewPipenzo = vi.fn().mockResolvedValue(report);
+    setBridgeOverride({ implementResultPipenzo, implementDiffPipenzo, reviewPipenzo } as never);
+
+    const scrollIntoView = vi.fn();
+    window.HTMLElement.prototype.scrollIntoView = scrollIntoView;
+
+    render(<DiffReviewScreen ticket={TICKET} spec={SPEC} started={STARTED} />);
+    await waitFor(() => expect(screen.getByText(TICKET.title)).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText('Reviewer model'), { target: { value: 'claude-sonnet-4-5' } });
+    fireEvent.change(screen.getByLabelText('Verifier model'), { target: { value: 'claude-opus-4-1' } });
+    fireEvent.click(screen.getByRole('button', { name: /run review/i }));
+    await waitFor(() => expect(reviewPipenzo).toHaveBeenCalledTimes(1));
+
+    const finding = await screen.findByText('the added line looks off');
+    const findingRow = finding.closest('.finding')!;
+    const diffRow = screen.getByText('added line').closest('tr')!;
+    expect(diffRow).not.toHaveClass('hit');
+
+    fireEvent.click(findingRow);
+    expect(diffRow).toHaveClass('hit');
+    expect(findingRow).toHaveClass('active');
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center', behavior: 'smooth' });
+
+    fireEvent.click(findingRow);
+    expect(diffRow).not.toHaveClass('hit');
+    expect(findingRow).not.toHaveClass('active');
+  });
+
+  /** Issue #108: ArrowDown/ArrowUp move focus between findings; activating the focused one (Enter)
+   * is what actually marks+scrolls the diff -- the same two-step shape as `ActivityTimeline`. */
+  it('keyboard navigation moves focus between findings, and Enter selects the focused one', async () => {
+    const implementResultPipenzo = vi.fn().mockResolvedValue(commits());
+    const implementDiffPipenzo = vi.fn().mockResolvedValue(
+      diffResult({
+        diffText:
+          'diff --git a/src/a.ts b/src/a.ts\n@@ -1,3 +1,3 @@\n context one\n-old line\n+added line\n context two\n',
+      }),
+    );
+    const base = reviewReport();
+    const report: PipenzoReviewResultV1 = {
+      ...base,
+      reviewer: {
+        ...base.reviewer!,
+        findings: [
+          { severity: 'high', message: 'first finding', path: 'src/a.ts', line: 2 },
+          { severity: 'medium', message: 'second finding', path: 'src/a.ts', line: 3 },
+        ],
+      },
+    };
+    const reviewPipenzo = vi.fn().mockResolvedValue(report);
+    setBridgeOverride({ implementResultPipenzo, implementDiffPipenzo, reviewPipenzo } as never);
+    window.HTMLElement.prototype.scrollIntoView = vi.fn();
+
+    render(<DiffReviewScreen ticket={TICKET} spec={SPEC} started={STARTED} />);
+    await waitFor(() => expect(screen.getByText(TICKET.title)).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText('Reviewer model'), { target: { value: 'claude-sonnet-4-5' } });
+    fireEvent.change(screen.getByLabelText('Verifier model'), { target: { value: 'claude-opus-4-1' } });
+    fireEvent.click(screen.getByRole('button', { name: /run review/i }));
+    await waitFor(() => expect(reviewPipenzo).toHaveBeenCalledTimes(1));
+
+    const firstRow = (await screen.findByText('first finding')).closest('.finding')! as HTMLElement;
+    const secondRow = screen.getByText('second finding').closest('.finding')! as HTMLElement;
+    const addedLineRow = screen.getByText('added line').closest('tr')!;
+    const contextTwoRow = screen.getByText('context two').closest('tr')!;
+
+    firstRow.focus();
+    fireEvent.keyDown(firstRow, { key: 'ArrowDown' });
+    expect(secondRow).toHaveFocus();
+    // Moving focus alone must not select -- neither diff row is marked yet.
+    expect(addedLineRow).not.toHaveClass('hit');
+    expect(contextTwoRow).not.toHaveClass('hit');
+
+    fireEvent.keyDown(secondRow, { key: 'Enter' });
+    expect(contextTwoRow).toHaveClass('hit');
+    expect(addedLineRow).not.toHaveClass('hit');
+
+    fireEvent.keyDown(secondRow, { key: 'ArrowUp' });
+    expect(firstRow).toHaveFocus();
+    fireEvent.keyDown(firstRow, { key: 'Enter' });
+    expect(addedLineRow).toHaveClass('hit');
+    expect(contextTwoRow).not.toHaveClass('hit');
+  });
+
   it('Save lesson persists via the real pipenzoCreateLesson route once resolved', async () => {
     const implementResultPipenzo = vi.fn().mockResolvedValue(commits());
     const implementDiffPipenzo = vi.fn().mockResolvedValue(diffResult());

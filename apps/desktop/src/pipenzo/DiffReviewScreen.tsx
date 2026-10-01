@@ -21,6 +21,7 @@ import { DiffFileList } from './DiffFileList.js';
 import { DiffReviewHead, type DiffReviewStat } from './DiffReviewHead.js';
 import { deriveLessonPrefill } from './lesson-prompt.js';
 import { LessonPrompt } from './LessonPrompt.js';
+import { combineFindings, hitLocationForFinding } from './rail.js';
 import { RailPanel } from './RailPanel.js';
 import { buildReviewRequest, useImplementPoll, useReviewAction } from './use-implement-review.js';
 import { useAsyncAction } from './use-async-action.js';
@@ -85,6 +86,11 @@ export function DiffReviewScreen({
   // Flips once, on a real push or a real opened pull request -- never reset back to false, so
   // `LessonPrompt` below is offered exactly once for this screen's one run (issue #104).
   const [resolved, setResolved] = useState(false);
+  // The finding currently marked+scrolled-to in the diff (issue #108) -- `undefined` means no
+  // finding is selected, same convention `RailPanel`'s own `selectedFindingIndex` prop already
+  // uses, so a second click of the active finding (which `RailPanel` sends as `undefined`) is a
+  // real toggle-off rather than this screen inventing a different "nothing selected" value.
+  const [selectedFindingIndex, setSelectedFindingIndex] = useState<number | undefined>(undefined);
   const handlePushed = (result: PipenzoPublishResultV1) => {
     setResolved(true);
     onPushed?.(result);
@@ -163,6 +169,14 @@ export function DiffReviewScreen({
   const commit = report
     ? { message: buildCommitMessage(spec), confidence: buildConfidenceLine(report) }
     : undefined;
+  // The same severity-ordered list `RailPanel` builds internally from this report, recomputed here
+  // (cheap, pure, and already memo-free in `RailPanel` itself) so `selectedFindingIndex` -- an
+  // index into that exact list -- resolves to the same finding on both sides of the click, rather
+  // than this screen tracking a second, differently-shaped selection of its own.
+  const findings = report ? combineFindings(report.reviewer, report.verifier) : [];
+  const hitLocation = hitLocationForFinding(
+    selectedFindingIndex !== undefined ? findings[selectedFindingIndex] : undefined,
+  );
 
   return (
     <>
@@ -184,10 +198,15 @@ export function DiffReviewScreen({
         <LessonPrompt repo={ticket.repo} issueNumber={ticket.num} prefill={deriveLessonPrefill(report)} />
       )}
       <div className="body">
-        <DiffFileList diffText={result.diffText} />
+        <DiffFileList diffText={result.diffText} hitLocation={hitLocation} />
         <div className="rail">
           {report ? (
-            <RailPanel report={report} commit={commit} />
+            <RailPanel
+              report={report}
+              commit={commit}
+              selectedFindingIndex={selectedFindingIndex}
+              onSelectFinding={setSelectedFindingIndex}
+            />
           ) : (
             <RunReviewForm
               pending={review.pending}

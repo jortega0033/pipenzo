@@ -73,3 +73,70 @@ describe('Finding', () => {
     expect(onClick).toHaveBeenCalledTimes(3);
   });
 });
+
+/** Issue #108: bidirectional keyboard support across a findings list, the same roving-focus shape
+ * `ActivityTimeline.tsx` already uses for its own cards. */
+describe('FindingsList keyboard navigation', () => {
+  function renderThree() {
+    return render(
+      <FindingsList>
+        <Finding severity="critical" loc="a:1">
+          first
+        </Finding>
+        <Finding severity="warning" loc="b:2">
+          second
+        </Finding>
+        <Finding severity="info" loc="c:3">
+          third
+        </Finding>
+      </FindingsList>,
+    );
+  }
+
+  it('moves focus to the next finding on ArrowDown, and the previous on ArrowUp', () => {
+    renderThree();
+    const [first, second, third] = screen.getAllByRole('button');
+    first!.focus();
+    fireEvent.keyDown(first!, { key: 'ArrowDown' });
+    expect(second).toHaveFocus();
+    fireEvent.keyDown(second!, { key: 'ArrowDown' });
+    expect(third).toHaveFocus();
+    fireEvent.keyDown(third!, { key: 'ArrowUp' });
+    expect(second).toHaveFocus();
+  });
+
+  it('clamps at the first and last finding rather than wrapping', () => {
+    renderThree();
+    const [first, , third] = screen.getAllByRole('button');
+    first!.focus();
+    fireEvent.keyDown(first!, { key: 'ArrowUp' });
+    expect(first).toHaveFocus();
+    third!.focus();
+    fireEvent.keyDown(third!, { key: 'ArrowDown' });
+    expect(third).toHaveFocus();
+  });
+
+  it('jumps to the first/last finding on Home/End', () => {
+    renderThree();
+    const [first, second, third] = screen.getAllByRole('button');
+    second!.focus();
+    fireEvent.keyDown(second!, { key: 'End' });
+    expect(third).toHaveFocus();
+    fireEvent.keyDown(third!, { key: 'Home' });
+    expect(first).toHaveFocus();
+  });
+
+  it('ignores other keys and keydowns from outside a finding row', () => {
+    renderThree();
+    const [first, second] = screen.getAllByRole('button');
+    first!.focus();
+    fireEvent.keyDown(first!, { key: 'Tab' });
+    expect(first).toHaveFocus();
+    // A keydown bubbling up from something other than a `.finding` row (e.g. the count line) must
+    // not move focus either -- this list's own container is not itself a navigable row.
+    const container = first!.closest('.findings')!;
+    fireEvent.keyDown(container, { key: 'ArrowDown' });
+    expect(first).toHaveFocus();
+    expect(second).not.toHaveFocus();
+  });
+});
