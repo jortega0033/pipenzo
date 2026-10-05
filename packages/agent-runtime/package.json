@@ -16,7 +16,7 @@
     "@anthropic-ai/sdk": "0.123.0",
     "@modelcontextprotocol/sdk": "1.30.1",
     "@agent-dock/shared": "workspace:*",
-    "zod": "4.5.4"
+    "zod": "4.6.5"
   },
   "devDependencies": {
     "ajv": "^8.20.0",
