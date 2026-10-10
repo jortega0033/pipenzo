@@ -56,4 +56,21 @@ describe('reconcile input validation', () => {
       { number: 3, title: 'T'.repeat(300), state: 'closed' },
     ]);
   });
+
+  it('bounds criteria and issue bodies, allowing a null body', () => {
+    const many = Array.from({ length: 21 }, () => 'x');
+    for (const criteria of [many, ['x'.repeat(301)], [5 as never], 'x' as never])
+      expect(codeOf(() => validateCandidate(ok({ criteria })))).toBe('invalid_candidate');
+    expect(() => validateCandidate(ok({ criteria: ['fine'] }))).not.toThrow();
+    const good = { number: 3, title: 'T', state: 'open' };
+    expect(codeOf(() => validateSnapshot(snap([{ ...good, body: 5 }])))).toBe('invalid_snapshot');
+    const [long, none] = validateSnapshot(
+      snap([
+        { ...good, body: 'b'.repeat(5_000) },
+        { ...good, number: 4, body: null },
+      ]),
+    );
+    expect(long!.body).toHaveLength(4_000);
+    expect(none).toEqual({ number: 4, title: 'T', state: 'open' });
+  });
 });

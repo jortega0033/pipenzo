@@ -1,5 +1,5 @@
 /**
- * Read-only candidate reconciliation (Pipenzo #358, slice 1: the scorer). A pure function: given a
+ * Read-only candidate reconciliation (Pipenzo #358, slice 1: the scorer; criteria vs issue body added in 1b). A pure function: given a
  * drafted candidate and an issue snapshot it names the closest existing owner or duplicate. No
  * model, network, GitHub client or write; filing stays the human-clicked `createIssue`. The score
  * is a plain token overlap so a human can read the reason and check it.
@@ -20,6 +20,8 @@ export const MAX_MATCHES = 3;
 export const OWNER_THRESHOLD = 0.6;
 export const POSSIBLE_THRESHOLD = 0.35;
 const MAX_REASON_TOKENS = 8;
+/** Most a body can add to a title score; it is a tie-breaker, never a match on its own. */
+const BODY_WEIGHT = 0.2;
 
 const STOPWORDS = new Set(
   'the and for with that this from when then into are not has have any all can will shall should must its add use'.split(
@@ -51,12 +53,20 @@ export function reconcileCandidate(
     throw new ReconcileError('invalid_candidate', 'candidate title has no searchable words');
   }
 
-  const scored: (ReconcileMatch & { words: string[] })[] = [];
+  const criteriaTokens = tokenize((candidate.criteria ?? []).join(' '));
+
+  const scored: (ReconcileMatch & { words: string[]; titleScore: number; bonus: number })[] = [];
   for (const issue of issues) {
     const issueTitle = tokenize(issue.title);
     const titleShared = shared(titleTokens, issueTitle);
-    const score = (2 * titleShared.length) / (titleTokens.size + issueTitle.size || 1);
-    const rounded = Math.round(score * 100) / 100;
+    const titleScore = (2 * titleShared.length) / (titleTokens.size + issueTitle.size || 1);
+    // Body overlap counts only when the titles already overlap; a null body adds nothing.
+    const bodyHits =
+      titleShared.length > 0 && issue.body
+        ? shared(criteriaTokens, tokenize(issue.body)).length
+        : 0;
+    const bonus = bodyHits && (BODY_WEIGHT * bodyHits) / criteriaTokens.size;
+    const rounded = Math.round(Math.min(1, titleScore + bonus) * 100) / 100;
     if (rounded < POSSIBLE_THRESHOLD) continue;
     scored.push({
       number: issue.number,
@@ -64,6 +74,8 @@ export function reconcileCandidate(
       score: rounded,
       reason: '',
       words: titleShared,
+      titleScore,
+      bonus: Math.round(bonus * 100) / 100,
     });
   }
 
@@ -73,16 +85,18 @@ export function reconcileCandidate(
       (a.state === b.state ? 0 : a.state === 'open' ? -1 : 1) ||
       a.number - b.number,
   );
-  const matches: ReconcileMatch[] = scored.slice(0, MAX_MATCHES).map(({ words, ...match }) => ({
-    ...match,
-    reason: `shared words: ${[...words].sort().slice(0, MAX_REASON_TOKENS).join(', ')}; overlap score ${match.score}`,
-  }));
+  const matches: ReconcileMatch[] = scored
+    .slice(0, MAX_MATCHES)
+    .map(({ words, bonus, titleScore: _t, ...match }) => ({
+      ...match,
+      reason: `shared words: ${[...words].sort().slice(0, MAX_REASON_TOKENS).join(', ')}; overlap score ${match.score}${bonus ? ` (criteria/body +${bonus})` : ''}`,
+    }));
   const top = scored[0];
   // One shared word is never enough to call something the owner, and a closed issue is a
   // decided ticket, not a live owner: it is reported as closed but only as a possible duplicate.
   const outcome: ReconcileOutcome = !top
     ? 'no_match'
-    : top.score >= OWNER_THRESHOLD && top.words.length >= 2 && top.state === 'open'
+    : top.titleScore >= OWNER_THRESHOLD && top.words.length >= 2 && top.state === 'open'
       ? 'existing_owner'
       : 'possible_duplicate';
 

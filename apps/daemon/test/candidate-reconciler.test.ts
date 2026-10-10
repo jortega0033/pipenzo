@@ -11,6 +11,7 @@ const cand = (title: string, over: Partial<ReconcileCandidate> = {}) => ({
 });
 const issue = (number: number, title: string, state: 'open' | 'closed' = 'open') =>
   ({ number, title, state }) satisfies ReconcileIssue;
+const withBody = (i: ReconcileIssue, body: string | null): ReconcileIssue => ({ ...i, body });
 const snap = (issues: ReconcileIssue[], truncated = false) => ({ issues, truncated });
 const outcome = (c: ReconcileCandidate, ...issues: ReconcileIssue[]) =>
   reconcileCandidate(c, snap(issues)).outcome;
@@ -91,5 +92,25 @@ describe('reconcileCandidate', () => {
         /import\(|require\(|createIssue|fetch\s*\(|octokit|process\.|globalThis|node:|https?:/i,
       );
     }
+  });
+
+  it('adds criteria/body overlap only when titles overlap, and tolerates a null body', () => {
+    const c = cand('Persist blown estimate ratio', { criteria: ['Store ratio per ticket'] });
+    const base = issue(4, 'Persist estimate history');
+    const plain = reconcileCandidate(c, snap([base])).matches[0]!;
+    const hit = reconcileCandidate(c, snap([withBody(base, 'Store the ratio per ticket')]));
+    expect(hit.matches[0]!.score).toBeGreaterThan(plain.score);
+    expect(hit.matches[0]!.reason).toContain('criteria/body +');
+    expect(hit.matches[0]!.reason).toMatch(
+      /^shared words: [a-z, ]+; overlap score [\d.]+ \(criteria\/body \+[\d.]+\)$/,
+    );
+    expect(hit.matches[0]!.reason).not.toContain('ticket'); // no issue-body words in the reason
+    // body text alone can never promote a below-threshold title match to owner
+    const near = withBody(issue(8, 'Persist estimate history'), 'Store the ratio per ticket');
+    expect(reconcileCandidate(c, snap([near])).matches[0]!.score).toBeGreaterThanOrEqual(0.6);
+    expect(outcome(c, near)).toBe('possible_duplicate');
+    expect(reconcileCandidate(c, snap([withBody(base, null)])).matches[0]).toEqual(plain);
+    const offTitle = withBody(issue(6, 'Toast system'), 'Store ratio per ticket');
+    expect(reconcileCandidate(c, snap([offTitle])).outcome).toBe('no_match');
   });
 });
