@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { App } from '../src/App.js';
-import { DIFF_SIZE_THRESHOLDS, REPO_URL, WORKFLOW_STEPS } from '../src/content.js';
+import { REPO_URL, WORKFLOW_STEPS } from '../src/content.js';
 
 describe('App', () => {
   it('renders exactly one h1, the canonical positioning line', () => {
@@ -29,15 +29,12 @@ describe('App', () => {
     expect(headings.at(-1)).toBe('You approve');
   });
 
-  it('states the small-PR thresholds from the shared content module, not a re-typed number', () => {
+  it('describes the three small-PR outcomes in plain language', () => {
     render(<App />);
-    const { soloPr, stackedPrs } = DIFF_SIZE_THRESHOLDS;
-    expect(
-      screen.getByText(`≤ ${soloPr.maxLines} lines and ≤ ${soloPr.maxFiles} files`),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(`≤ ${stackedPrs.maxLines} lines and ≤ ${stackedPrs.maxFiles} files`),
-    ).toBeInTheDocument();
+    const section = document.getElementById('small-prs')!;
+    for (const outcome of ['Small change', 'Bigger change', 'Too big to split cleanly']) {
+      expect(within(section).getByRole('heading', { level: 3, name: outcome })).toBeInTheDocument();
+    }
   });
 
   it('never claims a customer count, acceptance rate, or testimonial', () => {
@@ -84,17 +81,16 @@ describe('App', () => {
   });
 
   /**
-   * Issue #289: the gate list is hand-duplicated in three places (README, `content.ts`'s
-   * `WORKFLOW_STEPS`, and `ReviewBeforeTrust.tsx`'s `GATES`) with no mechanism checking them
-   * against each other -- see the drift-risk comments on those two files. This at least pins the
-   * landing page's own two copies against each other and against the current gate set, so a future
-   * gate addition that updates one but not the other fails here rather than silently drifting
-   * further, the same way #283 (adding lint) already did once.
+   * The page stays at a plain-language level: exact thresholds, the named check list, and
+   * routing-class/tier names live in README.md only. Keeping them off the page also removes the
+   * hand-copied gate list that issue #289 flagged as a drift risk.
    */
-  it('names lint in both of the landing page’s own copies of the deterministic gate list', () => {
+  it('keeps spec-level detail out of the visible copy', () => {
     render(<App />);
-    const reviewSummary = WORKFLOW_STEPS.find((step) => step.phase === 'Review')?.summary;
-    expect(reviewSummary).toContain('lint');
-    expect(screen.getByText(/Build\/typecheck, lint, spec-generated tests/)).toBeInTheDocument();
+    const text = document.body.textContent ?? '';
+    expect(text).not.toMatch(/≤|\b(100|400)\s*(changed\s+)?lines\b|\b(10|20)\s*files\b/i);
+    expect(text).not.toMatch(/gitleaks|semgrep|typecheck|\blint\b|diff-scope|spec-generated/i);
+    expect(text).not.toMatch(/implement-(small|standard|hard)|routing class|model tier/i);
+    expect(text).not.toMatch(/\b(cheap|mid|frontier)\b/i);
   });
 });

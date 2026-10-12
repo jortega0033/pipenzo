@@ -1288,7 +1288,7 @@ gh pr create --fill --base main</div>
         <div class="v-head"><span class="label">Machine-verified</span><span class="sub">Deterministic gates. Each one ran on this machine and either passed or blocked the ticket.</span></div>
         <div class="v-row"><span class="v-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span>Build, typecheck and lint passed <span class="m">pnpm build · 9s</span></span></div>
         <div class="v-row"><span class="v-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span>vitest: 21 passed, 0 failed <span class="m">1 new · spec-generated</span></span></div>
-        <div class="v-row"><span class="v-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span>gitleaks and semgrep p/ci: no findings</span></div>
+        <div class="v-row"><span class="v-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span>gitleaks and Semgrep: no findings <span class="m">semgrep --config auto</span></span></div>
         <div class="v-row"><span class="v-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span>Diff scope within the Refine estimate <span class="m">+8 of ≤ 60 implementation · +44 generated tests, reported separately</span></span></div>
       </div>
       <div class="v-block agent">
@@ -1384,7 +1384,7 @@ gh pr create --fill --base main</div>
 
   <section>
     <h2>Bounded concurrency — default 2 tickets in flight, hard cap 4, one worktree each; overlapping "files likely touched" lists serialise</h2>
-    <p class="sec-note">Post-MVP (build step 5) but the board already reflects it: the Working lane shows more than one card, a capacity pill sits in its header, and a ticket that would collide with a running one is held with the reason and the file, not silently queued. The limit is a workspace setting.</p>
+    <p class="sec-note">Post-MVP (build step 5) but the board already reflects it: the Working lane shows more than one card, a capacity pill sits in its header, and a ticket that would collide with a running one is held with the reason and the file, not silently queued. The limit is a workspace setting. <b>Built so far:</b> the pill and the held card render on the real board as a read-only report of the file-overlap decision. Nothing yet enforces the limit, starts a held ticket on its own or offers the setting (issues #5, #126).</p>
     <div class="prim-grid">
       <div class="prim-card">
         <span class="lbl">concurrency limit · stepper, 1–4, pill-shaped like every other control</span>
@@ -1551,7 +1551,7 @@ gh pr create --fill --base main</div>
       <div class="lesson">
         <div class="lesson-head"><svg class="icon-sm" style="color:var(--ok);" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg><span class="grow">Saved locally — 1 lesson on jortega0033/agentdock</span><span class="mono">human-gated</span></div>
         <div class="lesson-foot">
-          <span class="lesson-note"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm16-40a8,8,0,0,1-8,8,16,16,0,0,1-16-16V128a8,8,0,0,1,0-16,16,16,0,0,1,16,16v40A8,8,0,0,1,144,176ZM112,84a12,12,0,1,1,12,12A12,12,0,0,1,112,84Z"/></svg><span>Handed to the next Refine on this repo as context, never as an instruction, and deletable in Settings.</span></span>
+          <span class="lesson-note"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm16-40a8,8,0,0,1-8,8,16,16,0,0,1-16-16V128a8,8,0,0,1,0-16,16,16,0,0,1,16,16v40A8,8,0,0,1,144,176ZM112,84a12,12,0,1,1,12,12A12,12,0,0,1,112,84Z"/></svg><span>Never sent to a provider, and deletable in Settings. Nothing hands it to Refine yet; whether it should is an open decision.</span></span>
           <span class="run-acts"><span class="r-link faint" tabindex="0">Undo</span></span>
         </div>
       </div>

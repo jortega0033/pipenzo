@@ -522,8 +522,9 @@
 
     <div class="page">
       <section>
-        <h2>Model routing — a routing class picks a model tier</h2>
+        <h2>Model routing — a routing class picks a model tier<span class="self-tag">planned · issue #120</span></h2>
         <p class="sec-note">A <b>routing class</b> is a phase of work. A <b>model tier</b> is a model's strength, cheap through frontier. The kanban lanes are a third, unrelated thing. Pipenzo brings no models and no inference credits: it runs whatever agentdock has authenticated, as local subprocesses under your own login. So the tier a class picks is the setting on this page — which model a tier resolves to is the provider's.</p>
+        <p class="sec-note"><b>Not built yet.</b> Only the three tiers exist in code. Nothing maps a routing class to a tier: a run started from the board uses the Claude Code CLI with its own default model, and the reviewer and verifier models are typed in by a person. The one rule on this page that is enforced today is the verifier's tier floor, checked at Review.</p>
         <div class="rt">
           <div class="rt-head"><span>Routing class</span><span>Model tier</span><span>Model</span><span>Why this rung</span></div>
           <sc-for list="{{rows}}" as="r" hint-placeholder-count="6">
@@ -552,7 +553,7 @@
             <span class="n-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span>
             <span class="n-body">
               <span class="n-title">Vendor diversity is available on this install</span>
-              <span>Claude Code CLI and Codex CLI are both authenticated, so the adversarial verifier can be cross-vendor. <b>With only one vendor authenticated the tiebreak degrades to same-vendor, same-tier — and says so:</b> the run records that vendor diversity was unavailable, because a verifier that could not be cross-vendor is a weaker check than one that could, and the evidence block should not imply otherwise.</span>
+              <span>Claude Code CLI and Codex CLI are both authenticated, so the adversarial verifier can be cross-vendor. <b>Not yet in practice:</b> as of 30 Sep 2026 Pipenzo refuses Codex for every phase, fail-closed, until Codex's MCP and approval config can be pinned, so no verifier is cross-vendor today. <b>With only one vendor authenticated the tiebreak degrades to same-vendor, same-tier — and says so:</b> the run records that vendor diversity was unavailable, because a verifier that could not be cross-vendor is a weaker check than one that could, and the evidence block should not imply otherwise.</span>
             </span>
           </div>
           <div class="notice">
@@ -567,7 +568,7 @@
         <div class="two-col" style="margin-top:16px;">
           <div class="form-panel">
             <div class="fieldset">
-              <span class="f-lbl">Deterministic overrides — force the frontier tier</span>
+              <span class="f-lbl">Deterministic overrides — force the frontier tier<span class="self-tag">planned · issue #121</span></span>
               <span class="gate-sub">Checked before the size estimate is consulted, so a ticket the estimate calls small still goes frontier when one of these matches.</span>
               <div class="ov">
                 <div class="ov-row"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg><span><b>Any prior failed attempt</b> on this ticket</span></div>
@@ -580,7 +581,7 @@
           </div>
           <div class="form-panel">
             <div class="fieldset">
-              <span class="f-lbl">Retries escalate the tier before they escalate to a human</span>
+              <span class="f-lbl">Retries escalate the tier before they escalate to a human<span class="self-tag">planned · issue #121</span></span>
               <span class="gate-sub">Capped attempts throughout — no unbounded retry loop, and a denied approval is never auto-retried at all.</span>
               <div class="ov">
                 <div class="ov-row"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,64a32,32,0,1,0-40,31v17a8,8,0,0,1-8,8H80a8,8,0,0,1-8-8V95a32,32,0,1,0-16,0v17a24,24,0,0,0,24,24h40v25a32,32,0,1,0,16,0V136h40a24,24,0,0,0,24-24V95A32.06,32.06,0,0,0,224,64ZM48,64A16,16,0,1,1,64,80,16,16,0,0,1,48,64Zm96,128a16,16,0,1,1-16-16A16,16,0,0,1,144,192ZM192,80a16,16,0,1,1,16-16A16,16,0,0,1,192,80Z"/></svg><span><b>Same tier is a session.fork.</b> Spec context, provider-native continuity and audit lineage all survive it.</span></div>
@@ -596,7 +597,7 @@
         <div class="form-panel" style="margin-top:16px;">
           <div class="fieldset">
             <span class="f-lbl">Task-type-aware routing <span class="self-tag">near-term post-MVP</span></span>
-            <span class="gate-sub">Refine already classifies the ticket, so it emits a <b>task type</b> alongside the size estimate, and the tier and gate strictness are read off both. The merge rates are measured, not assumed — 7,156 agent PRs, MSR 2026 mining challenge — and they track task type, not diff size.</span>
+            <span class="gate-sub">Refine already sizes the ticket. The plan is for it to emit a <b>task type</b> alongside the size estimate and read the tier and gate strictness off both; today the task type exists only as a field on the ticket record, and Refine does not produce it (issue #10). The merge rates are measured, not assumed — 7,156 agent PRs, MSR 2026 mining challenge — and they track task type, not diff size.</span>
             <div class="tt">
               <span class="h">Task type</span><span class="h">Merge rate</span><span class="h">Tier floor</span><span class="h">Gate strictness, on top of the five</span>
               <span class="tt-k">chore</span><span class="tt-r">84.0%</span><span><span class="tier">cheap</span></span><span>Standard. The estimate and the overrides decide the rest.</span>
@@ -613,6 +614,7 @@
       <section>
         <h2>Deterministic gates — the hard, non-negotiable set</h2>
         <p class="sec-note">These five run first, on this machine, and either pass or block the ticket. Only after all five pass does the LLM review pass run, in a fresh session seeing just the spec and the diff, followed by the separate adversarial verifier. There is no configuration that turns one off — which is why they render as switches you can read but not move.</p>
+        <p class="sec-note"><b>As of 30 Sep 2026:</b> the five rows cover seven checks, because build, typecheck and lint each run on their own. No spec-test writer is wired yet, so the spec-generated tests gate reports a skip on every run, and the test-wrong or code-wrong adjudicator is built but not called. A missing gitleaks or Semgrep binary is a skip with its reason, never a pass. This page has no screen in the app yet.</p>
         <div class="two-col">
           <div class="form-panel">
             <div class="fieldset">
@@ -657,12 +659,12 @@
                   <span class="gate-text">
                     <span class="gate-name">Symbol-graph MCP server</span>
                     <span class="gate-sub">Inherited from agentdock's runtime like any other stdio server. Pipenzo ships none of its own and adds no MCP UI.</span>
-                    <span class="cap"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm88,104a87.56,87.56,0,0,1-20.41,56.28L71.72,60.4A88,88,0,0,1,216,128ZM40,128A87.56,87.56,0,0,1,60.41,71.72L184.28,195.6A88,88,0,0,1,40,128Z"/></svg>not configured — Implement falls back to Grep/Glob</span>
+                    <span class="cap"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm88,104a87.56,87.56,0,0,1-20.41,56.28L71.72,60.4A88,88,0,0,1,216,128ZM40,128A87.56,87.56,0,0,1,60.41,71.72L184.28,195.6A88,88,0,0,1,40,128Z"/></svg>not consumed yet: Implement uses Grep/Glob even when one is configured (issue #314)</span>
                   </span>
                   <span class="gate-ctl"><span class="gate-lock">runtime</span></span>
                 </div>
               </div>
-              <span class="f-help">Shown in its own zone in the diff view, carrying a fixed provenance line, and never merged into the machine-verified list.</span>
+              <span class="f-help">Shown in its own zone in the diff view, carrying a fixed provenance line, and never merged into the machine-verified list. As of 30 Sep 2026 only the Playwright capability probe runs; the daemon's capture runner is built but nothing calls it yet.</span>
             </div>
           </div>
         </div>
@@ -696,7 +698,7 @@ class Component extends DCLogic {
       { name: 'Build, typecheck and lint', sub: 'pnpm build, pnpm typecheck and pnpm lint, inside the ticket worktree' },
       { name: 'Spec-generated tests', sub: 'Written from the spec, never by the implementer that has to pass them' },
       { name: 'gitleaks', sub: 'Committed secrets' },
-      { name: 'Semgrep', sub: 'The p/ci ruleset' },
+      { name: 'Semgrep', sub: 'semgrep --config auto, a registry-selected ruleset that is not pinned yet (issue #320)' },
       { name: 'Diff-scope check', sub: 'The real diff against the Refine estimate. A miss over 50% moves the ticket to pipenzo:awaiting-stack-approval with the real numbers against the predicted ones' },
     ];
 

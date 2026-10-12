@@ -540,7 +540,7 @@
 
           <div class="form-panel">
             <div class="fieldset">
-              <span class="f-lbl">Concurrency</span>
+              <span class="f-lbl">Concurrency<span class="self-tag">planned · issue #126</span></span>
               <div class="set-row">
                 <span class="set-text">
                   <span class="set-name">Execution limit</span>
@@ -577,7 +577,7 @@
 
           <div class="form-panel">
             <div class="fieldset">
-              <span class="f-lbl">Default mode</span>
+              <span class="f-lbl">Default mode<span class="self-tag">planned · issue #127</span></span>
               <div class="set-row">
                 <span class="set-text">
                   <span class="set-name">Which view a ticket opens in</span>
@@ -599,7 +599,7 @@
           <div class="form-panel">
             <div class="fieldset">
               <span class="f-lbl">Lesson memory <span class="self-tag">local · human-gated</span></span>
-              <span class="set-sub">One-line notes a person chose to save when a ticket resolved. Handed to the next Refine on that repo as context, never as an instruction, and never sent to a provider. Nothing is ever written here on its own.</span>
+              <span class="set-sub">One-line notes a person chose to save when a ticket resolved. Kept for a person to read and never sent to a provider. Nothing hands a lesson to Refine today; whether the next Refine should see it as context is an open decision. Nothing is ever written here on its own.</span>
               <div class="lesson-list">
                 <sc-for list="{{lessons}}" as="l" hint-placeholder-count="1">
                   <div class="lesson-item">
@@ -616,7 +616,7 @@
         <div class="col">
           <div class="form-panel">
             <div class="fieldset">
-              <span class="f-lbl">Notifications</span>
+              <span class="f-lbl">Notifications<span class="self-tag">planned · issue #129</span></span>
               <span class="set-sub">Notification is risk-graded, not uniform. What follows is the configurable part; the two lines under it are the part that is not.</span>
               <sc-for list="{{notifs}}" as="n" hint-placeholder-count="5">
                 <div class="set-row">
@@ -648,15 +648,15 @@
               <div class="fieldset">
                 <div class="f-row"><span class="set-sub">OAuth scope</span><span class="acct-v">repo</span></div>
                 <div class="f-row"><span class="set-sub">Token location</span><span class="acct-v">Electron-main vault</span></div>
-                <div class="f-row"><span class="set-sub">gh CLI</span><span class="acct-v">detected · gh stack only</span></div>
+                <div class="f-row"><span class="set-sub">gh CLI</span><span class="acct-v">not used</span></div>
               </div>
-              <span class="f-help" style="margin-top:-4px;">The <span class="mono">repo</span> scope is what creating labels and opening pull requests need, and no narrower scope grants one without the other. The token never leaves the Electron main process — no provider subprocess receives it.</span>
+              <span class="f-help" style="margin-top:-4px;">The <span class="mono">repo</span> scope is what creating labels and opening pull requests need, and no narrower scope grants one without the other. Electron main holds the token and hands it only to Pipenzo's own daemon, over a pipe rather than through its environment. No provider subprocess receives it, and Pipenzo never invokes the <span class="mono">gh</span> binary.</span>
             </div>
             <div class="fieldset">
               <span class="f-lbl">Providers <span class="self-tag">brought by you, not by Pipenzo</span></span>
               <div class="prov"><span class="p-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span class="grow">Claude Code CLI</span><span class="mono">authenticated · Max</span></div>
               <div class="prov"><span class="p-ic"><svg class="icon-sm" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg></span><span class="grow">Codex CLI</span><span class="mono">authenticated · Pro</span></div>
-              <span class="f-help">Pipenzo never sees or stores these credentials — agentdock's provider detection does, exactly as it does for its own sessions. Two vendors is also what lets the adversarial verifier be cross-vendor.</span>
+              <span class="f-help">Pipenzo never sees or stores these credentials — agentdock's provider detection does, exactly as it does for its own sessions. Two vendors is also what lets the adversarial verifier be cross-vendor, once Codex phases are re-enabled; Pipenzo refuses Codex for every phase today.</span>
             </div>
             <div class="danger-row">
               <span class="set-sub">Clears the token from the vault and stops every poll. Worktrees, branches and the ticket store stay on disk.</span>

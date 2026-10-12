@@ -137,12 +137,15 @@ just stops appearing on the next poll. Full label/lane/state reasoning is in the
 ## What exists today
 
 **Built and tested (daemon side).** `apps/daemon/src/github-client.ts` is a real `@octokit/core`
-client (issue/label CRUD, PR metadata, check runs); the daemon itself is handed a token via a
-single env var (`PIPENZO_GITHUB_TOKEN`, single-repo pin via `PIPENZO_GITHUB_REPO`), but a user
-never sets that by hand — Electron main signs in via real device-flow OAuth
-(`apps/desktop/electron/github-device-flow.ts`), stores the token in a `safeStorage`-backed vault
-(`github-token-vault.ts`, issue #165), and injects it into the daemon's own environment at spawn
-time. The phase machine reads and writes real `pipenzo:` labels, with labels authoritative for a
+client (issue/label CRUD, PR metadata, check runs); the daemon reads its GitHub token from
+`PIPENZO_GITHUB_TOKEN` at the code level (single-repo pin via `PIPENZO_GITHUB_REPO`), but a user
+never sets that by hand and it never actually reaches the daemon's environment — Electron main
+signs in via real device-flow OAuth (`apps/desktop/electron/github-device-flow.ts`), stores the
+token in a `safeStorage`-backed vault (`github-token-vault.ts`, issue #165), and hands it to the
+daemon over its stdin as a single JSON line (`daemon-environment.ts`, issue #212); every
+GitHub-credential-shaped environment variable is unconditionally stripped from the child process
+before spawn, so nothing GitHub-shaped is ever inheritable from the daemon's own environment. The
+phase machine reads and writes real `pipenzo:` labels, with labels authoritative for a
 ticket's lane. The ticket store persists to disk with atomic writes. The publish service is real —
 `execFile('git', …)` for the push, an Octokit call for the PR — behind its own route, with the
 token-boundary test described above. Refine, Implement orchestration, the deterministic review
@@ -157,8 +160,8 @@ panel) render as the app's real board, not a design-only preview. agentdock's in
 behind an explicit `demoMode` opt-in.
 
 **Designed, not wired in yet.**
-- **The risk classifier** (`risk-classifier.ts` doesn't exist yet) — so risk-graded approval, the
-  cumulative-risk strip, and pre-commitment records aren't built either.
+- **The risk classifier** — `risk-classifier.ts` exists and is tested, but nothing calls it yet, so
+  risk-graded approval, the cumulative-risk strip, and pre-commitment records aren't built either.
 - **Bounded concurrency/queue, `gh stack` publishing, CI-failure auto-fix, GitLab/Jira adapters,
   the humanizing prose pass.**
 - **Product branding, the rest of the way.** The desktop app and installer are already packaged
@@ -186,9 +189,11 @@ which drives the Claude Code and Codex CLIs as local subprocesses under your own
   credentials.
 - Git, on `PATH`.
 - A GitHub account with write access to the repos it manages.
-- Optionally, the repo's own Playwright for screenshot verification, and a symbol-graph MCP server
-  for better Implement-phase localization. Both are capability-detected and degrade to a stated
-  reduced mode rather than erroring.
+- Optionally, the repo's own Playwright for screenshot verification — this one is
+  capability-detected today and degrades to a stated reduced mode rather than erroring.
+- A symbol-graph MCP server for better Implement-phase localization is designed but not wired in
+  yet (issue #314): Implement always takes the `Grep`/`Glob` fallback today, even when one is
+  configured.
 
 ## Quick Start
 

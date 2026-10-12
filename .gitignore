@@ -11,6 +11,7 @@ coverage/
 *.tsbuildinfo
 .vite/
 .venv-assets/
+image-gen-output/
 __pycache__/
 *.py[cod]
 .claude/settings.local.json

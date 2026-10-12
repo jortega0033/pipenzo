@@ -14,12 +14,19 @@ export function Footer() {
   return (
     <footer className="py-12">
       <Container className="flex flex-col items-start justify-between gap-6 sm:flex-row sm:items-center">
-        <img src={lockup} alt="Pipenzo" width={196} height={48} loading="lazy" className="h-10 w-auto" />
+        <img
+          src={lockup}
+          alt="Pipenzo"
+          width={196}
+          height={48}
+          loading="lazy"
+          className="h-9 w-auto"
+        />
         <nav aria-label="Footer">
           <ul className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-text-soft">
             {LINKS.map((link) => (
               <li key={link.label}>
-                <a href={link.href} className="hover:text-text hover:underline underline-offset-2">
+                <a href={link.href} className="underline-offset-2 hover:text-text hover:underline">
                   {link.label}
                 </a>
               </li>
@@ -28,7 +35,7 @@ export function Footer() {
         </nav>
       </Container>
       <Container className="mt-8">
-        <p className="text-xs text-text-faint">Apache-2.0.</p>
+        <p className="font-mono text-xs text-text-faint">Apache-2.0 · built in the open</p>
       </Container>
     </footer>
   );
