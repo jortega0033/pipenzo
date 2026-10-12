@@ -17,7 +17,7 @@
   "dependencies": {
     "@agent-dock/agent-runtime": "workspace:*",
     "@agent-dock/shared": "workspace:*",
-    "@fastify/rate-limit": "11.2.0",
+    "@fastify/rate-limit": "11.2.1",
     "@octokit/core": "^6.1.6",
     "@octokit/plugin-paginate-rest": "^11.6.0",
     "@octokit/plugin-retry": "^7.2.1",
